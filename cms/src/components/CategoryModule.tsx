@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from "react";
 import { Category, apiRequest } from "@/lib/api";
+import ExportExcelButton from "./ExportExcelButton";
+import { exportCategories } from "@/lib/exports";
 import {
   FolderKanban,
   Plus,
@@ -184,10 +186,13 @@ export default function CategoryModule() {
 
       {/* Bảng Category */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-        <h3 className="font-bold text-slate-900 text-base flex items-center gap-2 mb-4">
-          <FolderKanban className="w-5 h-5 text-emerald-600" />
-          Danh sách Category ({categories.length})
-        </h3>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+            <FolderKanban className="w-5 h-5 text-emerald-600" />
+            Danh sách Category ({categories.length})
+          </h3>
+          <ExportExcelButton onExport={() => exportCategories(categories)} disabled={categories.length === 0} />
+        </div>
 
         <div className="overflow-x-auto border border-slate-200 rounded-xl">
           <table className="w-full text-xs text-left">

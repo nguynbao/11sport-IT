@@ -9,6 +9,8 @@ import {
   formatDateTime,
 } from "@/lib/api";
 import { Search, Printer, ShoppingBag, RotateCcw } from "lucide-react";
+import ExportExcelButton from "./ExportExcelButton";
+import { exportOrders, exportReturns } from "@/lib/exports";
 
 interface OrdersReturnsModuleProps {
   onOpenInvoice: (order: Order) => void;
@@ -61,7 +63,12 @@ export default function OrdersReturnsModule({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="relative w-64">
+            <ExportExcelButton
+              label="Xuất Excel (kèm chi tiết)"
+              onExport={() => exportOrders(orders)}
+              disabled={orders.length === 0}
+            />
+            <div className="relative w-full sm:w-64">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
               <input
                 type="text"
@@ -175,10 +182,13 @@ export default function OrdersReturnsModule({
 
       {/* Bảng Phiếu Trả / Đổi Hàng */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
-        <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
-          <RotateCcw className="w-5 h-5 text-amber-600" />
-          Danh sách Phiếu Trả / Đổi Hàng ({returns.length})
-        </h3>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+            <RotateCcw className="w-5 h-5 text-amber-600" />
+            Danh sách Phiếu Trả / Đổi Hàng ({returns.length})
+          </h3>
+          <ExportExcelButton onExport={() => exportReturns(returns)} disabled={returns.length === 0} />
+        </div>
         <div className="overflow-x-auto border border-slate-200 rounded-xl">
           <table className="w-full text-xs text-left">
             <thead className="bg-slate-900 text-white uppercase">

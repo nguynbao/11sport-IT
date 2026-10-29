@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from "react";
 import { StaffUser, UserRole, apiRequest } from "@/lib/api";
+import ExportExcelButton from "./ExportExcelButton";
+import { exportStaff } from "@/lib/exports";
 import {
   Users,
   UserPlus,
@@ -190,10 +192,13 @@ export default function StaffModule() {
 
       {/* Danh sách nhân viên */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-        <h3 className="font-bold text-slate-900 text-base flex items-center gap-2 mb-4">
-          <Users className="w-5 h-5 text-emerald-600" />
-          Danh sách Nhân viên ({staffList.length})
-        </h3>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+            <Users className="w-5 h-5 text-emerald-600" />
+            Danh sách Nhân viên ({staffList.length})
+          </h3>
+          <ExportExcelButton onExport={() => exportStaff(staffList)} disabled={staffList.length === 0} />
+        </div>
 
         <div className="overflow-x-auto border border-slate-200 rounded-xl">
           <table className="w-full text-xs text-left">

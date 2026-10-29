@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import ExportExcelButton from "./ExportExcelButton";
+import { exportProducts, exportInventoryReport, exportMovements, exportImports } from "@/lib/exports";
 import {
   Product,
   Category,
@@ -408,8 +410,12 @@ export default function InventoryModule() {
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
-                <div className="relative w-64">
+              <div className="flex flex-wrap items-center gap-2">
+                <ExportExcelButton
+                  onExport={() => exportProducts(products)}
+                  disabled={products.length === 0}
+                />
+                <div className="relative w-full sm:w-64">
                   <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                   <input
                     type="text"
@@ -563,6 +569,10 @@ export default function InventoryModule() {
               >
                 Lọc kỳ báo cáo
               </button>
+              <ExportExcelButton
+                onExport={() => exportInventoryReport(reportRows, fromDate, toDate)}
+                disabled={reportRows.length === 0}
+              />
             </div>
           </div>
 
@@ -632,6 +642,11 @@ export default function InventoryModule() {
               </p>
             </div>
 
+            <div className="flex flex-wrap items-center gap-2">
+            <ExportExcelButton
+              onExport={() => exportMovements(movements, movementType)}
+              disabled={movements.length === 0}
+            />
             <select
               value={movementType}
               onChange={(e) => setMovementType(e.target.value)}
@@ -645,6 +660,7 @@ export default function InventoryModule() {
               <option value="EXCHANGE_OUT">EXCHANGE_OUT (Xuất hàng đổi)</option>
               <option value="ADJUSTMENT">ADJUSTMENT (Điều chỉnh kho)</option>
             </select>
+            </div>
           </div>
 
           <div className="overflow-x-auto border border-slate-200 rounded-xl">
@@ -698,9 +714,16 @@ export default function InventoryModule() {
       {/* SUB-TAB 4: DANH SÁCH PHIẾU NHẬP KHO */}
       {subTab === "IMPORTS" && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
-          <h3 className="font-bold text-slate-900 text-base">
-            Danh sách Phiếu Nhập Kho (BR-09, BR-10)
-          </h3>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h3 className="font-bold text-slate-900 text-base">
+              Danh sách Phiếu Nhập Kho (BR-09, BR-10)
+            </h3>
+            <ExportExcelButton
+              label="Xuất Excel (kèm chi tiết hàng)"
+              onExport={() => exportImports(importsList)}
+              disabled={importsList.length === 0}
+            />
+          </div>
           <div className="overflow-x-auto border border-slate-200 rounded-xl">
             <table className="w-full text-xs text-left">
               <thead className="bg-slate-900 text-white uppercase">
