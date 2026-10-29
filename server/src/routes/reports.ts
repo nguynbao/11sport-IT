@@ -197,19 +197,33 @@ reportsRouter.get('/reports/staff-activity', async (req, res, next) => {
       });
     }
 
+    // Gộp các bút toán TRANSFER theo mã phiếu xuất kho (PXK-...) để 1 phiếu nhiều SP tính là 1 lần xuất chuyển tầng
+    const transferGroups = new Map<string, any[]>();
     for (const m of transferMovements) {
       if (!inRange(m.createdAt)) continue;
-      const fromText = floorLabel(m.fromWarehouse || 'FLOOR_1');
-      const toText = floorLabel(m.toWarehouse || 'FLOOR_2');
-      const qty = Math.abs(Number(m.quantityChange) || 0);
+      const code = m.referenceCode || String(m._id);
+      const list = transferGroups.get(code) || [];
+      list.push(m);
+      transferGroups.set(code, list);
+    }
+
+    for (const [refCode, grp] of transferGroups.entries()) {
+      const first = grp[0];
+      const fromText = floorLabel(first.fromWarehouse || 'FLOOR_1');
+      const toText = floorLabel(first.toWarehouse || 'FLOOR_2');
+      const totalQty = grp.reduce((s, m) => s + Math.abs(Number(m.quantityChange) || 0), 0);
+      const prodSummary = grp
+        .map((m) => `${m.productName} (×${Math.abs(Number(m.quantityChange) || 0)})`)
+        .join(', ');
       warehouse.push({
         type: 'EXPORT_TRANSFER',
-        at: m.createdAt,
-        staffId: norm(m.performedBy),
-        staffName: m.performedByName || 'Không xác định',
-        referenceCode: m.referenceCode,
-        quantity: qty,
-        detail: `Xuất kho chuyển tầng: ${m.productName} (${fromText} → ${toText})${m.note ? ` — ${m.note}` : ''}`,
+        at: first.createdAt,
+        staffId: norm(first.performedBy),
+        staffName: first.performedByName || 'Không xác định',
+        referenceCode: refCode,
+        quantity: totalQty,
+        rows: grp.length,
+        detail: `Xuất kho chuyển tầng (${fromText} → ${toText}): ${prodSummary}${first.note ? ` — ${first.note}` : ''}`,
       });
     }
 

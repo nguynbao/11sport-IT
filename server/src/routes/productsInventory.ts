@@ -746,7 +746,7 @@ productsInventoryRouter.get('/inventory/transfers', async (req, res, next) => {
   }
 });
 
-// POST /api/v1/inventory/transfers — Admin tạo Phiếu xuất kho dời sản phẩm giữa Kho Tầng 1 và Kho Tầng 2
+// POST /api/v1/inventory/transfers — Admin tạo Phiếu xuất kho dời 1 hoặc nhiều sản phẩm giữa Kho Tầng 1 và Kho Tầng 2
 productsInventoryRouter.post('/inventory/transfers', async (req, res, next) => {
   try {
     if (!isPriceManager(req.user?.role)) {
@@ -757,17 +757,23 @@ productsInventoryRouter.post('/inventory/transfers', async (req, res, next) => {
       );
     }
 
-    const { productId, fromWarehouse, toWarehouse, quantity, note } = req.body || {};
-    if (!productId || !fromWarehouse || !toWarehouse || quantity === undefined) {
+    const { productId, fromWarehouse, toWarehouse, quantity, note, items } = req.body || {};
+    const rawItems: { productId: string; quantity: number }[] =
+      Array.isArray(items) && items.length > 0
+        ? items
+        : productId !== undefined && quantity !== undefined
+        ? [{ productId, quantity }]
+        : [];
+
+    if (rawItems.length === 0 || !fromWarehouse || !toWarehouse) {
       throw new ApiError(
         400,
         'VALIDATION_ERROR',
-        'Vui lòng chọn sản phẩm, kho xuất, kho nhận và số lượng cần chuyển',
+        'Vui lòng chọn kho xuất, kho nhận và ít nhất 1 sản phẩm kèm số lượng cần chuyển',
         {
-          productId: !productId ? 'Bắt buộc' : '',
+          productId: rawItems.length === 0 ? 'Bắt buộc' : '',
           fromWarehouse: !fromWarehouse ? 'Bắt buộc' : '',
           toWarehouse: !toWarehouse ? 'Bắt buộc' : '',
-          quantity: quantity === undefined ? 'Bắt buộc' : '',
         }
       );
     }
@@ -782,71 +788,114 @@ productsInventoryRouter.post('/inventory/transfers', async (req, res, next) => {
       );
     }
 
-    const qty = Math.round(Number(quantity));
-    if (isNaN(qty) || qty <= 0) {
-      throw new ApiError(400, 'INVALID_QUANTITY', 'Số lượng chuyển kho phải là số nguyên lớn hơn 0');
+    // Gộp số lượng theo productId nếu truyền trùng sản phẩm trong cùng phiếu
+    const qtyByProdId = new Map<string, number>();
+    for (const raw of rawItems) {
+      const pid = String(raw?.productId || '').trim();
+      const qty = Math.round(Number(raw?.quantity));
+      if (!pid || isNaN(qty) || qty <= 0) {
+        throw new ApiError(400, 'INVALID_QUANTITY', 'Số lượng chuyển kho của mỗi sản phẩm phải là số nguyên lớn hơn 0');
+      }
+      qtyByProdId.set(pid, (qtyByProdId.get(pid) || 0) + qty);
     }
 
-    const product = await productRepo.findById(String(productId));
-    if (!product) {
-      throw new ApiError(404, 'PRODUCT_NOT_FOUND', 'Không tìm thấy sản phẩm cần chuyển kho');
+    // Kiểm tra toàn bộ sản phẩm đủ tồn ở kho đầu dời trước khi trừ
+    const validatedPlans: {
+      product: any;
+      qty: number;
+      floors: { stockFloor1: number; stockFloor2: number; stock: number };
+      nextFloor1: number;
+      nextFloor2: number;
+      totalStock: number;
+    }[] = [];
+
+    for (const [pid, qty] of qtyByProdId.entries()) {
+      const product = await productRepo.findById(pid);
+      if (!product) {
+        throw new ApiError(404, 'PRODUCT_NOT_FOUND', `Không tìm thấy sản phẩm cần chuyển kho (${pid})`);
+      }
+
+      const floors = getFloorStocks(product);
+      const sourceAvailable = fromFloor === 'FLOOR_1' ? floors.stockFloor1 : floors.stockFloor2;
+      if (sourceAvailable < qty) {
+        throw new ApiError(
+          400,
+          'INSUFFICIENT_FLOOR_STOCK',
+          `${floorLabel(fromFloor)} chỉ còn ${sourceAvailable} ${product.unit} "${product.name}", không đủ để xuất chuyển ${qty} ${product.unit}`
+        );
+      }
+
+      const nextFloor1 =
+        fromFloor === 'FLOOR_1' ? floors.stockFloor1 - qty : floors.stockFloor1 + qty;
+      const nextFloor2 =
+        fromFloor === 'FLOOR_2' ? floors.stockFloor2 - qty : floors.stockFloor2 + qty;
+      const totalStock = nextFloor1 + nextFloor2;
+
+      validatedPlans.push({
+        product,
+        qty,
+        floors,
+        nextFloor1,
+        nextFloor2,
+        totalStock,
+      });
     }
 
-    const floors = getFloorStocks(product);
-    const sourceAvailable = fromFloor === 'FLOOR_1' ? floors.stockFloor1 : floors.stockFloor2;
-    if (sourceAvailable < qty) {
-      throw new ApiError(
-        400,
-        'INSUFFICIENT_FLOOR_STOCK',
-        `${floorLabel(fromFloor)} chỉ còn ${sourceAvailable} ${product.unit} "${product.name}", không đủ để xuất chuyển ${qty} ${product.unit}`
-      );
+    const existingTransfers = await stockMovementRepo.find({ type: 'TRANSFER' });
+    const distinctCodes = new Set(
+      existingTransfers.map((m: any) => m.referenceCode).filter(Boolean)
+    );
+    const referenceCode = `PXK-${String(distinctCodes.size + 1).padStart(4, '0')}`;
+
+    const createdMovements: any[] = [];
+    const updatedProducts: any[] = [];
+
+    for (const plan of validatedPlans) {
+      const { product, qty, floors, nextFloor1, nextFloor2, totalStock } = plan;
+      const updatedProduct = await productRepo.updateById(product._id, {
+        stockFloor1: nextFloor1,
+        stockFloor2: nextFloor2,
+        stock: totalStock,
+      });
+      updatedProducts.push(updatedProduct);
+
+      const noteText =
+        note && String(note).trim()
+          ? String(note).trim()
+          : `Xuất kho chuyển ${qty} ${product.unit} từ ${floorLabel(fromFloor)} sang ${floorLabel(toFloor)}`;
+
+      const movement = await stockMovementRepo.create({
+        type: 'TRANSFER',
+        productId: product._id,
+        productCode: product.code,
+        productName: product.name,
+        categoryId: product.categoryId,
+        unit: product.unit,
+        quantityChange: qty,
+        balanceBefore: floors.stock,
+        balanceAfter: totalStock,
+        warehouseLocation: toFloor,
+        fromWarehouse: fromFloor,
+        toWarehouse: toFloor,
+        referenceType: 'TRANSFER',
+        referenceId: product._id,
+        referenceCode,
+        performedBy: req.user?.userId || 'ADMIN',
+        performedByName: req.user?.fullName || 'Quản trị viên',
+        note: noteText,
+      });
+      createdMovements.push(movement);
     }
-
-    const nextFloor1 =
-      fromFloor === 'FLOOR_1' ? floors.stockFloor1 - qty : floors.stockFloor1 + qty;
-    const nextFloor2 =
-      fromFloor === 'FLOOR_2' ? floors.stockFloor2 - qty : floors.stockFloor2 + qty;
-    const totalStock = nextFloor1 + nextFloor2;
-
-    const updatedProduct = await productRepo.updateById(product._id, {
-      stockFloor1: nextFloor1,
-      stockFloor2: nextFloor2,
-      stock: totalStock,
-    });
-
-    const transferCount = await stockMovementRepo.countDocuments({ type: 'TRANSFER' });
-    const referenceCode = `PXK-${String(transferCount + 1).padStart(4, '0')}`;
-    const noteText = note && String(note).trim()
-      ? String(note).trim()
-      : `Xuất kho chuyển ${qty} ${product.unit} từ ${floorLabel(fromFloor)} sang ${floorLabel(toFloor)}`;
-
-    const movement = await stockMovementRepo.create({
-      type: 'TRANSFER',
-      productId: product._id,
-      productCode: product.code,
-      productName: product.name,
-      categoryId: product.categoryId,
-      unit: product.unit,
-      quantityChange: qty,
-      balanceBefore: floors.stock,
-      balanceAfter: totalStock,
-      warehouseLocation: toFloor,
-      fromWarehouse: fromFloor,
-      toWarehouse: toFloor,
-      referenceType: 'TRANSFER',
-      referenceId: product._id,
-      referenceCode,
-      performedBy: req.user?.userId || 'ADMIN',
-      performedByName: req.user?.fullName || 'Quản trị viên',
-      note: noteText,
-    });
 
     res.status(201).json({
       data: {
-        movement,
-        product: updatedProduct,
+        referenceCode,
+        movements: createdMovements,
+        movement: createdMovements[0],
+        products: updatedProducts,
+        product: updatedProducts[0],
       },
-      meta: {},
+      meta: { totalItems: createdMovements.length },
     });
   } catch (err) {
     next(err);

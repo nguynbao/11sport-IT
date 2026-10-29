@@ -86,13 +86,24 @@
 - `POST /api/v1/inventory/adjustments`
   - Body: `{ "productId": "string", "quantityChange": -2, "warehouse"?: "FLOOR_1 | FLOOR_2", "reason": "Kiểm kê lệch phiếu nhập PN-0001" }`
   - Tạo phiếu điều chỉnh kho, cập nhật `stockFloor1`/`stockFloor2` + `stock` sản phẩm và ghi `StockMovement` loại `ADJUSTMENT`.
-- `POST /api/v1/inventory/transfers` & `GET /api/v1/inventory/transfers` *(v1.9 — Phiếu Xuất Kho Chuyển Tầng giữa Kho Tầng 1 ↔ Kho Tầng 2)*
+- `POST /api/v1/inventory/transfers` & `GET /api/v1/inventory/transfers` *(v1.9 & v2.1 — Phiếu Xuất Kho Chuyển Tầng giữa Kho Tầng 1 ↔ Kho Tầng 2, hỗ trợ dời nhiều sản phẩm trong 1 phiếu)*
   - Chỉ role `ADMIN` được phép thực hiện (`403 FORBIDDEN` nếu role khác).
-  - Body `POST`: `{ "productId": "string", "fromWarehouse": "FLOOR_1 | FLOOR_2", "toWarehouse": "FLOOR_1 | FLOOR_2", "quantity": 5, "note"?: "Dời hàng từ Kho Tầng 1 lên Kho Tầng 2" }`
+  - Body `POST` (hỗ trợ truyền mảng `items` nhiều sản phẩm hoặc 1 sản phẩm đơn lẻ `productId` + `quantity`):
+    ```json
+    {
+      "fromWarehouse": "FLOOR_1 | FLOOR_2",
+      "toWarehouse": "FLOOR_1 | FLOOR_2",
+      "note": "Dời hàng từ Kho Tầng 1 xuống Kho Tầng 2",
+      "items": [
+        { "productId": "...", "quantity": 5 },
+        { "productId": "...", "quantity": 3 }
+      ]
+    }
+    ```
   - Nghiệp vụ:
-    - Kiểm tra `fromWarehouse !== toWarehouse` và tồn kho tại kho nguồn (`stockFloor1` hoặc `stockFloor2`) ≥ `quantity` (nếu thiếu → `400 INSUFFICIENT_FLOOR_STOCK`).
-    - Trừ `quantity` ở kho nguồn, cộng `quantity` vào kho đích (tổng `stock` không đổi).
-    - Sinh mã phiếu xuất kho chuyển tầng `PXK-0001`, ghi `StockMovement` loại `TRANSFER` (`referenceType: "TRANSFER"`, `fromWarehouse`, `toWarehouse`).
+    - Kiểm tra `fromWarehouse !== toWarehouse` và tồn kho tại kho nguồn (`stockFloor1` hoặc `stockFloor2`) ≥ tổng `quantity` yêu cầu của từng sản phẩm trong phiếu (nếu thiếu → `400 INSUFFICIENT_FLOOR_STOCK`).
+    - Trừ `quantity` ở kho nguồn, cộng `quantity` vào kho đích cho toàn bộ sản phẩm trong phiếu (tổng `stock` không đổi).
+    - Sinh chung 1 mã phiếu xuất kho chuyển tầng `PXK-0001` cho tất cả các dòng sản phẩm trong cùng phiếu, ghi `StockMovement` loại `TRANSFER` (`referenceType: "TRANSFER"`, `fromWarehouse`, `toWarehouse`).
     - Ghi nhận vào **Báo cáo hoạt động nhân viên** (`GET /api/v1/reports/staff-activity`) với loại hoạt động kho `EXPORT_TRANSFER`.
 
 ### 2.4 Nhập kho (`/imports`)

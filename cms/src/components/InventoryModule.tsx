@@ -84,12 +84,17 @@ export default function InventoryModule() {
   const [adjQuantityChange, setAdjQuantityChange] = useState<number>(0);
   const [adjReason, setAdjReason] = useState("");
 
-  // Lập phiếu xuất kho chuyển tầng (Kho Tầng 1 <-> Kho Tầng 2)
+  // Lập phiếu xuất kho chuyển tầng (Kho Tầng 1 <-> Kho Tầng 2) — hỗ trợ nhiều sản phẩm / phiếu
   const [transfersList, setTransfersList] = useState<StockMovement[]>([]);
-  const [transferProductId, setTransferProductId] = useState("");
   const [transferDirection, setTransferDirection] = useState<"F1_TO_F2" | "F2_TO_F1">("F1_TO_F2");
+  const [transferProductId, setTransferProductId] = useState("");
   const [transferQty, setTransferQty] = useState<number>(1);
+  const [transferSearch, setTransferSearch] = useState("");
+  const [transferItems, setTransferItems] = useState<
+    { productId: string; quantity: number }[]
+  >([]);
   const [transferNote, setTransferNote] = useState("");
+  const [expandedTransferCode, setExpandedTransferCode] = useState<string | null>(null);
 
   const [statusMsg, setStatusMsg] = useState<{
     type: "success" | "error";
@@ -417,17 +422,118 @@ export default function InventoryModule() {
     }
   };
 
-  const handleCreateTransfer = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Sản phẩm có tồn > 0 tại kho đầu dời (theo hướng dời đang chọn)
+  const sourceFloorProducts = products.filter((p) => {
+    const f1 = Number(p.stockFloor1 ?? p.stock) || 0;
+    const f2 = Number(p.stockFloor2) || 0;
+    const sourceStock = transferDirection === "F1_TO_F2" ? f1 : f2;
+    if (sourceStock <= 0) return false;
+    if (transferSearch.trim()) {
+      const q = transferSearch.trim().toLowerCase();
+      return (
+        p.name.toLowerCase().includes(q) || p.code.toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
+
+  const getSourceFloorStock = (p?: Product): number => {
+    if (!p) return 0;
+    const f1 = Number(p.stockFloor1 ?? p.stock) || 0;
+    const f2 = Number(p.stockFloor2) || 0;
+    return transferDirection === "F1_TO_F2" ? f1 : f2;
+  };
+
+  const handleChangeTransferDirection = (dir: "F1_TO_F2" | "F2_TO_F1") => {
+    setTransferDirection(dir);
+    setTransferItems([]);
+    setTransferSearch("");
+    const avail = products.filter((p) => {
+      const f1 = Number(p.stockFloor1 ?? p.stock) || 0;
+      const f2 = Number(p.stockFloor2) || 0;
+      return (dir === "F1_TO_F2" ? f1 : f2) > 0;
+    });
+    setTransferProductId(avail[0]?._id || "");
+    setTransferQty(1);
+  };
+
+  const handleAddTransferItem = (prodId?: string, qtyToAdd?: number) => {
     setStatusMsg(null);
-    const qty = Math.round(Number(transferQty) || 0);
-    if (!transferProductId || qty <= 0) {
+    const targetId = prodId || transferProductId || sourceFloorProducts[0]?._id;
+    if (!targetId) {
       setStatusMsg({
         type: "error",
-        text: "Vui lòng chọn sản phẩm và nhập số lượng cần dời lớn hơn 0.",
+        text: "Không có sản phẩm nào còn tồn ở kho đầu dời để chọn.",
       });
       return;
     }
+    const prod = products.find((p) => p._id === targetId);
+    if (!prod) return;
+    const maxAvail = getSourceFloorStock(prod);
+    if (maxAvail <= 0) {
+      setStatusMsg({
+        type: "error",
+        text: `Sản phẩm "${prod.name}" không còn tồn ở kho đầu dời.`,
+      });
+      return;
+    }
+    const addQty = Math.max(1, Math.round(Number(qtyToAdd ?? transferQty) || 1));
+
+    setTransferItems((prev) => {
+      const existing = prev.find((i) => i.productId === targetId);
+      if (existing) {
+        const nextQty = Math.min(maxAvail, existing.quantity + addQty);
+        return prev.map((i) =>
+          i.productId === targetId ? { ...i, quantity: nextQty } : i
+        );
+      }
+      return [
+        ...prev,
+        { productId: targetId, quantity: Math.min(maxAvail, addQty) },
+      ];
+    });
+    setTransferQty(1);
+  };
+
+  const handleUpdateTransferItemQty = (prodId: string, newQty: number) => {
+    const prod = products.find((p) => p._id === prodId);
+    const maxAvail = getSourceFloorStock(prod);
+    if (newQty <= 0) {
+      setTransferItems((prev) => prev.filter((i) => i.productId !== prodId));
+      return;
+    }
+    const clamped = Math.min(maxAvail, Math.max(1, Math.round(newQty)));
+    setTransferItems((prev) =>
+      prev.map((i) =>
+        i.productId === prodId ? { ...i, quantity: clamped } : i
+      )
+    );
+  };
+
+  const handleRemoveTransferItem = (prodId: string) => {
+    setTransferItems((prev) => prev.filter((i) => i.productId !== prodId));
+  };
+
+  const handleCreateTransfer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setStatusMsg(null);
+
+    // Nếu danh sách phiếu đang trống mà Admin chọn 1 SP trên thanh chọn nhanh thì lấy luôn SP đó
+    const finalItems =
+      transferItems.length > 0
+        ? transferItems
+        : transferProductId && Number(transferQty) > 0
+        ? [{ productId: transferProductId, quantity: Math.round(Number(transferQty)) }]
+        : [];
+
+    if (finalItems.length === 0) {
+      setStatusMsg({
+        type: "error",
+        text: "Vui lòng thêm ít nhất 1 sản phẩm vào phiếu xuất kho chuyển tầng.",
+      });
+      return;
+    }
+
     const fromWarehouse: WarehouseFloor =
       transferDirection === "F1_TO_F2" ? "FLOOR_1" : "FLOOR_2";
     const toWarehouse: WarehouseFloor =
@@ -437,22 +543,25 @@ export default function InventoryModule() {
       const res = await apiRequest<any>("/inventory/transfers", {
         method: "POST",
         body: JSON.stringify({
-          productId: transferProductId,
           fromWarehouse,
           toWarehouse,
-          quantity: qty,
+          items: finalItems,
           note: transferNote.trim(),
         }),
       });
-      const code = res?.data?.movement?.referenceCode || "PXK";
+      const code =
+        res?.data?.referenceCode || res?.data?.movement?.referenceCode || "PXK";
       const fromText = fromWarehouse === "FLOOR_1" ? "Kho Tầng 1" : "Kho Tầng 2";
       const toText = toWarehouse === "FLOOR_1" ? "Kho Tầng 1" : "Kho Tầng 2";
+      const totalUnits = finalItems.reduce((s, i) => s + i.quantity, 0);
       setStatusMsg({
         type: "success",
-        text: `Đã tạo Phiếu Xuất Kho ${code}: Dời ${qty} sản phẩm từ ${fromText} sang ${toText} & ghi nhận vào Hoạt động nhân viên!`,
+        text: `Đã tạo Phiếu Xuất Kho ${code}: Dời ${finalItems.length} mặt hàng (tổng ${totalUnits} SP) từ ${fromText} sang ${toText} & ghi nhận vào Hoạt động nhân viên!`,
       });
+      setTransferItems([]);
       setTransferQty(1);
       setTransferNote("");
+      setExpandedTransferCode(code);
       loadProductsAndCats();
       loadTransfers();
       loadMovements();
@@ -1916,160 +2025,534 @@ export default function InventoryModule() {
       {/* SUB-TAB 6: XUẤT KHO CHUYỂN TẦNG (KHO TẦNG 1 <-> KHO TẦNG 2) */}
       {subTab === "TRANSFER" && (
         <div className="space-y-6">
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
                   <ArrowLeftRight className="w-5 h-5 text-indigo-600" />
-                  Tạo Phiếu Xuất Kho Chuyển Tầng (Kho Tầng 1 ↔ Kho Tầng 2)
+                  Tạo Phiếu Xuất Kho Chuyển Tầng (Nhiều sản phẩm trong 1 phiếu PXK)
                 </h3>
                 <p className="text-xs text-slate-500 mt-1">
-                  Admin dời sản phẩm từ <strong>Kho Tầng 1</strong> xuống <strong>Kho Tầng 2</strong> hoặc ngược lại. Hệ thống tự động tạo <strong>Phiếu Xuất Kho (PXK-...)</strong>, cập nhật tồn từng tầng và ghi nhận vào mục <strong>Hoạt động nhân viên</strong>.
+                  Bước 1: Chọn <strong>Hướng dời kho</strong> → Hệ thống chỉ hiển thị các sản phẩm đang có tồn tại <strong>Kho đầu dời</strong>. Bước 2: Chọn nhiều sản phẩm cần dời vào phiếu và bấm <strong>Xác nhận Tạo Phiếu Xuất Kho</strong>.
                 </p>
               </div>
             </div>
 
-            <form
-              onSubmit={handleCreateTransfer}
-              className="mt-5 grid grid-cols-1 md:grid-cols-12 gap-4 items-end"
-            >
-              <div className="md:col-span-5">
-                <label className="block text-xs font-bold uppercase text-slate-700 mb-1">
-                  Chọn Sản phẩm cần dời kho *
-                </label>
-                <select
-                  value={transferProductId}
-                  onChange={(e) => setTransferProductId(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-xs bg-white font-semibold"
-                >
-                  {products.map((p) => {
-                    const f1 = p.stockFloor1 ?? p.stock;
-                    const f2 = p.stockFloor2 ?? 0;
-                    return (
-                      <option key={p._id} value={p._id}>
-                        {p.name} ({p.code}) — 🏢 Tầng 1: {f1} {p.unit} | 🏬 Tầng 2: {f2} {p.unit} (Tổng: {p.stock})
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
-
-              <div className="md:col-span-3">
-                <label className="block text-xs font-bold uppercase text-indigo-700 mb-1">
-                  Hướng dời kho (Kho xuất → Kho nhận) *
-                </label>
-                <select
-                  value={transferDirection}
-                  onChange={(e) =>
-                    setTransferDirection(
-                      e.target.value === "F2_TO_F1" ? "F2_TO_F1" : "F1_TO_F2"
-                    )
-                  }
-                  className="w-full px-3 py-2.5 rounded-xl border-2 border-indigo-500 bg-indigo-50/40 text-xs font-extrabold text-indigo-950"
-                >
-                  <option value="F1_TO_F2">🏢 Kho Tầng 1 → 🏬 Kho Tầng 2</option>
-                  <option value="F2_TO_F1">🏬 Kho Tầng 2 → 🏢 Kho Tầng 1</option>
-                </select>
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-xs font-bold uppercase text-slate-700 mb-1">
-                  Số lượng xuất dời *
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  step={1}
-                  required
-                  value={transferQty}
-                  onChange={(e) =>
-                    setTransferQty(Math.max(1, Math.round(Number(e.target.value) || 1)))
-                  }
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-300 font-mono text-sm font-extrabold text-right"
-                />
-              </div>
-
-              <div className="md:col-span-2">
+            {/* BƯỚC 1: CHỌN HƯỚNG DỜI KHO */}
+            <div className="bg-indigo-50/50 border border-indigo-200 rounded-xl p-4 space-y-2.5">
+              <label className="block text-xs font-extrabold uppercase text-indigo-900">
+                1. Chọn Hướng Dời Kho (Kho xuất đầu dời → Kho nhận) *
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
-                  type="submit"
-                  className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs shadow flex items-center justify-center gap-1.5"
+                  type="button"
+                  onClick={() => handleChangeTransferDirection("F1_TO_F2")}
+                  className={`p-3.5 rounded-xl border-2 text-left transition flex items-center justify-between ${
+                    transferDirection === "F1_TO_F2"
+                      ? "bg-emerald-600 text-white border-emerald-700 shadow-md"
+                      : "bg-white text-slate-800 border-slate-200 hover:border-emerald-400"
+                  }`}
                 >
-                  <ArrowLeftRight className="w-4 h-4" />
-                  Tạo Phiếu Xuất Kho
+                  <div>
+                    <div className="text-xs font-extrabold uppercase">
+                      🏢 Kho Tầng 1 → 🏬 Kho Tầng 2
+                    </div>
+                    <div
+                      className={`text-[11px] mt-0.5 ${
+                        transferDirection === "F1_TO_F2"
+                          ? "text-emerald-100"
+                          : "text-slate-500"
+                      }`}
+                    >
+                      Kho đầu dời: <strong>Kho Tầng 1</strong> (Chỉ hiện SP có tồn Tầng 1)
+                    </div>
+                  </div>
+                  <span
+                    className={`px-2.5 py-1 rounded-full font-mono text-xs font-extrabold ${
+                      transferDirection === "F1_TO_F2"
+                        ? "bg-white text-emerald-800"
+                        : "bg-emerald-100 text-emerald-800"
+                    }`}
+                  >
+                    {
+                      products.filter((p) => (Number(p.stockFloor1 ?? p.stock) || 0) > 0)
+                        .length
+                    }{" "}
+                    SP
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleChangeTransferDirection("F2_TO_F1")}
+                  className={`p-3.5 rounded-xl border-2 text-left transition flex items-center justify-between ${
+                    transferDirection === "F2_TO_F1"
+                      ? "bg-blue-600 text-white border-blue-700 shadow-md"
+                      : "bg-white text-slate-800 border-slate-200 hover:border-blue-400"
+                  }`}
+                >
+                  <div>
+                    <div className="text-xs font-extrabold uppercase">
+                      🏬 Kho Tầng 2 → 🏢 Kho Tầng 1
+                    </div>
+                    <div
+                      className={`text-[11px] mt-0.5 ${
+                        transferDirection === "F2_TO_F1"
+                          ? "text-blue-100"
+                          : "text-slate-500"
+                      }`}
+                    >
+                      Kho đầu dời: <strong>Kho Tầng 2</strong> (Chỉ hiện SP có tồn Tầng 2)
+                    </div>
+                  </div>
+                  <span
+                    className={`px-2.5 py-1 rounded-full font-mono text-xs font-extrabold ${
+                      transferDirection === "F2_TO_F1"
+                        ? "bg-white text-blue-800"
+                        : "bg-blue-100 text-blue-800"
+                    }`}
+                  >
+                    {products.filter((p) => (Number(p.stockFloor2) || 0) > 0).length} SP
+                  </span>
                 </button>
               </div>
+            </div>
 
-              <div className="md:col-span-12">
-                <label className="block text-xs font-bold uppercase text-slate-700 mb-1">
-                  Ghi chú Phiếu Xuất Kho (Tùy chọn)
+            {/* BƯỚC 2: CHỌN SẢN PHẨM TỪ KHO ĐẦU DỜI ĐỂ THÊM VÀO PHIẾU */}
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label className="text-xs font-extrabold uppercase text-slate-800">
+                  2. Chọn sản phẩm cần dời từ{" "}
+                  <span className="text-indigo-700">
+                    {transferDirection === "F1_TO_F2" ? "🏢 Kho Tầng 1" : "🏬 Kho Tầng 2"}
+                  </span>{" "}
+                  ({sourceFloorProducts.length} sản phẩm đang có hàng)
                 </label>
-                <input
-                  type="text"
-                  value={transferNote}
-                  onChange={(e) => setTransferNote(e.target.value)}
-                  placeholder="VD: Dời hàng xuống Kho Tầng 2 để trưng bày / bổ sung quầy bán..."
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs"
-                />
+                <div className="relative w-full sm:w-64">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    value={transferSearch}
+                    onChange={(e) => setTransferSearch(e.target.value)}
+                    placeholder="Tìm tên hoặc mã SP ở kho đầu dời..."
+                    className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-300 text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Thanh chọn từ dropdown + số lượng + nút Thêm */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                <div className="md:col-span-7">
+                  <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1">
+                    Sản phẩm có tại {transferDirection === "F1_TO_F2" ? "Kho Tầng 1" : "Kho Tầng 2"}
+                  </label>
+                  <select
+                    value={transferProductId || sourceFloorProducts[0]?._id || ""}
+                    onChange={(e) => setTransferProductId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white font-semibold"
+                  >
+                    {sourceFloorProducts.length === 0 ? (
+                      <option value="">
+                        -- Không có sản phẩm nào còn tồn ở kho đầu dời này --
+                      </option>
+                    ) : (
+                      sourceFloorProducts.map((p) => {
+                        const avail = getSourceFloorStock(p);
+                        return (
+                          <option key={p._id} value={p._id}>
+                            {p.name} ({p.code}) — Tồn{" "}
+                            {transferDirection === "F1_TO_F2" ? "Kho Tầng 1" : "Kho Tầng 2"}:{" "}
+                            {avail} {p.unit}
+                          </option>
+                        );
+                      })
+                    )}
+                  </select>
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1">
+                    Số lượng thêm
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={transferQty}
+                    onChange={(e) =>
+                      setTransferQty(Math.max(1, Math.round(Number(e.target.value) || 1)))
+                    }
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono text-sm font-extrabold text-right bg-white"
+                  />
+                </div>
+
+                <div className="md:col-span-3">
+                  <button
+                    type="button"
+                    disabled={sourceFloorProducts.length === 0}
+                    onClick={() =>
+                      handleAddTransferItem(
+                        transferProductId || sourceFloorProducts[0]?._id,
+                        transferQty
+                      )
+                    }
+                    className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-sm"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Thêm vào phiếu dời kho
+                  </button>
+                </div>
+              </div>
+
+              {/* Danh sách gợi ý bấm chọn nhanh các SP ở Kho đầu dời */}
+              {sourceFloorProducts.length > 0 && (
+                <div className="border border-slate-200 rounded-xl p-3 bg-white">
+                  <div className="text-[11px] font-bold text-slate-500 mb-2">
+                    Bấm nhanh vào sản phẩm bên dưới để đưa vào phiếu dời kho:
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1">
+                    {sourceFloorProducts.map((p) => {
+                      const avail = getSourceFloorStock(p);
+                      const inCart = transferItems.find((i) => i.productId === p._id);
+                      return (
+                        <button
+                          key={p._id}
+                          type="button"
+                          onClick={() => handleAddTransferItem(p._id, 1)}
+                          className={`p-2.5 rounded-lg border text-left transition flex items-center justify-between gap-2 text-xs ${
+                            inCart
+                              ? "border-indigo-500 bg-indigo-50/70"
+                              : "border-slate-200 hover:border-indigo-400 hover:bg-slate-50"
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <div className="font-bold text-slate-900 truncate">{p.name}</div>
+                            <div className="font-mono text-[10px] text-slate-500 truncate">
+                              {p.code}
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[11px]">
+                              Tồn: {avail} {p.unit}
+                            </span>
+                            {inCart && (
+                              <div className="text-[10px] font-extrabold text-indigo-700 mt-0.5">
+                                Đã chọn: {inCart.quantity}
+                              </div>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* BƯỚC 3: BẢNG CÁC SẢN PHẨM TRONG PHIẾU DỜI KHO & XÁC NHẬN */}
+            <form onSubmit={handleCreateTransfer} className="space-y-4 pt-2 border-t border-slate-200">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label className="text-xs font-extrabold uppercase text-indigo-900">
+                  3. Danh sách sản phẩm trong Phiếu Dời Kho ({transferItems.length} mặt hàng · Tổng SL:{" "}
+                  {transferItems.reduce((s, i) => s + i.quantity, 0)})
+                </label>
+                {transferItems.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setTransferItems([])}
+                    className="text-xs font-bold text-red-600 hover:underline"
+                  >
+                    Xóa toàn bộ danh sách chọn
+                  </button>
+                )}
+              </div>
+
+              {transferItems.length === 0 ? (
+                <div className="py-6 text-center text-xs text-slate-400 border border-dashed border-slate-300 rounded-xl bg-slate-50">
+                  Chưa có sản phẩm nào trong phiếu. Hãy bấm chọn các sản phẩm từ{" "}
+                  <strong>
+                    {transferDirection === "F1_TO_F2" ? "Kho Tầng 1" : "Kho Tầng 2"}
+                  </strong>{" "}
+                  ở trên để thêm vào phiếu dời kho.
+                </div>
+              ) : (
+                <div className="overflow-x-auto border border-indigo-200 rounded-xl">
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-indigo-950 text-white uppercase">
+                      <tr>
+                        <th className="py-2.5 px-3 w-12 text-center">STT</th>
+                        <th className="py-2.5 px-3">Mã hàng</th>
+                        <th className="py-2.5 px-3">Tên sản phẩm</th>
+                        <th className="py-2.5 px-3 text-center">ĐVT</th>
+                        <th className="py-2.5 px-3 text-right">
+                          Tồn tại {transferDirection === "F1_TO_F2" ? "Kho Tầng 1" : "Kho Tầng 2"}
+                        </th>
+                        <th className="py-2.5 px-3 text-right w-36">Số lượng cần dời *</th>
+                        <th className="py-2.5 px-3 text-center w-16">Xóa</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 bg-white">
+                      {transferItems.map((item, idx) => {
+                        const prod = products.find((p) => p._id === item.productId);
+                        if (!prod) return null;
+                        const maxAvail = getSourceFloorStock(prod);
+                        return (
+                          <tr key={item.productId} className="hover:bg-slate-50">
+                            <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-500">
+                              {idx + 1}
+                            </td>
+                            <td className="py-2.5 px-3 font-mono font-bold text-slate-800">
+                              {prod.code}
+                            </td>
+                            <td className="py-2.5 px-3 font-semibold text-slate-900">
+                              {prod.name}
+                            </td>
+                            <td className="py-2.5 px-3 text-center">{prod.unit}</td>
+                            <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-700">
+                              {maxAvail}
+                            </td>
+                            <td className="py-2.5 px-3 text-right">
+                              <input
+                                type="number"
+                                min={1}
+                                max={maxAvail}
+                                value={item.quantity}
+                                onChange={(e) =>
+                                  handleUpdateTransferItemQty(
+                                    item.productId,
+                                    Number(e.target.value)
+                                  )
+                                }
+                                className="w-24 px-2.5 py-1.5 rounded-lg border-2 border-indigo-400 font-mono font-extrabold text-right text-sm text-indigo-950"
+                              />
+                            </td>
+                            <td className="py-2.5 px-3 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveTransferItem(item.productId)}
+                                className="p-1.5 rounded-lg text-red-600 hover:bg-red-50"
+                                title="Xóa khỏi phiếu"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                <div className="md:col-span-8">
+                  <label className="block text-xs font-bold uppercase text-slate-700 mb-1">
+                    Ghi chú Phiếu Xuất Kho (Tùy chọn)
+                  </label>
+                  <input
+                    type="text"
+                    value={transferNote}
+                    onChange={(e) => setTransferNote(e.target.value)}
+                    placeholder="VD: Dời hàng xuống Kho Tầng 1 để bổ sung quầy bán..."
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs"
+                  />
+                </div>
+                <div className="md:col-span-4">
+                  <button
+                    type="submit"
+                    disabled={transferItems.length === 0}
+                    className="w-full py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-extrabold text-xs shadow-lg flex items-center justify-center gap-2 transition"
+                  >
+                    <ArrowLeftRight className="w-4 h-4" />
+                    Xác nhận Tạo Phiếu Xuất Kho ({transferItems.length} SP)
+                  </button>
+                </div>
               </div>
             </form>
           </div>
 
+          {/* LỊCH SỬ PHIẾU XUẤT KHO CHUYỂN TẦNG (CÓ XEM CHI TIẾT TỪNG PHIẾU) */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
-            <h3 className="font-bold text-slate-900 text-sm">
-              Lịch sử Phiếu Xuất Kho Chuyển Tầng (PXK — Đã ghi nhận vào Hoạt động nhân viên)
-            </h3>
+            <div>
+              <h3 className="font-bold text-slate-900 text-sm">
+                Lịch sử Phiếu Xuất Kho Chuyển Tầng (PXK — Bấm vào dòng phiếu để xem chi tiết sản phẩm dời kho)
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Mỗi phiếu xuất kho chuyển tầng (`PXK-...`) có thể bao gồm 1 hoặc nhiều sản phẩm. Bấm vào một phiếu để mở xem danh sách chi tiết từng mặt hàng đã dời.
+              </p>
+            </div>
             <div className="overflow-x-auto border border-slate-200 rounded-xl">
               <table className="w-full text-xs text-left">
                 <thead className="bg-slate-900 text-white uppercase">
                   <tr>
                     <th className="py-3 px-3">Mã Phiếu Xuất</th>
                     <th className="py-3 px-3">Thời gian</th>
-                    <th className="py-3 px-3">Sản phẩm</th>
-                    <th className="py-3 px-3">Từ Kho</th>
-                    <th className="py-3 px-3">Sang Kho</th>
-                    <th className="py-3 px-3 text-right">Số lượng xuất</th>
+                    <th className="py-3 px-3">Từ Kho (Đầu dời)</th>
+                    <th className="py-3 px-3">Sang Kho (Đích)</th>
+                    <th className="py-3 px-3 text-right">Số mặt hàng</th>
+                    <th className="py-3 px-3 text-right">Tổng SL dời</th>
                     <th className="py-3 px-3">Người thực hiện</th>
                     <th className="py-3 px-3">Ghi chú</th>
+                    <th className="py-3 px-3 text-center">Chi tiết</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {transfersList.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="py-8 text-center text-slate-400">
-                        Chưa có phiếu xuất kho chuyển tầng nào.
-                      </td>
-                    </tr>
-                  ) : (
-                    transfersList.map((t) => (
-                      <tr key={t._id} className="hover:bg-slate-50">
-                        <td className="py-2.5 px-3 font-mono font-bold text-indigo-700">
-                          {t.referenceCode}
-                        </td>
-                        <td className="py-2.5 px-3 text-slate-500 whitespace-nowrap">
-                          {formatDateTime(t.createdAt)}
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <div className="font-semibold text-slate-900">{t.productName}</div>
-                          <div className="font-mono text-[10px] text-slate-500">
-                            {t.productCode}
-                          </div>
-                        </td>
-                        <td className="py-2.5 px-3 font-bold text-slate-700">
-                          {t.fromWarehouse === "FLOOR_2" ? "🏬 Kho Tầng 2" : "🏢 Kho Tầng 1"}
-                        </td>
-                        <td className="py-2.5 px-3 font-bold text-indigo-700">
-                          {t.toWarehouse === "FLOOR_2" ? "🏬 Kho Tầng 2" : "🏢 Kho Tầng 1"}
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-mono font-extrabold text-indigo-700">
-                          {t.quantityChange}
-                        </td>
-                        <td className="py-2.5 px-3 font-semibold text-slate-800">
-                          {t.performedByName || "Quản trị viên"}
-                        </td>
-                        <td className="py-2.5 px-3 text-slate-600">{t.note || "-"}</td>
-                      </tr>
-                    ))
-                  )}
+                  {(() => {
+                    // Gom các bản ghi TRANSFER theo referenceCode (PXK-...)
+                    const groupedMap = new Map<string, StockMovement[]>();
+                    transfersList.forEach((m) => {
+                      const code = m.referenceCode || m._id;
+                      const list = groupedMap.get(code) || [];
+                      list.push(m);
+                      groupedMap.set(code, list);
+                    });
+                    const receiptGroups = Array.from(groupedMap.entries());
+
+                    if (receiptGroups.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={9} className="py-8 text-center text-slate-400">
+                            Chưa có phiếu xuất kho chuyển tầng nào.
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    return receiptGroups.map(([refCode, items]) => {
+                      const first = items[0];
+                      const totalQty = items.reduce(
+                        (s, it) => s + Math.abs(Number(it.quantityChange) || 0),
+                        0
+                      );
+                      const isExpanded = expandedTransferCode === refCode;
+
+                      return (
+                        <React.Fragment key={refCode}>
+                          <tr
+                            onClick={() =>
+                              setExpandedTransferCode(isExpanded ? null : refCode)
+                            }
+                            className="hover:bg-indigo-50/40 cursor-pointer transition"
+                          >
+                            <td className="py-3 px-3 font-mono font-extrabold text-indigo-700">
+                              {refCode}
+                            </td>
+                            <td className="py-3 px-3 text-slate-600 whitespace-nowrap">
+                              {formatDateTime(first.createdAt)}
+                            </td>
+                            <td className="py-3 px-3 font-bold text-slate-800 whitespace-nowrap">
+                              {first.fromWarehouse === "FLOOR_2"
+                                ? "🏬 Kho Tầng 2"
+                                : "🏢 Kho Tầng 1"}
+                            </td>
+                            <td className="py-3 px-3 font-bold text-indigo-700 whitespace-nowrap">
+                              {first.toWarehouse === "FLOOR_2"
+                                ? "🏬 Kho Tầng 2"
+                                : "🏢 Kho Tầng 1"}
+                            </td>
+                            <td className="py-3 px-3 text-right font-mono font-bold">
+                              {items.length} SP
+                            </td>
+                            <td className="py-3 px-3 text-right font-mono font-extrabold text-indigo-700">
+                              {totalQty}
+                            </td>
+                            <td className="py-3 px-3 font-semibold text-slate-800 whitespace-nowrap">
+                              {first.performedByName || "Quản trị viên"}
+                            </td>
+                            <td className="py-3 px-3 text-slate-600 max-w-xs truncate">
+                              {first.note || "-"}
+                            </td>
+                            <td className="py-3 px-3 text-center">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 font-bold text-[11px]">
+                                {isExpanded ? (
+                                  <>
+                                    Ẩn <ChevronUp className="w-3.5 h-3.5" />
+                                  </>
+                                ) : (
+                                  <>
+                                    Xem ({items.length}) <ChevronDown className="w-3.5 h-3.5" />
+                                  </>
+                                )}
+                              </span>
+                            </td>
+                          </tr>
+
+                          {isExpanded && (
+                            <tr className="bg-indigo-50/30">
+                              <td colSpan={9} className="p-3.5">
+                                <div className="border border-indigo-200 rounded-xl overflow-x-auto bg-white shadow-sm">
+                                  <div className="bg-indigo-950 text-white px-3.5 py-2 text-[11px] font-bold flex flex-wrap items-center justify-between gap-2">
+                                    <span>
+                                      Chi tiết Phiếu Xuất Kho Chuyển Tầng: {refCode} (
+                                      {first.fromWarehouse === "FLOOR_2"
+                                        ? "Kho Tầng 2 → Kho Tầng 1"
+                                        : "Kho Tầng 1 → Kho Tầng 2"}
+                                      )
+                                    </span>
+                                    <span>
+                                      Người thực hiện: {first.performedByName || "Quản trị viên"} ·{" "}
+                                      {formatDateTime(first.createdAt)}
+                                    </span>
+                                  </div>
+                                  <table className="w-full text-[11px] text-left">
+                                    <thead className="bg-slate-100 text-slate-800 uppercase border-b border-slate-200">
+                                      <tr>
+                                        <th className="py-2 px-3 text-center w-12">STT</th>
+                                        <th className="py-2 px-3">Mã hàng</th>
+                                        <th className="py-2 px-3">Tên sản phẩm</th>
+                                        <th className="py-2 px-3 text-center">ĐVT</th>
+                                        <th className="py-2 px-3">Từ Kho</th>
+                                        <th className="py-2 px-3">Sang Kho</th>
+                                        <th className="py-2 px-3 text-right">Số lượng dời</th>
+                                        <th className="py-2 px-3">Ghi chú</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-200">
+                                      {items.map((it, idx) => {
+                                        const prod = productByCode.get(it.productCode);
+                                        return (
+                                          <tr key={it._id || idx} className="hover:bg-slate-50">
+                                            <td className="py-2 px-3 text-center font-mono">
+                                              {idx + 1}
+                                            </td>
+                                            <td className="py-2 px-3 font-mono font-bold text-slate-800">
+                                              {it.productCode}
+                                            </td>
+                                            <td className="py-2 px-3 font-semibold text-slate-900">
+                                              {it.productName}
+                                            </td>
+                                            <td className="py-2 px-3 text-center">
+                                              {(it as any).unit || prod?.unit || "Cái"}
+                                            </td>
+                                            <td className="py-2 px-3 font-semibold text-slate-700">
+                                              {it.fromWarehouse === "FLOOR_2"
+                                                ? "🏬 Kho Tầng 2"
+                                                : "🏢 Kho Tầng 1"}
+                                            </td>
+                                            <td className="py-2 px-3 font-semibold text-indigo-700">
+                                              {it.toWarehouse === "FLOOR_2"
+                                                ? "🏬 Kho Tầng 2"
+                                                : "🏢 Kho Tầng 1"}
+                                            </td>
+                                            <td className="py-2 px-3 text-right font-mono font-extrabold text-indigo-700">
+                                              {Math.abs(Number(it.quantityChange) || 0)}
+                                            </td>
+                                            <td className="py-2 px-3 text-slate-600">
+                                              {it.note || "-"}
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    });
+                  })()}
                 </tbody>
               </table>
             </div>
