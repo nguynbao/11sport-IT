@@ -183,9 +183,10 @@ ordersCustomersRouter.post('/orders', async (req, res, next) => {
       ? paymentMethod
       : 'CASH';
 
-    // Kiểm tra từng sản phẩm: tồn tại, sellingPrice > 0, stock >= quantity
+    // Kiểm tra từng sản phẩm: tồn tại, sellingPrice > 0, tổng số lượng theo SP <= stock
     const orderItems: IOrderItem[] = [];
     const productUpdates: { product: any; qty: number }[] = [];
+    const requestedQtyByProdId = new Map<string, number>();
 
     for (const rawItem of items) {
       const qty = Math.round(Number(rawItem.quantity));
@@ -211,12 +212,16 @@ ordersCustomersRouter.post('/orders', async (req, res, next) => {
         );
       }
 
-      // BR-04: Chặn bán vượt tồn kho
-      if (product.stock < qty) {
+      const prodKey = String(product._id);
+      const totalRequestedForProduct = (requestedQtyByProdId.get(prodKey) || 0) + qty;
+      requestedQtyByProdId.set(prodKey, totalRequestedForProduct);
+
+      // BR-04: Chặn bán vượt tồn kho (tính lũy kế nếu trùng mã trong cùng đơn)
+      if (product.stock < totalRequestedForProduct) {
         throw new ApiError(
           400,
           'INSUFFICIENT_STOCK',
-          `Sản phẩm "${product.name}" không đủ tồn kho (Tồn: ${product.stock}, Yêu cầu: ${qty})`,
+          `Sản phẩm "${product.name}" không đủ tồn kho (Tồn: ${product.stock}, Yêu cầu: ${totalRequestedForProduct})`,
           { productId: product._id }
         );
       }

@@ -32,6 +32,7 @@ async function prepareReturnExchangeCalculation(body: any) {
   }
 
   const preparedReturnItems: IReturnItem[] = [];
+  const cumulativeReturnByProdId = new Map<string, number>();
   for (const rItem of returnItems) {
     const qty = Math.round(Number(rItem.quantity));
     if (!rItem.productId || isNaN(qty) || qty <= 0) {
@@ -52,12 +53,16 @@ async function prepareReturnExchangeCalculation(body: any) {
       );
     }
 
+    const prodKey = String(originalLine.productId);
+    const totalReturning = (cumulativeReturnByProdId.get(prodKey) || 0) + qty;
+    cumulativeReturnByProdId.set(prodKey, totalReturning);
+
     const maxReturnable = originalLine.quantity - (originalLine.returnedQuantity || 0);
-    if (qty > maxReturnable) {
+    if (totalReturning > maxReturnable) {
       throw new ApiError(
         400,
         'EXCEED_RETURNABLE_QUANTITY',
-        `Số lượng trả của "${originalLine.productName}" (${qty}) vượt quá số lượng có thể trả (${maxReturnable})`,
+        `Số lượng trả của "${originalLine.productName}" (${totalReturning}) vượt quá số lượng có thể trả (${maxReturnable})`,
         { productId: originalLine.productId }
       );
     }
@@ -79,6 +84,7 @@ async function prepareReturnExchangeCalculation(body: any) {
   }
 
   const preparedExchangeItems: IExchangeItem[] = [];
+  const cumulativeExchangeByProdId = new Map<string, number>();
   if (Array.isArray(exchangeItems) && exchangeItems.length > 0) {
     for (const eItem of exchangeItems) {
       const qty = Math.round(Number(eItem.quantity));
@@ -102,11 +108,15 @@ async function prepareReturnExchangeCalculation(body: any) {
         );
       }
 
-      if (product.stock < qty) {
+      const exKey = String(product._id);
+      const totalExchanging = (cumulativeExchangeByProdId.get(exKey) || 0) + qty;
+      cumulativeExchangeByProdId.set(exKey, totalExchanging);
+
+      if (product.stock < totalExchanging) {
         throw new ApiError(
           400,
           'INSUFFICIENT_EXCHANGE_STOCK',
-          `Sản phẩm đổi mới "${product.name}" không đủ tồn kho (Tồn: ${product.stock}, Cần: ${qty})`
+          `Sản phẩm đổi mới "${product.name}" không đủ tồn kho (Tồn: ${product.stock}, Cần: ${totalExchanging})`
         );
       }
 

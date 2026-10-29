@@ -209,4 +209,60 @@ describe('v1.1: Giá gốc khi nhập kho & phân quyền giá bán', () => {
     expect(delImport.status).toBe(200);
     expect(delImport.body.data.deleted).toBe(true);
   });
+
+  it('Kiểm tra bán hàng (POST /orders): trừ tồn kho chuẩn, ghi Sổ kho SALE, cân bằng Báo cáo tồn kho & chặn bán vượt tồn lũy kế', async () => {
+    const prodList = await request(app).get('/api/v1/products').set('x-user-id', 'admin');
+    const prod = prodList.body.data.find((p: any) => p.code === productCode);
+    expect(prod).toBeDefined();
+    const stockBefore = prod.stock; // 15
+
+    // 1. Chặn nếu tổng số lượng trùng mã trong cùng 1 đơn vượt tồn kho (10 + 10 = 20 > 15)
+    const overOrder = await request(app)
+      .post('/api/v1/orders')
+      .set('x-user-id', 'sales1')
+      .send({
+        customerName: 'Khách Test Vượt Tồn',
+        customerPhone: '0901112233',
+        paymentMethod: 'CASH',
+        items: [
+          { productId: prod._id, quantity: 10 },
+          { productId: prod._id, quantity: 10 },
+        ],
+      });
+    expect(overOrder.status).toBe(400);
+    expect(overOrder.body.code).toBe('INSUFFICIENT_STOCK');
+
+    // 2. Bán 4 chiếc hợp lệ -> tồn kho phải giảm từ 15 xuống 11
+    const validOrder = await request(app)
+      .post('/api/v1/orders')
+      .set('x-user-id', 'sales1')
+      .send({
+        customerName: 'Khách Mua Thật',
+        customerPhone: '0909888777',
+        paymentMethod: 'BANKING',
+        items: [{ productId: prod._id, quantity: 4 }],
+      });
+    expect(validOrder.status).toBe(201);
+
+    const prodAfterRes = await request(app).get('/api/v1/products').set('x-user-id', 'admin');
+    const prodAfter = prodAfterRes.body.data.find((p: any) => p._id === prod._id);
+    expect(prodAfter.stock).toBe(stockBefore - 4); // 11
+
+    // 3. Kiểm tra Sổ kho (StockMovement loại SALE)
+    const movRes = await request(app)
+      .get(`/api/v1/inventory/movements?productId=${prod._id}&type=SALE`)
+      .set('x-user-id', 'admin');
+    expect(movRes.status).toBe(200);
+    expect(movRes.body.data.length).toBeGreaterThanOrEqual(1);
+    expect(movRes.body.data[0].quantityChange).toBe(-4);
+    expect(movRes.body.data[0].balanceBefore).toBe(stockBefore);
+    expect(movRes.body.data[0].balanceAfter).toBe(stockBefore - 4);
+
+    // 4. Kiểm tra Báo cáo tồn kho kế toán: closingStock = openingStock + importedQty - soldQty + adjustedAndReturnedQty = currentStock
+    const reportRes = await request(app).get('/api/v1/inventory/report').set('x-user-id', 'admin');
+    const repRow = reportRes.body.data.find((r: any) => r.productCode === productCode);
+    expect(repRow.soldQty).toBe(4);
+    expect(repRow.closingStock).toBe(stockBefore - 4);
+    expect(repRow.currentStock).toBe(stockBefore - 4);
+  });
 });
