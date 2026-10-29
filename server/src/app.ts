@@ -51,7 +51,7 @@ export function createApp() {
     })
   );
 
-  app.use(express.json({ limit: '10mb' }));
+  app.use(express.json({ limit: '12mb' }));
   app.use(attachUserContext);
 
   // Root & Health check (hỗ trợ Render default health check tại / và /api/v1/health)

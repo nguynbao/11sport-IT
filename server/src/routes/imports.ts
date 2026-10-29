@@ -8,6 +8,13 @@ import {
 import { generateProductCode } from '../utils/productCode';
 import { ApiError } from '../utils/errors';
 import { IImportReceiptItem } from '../models/ImportReceipt';
+import {
+  OcrTableRow,
+  parseTextToRows,
+  validateOcrInput,
+  ocrScanTable,
+  ocrScanTag,
+} from '../utils/ocr';
 
 export const importsRouter = Router();
 
@@ -44,65 +51,60 @@ function normalizeImportItems(rawItems: any[], defaultCategoryId = ''): IImportR
     });
 }
 
-// POST /api/v1/imports/ocr-preview
+function rowsToImportItems(rows: OcrTableRow[], defaultCatId: string): IImportReceiptItem[] {
+  return rows.map((r, index) => ({
+    stt: index + 1,
+    productId: '',
+    productCode: generateProductCode(r.productName),
+    productName: r.productName,
+    categoryId: defaultCatId,
+    unit: r.unit || 'Cái',
+    expectedQuantity: r.expectedQuantity,
+    actualQuantity: r.expectedQuantity,
+    note: r.note || '',
+    isChecked: false,
+    isConfirmed: false,
+    discrepancyNote: '',
+  }));
+}
+
+// POST /api/v1/imports/ocr-preview — tách văn bản dán tay thành 6 cột
 importsRouter.post('/imports/ocr-preview', async (req, res, next) => {
   try {
-    const { imageText, sampleType } = req.body || {};
+    const { imageText } = req.body || {};
     const categories = await categoryRepo.find({ status: 'ACTIVE' });
     const defaultCatId = categories[0]?._id || '';
-
-    let extractedItems: IImportReceiptItem[] = [];
-
-    if (imageText && String(imageText).trim()) {
-      // Phân tích văn bản OCR theo từng dòng (STT | Tên hàng | ĐVT | Số lượng | Ghi chú)
-      const lines = String(imageText)
-        .split(/\r?\n/)
-        .map((l) => l.trim())
-        .filter(Boolean);
-
-      extractedItems = lines.map((line, index) => {
-        // Hỗ trợ phân tách bằng dấu | hoặc ; hoặc tab
-        const parts = line.split(/[|\t;]+/).map((s) => s.trim());
-        let productName = line;
-        let unit = 'Cái';
-        let expectedQuantity = 10;
-        let note = '';
-
-        if (parts.length >= 2) {
-          // Nếu cột đầu là số thứ tự
-          const startIdx = /^\d+$/.test(parts[0]) ? 1 : 0;
-          productName = parts[startIdx] || line;
-          unit = parts[startIdx + 1] || 'Cái';
-          const parsedQty = parseInt(parts[startIdx + 2] || '10', 10);
-          expectedQuantity = isNaN(parsedQty) ? 10 : parsedQty;
-          note = parts[startIdx + 3] || '';
-        }
-
-        const productCode = generateProductCode(productName);
-        return {
-          stt: index + 1,
-          productId: '',
-          productCode,
-          productName,
-          categoryId: defaultCatId,
-          unit,
-          expectedQuantity,
-          actualQuantity: expectedQuantity,
-          note,
-          isChecked: false,
-          isConfirmed: false,
-          discrepancyNote: '',
-        };
-      });
-    }
+    const extractedItems = rowsToImportItems(parseTextToRows(String(imageText || '')), defaultCatId);
 
     res.json({
-      data: {
-        items: extractedItems,
-      },
-      meta: {
-        totalExtracted: extractedItems.length,
-      },
+      data: { items: extractedItems },
+      meta: { totalExtracted: extractedItems.length },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/v1/imports/ocr-scan — quét ảnh camera / file tải lên (ảnh hoặc PDF)
+importsRouter.post('/imports/ocr-scan', async (req, res, next) => {
+  try {
+    const { mode, fileBase64, mimeType } = req.body || {};
+    const { data, mime } = validateOcrInput(fileBase64, mimeType);
+
+    if (String(mode).toUpperCase() === 'TAG') {
+      const tag = await ocrScanTag(data, mime);
+      res.json({ data: tag, meta: {} });
+      return;
+    }
+
+    const categories = await categoryRepo.find({ status: 'ACTIVE' });
+    const defaultCatId = categories[0]?._id || '';
+    const result = await ocrScanTable(data, mime);
+    const items = rowsToImportItems(result.rows, defaultCatId);
+
+    res.json({
+      data: { items, rawText: result.rawText, engine: result.engine },
+      meta: { totalExtracted: items.length },
     });
   } catch (err) {
     next(err);

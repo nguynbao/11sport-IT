@@ -78,8 +78,23 @@
 - `GET /api/v1/imports` — Danh sách phiếu nhập kho (`DRAFT`, `CHECKING`, `COMPLETED`)
 - `GET /api/v1/imports/:id` — Chi tiết phiếu nhập kho
 - `POST /api/v1/imports/ocr-preview`
-  - Body: `{ "imageText"?: "string", "sampleType"?: "string" }`
-  - Trích xuất dữ liệu camera/OCR thành danh sách 6 cột (`stt`, `productCode`, `productName`, `unit`, `expectedQuantity`, `note`) để người dùng xem lại và chỉnh sửa.
+  - Body: `{ "imageText": "string" }` (mỗi dòng: `Tên hàng | ĐVT | Số lượng | Ghi chú`)
+  - Tách văn bản thành danh sách 6 cột (`stt`, `productCode`, `productName`, `unit`, `expectedQuantity`, `note`) để người dùng xem lại và chỉnh sửa. Không còn trả dữ liệu mẫu.
+- `POST /api/v1/imports/ocr-scan` *(mới)*
+  - Quét ảnh chụp từ camera / file tải lên (ảnh JPG/PNG/WEBP hoặc PDF) bằng OCR.
+  - Body:
+    ```json
+    {
+      "mode": "TABLE | TAG",
+      "fileBase64": "<base64 không kèm tiền tố data:>",
+      "mimeType": "image/jpeg | image/png | image/webp | application/pdf"
+    }
+    ```
+  - Giới hạn: file ≤ 8MB sau khi mã hóa.
+  - Engine: dùng Gemini Vision nếu server có `GEMINI_API_KEY`; nếu không thì fallback Tesseract (chỉ ảnh, ngôn ngữ `vie+eng`, độ chính xác thấp hơn, không hỗ trợ PDF).
+  - Response `mode = TABLE`: `{ "data": { "items": [6 cột như trên], "rawText": "...", "engine": "gemini | tesseract" } }`
+  - Response `mode = TAG`: `{ "data": { "productCode": "...", "productName": "...", "quantity": number | null, "rawText": "...", "engine": "..." } }`
+  - Lỗi: `400 OCR_INVALID_FILE`, `413 OCR_FILE_TOO_LARGE`, `422 OCR_UNSUPPORTED` (PDF khi không có Gemini), `502 OCR_ENGINE_ERROR`.
 - `POST /api/v1/imports`
   - Tạo phiếu nhập mới (mặc định trạng thái `DRAFT`).
   - Body:
