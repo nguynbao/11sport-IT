@@ -2,6 +2,12 @@ import mongoose, { Schema, Document } from 'mongoose';
 
 export type ImportReceiptStatus = 'DRAFT' | 'CHECKING' | 'COMPLETED';
 
+export interface IScanCount {
+  userId: string;
+  name: string;
+  quantity: number;
+}
+
 export interface IImportReceiptItem {
   stt: number;
   productId?: string;
@@ -15,6 +21,12 @@ export interface IImportReceiptItem {
   costPrice: number;
   /** Số chiếc đã quét tag ở bước kiểm thực tế */
   scannedQuantity: number;
+  /** Người quét kiểm gần nhất (do server ghi, không nhận từ client) */
+  checkedBy?: string;
+  checkedByName?: string;
+  checkedAt?: Date;
+  /** Số chiếc từng nhân viên đã quét kiểm */
+  scanCounts?: IScanCount[];
   note: string;
   isChecked: boolean;
   isConfirmed: boolean;
@@ -48,6 +60,20 @@ const ImportReceiptItemSchema = new Schema<IImportReceiptItem>(
     actualQuantity: { type: Number, required: true, default: 0 },
     costPrice: { type: Number, default: 0, min: 0 },
     scannedQuantity: { type: Number, default: 0, min: 0 },
+    checkedBy: { type: String, default: '' },
+    checkedByName: { type: String, default: '' },
+    checkedAt: { type: Date },
+    scanCounts: {
+      type: [
+        {
+          userId: { type: String, default: '' },
+          name: { type: String, default: '' },
+          quantity: { type: Number, default: 0 },
+          _id: false,
+        },
+      ],
+      default: [],
+    },
     note: { type: String, default: '' },
     isChecked: { type: Boolean, default: false },
     isConfirmed: { type: Boolean, default: false },

@@ -6,6 +6,10 @@ import {
   ReturnReceipt,
   StaffUser,
   StockMovement,
+  StaffActivityReport,
+  StaffActivitySummary,
+  SalesActivity,
+  WarehouseActivity,
 } from "./api";
 import { buildSheet, downloadExcel, excelFileName, ExcelColumn, toDate } from "./excel";
 
@@ -128,6 +132,19 @@ export function exportMovements(movements: StockMovement[], typeFilter?: string)
 
 /* ----------------------------- Phiếu nhập kho ----------------------------- */
 
+/** "Nguyễn A (3), Trần B (1)" — số chiếc mỗi nhân viên đã quét kiểm */
+const checkersOf = (items: any[]) => {
+  const byName = new Map<string, number>();
+  items.forEach((it) =>
+    (it.scanCounts || []).forEach((s: any) =>
+      byName.set(s.name, (byName.get(s.name) || 0) + (Number(s.quantity) || 0))
+    )
+  );
+  return Array.from(byName.entries())
+    .map(([n, q]) => `${n} (${q})`)
+    .join(", ");
+};
+
 const receiptCostTotal = (imp: any) =>
   (imp.items || []).reduce(
     (s: number, it: any) => s + (Number(it.costPrice) || 0) * (Number(it.actualQuantity) || 0),
@@ -147,7 +164,9 @@ export function exportImports(imports: any[]) {
     },
     { header: "Tổng giá gốc", value: receiptCostTotal, format: "money", total: true },
     { header: "Ghi chú", value: (r) => r.note || "", width: 40 },
-    { header: "Người tạo", value: (r) => r.createdByName || "" },
+    { header: "Người lập", value: (r) => r.createdByName || "" },
+    { header: "Người kiểm (chiếc)", value: (r) => checkersOf(r.items || []), width: 30 },
+    { header: "Người hoàn thành", value: (r) => r.completedByName || "" },
     { header: "Ngày tạo", value: (r) => toDate(r.createdAt), format: "datetime", width: 17 },
     { header: "Ngày hoàn thành", value: (r) => toDate(r.completedAt), format: "datetime", width: 17 },
   ];
@@ -177,6 +196,7 @@ export function exportImports(imports: any[]) {
     },
     { header: "Đã kiểm", value: (l) => (l.item.isChecked ? "Có" : "Không"), width: 9 },
     { header: "Xác nhận nhập kho", value: (l) => (l.item.isConfirmed ? "Có" : "Không"), width: 10 },
+    { header: "Người kiểm (chiếc)", value: (l) => checkersOf([l.item]), width: 26 },
     { header: "Ghi chú chênh lệch", value: (l) => l.item.discrepancyNote || "", width: 30 },
     { header: "Ghi chú", value: (l) => l.item.note || "", width: 30 },
   ];
@@ -293,5 +313,71 @@ export function exportStaff(staff: StaffUser[]) {
   // Không xuất mật khẩu / token — chỉ thông tin hiển thị trên CMS
   downloadExcel(excelFileName("NhanVien"), [
     buildSheet("Nhan vien", cols, staff, { title: "DANH SÁCH NHÂN VIÊN" }),
+  ]);
+}
+
+/* ------------------------- Hoạt động nhân viên ------------------------- */
+
+export const SALES_ACTIVITY_LABEL: Record<string, string> = {
+  ORDER: "Bán hàng",
+  RETURN: "Trả hàng",
+  EXCHANGE: "Đổi hàng",
+};
+export const WAREHOUSE_ACTIVITY_LABEL: Record<string, string> = {
+  IMPORT_CREATED: "Lập phiếu nhập",
+  IMPORT_CHECKED: "Quét kiểm hàng",
+  IMPORT_COMPLETED: "Hoàn thành nhập kho",
+  ADJUSTMENT: "Điều chỉnh kho",
+};
+
+export function exportStaffActivity(report: StaffActivityReport, from?: string, to?: string) {
+  const period = `Kỳ: ${from || "đầu kỳ"} → ${to || "hiện tại"}`;
+  const subtitle = `${period} — Xuất lúc ${new Date().toLocaleString("vi-VN")}`;
+
+  const summaryCols: ExcelColumn<StaffActivitySummary>[] = [
+    { header: "Mã NV", value: (s) => s.code },
+    { header: "Họ và tên", value: (s) => s.fullName, width: 26 },
+    { header: "Vai trò", value: (s) => ROLE[s.role] || s.role || "" },
+    { header: "Số đơn bán", value: (s) => s.sales.orders, format: "int", total: true },
+    { header: "Doanh thu", value: (s) => s.sales.revenue, format: "money", total: true },
+    { header: "SP đã bán", value: (s) => s.sales.units, format: "int", total: true },
+    { header: "Phiếu trả/đổi", value: (s) => s.sales.returnsHandled, format: "int", total: true },
+    { header: "Phiếu nhập lập", value: (s) => s.warehouse.importsCreated, format: "int", total: true },
+    { header: "Chiếc đã quét kiểm", value: (s) => s.warehouse.unitsScanned, format: "int", total: true },
+    { header: "Dòng đã kiểm", value: (s) => s.warehouse.rowsChecked, format: "int", total: true },
+    { header: "Phiếu nhập hoàn thành", value: (s) => s.warehouse.importsCompleted, format: "int", total: true },
+    { header: "SL nhập kho", value: (s) => s.warehouse.unitsImported, format: "int", total: true },
+    { header: "Điều chỉnh kho", value: (s) => s.warehouse.adjustments, format: "int", total: true },
+    { header: "Hoạt động gần nhất", value: (s) => toDate(s.lastActivityAt), format: "datetime", width: 17 },
+  ];
+
+  const salesCols: ExcelColumn<SalesActivity>[] = [
+    { header: "Thời gian", value: (a) => toDate(a.at), format: "datetime", width: 17 },
+    { header: "Nhân viên", value: (a) => a.staffName, width: 24 },
+    { header: "Loại", value: (a) => SALES_ACTIVITY_LABEL[a.type] || a.type },
+    { header: "Chứng từ", value: (a) => a.referenceCode },
+    { header: "Khách hàng", value: (a) => a.customerName },
+    { header: "Số SP", value: (a) => a.units, format: "int", total: true },
+    { header: "Số tiền", value: (a) => a.amount, format: "money", total: true },
+    { header: "Thanh toán", value: (a) => PAYMENT[a.paymentMethod] || a.paymentMethod },
+    {
+      header: "Trạng thái / Đơn gốc",
+      value: (a) => (a.type === "ORDER" ? ORDER_STATUS[a.status] || a.status : a.status),
+    },
+  ];
+
+  const whCols: ExcelColumn<WarehouseActivity>[] = [
+    { header: "Thời gian", value: (a) => toDate(a.at), format: "datetime", width: 17 },
+    { header: "Nhân viên", value: (a) => a.staffName, width: 24 },
+    { header: "Thao tác", value: (a) => WAREHOUSE_ACTIVITY_LABEL[a.type] || a.type },
+    { header: "Chứng từ", value: (a) => a.referenceCode },
+    { header: "Số lượng", value: (a) => a.quantity, format: "int" },
+    { header: "Chi tiết", value: (a) => a.detail, width: 50 },
+  ];
+
+  downloadExcel(excelFileName("HoatDong_NhanVien"), [
+    buildSheet("Tong hop", summaryCols, report.staff, { title: "TỔNG HỢP HOẠT ĐỘNG NHÂN VIÊN", subtitle }),
+    buildSheet("Ban hang", salesCols, report.sales, { title: "NHẬT KÝ BÁN HÀNG / TRẢ ĐỔI THEO NHÂN VIÊN", subtitle }),
+    buildSheet("Kiem kho", whCols, report.warehouse, { title: "NHẬT KÝ KIỂM KHO / NHẬP KHO THEO NHÂN VIÊN", subtitle }),
   ]);
 }

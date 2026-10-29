@@ -14,6 +14,7 @@ import InventoryModule from "@/components/InventoryModule";
 import CategoryModule from "@/components/CategoryModule";
 import OrdersReturnsModule from "@/components/OrdersReturnsModule";
 import StaffModule from "@/components/StaffModule";
+import StaffActivityModule from "@/components/StaffActivityModule";
 import InvoicePdfModal from "@/components/InvoicePdfModal";
 import {
   Boxes,
@@ -27,9 +28,10 @@ import {
   User,
   KeyRound,
   AlertCircle,
+  Activity,
 } from "lucide-react";
 
-type CmsModuleType = "INVENTORY" | "CATEGORIES" | "ORDERS" | "STAFF";
+type CmsModuleType = "INVENTORY" | "CATEGORIES" | "ORDERS" | "STAFF" | "ACTIVITY";
 
 export default function CmsDashboardPage() {
   const [activeModule, setActiveModule] = useState<CmsModuleType>("INVENTORY");
@@ -289,6 +291,19 @@ export default function CmsDashboardPage() {
               <Users className="w-4 h-4" />
               4. Quản lý Nhân viên & Phân quyền
             </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveModule("ACTIVITY")}
+              className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 whitespace-nowrap transition ${
+                activeModule === "ACTIVITY"
+                  ? "bg-emerald-600 text-white shadow"
+                  : "text-slate-300 hover:bg-slate-700/60 hover:text-white"
+              }`}
+            >
+              <Activity className="w-4 h-4" />
+              5. Hoạt động NV (Bán hàng / Kiểm kho)
+            </button>
           </div>
         </div>
       </header>
@@ -301,6 +316,7 @@ export default function CmsDashboardPage() {
           <OrdersReturnsModule onOpenInvoice={(ord) => setInvoiceOrder(ord)} />
         )}
         {activeModule === "STAFF" && <StaffModule />}
+        {activeModule === "ACTIVITY" && <StaffActivityModule />}
       </main>
 
       {/* Modal In Hóa Đơn PDF (K80 / A4) */}

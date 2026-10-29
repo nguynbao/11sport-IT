@@ -138,6 +138,7 @@
     - Có nhiều dòng cùng điểm khớp → ưu tiên dòng **chưa đủ** số lượng; vẫn không phân định được → `ambiguous` + `candidates`, client gửi lại với `rowIndex`.
     - `delta = -1`: hoàn tác 1 lần quét của dòng (`rowIndex` bắt buộc), không xuống dưới 0.
     - Không bao giờ thêm dòng mới; tag không có trong danh sách → `matched = false` + `warning`.
+    - *(v1.4)* Ghi nhận người kiểm theo user đăng nhập: dòng phiếu có thêm `checkedBy`, `checkedByName`, `checkedAt` (lần quét gần nhất) và `scanCounts: [{ "userId", "name", "quantity" }]` (số chiếc mỗi nhân viên đã quét). Các trường này được giữ nguyên khi `PUT`/`finish-listing`/`complete` gửi lại `items`.
   - Response: `{ "data": { "matched": boolean, "alreadyFull"?: boolean, "isFull"?: boolean, "scannedQuantity"?: 1, "expectedQuantity"?: 2, "ambiguous"?: boolean, "candidates"?: [{ "index", "productCode", "productName", "scannedQuantity", "expectedQuantity" }], "matchedIndex"?: number, "matchedItem"?: {...}, "warning"?: "string", "progress": { "checked": 3, "total": 10, "scannedUnits": 25, "expectedUnits": 40 }, "receipt": {...} } }`
     - `progress.checked` = số dòng đã đủ số lượng.
   - Chỉ cho phép khi phiếu ở trạng thái `CHECKING` (`400 IMPORT_NOT_CHECKING`); phiếu `COMPLETED` → `400 IMPORT_RECEIPT_LOCKED`.
@@ -208,3 +209,25 @@
     - Hàng đổi mới (`exchangeItems`) kiểm tra tồn kho, trừ tồn kho (`-quantity`), ghi `StockMovement` loại `EXCHANGE_OUT`.
     - Tính `returnTotal`, `exchangeTotal`, `netDifference = exchangeTotal - returnTotal` (dương: khách trả thêm, âm: cửa hàng hoàn tiền).
     - Cập nhật trạng thái đơn hàng gốc (`PARTIALLY_RETURNED` hoặc `FULLY_RETURNED`).
+
+### 2.7 Báo cáo hoạt động nhân viên (`/reports/staff-activity`) *(v1.4)*
+- `GET /api/v1/reports/staff-activity?from=YYYY-MM-DD&to=YYYY-MM-DD&staffId=...`
+  - Chỉ role `ADMIN` (Quản lý) → role khác `403 FORBIDDEN`.
+  - Mặc định không truyền `from`/`to` = toàn bộ thời gian.
+  - Response:
+    ```json
+    {
+      "data": {
+        "staff": [{
+          "staffId": "...", "code": "NV002", "fullName": "...", "username": "...", "role": "SALES|WAREHOUSE|ADMIN", "status": "ACTIVE|LOCKED",
+          "sales": { "orders": 12, "revenue": 3500000, "units": 20, "returnsHandled": 1, "returnTotal": 250000 },
+          "warehouse": { "importsCreated": 2, "importsCompleted": 1, "unitsScanned": 40, "rowsChecked": 10, "unitsImported": 38, "adjustments": 1 },
+          "lastActivityAt": "ISO date | null"
+        }],
+        "sales": [{ "type": "ORDER|RETURN|EXCHANGE", "at": "...", "staffId": "...", "staffName": "...", "referenceCode": "HD-0001", "customerName": "...", "amount": 350000, "units": 2, "paymentMethod": "CASH", "status": "PAID" }],
+        "warehouse": [{ "type": "IMPORT_CREATED|IMPORT_CHECKED|IMPORT_COMPLETED|ADJUSTMENT", "at": "...", "staffId": "...", "staffName": "...", "referenceCode": "PN-0001", "quantity": 10, "detail": "..." }]
+      },
+      "meta": { "from": "...|null", "to": "...|null" }
+    }
+    ```
+  - Nguồn dữ liệu: đơn hàng (`createdBy`), phiếu trả/đổi (`performedBy`), phiếu nhập (`createdBy`, `completedBy`, `items[].scanCounts`), sổ kho loại `ADJUSTMENT` (`performedBy`). Thao tác không gắn được với nhân viên nào được gom vào dòng "Không xác định" (`staffId = ""`).

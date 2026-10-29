@@ -114,6 +114,57 @@ export interface ReturnReceipt {
   createdAt: string;
 }
 
+/* ---------------- Báo cáo hoạt động nhân viên (GET /reports/staff-activity) ---------------- */
+
+export interface StaffActivitySummary {
+  staffId: string;
+  code: string;
+  fullName: string;
+  username: string;
+  role: UserRole | "";
+  status: "ACTIVE" | "LOCKED" | "";
+  sales: { orders: number; revenue: number; units: number; returnsHandled: number; returnTotal: number };
+  warehouse: {
+    importsCreated: number;
+    importsCompleted: number;
+    unitsScanned: number;
+    rowsChecked: number;
+    unitsImported: number;
+    adjustments: number;
+  };
+  lastActivityAt: string | null;
+}
+
+export interface SalesActivity {
+  type: "ORDER" | "RETURN" | "EXCHANGE";
+  at: string;
+  staffId: string;
+  staffName: string;
+  referenceCode: string;
+  customerName: string;
+  amount: number;
+  units: number;
+  paymentMethod: string;
+  status: string;
+}
+
+export interface WarehouseActivity {
+  type: "IMPORT_CREATED" | "IMPORT_CHECKED" | "IMPORT_COMPLETED" | "ADJUSTMENT";
+  at: string;
+  staffId: string;
+  staffName: string;
+  referenceCode: string;
+  quantity: number;
+  rows?: number;
+  detail: string;
+}
+
+export interface StaffActivityReport {
+  staff: StaffActivitySummary[];
+  sales: SalesActivity[];
+  warehouse: WarehouseActivity[];
+}
+
 export function generateProductCode(rawName: string): string {
   if (!rawName || typeof rawName !== "string") return "";
   const trimmed = rawName.trim();

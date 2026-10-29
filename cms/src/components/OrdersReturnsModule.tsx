@@ -114,6 +114,7 @@ export default function OrdersReturnsModule({
                 <th className="py-3 px-3">Khách hàng (SĐT)</th>
                 <th className="py-3 px-3">Sản phẩm mua</th>
                 <th className="py-3 px-3">Thanh toán</th>
+                <th className="py-3 px-3">NV bán</th>
                 <th className="py-3 px-3 text-right">Tiền hàng</th>
                 <th className="py-3 px-3 text-right">Phí thẻ 3%</th>
                 <th className="py-3 px-3 text-right">Tổng thu</th>
@@ -142,6 +143,9 @@ export default function OrdersReturnsModule({
                     ))}
                   </td>
                   <td className="py-3 px-3 font-semibold">{ord.paymentMethod}</td>
+                  <td className="py-3 px-3 font-semibold text-slate-800 whitespace-nowrap">
+                    {ord.createdByName || ord.soldByName || "-"}
+                  </td>
                   <td className="py-3 px-3 text-right font-mono">
                     {formatVND(ord.subtotal)}
                   </td>
@@ -199,6 +203,7 @@ export default function OrdersReturnsModule({
                 <th className="py-3 px-3 text-right">Tiền hàng trả</th>
                 <th className="py-3 px-3 text-right">Tiền hàng đổi</th>
                 <th className="py-3 px-3 text-right">Chênh lệch</th>
+                <th className="py-3 px-3">NV xử lý</th>
                 <th className="py-3 px-3">Ghi chú</th>
                 <th className="py-3 px-3">Ngày tạo</th>
               </tr>
@@ -225,6 +230,9 @@ export default function OrdersReturnsModule({
                       : r.netDifference > 0
                       ? `Thu thêm ${formatVND(r.netDifference)}`
                       : "0 ₫"}
+                  </td>
+                  <td className="py-3 px-3 font-semibold text-slate-800 whitespace-nowrap">
+                    {r.performedByName || "-"}
                   </td>
                   <td className="py-3 px-3 text-slate-600">{r.note || "-"}</td>
                   <td className="py-3 px-3 text-slate-500">

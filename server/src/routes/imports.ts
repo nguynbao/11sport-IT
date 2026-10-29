@@ -66,6 +66,28 @@ function normalizeImportItems(rawItems: any[], defaultCategoryId = ''): IImportR
     });
 }
 
+/**
+ * Giữ các trường do server ghi (người quét kiểm) khi client gửi lại danh sách items.
+ * Không tin dữ liệu người kiểm từ client: luôn lấy từ bản ghi hiện có (khớp theo vị trí + mã hàng).
+ */
+function keepCheckerFields(newItems: IImportReceiptItem[], oldItems: IImportReceiptItem[]): IImportReceiptItem[] {
+  const used = new Set<number>();
+  return newItems.map((item, idx) => {
+    let oi = oldItems[idx] && oldItems[idx].productCode === item.productCode && !used.has(idx) ? idx : -1;
+    if (oi < 0) oi = oldItems.findIndex((o, j) => !used.has(j) && o.productCode === item.productCode);
+    if (oi < 0) return { ...item, checkedBy: '', checkedByName: '', checkedAt: undefined, scanCounts: [] };
+    used.add(oi);
+    const old = oldItems[oi];
+    return {
+      ...item,
+      checkedBy: old.checkedBy || '',
+      checkedByName: old.checkedByName || '',
+      checkedAt: old.checkedAt,
+      scanCounts: Array.isArray(old.scanCounts) ? old.scanCounts.map((s) => ({ ...s })) : [],
+    };
+  });
+}
+
 function rowsToImportItems(rows: OcrTableRow[], defaultCatId: string): IImportReceiptItem[] {
   return rows.map((r, index) => ({
     stt: index + 1,
@@ -243,9 +265,9 @@ importsRouter.put('/imports/:id', async (req, res, next) => {
     if (note !== undefined) updateData.note = String(note).trim();
     if (defaultCategoryId !== undefined) updateData.defaultCategoryId = String(defaultCategoryId);
     if (items !== undefined) {
-      updateData.items = normalizeImportItems(
-        items,
-        defaultCategoryId || receipt.defaultCategoryId
+      updateData.items = keepCheckerFields(
+        normalizeImportItems(items, defaultCategoryId || receipt.defaultCategoryId),
+        receipt.items
       );
     }
     if (status && ['DRAFT', 'CHECKING'].includes(status)) {
@@ -276,7 +298,7 @@ importsRouter.post('/imports/:id/finish-listing', async (req, res, next) => {
     }
 
     const itemsToSave = req.body?.items
-      ? normalizeImportItems(req.body.items, receipt.defaultCategoryId)
+      ? keepCheckerFields(normalizeImportItems(req.body.items, receipt.defaultCategoryId), receipt.items)
       : receipt.items;
 
     if (itemsToSave.length === 0) {
@@ -420,8 +442,35 @@ importsRouter.post('/imports/:id/scan-check', async (req, res, next) => {
 
     const scanned = Math.max(0, current.scannedQuantity + delta);
     const full = scanned >= Math.max(1, expected);
+
+    // Ghi nhận nhân viên quét kiểm (theo user đăng nhập)
+    const userId = String(req.user?.userId || '');
+    const userName = req.user?.fullName || 'Không xác định';
+    const scanCounts = (Array.isArray(current.scanCounts) ? current.scanCounts : []).map((s) => ({ ...s }));
+    if (scanned !== current.scannedQuantity) {
+      if (delta === 1) {
+        const mine = scanCounts.find((s) => s.userId === userId);
+        if (mine) {
+          mine.quantity += 1;
+          mine.name = userName;
+        } else {
+          scanCounts.push({ userId, name: userName, quantity: 1 });
+        }
+      } else {
+        // Hoàn tác: trừ của chính người thao tác, nếu không có thì trừ người quét gần nhất
+        const target =
+          scanCounts.find((s) => s.userId === userId && s.quantity > 0) ||
+          [...scanCounts].reverse().find((s) => s.quantity > 0);
+        if (target) target.quantity -= 1;
+      }
+    }
+
     const matchedItem: IImportReceiptItem = {
       ...current,
+      scanCounts: scanCounts.filter((s) => s.quantity > 0),
+      ...(delta === 1
+        ? { checkedBy: userId, checkedByName: userName, checkedAt: new Date() }
+        : {}),
       scannedQuantity: scanned,
       actualQuantity: scanned,
       isChecked: scanned > 0,
@@ -471,7 +520,7 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
 
     // Cho phép gửi kèm danh sách items đã tick xác nhận ở bước cuối
     const finalItems = req.body?.items
-      ? normalizeImportItems(req.body.items, receipt.defaultCategoryId)
+      ? keepCheckerFields(normalizeImportItems(req.body.items, receipt.defaultCategoryId), receipt.items)
       : receipt.items;
 
     const confirmedItems = finalItems.filter((i) => i.isConfirmed);

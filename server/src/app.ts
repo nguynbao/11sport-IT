@@ -8,6 +8,7 @@ import { productsInventoryRouter } from './routes/productsInventory';
 import { importsRouter } from './routes/imports';
 import { ordersCustomersRouter } from './routes/ordersCustomers';
 import { returnsRouter } from './routes/returns';
+import { reportsRouter } from './routes/reports';
 
 export function createApp() {
   const app = express();
@@ -87,6 +88,7 @@ export function createApp() {
   app.use('/api/v1', importsRouter);
   app.use('/api/v1', ordersCustomersRouter);
   app.use('/api/v1', returnsRouter);
+  app.use('/api/v1', reportsRouter);
 
   // 404 Not Found
   app.use((req, res) => {

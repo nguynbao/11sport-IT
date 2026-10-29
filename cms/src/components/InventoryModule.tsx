@@ -732,6 +732,9 @@ export default function InventoryModule() {
                   <th className="py-3 px-3">Trạng thái</th>
                   <th className="py-3 px-3">Số dòng hàng</th>
                   <th className="py-3 px-3 text-right">Tổng giá gốc</th>
+                  <th className="py-3 px-3">Người lập</th>
+                  <th className="py-3 px-3">Người kiểm (chiếc)</th>
+                  <th className="py-3 px-3">Người hoàn thành</th>
                   <th className="py-3 px-3">Ghi chú</th>
                   <th className="py-3 px-3">Ngày tạo</th>
                 </tr>
@@ -767,6 +770,23 @@ export default function InventoryModule() {
                         )
                       )}
                     </td>
+                    <td className="py-3 px-3 whitespace-nowrap">{imp.createdByName || "-"}</td>
+                    <td className="py-3 px-3">
+                      {(() => {
+                        const byName = new Map<string, number>();
+                        (imp.items || []).forEach((it: any) =>
+                          (it.scanCounts || []).forEach((s: any) =>
+                            byName.set(s.name, (byName.get(s.name) || 0) + (Number(s.quantity) || 0))
+                          )
+                        );
+                        return byName.size === 0
+                          ? "-"
+                          : Array.from(byName.entries())
+                              .map(([n, q]) => `${n} (${q})`)
+                              .join(", ");
+                      })()}
+                    </td>
+                    <td className="py-3 px-3 whitespace-nowrap">{imp.completedByName || "-"}</td>
                     <td className="py-3 px-3">{imp.note || "-"}</td>
                     <td className="py-3 px-3 text-slate-500">
                       {formatDateTime(imp.createdAt)}
