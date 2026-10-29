@@ -26,3 +26,9 @@ services:
         sync: false
       - key: GEMINI_MODEL
         value: gemini-3.5-flash
+      - key: GEMINI_TAG_MODELS
+        value: gemini-3.1-flash-lite,gemini-3.5-flash,gemini-2.5-flash
+      - key: GEMINI_TAG_TIMEOUT_MS
+        value: 4800
+      - key: KEEP_ALIVE_INTERVAL_MIN
+        value: 8
