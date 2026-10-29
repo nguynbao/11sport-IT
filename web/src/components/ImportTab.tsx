@@ -685,7 +685,7 @@ export default function ImportTab() {
                 <tr>
                   <th className="py-3 px-2.5 text-center w-10">STT</th>
                   <th className="hidden py-3 px-3 min-w-[220px]">MÃ HÀNG (Tự sinh từ `()`)</th>
-                  <th className="py-3 px-3 min-w-[260px]">TÊN HÀNG</th>
+                  <th className="py-3 px-3 min-w-[280px] sm:min-w-[360px]">TÊN HÀNG</th>
                   <th className="py-3 px-2.5 w-20 text-center">ĐVT</th>
                   <th className="py-3 px-2.5 w-24 text-right">SỐ LƯỢNG</th>
                   <th className="py-3 px-2.5 min-w-[150px] text-right" title="Giá gốc (đơn giá nhập). Giá bán do Quản lý/Admin cập nhật trên CMS">
@@ -727,17 +727,17 @@ export default function ImportTab() {
                         />
                       </td>
 
-                      {/* Cột 3: TÊN HÀNG */}
-                      <td className="py-2.5 px-3">
-                        <input
-                          type="text"
+                      {/* Cột 3: TÊN HÀNG (Hiển thị đầy đủ, tự động xuống dòng) */}
+                      <td className="py-2.5 px-3 align-top">
+                        <textarea
                           disabled={isCompleted}
+                          rows={Math.max(2, Math.ceil((row.productName?.length || 0) / 38))}
                           value={row.productName}
                           onChange={(e) =>
                             handleUpdateRow(idx, "productName", e.target.value)
                           }
                           placeholder="Nhập tên hàng kèm (chi tiết mã trong ngoặc đơn)..."
-                          className="w-full px-2.5 py-1.5 rounded border border-slate-300 focus:border-emerald-600 focus:outline-none disabled:bg-slate-100"
+                          className="w-full px-2.5 py-1.5 rounded border border-slate-300 focus:border-emerald-600 focus:outline-none disabled:bg-slate-100 whitespace-pre-wrap break-words leading-snug resize-y"
                         />
                       </td>
 

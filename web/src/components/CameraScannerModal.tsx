@@ -1154,7 +1154,7 @@ export default function CameraScannerModal({
                     <tr>
                       <th className="py-2.5 px-3 w-12 text-center">STT</th>
                       <th className="hidden py-2.5 px-3 min-w-[200px]">Mã hàng (tự sinh)</th>
-                      <th className="py-2.5 px-3 min-w-[260px]">Tên hàng</th>
+                      <th className="py-2.5 px-3 min-w-[280px] sm:min-w-[360px]">Tên hàng</th>
                       <th className="py-2.5 px-3 w-24">ĐVT</th>
                       <th className="py-2.5 px-3 w-24 text-right">Số lượng</th>
                       <th className="py-2.5 px-3 min-w-[140px]">Ghi chú</th>
@@ -1164,7 +1164,7 @@ export default function CameraScannerModal({
                   <tbody className="divide-y divide-slate-200">
                     {ocrItems.map((row, idx) => (
                       <tr key={idx} className="hover:bg-slate-50">
-                        <td className="py-2 px-3 text-center font-mono font-bold">{idx + 1}</td>
+                        <td className="py-2 px-3 text-center font-mono font-bold align-top">{idx + 1}</td>
                         <td className="hidden py-2 px-3">
                           <input
                             type="text"
@@ -1174,13 +1174,13 @@ export default function CameraScannerModal({
                             className="w-full bg-emerald-50 text-emerald-900 font-mono text-[11px] font-semibold px-2 py-1.5 rounded border border-emerald-200"
                           />
                         </td>
-                        <td className="py-2 px-3">
-                          <input
-                            type="text"
+                        <td className="py-2 px-3 align-top">
+                          <textarea
+                            rows={Math.max(2, Math.ceil((row.productName?.length || 0) / 38))}
                             value={row.productName}
                             onChange={(e) => handleUpdateOcrRow(idx, "productName", e.target.value)}
                             placeholder="Tên hàng kèm (mã trong ngoặc)..."
-                            className="w-full px-2 py-1.5 rounded border border-slate-300 focus:border-emerald-600 focus:outline-none"
+                            className="w-full px-2 py-1.5 rounded border border-slate-300 focus:border-emerald-600 focus:outline-none whitespace-pre-wrap break-words leading-snug resize-y"
                           />
                         </td>
                         <td className="py-2 px-3">

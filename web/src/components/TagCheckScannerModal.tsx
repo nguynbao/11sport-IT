@@ -688,10 +688,10 @@ export default function TagCheckScannerModal({
                         {full && <CheckCircle2 className="w-3 h-3" />}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <div className={`font-semibold ${full ? "text-emerald-900" : "text-slate-900"}`}>
+                        <div className={`font-semibold break-words whitespace-normal leading-snug ${full ? "text-emerald-900" : "text-slate-900"}`}>
                           #{idx + 1} {it.productName}
                         </div>
-                        <div className="text-[10px] text-slate-500 font-mono truncate">
+                        <div className="text-[10px] text-slate-500 font-mono break-all whitespace-normal">
                           {it.productCode}
                           {it.barcode ? ` · EAN ${it.barcode}` : ""}
                         </div>
