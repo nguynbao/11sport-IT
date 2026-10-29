@@ -54,7 +54,20 @@ export function createApp() {
   app.use(express.json({ limit: '10mb' }));
   app.use(attachUserContext);
 
-  // Health check
+  // Root & Health check (hỗ trợ Render default health check tại / và /api/v1/health)
+  app.get('/', (_req, res) => {
+    res.json({
+      data: {
+        status: 'ok',
+        service: '11sport-server',
+        dbMode: getDbMode(),
+        apiBase: '/api/v1',
+        timestamp: new Date().toISOString(),
+      },
+      meta: {},
+    });
+  });
+
   app.get('/api/v1/health', (_req, res) => {
     res.json({
       data: {

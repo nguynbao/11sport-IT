@@ -33,14 +33,16 @@ export async function connectDatabase(): Promise<'mongodb' | 'memory'> {
     return dbMode;
   }
 
-  // 1. Thử kết nối trực tiếp tới MONGODB_URI (local hoặc remote)
+  // 1. Thử kết nối trực tiếp tới MONGODB_URI (local hoặc remote Atlas)
   try {
+    const isRemote = uri.startsWith('mongodb+srv://') || !uri.includes('127.0.0.1');
+    const timeoutMs = isRemote ? 10000 : 2500;
     await mongoose.connect(uri, {
-      serverSelectionTimeoutMS: 2000,
-      connectTimeoutMS: 2000,
+      serverSelectionTimeoutMS: timeoutMs,
+      connectTimeoutMS: timeoutMs,
     });
     dbMode = 'mongodb';
-    console.log(`[DB] Connected to MongoDB at ${uri}`);
+    console.log(`[DB] Connected to MongoDB at ${uri.replace(/:([^:@]+)@/, ':***@')}`);
     return dbMode;
   } catch {
     // 2. Fallback sang cơ chế lưu trữ tương thích trong bộ nhớ để chạy độc lập 100% không lỗi

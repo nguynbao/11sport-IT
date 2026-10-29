@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: 11sport-server
+    runtime: node
+    rootDir: server
+    plan: free
+    buildCommand: npm install --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      - key: JWT_SECRET
+        generateValue: true
+      - key: WEB_URL
+        value: https://11sport-it.vercel.app
+      - key: CMS_URL
+        value: https://11sport-it-m1ei.vercel.app
+      - key: CORS_ORIGINS
+        value: https://11sport-it.vercel.app,https://11sport-it-m1ei.vercel.app,http://localhost:3000,http://localhost:3001
+      - key: MONGODB_URI
+        sync: false
