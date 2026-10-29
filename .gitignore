@@ -1,0 +1,63 @@
+# Dependencies
+node_modules/
+**/node_modules/
+.pnp
+.pnp.js
+
+# Build & Framework outputs
+.next/
+**/.next/
+out/
+**/out/
+dist/
+**/dist/
+build/
+**/build/
+*.tsbuildinfo
+
+# Environment & Secrets (NEVER COMMIT)
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+*.pem
+*.key
+*.crt
+
+# Logs & Runtime data
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Local Database & Backups
+data/
+backups/
+*.dump
+*.archive
+*.sqlite
+*.db
+
+# Testing & Coverage
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~

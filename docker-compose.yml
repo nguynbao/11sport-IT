@@ -1,0 +1,116 @@
+version: "3.9"
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: 11sport-mongodb
+    restart: unless-stopped
+    ports:
+      - "${MONGO_PORT:-27017}:27017"
+    environment:
+      MONGO_INITDB_DATABASE: ${MONGO_DB_NAME:-11sport}
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - 11sport-net
+
+  server:
+    image: node:20-alpine
+    container_name: 11sport-server
+    working_dir: /app
+    restart: unless-stopped
+    ports:
+      - "${SERVER_PORT:-4000}:4000"
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 4000
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017/11sport}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001}
+    volumes:
+      - ./server:/app
+      - server_node_modules:/app/node_modules
+    command: sh -c "npm install && npm run dev"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4000/api/v1/categories || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - 11sport-net
+
+  web:
+    image: node:20-alpine
+    container_name: 11sport-web
+    working_dir: /app
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000/api/v1}
+    volumes:
+      - ./web:/app
+      - web_node_modules:/app/node_modules
+    command: sh -c "npm install && npm run dev -- -p 3000"
+    depends_on:
+      server:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000 || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - 11sport-net
+
+  cms:
+    image: node:20-alpine
+    container_name: 11sport-cms
+    working_dir: /app
+    restart: unless-stopped
+    ports:
+      - "${CMS_PORT:-3001}:3001"
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3001
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000/api/v1}
+    volumes:
+      - ./cms:/app
+      - cms_node_modules:/app/node_modules
+    command: sh -c "npm install && npm run dev -- -p 3001"
+    depends_on:
+      server:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001 || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - 11sport-net
+
+volumes:
+  mongodb_data:
+  mongodb_config:
+  server_node_modules:
+  web_node_modules:
+  cms_node_modules:
+
+networks:
+  11sport-net:
+    driver: bridge

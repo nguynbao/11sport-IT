@@ -1,0 +1,15 @@
+# Tiến độ dự án 11 Sport
+
+Trạng thái: `Backlog` | `Đang làm` | `Chờ review` | `Đang test` | `Xong` | `Bị chặn`
+
+| ID | Task | Phần | Owner | Trạng thái | Phụ thuộc | Ghi chú |
+|---|---|---|---|---|---|---|
+| INIT-01 | Khởi tạo cấu trúc dự án và hệ thống Multi-Agent 11 Sport | server / web / cms | PM | Xong | - | Đã cấu hình `.agents/`, `.claude/`, `AGENTS.md`, `CLAUDE.md`, `docs/` |
+| BA-01 | Phân tích đặc tả v1.0 & làm rõ 9 điểm nghiệp vụ + Tech Stack | docs/requirements | BA | Xong | INIT-01 | Đã chốt trong `docs/requirements/he-thong-pos-kho-v1.md` |
+| DES-01 | Thiết kế UI/UX, User Flow & Wireframe cho Web (POS/Kho) và CMS | docs/design | Designer | Xong | BA-01 | Đã tạo `docs/design/design-system.md` & `docs/design/pos-inventory-cms-v1.md` |
+| BE-01 | Thiết kế Database Schema & cập nhật API Contract (`docs/api-contract.md`) | server / docs | Backend | Xong | BA-01 | Đã cập nhật đầy đủ `docs/api-contract.md` v1.0 |
+| BE-02 | Xây dựng Backend API (`server/`): Auth, Staff, Category, Product, Stock Ledger, Import, Order, Customer, Return | server | Backend | Xong | BE-01 | Đã bàn giao `server/`, PASS 7/7 test suites (AC-01..AC-07) & build TypeScript |
+| FE-01 | Xây dựng giao diện CMS (`cms/`): Nhân viên, Category, Kho & Sổ kho, Đơn hàng & PDF | cms | Frontend | Xong | DES-01, BE-01 | Đã bàn giao `cms/`, PASS `npm run build` |
+| FE-02 | Xây dựng giao diện Web POS & Kho (`web/`): Kho, Nhập kho 7 bước + Camera, Bán hàng POS, Khách hàng & PDF, Trả/Đổi | web | Frontend | Xong | DES-01, BE-01 | Đã bàn giao `web/`, PASS `npm run build` |
+| OPS-01 | Cấu hình Docker, `docker-compose.yml`, môi trường Dev/Prod và tài liệu `docs/devops/` | server / web / cms | DevOps | Xong | BE-01 | Đã bàn giao `.gitignore`, `docker-compose.yml`, `start-dev.ps1`, `docs/devops/deployment-and-runbook.md` |
+| QA-01 | Viết Test Cases (`docs/test/`) & Kiểm thử tích hợp toàn hệ thống | docs/test | Tester | Xong | BE-02, FE-01, FE-02 | PASS 18/18 Test Cases & 8/8 API Test Suites (`AC-01`..`AC-07`), 0 lỗi mở |
