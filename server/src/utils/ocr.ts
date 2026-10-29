@@ -100,13 +100,43 @@ const TAG_SCHEMA = {
   required: ['productName', 'productCode', 'rawText'],
 };
 
+// Thứ tự mặc định đo thực tế: 3.5-flash ổn định (2–6s), 3.8-flash đôi khi treo, 3.1-flash-lite nhanh nhất (dự phòng cuối)
+const DEFAULT_GEMINI_MODELS = ['gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-3.1-flash-lite'];
+const PER_MODEL_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS) || 25000;
+
+/** Danh sách model thử lần lượt: GEMINI_MODEL -> GEMINI_FALLBACK_MODELS -> mặc định. */
+function getGeminiModels(): string[] {
+  const list = [
+    process.env.GEMINI_MODEL,
+    ...(process.env.GEMINI_FALLBACK_MODELS || '').split(','),
+    ...DEFAULT_GEMINI_MODELS,
+  ]
+    .map((m) => (m || '').trim().replace(/^models\//, ''))
+    .filter(Boolean);
+  return Array.from(new Set(list));
+}
+
 async function callGemini(mode: OcrMode, data: string, mime: string): Promise<any> {
+  const models = getGeminiModels();
+  let lastErr: any;
+  for (const model of models) {
+    try {
+      return await callGeminiModel(model, mode, data, mime);
+    } catch (err: any) {
+      lastErr = err;
+      if (!err?.retryable) throw err;
+      console.warn(`[OCR] Model "${model}" lỗi/không phản hồi (${err?.message}), thử model tiếp theo...`);
+    }
+  }
+  throw lastErr;
+}
+
+async function callGeminiModel(model: string, mode: OcrMode, data: string, mime: string): Promise<any> {
   const apiKey = process.env.GEMINI_API_KEY as string;
-  const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 45000);
+  const timer = setTimeout(() => controller.abort(), PER_MODEL_TIMEOUT_MS);
   try {
     const resp = await fetch(url, {
       method: 'POST',
@@ -133,7 +163,14 @@ async function callGemini(mode: OcrMode, data: string, mime: string): Promise<an
     const json: any = await resp.json().catch(() => ({}));
     if (!resp.ok) {
       const msg = json?.error?.message || `HTTP ${resp.status}`;
-      throw new ApiError(502, 'OCR_ENGINE_ERROR', `Dịch vụ OCR (Gemini) lỗi: ${msg}`);
+      const err = new ApiError(502, 'OCR_ENGINE_ERROR', `Dịch vụ OCR (Gemini) lỗi: ${msg}`);
+      // Lỗi có thể thử model khác: model bị ngừng/không tồn tại, quá tải (429), lỗi phía Google (5xx)
+      (err as any).retryable =
+        resp.status === 404 ||
+        resp.status === 429 ||
+        resp.status >= 500 ||
+        /no longer available|not found|not supported|deprecated|overloaded/i.test(msg);
+      throw err;
     }
     const text: string =
       json?.candidates?.[0]?.content?.parts?.map((p: any) => p.text || '').join('') || '';
@@ -145,9 +182,13 @@ async function callGemini(mode: OcrMode, data: string, mime: string): Promise<an
   } catch (err: any) {
     if (err instanceof ApiError) throw err;
     if (err?.name === 'AbortError') {
-      throw new ApiError(502, 'OCR_ENGINE_ERROR', 'Quét OCR quá thời gian chờ. Vui lòng thử lại.');
+      const e = new ApiError(502, 'OCR_ENGINE_ERROR', 'Quét OCR quá thời gian chờ. Vui lòng thử lại.');
+      (e as any).retryable = true;
+      throw e;
     }
-    throw new ApiError(502, 'OCR_ENGINE_ERROR', `Không gọi được dịch vụ OCR: ${err?.message || err}`);
+    const e = new ApiError(502, 'OCR_ENGINE_ERROR', `Không gọi được dịch vụ OCR: ${err?.message || err}`);
+    (e as any).retryable = true;
+    throw e;
   } finally {
     clearTimeout(timer);
   }

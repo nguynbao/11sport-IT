@@ -91,7 +91,7 @@
     }
     ```
   - Giới hạn: file ≤ 8MB sau khi mã hóa.
-  - Engine: dùng Gemini Vision nếu server có `GEMINI_API_KEY`; nếu không thì fallback Tesseract (chỉ ảnh, ngôn ngữ `vie+eng`, độ chính xác thấp hơn, không hỗ trợ PDF).
+  - Engine: dùng Gemini Vision nếu server có `GEMINI_API_KEY` (model theo `GEMINI_MODEL`, mặc định thử lần lượt `gemini-3.5-flash` → `gemini-3.8-flash` → `gemini-3.1-flash-lite`; tự chuyển model khi model bị ngừng, quá tải 429/5xx hoặc quá `GEMINI_TIMEOUT_MS`); nếu không thì fallback Tesseract (chỉ ảnh, ngôn ngữ `vie+eng`, độ chính xác thấp hơn, không hỗ trợ PDF).
   - Response `mode = TABLE`: `{ "data": { "items": [6 cột như trên], "rawText": "...", "engine": "gemini | tesseract" } }`
   - Response `mode = TAG`: `{ "data": { "productCode": "...", "productName": "...", "quantity": number | null, "rawText": "...", "engine": "..." } }`
   - Lỗi: `400 OCR_INVALID_FILE`, `413 OCR_FILE_TOO_LARGE`, `422 OCR_UNSUPPORTED` (PDF khi không có Gemini), `502 OCR_ENGINE_ERROR`.
