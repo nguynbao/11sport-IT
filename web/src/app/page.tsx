@@ -3,10 +3,13 @@
 import React, { useState, useEffect } from "react";
 import {
   StaffUser,
+  UserRole,
   Order,
   apiRequest,
   getStoredUser,
+  getStoredToken,
   setStoredAuth,
+  clearStoredAuth,
 } from "@/lib/api";
 import PosTab from "@/components/PosTab";
 import InventoryTab from "@/components/InventoryTab";
@@ -22,96 +25,245 @@ import {
   RotateCcw,
   ShieldCheck,
   ExternalLink,
+  LogOut,
+  Lock,
+  LogIn,
+  User,
+  KeyRound,
+  AlertCircle,
 } from "lucide-react";
 
 type TabType = "POS" | "INVENTORY" | "IMPORT" | "CUSTOMER" | "RETURN";
 
-const DEMO_ACCOUNTS = [
+interface TabConfig {
+  id: TabType;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  allowedRoles: UserRole[];
+  roleHint: string;
+}
+
+const TABS_CONFIG: TabConfig[] = [
   {
-    username: "sales1",
-    password: "123456",
-    label: "Nhân viên bán hàng (SALES)",
-    role: "SALES",
+    id: "POS",
+    label: "1. Bán hàng (POS)",
+    icon: ShoppingCart,
+    allowedRoles: ["SALES", "ADMIN"],
+    roleHint: "NV Bán hàng / Quản lý",
   },
   {
-    username: "warehouse1",
-    password: "123456",
-    label: "Thủ kho (WAREHOUSE)",
-    role: "WAREHOUSE",
+    id: "INVENTORY",
+    label: "2. Kho hàng (Tồn kho)",
+    icon: Package,
+    allowedRoles: ["SALES", "WAREHOUSE", "ADMIN"],
+    roleHint: "Tất cả nhân sự",
   },
   {
-    username: "admin",
-    password: "admin123",
-    label: "Quản lý / Admin (ADMIN)",
-    role: "ADMIN",
+    id: "IMPORT",
+    label: "3. Nhập kho (7 Bước & Camera OCR)",
+    icon: ClipboardCheck,
+    allowedRoles: ["WAREHOUSE", "ADMIN"],
+    roleHint: "Thủ kho / Quản lý",
+  },
+  {
+    id: "CUSTOMER",
+    label: "4. Tra cứu Khách & Xuất PDF",
+    icon: Users,
+    allowedRoles: ["SALES", "ADMIN"],
+    roleHint: "NV Bán hàng / Quản lý",
+  },
+  {
+    id: "RETURN",
+    label: "5. Trả / Đổi hàng",
+    icon: RotateCcw,
+    allowedRoles: ["SALES", "ADMIN"],
+    roleHint: "NV Bán hàng / Quản lý",
   },
 ];
+
+function getDefaultTabForRole(role: UserRole): TabType {
+  if (role === "WAREHOUSE") return "IMPORT";
+  return "POS";
+}
+
+function getRoleDisplayName(role?: UserRole): string {
+  if (role === "ADMIN") return "Quản lý (ADMIN)";
+  if (role === "WAREHOUSE") return "Thủ kho (WAREHOUSE)";
+  return "NV Bán hàng (SALES)";
+}
 
 export default function WebPosHomePage() {
   const [activeTab, setActiveTab] = useState<TabType>("POS");
   const [currentUser, setCurrentUser] = useState<StaffUser | null>(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const [invoiceOrder, setInvoiceOrder] = useState<Order | null>(null);
-  const [switchingRole, setSwitchingRole] = useState(false);
 
-  const handleQuickLogin = async (username: string, password = "123456") => {
-    setSwitchingRole(true);
+  // State form Login
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginError, setLoginError] = useState("");
+
+  useEffect(() => {
+    const savedUser = getStoredUser();
+    const savedToken = getStoredToken();
+    if (savedUser && savedToken && savedToken !== "demo-token") {
+      setCurrentUser(savedUser);
+      setActiveTab(getDefaultTabForRole(savedUser.role));
+    } else {
+      clearStoredAuth();
+    }
+    setCheckingAuth(false);
+  }, []);
+
+  const handleLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError("");
+    if (!username.trim() || !password) {
+      setLoginError("Vui lòng nhập đầy đủ Tên đăng nhập và Mật khẩu.");
+      return;
+    }
+
+    setLoginLoading(true);
     try {
       const res = await apiRequest<{ token: string; user: StaffUser }>(
         "/auth/login",
         {
           method: "POST",
-          body: JSON.stringify({ username, password }),
+          body: JSON.stringify({
+            username: username.trim(),
+            password,
+          }),
         }
       );
       if (res.data?.token && res.data?.user) {
         setStoredAuth(res.data.token, res.data.user);
         setCurrentUser(res.data.user);
-        if (res.data.user.role === "WAREHOUSE" && activeTab === "POS") {
-          setActiveTab("IMPORT");
-        } else if (res.data.user.role === "SALES" && activeTab === "IMPORT") {
-          setActiveTab("POS");
-        }
+        setActiveTab(getDefaultTabForRole(res.data.user.role));
+        setPassword("");
       }
-    } catch {
-      // Fallback user cho trường hợp chưa seed
-      const fallbackUser: StaffUser = {
-        _id: username,
-        code: username.toUpperCase(),
-        username,
-        fullName:
-          username === "sales1"
-            ? "Nguyễn Văn Bán (Sales)"
-            : username === "warehouse1"
-            ? "Lê Văn Kho (Thủ kho)"
-            : "Quản Lý 11Sport (Admin)",
-        role:
-          username === "sales1"
-            ? "SALES"
-            : username === "warehouse1"
-            ? "WAREHOUSE"
-            : "ADMIN",
-        status: "ACTIVE",
-      };
-      setStoredAuth("demo-token", fallbackUser);
-      setCurrentUser(fallbackUser);
+    } catch (err: any) {
+      setLoginError(
+        err?.message || "Sai tên đăng nhập hoặc mật khẩu, hoặc tài khoản đã bị khóa."
+      );
     } finally {
-      setSwitchingRole(false);
+      setLoginLoading(false);
     }
   };
 
-  useEffect(() => {
-    const saved = getStoredUser();
-    if (saved) {
-      setCurrentUser(saved);
-    } else {
-      handleQuickLogin("sales1", "123456");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const handleLogout = () => {
+    clearStoredAuth();
+    setCurrentUser(null);
+    setUsername("");
+    setPassword("");
+    setLoginError("");
+  };
+
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white">
+        <div className="text-sm font-semibold text-slate-300">
+          Đang kiểm tra phiên đăng nhập...
+        </div>
+      </div>
+    );
+  }
+
+  // Màn hình Đăng nhập khi chưa có phiên đăng nhập
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-900 px-4 py-8">
+        <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-800">
+          <div className="bg-slate-950 text-white px-6 py-6 text-center border-b border-slate-800">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-600 flex items-center justify-center font-black text-2xl tracking-tighter mx-auto mb-3 shadow-lg">
+              11S
+            </div>
+            <h1 className="text-xl font-extrabold tracking-tight">
+              ĐĂNG NHẬP 11SPORT POS & KHO
+            </h1>
+            <p className="text-xs text-slate-400 mt-1">
+              Hệ thống Bán hàng tại quầy, Kiểm kho Camera & Quản lý Tồn kho
+            </p>
+          </div>
+
+          <form onSubmit={handleLoginSubmit} className="p-6 space-y-4">
+            {loginError && (
+              <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-medium flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{loginError}</span>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
+                Tên đăng nhập (Username)
+              </label>
+              <div className="relative">
+                <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Nhập username (VD: sales1, warehouse1, admin)..."
+                  autoComplete="username"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
+                Mật khẩu (Password)
+              </label>
+              <div className="relative">
+                <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Nhập mật khẩu..."
+                  autoComplete="current-password"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loginLoading}
+              className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition"
+            >
+              <LogIn className="w-4 h-4" />
+              {loginLoading ? "Đang xác thực..." : "Đăng nhập vào Hệ thống"}
+            </button>
+
+            <div className="pt-3 border-t border-slate-200 text-xs text-slate-500 space-y-1">
+              <div className="font-bold text-slate-700">
+                Phân quyền truy cập theo vai trò:
+              </div>
+              <div>
+                • <strong>NV Bán hàng (SALES):</strong> Bán hàng POS, Tồn kho, Tra cứu Khách & PDF, Trả/Đổi hàng.
+              </div>
+              <div>
+                • <strong>Thủ kho (WAREHOUSE):</strong> Tồn kho, Nhập kho (7 Bước & Camera OCR).
+              </div>
+              <div>
+                • <strong>Quản lý (ADMIN):</strong> Mở toàn bộ 5 chức năng & Quản trị CMS.
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  const currentTabConfig = TABS_CONFIG.find((t) => t.id === activeTab);
+  const isCurrentTabAllowed =
+    currentTabConfig?.allowedRoles.includes(currentUser.role) ?? false;
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-100">
-      {/* Header thương hiệu 11Sport & Chuyển nhanh vai trò */}
+      {/* Header thương hiệu 11Sport & Thông tin người dùng */}
       <header className="bg-slate-900 text-white shadow-lg print:hidden">
         <div className="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -131,139 +283,113 @@ export default function WebPosHomePage() {
             </div>
           </div>
 
-          {/* Chuyển đổi nhanh vai trò nhân viên để kiểm thử phân quyền */}
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700">
+          {/* Thông tin tài khoản đang đăng nhập & Đăng xuất */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex items-center gap-2 bg-slate-800 px-3.5 py-2 rounded-xl border border-slate-700">
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
               <div className="text-xs">
-                <span className="text-slate-400">Đang trực: </span>
-                <strong className="text-white">
-                  {currentUser?.fullName || "Nhân viên"}
-                </strong>{" "}
-                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-emerald-600 text-white font-bold ml-1">
-                  {currentUser?.role || "SALES"}
+                <span className="text-slate-400">Nhân sự: </span>
+                <strong className="text-white">{currentUser.fullName}</strong>{" "}
+                <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-emerald-600 text-white font-bold ml-1">
+                  {getRoleDisplayName(currentUser.role)}
                 </span>
               </div>
             </div>
 
-            <div className="flex items-center gap-1 bg-slate-800 p-1 rounded-xl border border-slate-700">
-              {DEMO_ACCOUNTS.map((acc) => {
-                const isActive = currentUser?.username === acc.username;
-                return (
-                  <button
-                    key={acc.username}
-                    type="button"
-                    disabled={switchingRole}
-                    onClick={() => handleQuickLogin(acc.username, acc.password)}
-                    className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition ${
-                      isActive
-                        ? "bg-emerald-600 text-white shadow"
-                        : "text-slate-300 hover:text-white hover:bg-slate-700"
-                    }`}
-                  >
-                    {acc.role === "SALES"
-                      ? "NV Bán hàng"
-                      : acc.role === "WAREHOUSE"
-                      ? "Thủ kho"
-                      : "Quản lý"}
-                  </button>
-                );
-              })}
-            </div>
+            {currentUser.role === "ADMIN" && (
+              <a
+                href={
+                  process.env.NEXT_PUBLIC_CMS_URL ||
+                  "https://11sport-it-m1ei.vercel.app"
+                }
+                target="_blank"
+                rel="noreferrer"
+                className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-emerald-400 border border-slate-700 flex items-center gap-1"
+              >
+                Mở CMS <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            )}
 
-            <a
-              href={process.env.NEXT_PUBLIC_CMS_URL || "https://11sport-it-m1ei.vercel.app"}
-              target="_blank"
-              rel="noreferrer"
-              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-emerald-400 border border-slate-700 flex items-center gap-1"
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="px-3 py-2 rounded-xl bg-red-600/90 hover:bg-red-600 text-xs font-bold text-white flex items-center gap-1.5 transition"
             >
-              Mở CMS <ExternalLink className="w-3.5 h-3.5" />
-            </a>
+              <LogOut className="w-3.5 h-3.5" />
+              Đăng xuất
+            </button>
           </div>
         </div>
 
-        {/* Thanh 5 Tab chức năng */}
+        {/* Thanh 5 Tab chức năng phân quyền theo Role */}
         <div className="bg-slate-800/90 border-t border-slate-800">
-          <div className="max-w-7xl mx-auto px-4 flex items-center gap-1 overflow-x-auto py-1.5">
-            <button
-              type="button"
-              onClick={() => setActiveTab("POS")}
-              className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 whitespace-nowrap transition ${
-                activeTab === "POS"
-                  ? "bg-emerald-600 text-white shadow"
-                  : "text-slate-300 hover:bg-slate-700/60 hover:text-white"
-              }`}
-            >
-              <ShoppingCart className="w-4 h-4" />
-              1. Bán hàng (POS)
-            </button>
+          <div className="max-w-7xl mx-auto px-4 flex items-center gap-1.5 overflow-x-auto py-1.5">
+            {TABS_CONFIG.map((tab) => {
+              const Icon = tab.icon;
+              const isAllowed = tab.allowedRoles.includes(currentUser.role);
+              const isActive = activeTab === tab.id;
 
-            <button
-              type="button"
-              onClick={() => setActiveTab("INVENTORY")}
-              className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 whitespace-nowrap transition ${
-                activeTab === "INVENTORY"
-                  ? "bg-emerald-600 text-white shadow"
-                  : "text-slate-300 hover:bg-slate-700/60 hover:text-white"
-              }`}
-            >
-              <Package className="w-4 h-4" />
-              2. Kho hàng (Tồn kho)
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab("IMPORT")}
-              className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 whitespace-nowrap transition ${
-                activeTab === "IMPORT"
-                  ? "bg-emerald-600 text-white shadow"
-                  : "text-slate-300 hover:bg-slate-700/60 hover:text-white"
-              }`}
-            >
-              <ClipboardCheck className="w-4 h-4" />
-              3. Nhập kho (7 Bước & Camera OCR)
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab("CUSTOMER")}
-              className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 whitespace-nowrap transition ${
-                activeTab === "CUSTOMER"
-                  ? "bg-emerald-600 text-white shadow"
-                  : "text-slate-300 hover:bg-slate-700/60 hover:text-white"
-              }`}
-            >
-              <Users className="w-4 h-4" />
-              4. Tra cứu Khách & Xuất PDF
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab("RETURN")}
-              className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 whitespace-nowrap transition ${
-                activeTab === "RETURN"
-                  ? "bg-emerald-600 text-white shadow"
-                  : "text-slate-300 hover:bg-slate-700/60 hover:text-white"
-              }`}
-            >
-              <RotateCcw className="w-4 h-4" />
-              5. Trả / Đổi hàng
-            </button>
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  disabled={!isAllowed}
+                  title={
+                    isAllowed
+                      ? tab.label
+                      : `Chức năng này chỉ dành cho: ${tab.roleHint}`
+                  }
+                  onClick={() => {
+                    if (isAllowed) setActiveTab(tab.id);
+                  }}
+                  className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 whitespace-nowrap transition ${
+                    !isAllowed
+                      ? "opacity-40 cursor-not-allowed text-slate-400 bg-slate-900/40"
+                      : isActive
+                      ? "bg-emerald-600 text-white shadow"
+                      : "text-slate-300 hover:bg-slate-700/60 hover:text-white"
+                  }`}
+                >
+                  {isAllowed ? (
+                    <Icon className="w-4 h-4" />
+                  ) : (
+                    <Lock className="w-3.5 h-3.5 text-amber-400" />
+                  )}
+                  {tab.label}
+                </button>
+              );
+            })}
           </div>
         </div>
       </header>
 
       {/* Main Content */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6 print:p-0">
-        {activeTab === "POS" && (
-          <PosTab onOpenInvoice={(ord) => setInvoiceOrder(ord)} />
+        {!isCurrentTabAllowed ? (
+          <div className="bg-white rounded-xl border border-slate-200 p-8 text-center space-y-2">
+            <Lock className="w-10 h-10 text-amber-500 mx-auto" />
+            <h3 className="text-base font-bold text-slate-900">
+              Bạn không có quyền truy cập chức năng này
+            </h3>
+            <p className="text-xs text-slate-500">
+              Vai trò hiện tại của bạn là{" "}
+              <strong>{getRoleDisplayName(currentUser.role)}</strong>. Vui lòng chọn
+              các tab được cấp quyền trên thanh công cụ.
+            </p>
+          </div>
+        ) : (
+          <>
+            {activeTab === "POS" && (
+              <PosTab onOpenInvoice={(ord) => setInvoiceOrder(ord)} />
+            )}
+            {activeTab === "INVENTORY" && <InventoryTab />}
+            {activeTab === "IMPORT" && <ImportTab />}
+            {activeTab === "CUSTOMER" && (
+              <CustomerTab onOpenInvoice={(ord) => setInvoiceOrder(ord)} />
+            )}
+            {activeTab === "RETURN" && <ReturnExchangeTab />}
+          </>
         )}
-        {activeTab === "INVENTORY" && <InventoryTab />}
-        {activeTab === "IMPORT" && <ImportTab />}
-        {activeTab === "CUSTOMER" && (
-          <CustomerTab onOpenInvoice={(ord) => setInvoiceOrder(ord)} />
-        )}
-        {activeTab === "RETURN" && <ReturnExchangeTab />}
       </main>
 
       {/* Modal Xuất / In Hóa Đơn PDF (K80 / A4) */}

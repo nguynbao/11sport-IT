@@ -177,6 +177,12 @@ export function setStoredAuth(token: string, user: StaffUser) {
   localStorage.setItem("11sport_cms_user", JSON.stringify(user));
 }
 
+export function clearStoredAuth() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem("11sport_cms_token");
+  localStorage.removeItem("11sport_cms_user");
+}
+
 export async function apiRequest<T = any>(
   endpoint: string,
   options: RequestInit = {}
