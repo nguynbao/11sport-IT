@@ -207,7 +207,7 @@ export default function InventoryTab() {
                           {Number(p.costPrice) > 0 ? (
                             formatVND(p.costPrice)
                           ) : (
-                            <span className="text-xs text-slate-400">Chưa có (0 ₫)</span>
+                            <span className="text-xs text-slate-400">Chưa có (0 VND)</span>
                           )}
                         </td>
                       )}
@@ -218,7 +218,7 @@ export default function InventoryTab() {
                           </span>
                         ) : (
                           <span className="text-xs font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded">
-                            Chưa cập nhật giá (0 ₫)
+                            Chưa cập nhật giá (0 VND)
                           </span>
                         )}
                       </td>

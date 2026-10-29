@@ -194,9 +194,23 @@ export function generateProductCode(rawName: string): string {
     .replace(/^_+|_+$/g, "");
 }
 
+export function formatNumberDots(amount: number | undefined | null): string {
+  const num = Math.max(0, Math.round(Number(amount || 0)));
+  return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
+export function parseNumberDots(raw: string): number {
+  const digits = String(raw || "").replace(/[^\d]/g, "");
+  return digits ? Math.max(0, Math.round(Number(digits) || 0)) : 0;
+}
+
 export function formatVND(amount: number | undefined | null): string {
-  const num = Number(amount || 0);
-  return new Intl.NumberFormat("vi-VN").format(Math.round(num)) + " ₫";
+  const num = Math.round(Number(amount || 0));
+  const sign = num < 0 ? "-" : "";
+  const formatted = Math.abs(num)
+    .toString()
+    .replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${sign}${formatted} VND`;
 }
 
 export function formatDateTime(dateStr?: string): string {

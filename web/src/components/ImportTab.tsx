@@ -9,6 +9,8 @@ import {
   generateProductCode,
   formatDateTime,
   formatVND,
+  formatNumberDots,
+  parseNumberDots,
 } from "@/lib/api";
 import CameraScannerModal, { mergeOcrItemsList } from "./CameraScannerModal";
 import TagCheckScannerModal from "./TagCheckScannerModal";
@@ -813,28 +815,35 @@ export default function ImportTab() {
                       </td>
 
                       {/* GIÁ GỐC: đơn giá nhập do thủ kho nhập (giá bán do Quản lý/Admin đặt trên CMS) */}
-                      <td className="py-2.5 px-2.5">
-                        <input
-                          type="number"
-                          min={0}
-                          step={1000}
-                          inputMode="numeric"
-                          disabled={isCompleted}
-                          value={row.costPrice ?? 0}
-                          onChange={(e) =>
-                            handleUpdateRow(
-                              idx,
-                              "costPrice",
-                              Math.max(0, Math.round(Number(e.target.value) || 0))
-                            )
-                          }
-                          placeholder="0"
-                          className={`w-full px-2 py-1.5 rounded border text-right font-mono font-bold disabled:bg-slate-100 ${
-                            Number(row.costPrice) > 0 || !row.productName.trim()
-                              ? "border-slate-300"
-                              : "border-orange-300 bg-orange-50"
-                          }`}
-                        />
+                      <td className="py-2.5 px-2.5 align-top">
+                        <div className="relative">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            disabled={isCompleted}
+                            value={
+                              Number(row.costPrice) > 0
+                                ? formatNumberDots(row.costPrice)
+                                : ""
+                            }
+                            onChange={(e) =>
+                              handleUpdateRow(
+                                idx,
+                                "costPrice",
+                                parseNumberDots(e.target.value)
+                              )
+                            }
+                            placeholder="0"
+                            className={`w-full pl-2 pr-10 py-1.5 rounded border text-right font-mono font-bold disabled:bg-slate-100 ${
+                              Number(row.costPrice) > 0 || !row.productName.trim()
+                                ? "border-slate-300"
+                                : "border-orange-300 bg-orange-50"
+                            }`}
+                          />
+                          <span className="absolute right-2 top-2 text-[10px] font-mono font-bold text-slate-400 pointer-events-none">
+                            VND
+                          </span>
+                        </div>
                         {Number(row.costPrice) > 0 && (
                           <div className="mt-1 text-[10px] text-right text-slate-500">
                             = {formatVND((Number(row.costPrice) || 0) * (Number(row.actualQuantity) || 0))}

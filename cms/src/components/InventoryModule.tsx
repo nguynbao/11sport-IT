@@ -15,6 +15,8 @@ import {
   InventoryReportRow,
   apiRequest,
   formatVND,
+  formatNumberDots,
+  parseNumberDots,
   formatDateTime,
   generateProductCode,
 } from "@/lib/api";
@@ -539,7 +541,7 @@ export default function InventoryModule() {
               )}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-              <div className="md:col-span-4">
+              <div className="md:col-span-3">
                 <label className="block text-xs font-bold text-slate-600 mb-1">
                   Tên hàng hóa (Có chứa ngoặc đơn) *
                 </label>
@@ -596,38 +598,48 @@ export default function InventoryModule() {
                   className="w-full px-2 py-2 rounded-lg border border-emerald-400 bg-emerald-50/50 text-xs font-mono font-extrabold text-emerald-900 text-right"
                 />
               </div>
-              <div className="md:col-span-1">
+              <div className="md:col-span-2">
                 <label className="block text-xs font-bold text-slate-600 mb-1">
-                  Giá gốc
+                  Giá gốc (VND)
                 </label>
-                <input
-                  type="number"
-                  min={0}
-                  step={1000}
-                  value={newProdCost}
-                  onChange={(e) => setNewProdCost(Math.max(0, Number(e.target.value)))}
-                  className="w-full px-2 py-2 rounded-lg border border-slate-300 text-xs font-mono text-right"
-                />
-              </div>
-              <div className="md:col-span-1">
-                <label className="block text-xs font-bold text-slate-600 mb-1">
-                  Giá bán
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  step={1000}
-                  value={newProdPrice}
-                  onChange={(e) => setNewProdPrice(Math.max(0, Number(e.target.value)))}
-                  className="w-full px-2 py-2 rounded-lg border border-slate-300 text-xs font-mono text-right"
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={newProdCost > 0 ? formatNumberDots(newProdCost) : ""}
+                    onChange={(e) => setNewProdCost(parseNumberDots(e.target.value))}
+                    placeholder="0"
+                    className="w-full pl-2.5 pr-10 py-2 rounded-lg border border-slate-300 text-xs font-mono font-bold text-right"
+                  />
+                  <span className="absolute right-2.5 top-2 text-[10px] font-mono font-bold text-slate-400 pointer-events-none">
+                    VND
+                  </span>
+                </div>
               </div>
               <div className="md:col-span-2">
+                <label className="block text-xs font-bold text-slate-600 mb-1">
+                  Giá bán (VND)
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={newProdPrice > 0 ? formatNumberDots(newProdPrice) : ""}
+                    onChange={(e) => setNewProdPrice(parseNumberDots(e.target.value))}
+                    placeholder="0"
+                    className="w-full pl-2.5 pr-10 py-2 rounded-lg border border-slate-300 text-xs font-mono font-bold text-right"
+                  />
+                  <span className="absolute right-2.5 top-2 text-[10px] font-mono font-bold text-slate-400 pointer-events-none">
+                    VND
+                  </span>
+                </div>
+              </div>
+              <div className="md:col-span-1">
                 <button
                   type="submit"
-                  className="w-full py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs"
+                  className="w-full py-2 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs whitespace-nowrap"
                 >
-                  + Nhập vào kho
+                  + Nhập kho
                 </button>
               </div>
             </div>
@@ -777,45 +789,55 @@ export default function InventoryModule() {
                           )}
                         </td>
                         <td className="py-3 px-3 text-right align-top">
-                          <input
-                            type="number"
-                            min={0}
-                            step={1000}
-                            value={costVal}
-                            onChange={(e) =>
-                              setEditingCosts((prev) => ({
-                                ...prev,
-                                [p._id]: Math.max(0, Number(e.target.value)),
-                              }))
-                            }
-                            className={`w-36 px-2.5 py-1.5 rounded border text-right font-mono font-bold ${
-                              costVal === 0
-                                ? "border-orange-300 bg-orange-50 text-orange-900"
-                                : "border-slate-300 bg-white text-slate-800"
-                            }`}
-                          />
+                          <div className="relative inline-block w-40">
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={costVal > 0 ? formatNumberDots(costVal) : ""}
+                              placeholder="0"
+                              onChange={(e) =>
+                                setEditingCosts((prev) => ({
+                                  ...prev,
+                                  [p._id]: parseNumberDots(e.target.value),
+                                }))
+                              }
+                              className={`w-full pl-2.5 pr-10 py-1.5 rounded border text-right font-mono font-bold ${
+                                costVal === 0
+                                  ? "border-orange-300 bg-orange-50 text-orange-900"
+                                  : "border-slate-300 bg-white text-slate-800"
+                              }`}
+                            />
+                            <span className="absolute right-2.5 top-2 text-[10px] font-mono font-bold text-slate-400 pointer-events-none">
+                              VND
+                            </span>
+                          </div>
                           <div className="mt-1 text-[10px] text-slate-500 font-mono">
                             Tổng vốn: {formatVND(qty * costVal)}
                           </div>
                         </td>
                         <td className="py-3 px-3 text-right align-top">
-                          <input
-                            type="number"
-                            min={0}
-                            step={1000}
-                            value={sellVal}
-                            onChange={(e) =>
-                              setEditingPrices((prev) => ({
-                                ...prev,
-                                [p._id]: Math.max(0, Number(e.target.value)),
-                              }))
-                            }
-                            className={`w-36 px-2.5 py-1.5 rounded border text-right font-mono font-bold ${
-                              sellVal === 0
-                                ? "border-amber-400 bg-amber-50 text-amber-900"
-                                : "border-slate-300 bg-white text-slate-900"
-                            }`}
-                          />
+                          <div className="relative inline-block w-40">
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={sellVal > 0 ? formatNumberDots(sellVal) : ""}
+                              placeholder="0"
+                              onChange={(e) =>
+                                setEditingPrices((prev) => ({
+                                  ...prev,
+                                  [p._id]: parseNumberDots(e.target.value),
+                                }))
+                              }
+                              className={`w-full pl-2.5 pr-10 py-1.5 rounded border text-right font-mono font-bold ${
+                                sellVal === 0
+                                  ? "border-amber-400 bg-amber-50 text-amber-900"
+                                  : "border-slate-300 bg-white text-slate-900"
+                              }`}
+                            />
+                            <span className="absolute right-2.5 top-2 text-[10px] font-mono font-bold text-slate-400 pointer-events-none">
+                              VND
+                            </span>
+                          </div>
                           <div className="mt-1 text-[10px] text-slate-500 font-mono">
                             Tổng bán: {formatVND(qty * sellVal)}
                           </div>
@@ -975,10 +997,10 @@ export default function InventoryModule() {
                         {closing}
                       </td>
                       <td className="py-3 px-3 text-right font-mono text-slate-700 whitespace-nowrap">
-                        {cost > 0 ? formatVND(cost) : <span className="text-slate-400">0 ₫</span>}
+                        {cost > 0 ? formatVND(cost) : <span className="text-slate-400">0 VND</span>}
                       </td>
                       <td className="py-3 px-3 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
-                        {sell > 0 ? formatVND(sell) : <span className="text-amber-700">0 ₫</span>}
+                        {sell > 0 ? formatVND(sell) : <span className="text-amber-700">0 VND</span>}
                       </td>
                       <td className="py-3 px-3 text-right font-mono font-semibold text-amber-800 bg-amber-50/40 whitespace-nowrap">
                         {formatVND(closing * cost)}
@@ -1113,10 +1135,10 @@ export default function InventoryModule() {
                         {m.balanceAfter}
                       </td>
                       <td className="py-2.5 px-3 text-right font-mono text-amber-800 whitespace-nowrap">
-                        {cost > 0 ? formatVND(cost) : <span className="text-slate-400">0 ₫</span>}
+                        {cost > 0 ? formatVND(cost) : <span className="text-slate-400">0 VND</span>}
                       </td>
                       <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-800 whitespace-nowrap">
-                        {sell > 0 ? formatVND(sell) : <span className="text-slate-400">0 ₫</span>}
+                        {sell > 0 ? formatVND(sell) : <span className="text-slate-400">0 VND</span>}
                       </td>
                       <td className="py-2.5 px-3 font-mono font-semibold text-blue-700 whitespace-nowrap">
                         {m.referenceCode || "-"}
@@ -1316,7 +1338,7 @@ export default function InventoryModule() {
                                           {formatVND(cost)}
                                         </td>
                                         <td className="py-1.5 px-2.5 text-right font-mono font-bold text-emerald-800">
-                                          {sell > 0 ? formatVND(sell) : "Chưa đặt (0 ₫)"}
+                                          {sell > 0 ? formatVND(sell) : "Chưa đặt (0 VND)"}
                                         </td>
                                         <td className="py-1.5 px-2.5 text-right font-mono font-bold">
                                           {formatVND(qty * cost)}
