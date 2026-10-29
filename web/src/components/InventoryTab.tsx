@@ -16,8 +16,9 @@ export default function InventoryTab() {
   const [floor1Codes, setFloor1Codes] = useState<Set<string>>(new Set());
   const [floor2Codes, setFloor2Codes] = useState<Set<string>>(new Set());
 
-  // Saler (role SALES) chỉ được thấy Giá bán & Số lượng, KHÔNG được thấy Giá gốc
+  // Saler (role SALES) chỉ được thấy Giá bán & Số lượng ở Kho Tầng 1, KHÔNG được thấy Giá gốc hay Kho Tầng 2
   const currentUser = getStoredUser();
+  const isSales = currentUser?.role === "SALES";
   const canSeeCostPrice =
     currentUser?.role === "ADMIN" || currentUser?.role === "WAREHOUSE";
 
@@ -77,21 +78,30 @@ export default function InventoryTab() {
   const totalStockFloor1 = products.reduce((s, p) => s + (Number(p.stockFloor1 ?? p.stock) || 0), 0);
   const totalStockFloor2 = products.reduce((s, p) => s + (Number(p.stockFloor2) || 0), 0);
 
+  const effectiveWarehouse = isSales ? "FLOOR_1" : activeWarehouse;
+
   const displayedProducts = products.filter((p) => {
-    if (activeWarehouse === "FLOOR_1") {
-      return (Number(p.stockFloor1 ?? p.stock) || 0) > 0 || floor1Codes.has(p.code) || !floor2Codes.has(p.code);
+    const f1 = Number(p.stockFloor1 ?? p.stock) || 0;
+    const f2 = Number(p.stockFloor2) || 0;
+    if (isSales) {
+      // Saler chỉ hiển thị sản phẩm có ở Kho Tầng 1, không hiển thị sản phẩm của Kho Tầng 2
+      return f1 > 0;
     }
-    if (activeWarehouse === "FLOOR_2") {
-      return (Number(p.stockFloor2) || 0) > 0 || floor2Codes.has(p.code);
+    if (effectiveWarehouse === "FLOOR_1") {
+      return f1 > 0 || floor1Codes.has(p.code) || !floor2Codes.has(p.code);
+    }
+    if (effectiveWarehouse === "FLOOR_2") {
+      return f2 > 0 || floor2Codes.has(p.code);
     }
     return true;
   });
 
-  const colCount = (canSeeCostPrice ? 8 : 7) + (activeWarehouse === "ALL" ? 2 : 0);
+  const colCount = (canSeeCostPrice ? 8 : 7) + (effectiveWarehouse === "ALL" ? 2 : 0);
 
   return (
     <div className="space-y-4 md:space-y-6">
-      {/* BỘ CHUYỂN KHO TẦNG 1 & KHO TẦNG 2 */}
+      {/* BỘ CHUYỂN KHO TẦNG 1 & KHO TẦNG 2 (Ẩn Kho Tầng 2 đối với Saler) */}
+      {!isSales && (
       <div className="bg-white rounded-xl border-2 border-slate-300 shadow-sm p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
@@ -99,9 +109,9 @@ export default function InventoryTab() {
           </span>
           <h3 className="text-sm font-extrabold text-slate-900">
             Đang xem:{" "}
-            {activeWarehouse === "FLOOR_1"
+            {effectiveWarehouse === "FLOOR_1"
               ? "🏢 Kho Tầng 1 (Kho bán lẻ & trưng bày)"
-              : activeWarehouse === "FLOOR_2"
+              : effectiveWarehouse === "FLOOR_2"
               ? "🏬 Kho Tầng 2 (Kho dự trữ)"
               : "📊 Xem gộp cả 2 Kho (Tầng 1 + Tầng 2)"}
           </h3>
@@ -111,7 +121,7 @@ export default function InventoryTab() {
             type="button"
             onClick={() => setActiveWarehouse("FLOOR_1")}
             className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-2 border-2 ${
-              activeWarehouse === "FLOOR_1"
+              effectiveWarehouse === "FLOOR_1"
                 ? "bg-emerald-600 text-white border-emerald-700 shadow-sm"
                 : "bg-emerald-50/60 text-emerald-900 border-emerald-200 hover:bg-emerald-100"
             }`}
@@ -119,7 +129,7 @@ export default function InventoryTab() {
             <span>🏢 KHO TẦNG 1</span>
             <span
               className={`px-2 py-0.5 rounded-full font-mono text-[11px] ${
-                activeWarehouse === "FLOOR_1" ? "bg-white text-emerald-800" : "bg-emerald-200 text-emerald-900"
+                effectiveWarehouse === "FLOOR_1" ? "bg-white text-emerald-800" : "bg-emerald-200 text-emerald-900"
               }`}
             >
               {totalStockFloor1.toLocaleString("vi-VN")}
@@ -129,7 +139,7 @@ export default function InventoryTab() {
             type="button"
             onClick={() => setActiveWarehouse("FLOOR_2")}
             className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-2 border-2 ${
-              activeWarehouse === "FLOOR_2"
+              effectiveWarehouse === "FLOOR_2"
                 ? "bg-blue-600 text-white border-blue-700 shadow-sm"
                 : "bg-blue-50/60 text-blue-900 border-blue-200 hover:bg-blue-100"
             }`}
@@ -137,7 +147,7 @@ export default function InventoryTab() {
             <span>🏬 KHO TẦNG 2</span>
             <span
               className={`px-2 py-0.5 rounded-full font-mono text-[11px] ${
-                activeWarehouse === "FLOOR_2" ? "bg-white text-blue-800" : "bg-blue-200 text-blue-900"
+                effectiveWarehouse === "FLOOR_2" ? "bg-white text-blue-800" : "bg-blue-200 text-blue-900"
               }`}
             >
               {totalStockFloor2.toLocaleString("vi-VN")}
@@ -147,7 +157,7 @@ export default function InventoryTab() {
             type="button"
             onClick={() => setActiveWarehouse("ALL")}
             className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-2 border-2 ${
-              activeWarehouse === "ALL"
+              effectiveWarehouse === "ALL"
                 ? "bg-slate-900 text-white border-slate-900 shadow-sm"
                 : "bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200"
             }`}
@@ -155,7 +165,7 @@ export default function InventoryTab() {
             <span>📊 GỘP 2 KHO</span>
             <span
               className={`px-2 py-0.5 rounded-full font-mono text-[11px] ${
-                activeWarehouse === "ALL" ? "bg-white text-slate-900" : "bg-slate-200 text-slate-800"
+                effectiveWarehouse === "ALL" ? "bg-white text-slate-900" : "bg-slate-200 text-slate-800"
               }`}
             >
               {totalStock.toLocaleString("vi-VN")}
@@ -163,15 +173,16 @@ export default function InventoryTab() {
           </button>
         </div>
       </div>
+      )}
 
       {/* Thẻ KPI Tổng số sản phẩm & Tổng tồn kho */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
         <div className="bg-white rounded-xl p-4 md:p-5 border border-slate-200 shadow-sm flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-bold uppercase text-slate-500">
-              {activeWarehouse === "FLOOR_1"
+              {effectiveWarehouse === "FLOOR_1"
                 ? "Số mặt hàng Kho Tầng 1"
-                : activeWarehouse === "FLOOR_2"
+                : effectiveWarehouse === "FLOOR_2"
                 ? "Số mặt hàng Kho Tầng 2"
                 : "Tổng số mặt hàng (SKU)"}
             </p>
@@ -187,16 +198,16 @@ export default function InventoryTab() {
         <div className="bg-white rounded-xl p-4 md:p-5 border border-slate-200 shadow-sm flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-bold uppercase text-slate-500">
-              {activeWarehouse === "FLOOR_1"
+              {effectiveWarehouse === "FLOOR_1"
                 ? "🏢 Tồn Kho Tầng 1"
-                : activeWarehouse === "FLOOR_2"
+                : effectiveWarehouse === "FLOOR_2"
                 ? "🏬 Tồn Kho Tầng 2"
                 : "Tổng tồn cả 2 kho"}
             </p>
             <p className="text-2xl md:text-3xl font-extrabold font-mono text-emerald-600 mt-1">
-              {activeWarehouse === "FLOOR_1"
+              {effectiveWarehouse === "FLOOR_1"
                 ? totalStockFloor1
-                : activeWarehouse === "FLOOR_2"
+                : effectiveWarehouse === "FLOOR_2"
                 ? totalStockFloor2
                 : totalStock}
             </p>
@@ -269,13 +280,13 @@ export default function InventoryTab() {
                 <th className="py-3 px-4">Tên hàng hóa</th>
                 <th className="py-3 px-4">Danh mục (Category)</th>
                 <th className="py-3 px-4 text-center">ĐVT</th>
-                {(activeWarehouse === "FLOOR_1" || activeWarehouse === "ALL") && (
+                {(effectiveWarehouse === "FLOOR_1" || effectiveWarehouse === "ALL") && (
                   <th className="py-3 px-4 text-right text-emerald-300">🏢 Tồn Kho Tầng 1</th>
                 )}
-                {(activeWarehouse === "FLOOR_2" || activeWarehouse === "ALL") && (
+                {(effectiveWarehouse === "FLOOR_2" || effectiveWarehouse === "ALL") && (
                   <th className="py-3 px-4 text-right text-blue-300">🏬 Tồn Kho Tầng 2</th>
                 )}
-                {activeWarehouse === "ALL" && (
+                {effectiveWarehouse === "ALL" && (
                   <th className="py-3 px-4 text-right">Tổng 2 Kho</th>
                 )}
                 {canSeeCostPrice && (
@@ -318,7 +329,7 @@ export default function InventoryTab() {
                       <td className="py-3 px-4 font-semibold text-slate-900">{p.name}</td>
                       <td className="py-3 px-4 text-xs text-slate-600">{catName}</td>
                       <td className="py-3 px-4 text-center text-xs">{p.unit}</td>
-                      {(activeWarehouse === "FLOOR_1" || activeWarehouse === "ALL") && (
+                      {(effectiveWarehouse === "FLOOR_1" || effectiveWarehouse === "ALL") && (
                         <td className="py-3 px-4 text-right font-mono font-extrabold bg-emerald-50/30">
                           <span
                             className={`px-2.5 py-1 rounded-full text-xs ${
@@ -331,7 +342,7 @@ export default function InventoryTab() {
                           </span>
                         </td>
                       )}
-                      {(activeWarehouse === "FLOOR_2" || activeWarehouse === "ALL") && (
+                      {(effectiveWarehouse === "FLOOR_2" || effectiveWarehouse === "ALL") && (
                         <td className="py-3 px-4 text-right font-mono font-extrabold bg-blue-50/30">
                           <span
                             className={`px-2.5 py-1 rounded-full text-xs ${
@@ -344,7 +355,7 @@ export default function InventoryTab() {
                           </span>
                         </td>
                       )}
-                      {activeWarehouse === "ALL" && (
+                      {effectiveWarehouse === "ALL" && (
                         <td className="py-3 px-4 text-right font-mono font-extrabold">
                           <span className="px-2.5 py-1 rounded-full text-xs bg-slate-200 text-slate-900">
                             {p.stock}

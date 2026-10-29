@@ -36,6 +36,7 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
 
     const htmlContent = printAreaRef.current.innerHTML;
     const isK80 = paperSize === "K80";
+    const originUrl = typeof window !== "undefined" ? window.location.origin : "";
 
     const printWindow = window.open("", "_blank", "width=900,height=800");
     if (!printWindow) {
@@ -48,26 +49,30 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
       <html lang="vi">
       <head>
         <meta charset="utf-8" />
+        <base href="${originUrl}/" />
         <title>Hoa-don-${orderCode}-${paperSize}</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <style>
           @page {
             size: ${isK80 ? "80mm auto" : "A4 portrait"};
-            margin: ${isK80 ? "4mm" : "12mm"};
+            margin: ${isK80 ? "3mm" : "12mm"};
           }
           body {
             background: #ffffff;
-            color: #0f172a;
+            color: #000000;
             font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             margin: 0;
             padding: 0;
             display: flex;
             justify-content: center;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
           }
           .invoice-wrapper {
-            width: ${isK80 ? "72mm" : "100%"};
-            max-width: ${isK80 ? "72mm" : "794px"};
+            width: ${isK80 ? "74mm" : "100%"};
+            max-width: ${isK80 ? "74mm" : "794px"};
             box-sizing: border-box;
+            color: #000000;
           }
         </style>
       </head>
@@ -80,7 +85,7 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
             setTimeout(function() {
               window.focus();
               window.print();
-            }, 250);
+            }, 300);
           };
         </script>
       </body>
@@ -150,192 +155,174 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
         <div className="p-6 overflow-y-auto bg-slate-100 flex-1 flex justify-center">
           <div
             ref={printAreaRef}
-            className={`bg-white text-slate-900 shadow-md border border-slate-200 overflow-hidden ${
+            className={`bg-white text-black shadow-md border border-slate-300 overflow-hidden ${
               paperSize === "K80"
-                ? "w-[360px] p-5 text-xs"
-                : "w-full max-w-[794px] p-8 text-sm"
+                ? "w-[360px] p-4 text-[11px]"
+                : "w-full max-w-[794px] p-8 text-xs"
             }`}
           >
-            <div className="text-center border-b-2 border-dashed border-slate-300 pb-4 mb-4">
-              <div className="font-extrabold tracking-tight text-slate-900 text-lg sm:text-xl">
-                11SPORT — THỂ THAO CHÍNH HÃNG
+            {/* Header cửa hàng 11Sport với Logo */}
+            <div className="text-center border-b-2 border-dashed border-black pb-3 mb-3 text-black">
+              <img
+                src="/logo-11sport.png"
+                alt="11SPORT"
+                className={`mx-auto object-contain mb-1.5 ${
+                  paperSize === "K80" ? "h-16 w-auto" : "h-20 w-auto"
+                }`}
+              />
+              <div className="font-semibold text-black text-[11px] leading-snug">
+                Đ/c: 24 Tố Hữu, P.Hòa Cường, TP. Đà Nẵng
               </div>
-              <div className="text-slate-600 mt-1 text-xs">
-                Đ/c: Hệ thống Cửa hàng Thể thao 11Sport · Hotline: 1900 1100
+              <div className="font-bold text-black text-[11px] leading-snug mt-0.5">
+                Hotline: 076.576.3456
               </div>
-              <div className="mt-3 font-bold uppercase tracking-wider text-sm sm:text-base text-slate-900">
+              <div className="mt-2 font-extrabold uppercase tracking-wider text-xs sm:text-sm text-black">
                 HÓA ĐƠN BÁN HÀNG ({paperSize})
               </div>
-              <div className="font-mono text-xs text-slate-700 mt-1">
-                Mã đơn: <strong>{orderCode}</strong>
+              <div className="font-mono text-[11px] font-semibold text-black mt-0.5">
+                Mã đơn: <strong className="font-extrabold">{orderCode}</strong>
               </div>
-              <div className="text-slate-500 text-xs mt-0.5">
+              <div className="text-black font-medium text-[11px] mt-0.5">
                 Ngày giờ: {formatDateTime(order.createdAt)}
               </div>
             </div>
 
-            <div
-              className={`grid gap-2 mb-4 pb-3 border-b border-slate-200 ${
-                paperSize === "K80" ? "grid-cols-1" : "grid-cols-2"
-              }`}
-            >
-              <div>
-                <div className="text-slate-500 text-xs">Khách hàng:</div>
-                <div className="font-semibold text-slate-900">{order.customerName}</div>
-                <div className="font-mono text-slate-700">SĐT: {order.customerPhone}</div>
+            {/* Thông tin khách hàng & thu ngân (cùng 1 dòng) */}
+            <div className="space-y-1 mb-3 pb-2.5 border-b border-black text-black text-[11px]">
+              <div className="flex items-baseline justify-between gap-2">
+                <div>
+                  <span className="font-semibold">Khách hàng: </span>
+                  <span className="font-extrabold">{order.customerName}</span>
+                </div>
+                <div className="font-mono font-bold whitespace-nowrap">
+                  SĐT: {order.customerPhone}
+                </div>
               </div>
-              <div className={paperSize === "K80" ? "" : "text-right"}>
-                <div className="text-slate-500 text-xs">Thu ngân / Người bán:</div>
-                <div className="font-semibold text-slate-900">{sellerName}</div>
-                <div className="text-slate-700">Thanh toán: {paymentMethodLabel}</div>
+              <div className="flex items-baseline justify-between gap-2">
+                <div>
+                  <span className="font-semibold">Thu ngân / Người bán: </span>
+                  <span className="font-extrabold">{sellerName}</span>
+                </div>
+              </div>
+              <div>
+                <span className="font-semibold">Thanh toán: </span>
+                <span className="font-bold">{paymentMethodLabel}</span>
               </div>
             </div>
 
-            {paperSize === "K80" ? (
-              <div className="mb-4">
-                <div className="grid grid-cols-12 border-b-2 border-slate-800 pb-1.5 font-bold text-slate-900 text-[11px]">
-                  <div className="col-span-5">Mặt hàng</div>
-                  <div className="col-span-2 text-center">SL</div>
-                  <div className="col-span-2 text-right">Đ.Giá</div>
-                  <div className="col-span-3 text-right">T.Tiền</div>
-                </div>
-                <div className="divide-y divide-slate-200">
-                  {order.items?.map((item, idx) => (
-                    <div key={idx} className="py-2.5 space-y-1">
-                      <div className="font-semibold text-slate-900 leading-snug break-words">
-                        {idx + 1}. {item.productName}
-                      </div>
-                      <div className="font-mono text-[10px] text-slate-500 break-all leading-tight">
-                        {item.productCode} {item.unit ? `(${item.unit})` : ""}
-                      </div>
-                      <div className="grid grid-cols-12 items-center pt-0.5 font-mono text-[11px]">
-                        <div className="col-span-5 text-slate-500">
-                          Đơn giá × SL:
-                          {(Number(item.discountAmount) || 0) > 0 && (
-                            <div className="text-[10px] text-rose-600">
-                              (Giảm SP: -{formatVND(item.discountAmount)})
-                            </div>
-                          )}
-                        </div>
-                        <div className="col-span-2 text-center font-semibold text-slate-900">
-                          {item.quantity}
-                        </div>
-                        <div className="col-span-2 text-right text-slate-700 whitespace-nowrap">
-                          {formatVND(item.unitPrice)}
-                        </div>
-                        <div className="col-span-3 text-right font-bold text-slate-900 whitespace-nowrap">
-                          {formatVND(item.lineTotal)}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <table className="w-full table-fixed border-collapse mb-4">
+            {/* Bảng chi tiết đơn hàng chia hàng chia cột rõ ràng */}
+            <div className="mb-3">
+              <table className="w-full border-collapse border border-black text-black">
                 <thead>
-                  <tr className="border-b-2 border-slate-800 text-left">
-                    <th className="py-2 w-8 font-bold">#</th>
-                    <th className="py-2 font-bold">Mặt hàng</th>
-                    <th className="py-2 w-16 font-bold text-center">SL</th>
-                    <th className="py-2 w-28 font-bold text-right">Đơn giá</th>
-                    <th className="py-2 w-32 font-bold text-right">Thành tiền</th>
+                  <tr className="bg-slate-100 border-b border-black text-[10px] font-extrabold uppercase">
+                    <th className="border-r border-black py-1.5 px-1.5 text-left">
+                      Mặt hàng
+                    </th>
+                    <th className="border-r border-black py-1.5 px-1 text-center w-8">
+                      SL
+                    </th>
+                    <th className="border-r border-black py-1.5 px-1.5 text-right whitespace-nowrap">
+                      Đ.Giá
+                    </th>
+                    <th className="py-1.5 px-1.5 text-right whitespace-nowrap">
+                      T.Tiền
+                    </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200">
+                <tbody className="divide-y divide-black text-[11px]">
                   {order.items?.map((item, idx) => (
                     <tr key={idx} className="align-top">
-                      <td className="py-2.5 pr-1 font-mono">{idx + 1}</td>
-                      <td className="py-2.5 pr-3">
-                        <div className="font-medium text-slate-900 break-words">
-                          {item.productName}
-                        </div>
-                        <div className="font-mono text-[11px] text-slate-500 break-all mt-0.5">
-                          {item.productCode} {item.unit ? `(${item.unit})` : ""}
+                      <td className="border-r border-black py-1.5 px-1.5 font-semibold leading-snug break-words">
+                        <div>
+                          {idx + 1}. {item.productName}
                         </div>
                         {(Number(item.discountAmount) || 0) > 0 && (
-                          <div className="text-[11px] font-mono text-rose-600 mt-0.5">
-                            Giá gốc: {formatVND(item.originalUnitPrice)} · Giảm SP: -{formatVND(item.discountAmount)}
+                          <div className="text-[10px] font-bold text-black mt-0.5">
+                            (Giảm SP: -{formatVND(item.discountAmount)})
                           </div>
                         )}
                       </td>
-                      <td className="py-2.5 text-center font-mono">{item.quantity}</td>
-                      <td className="py-2.5 text-right font-mono whitespace-nowrap">
+                      <td className="border-r border-black py-1.5 px-1 text-center font-mono font-bold">
+                        {item.quantity}
+                      </td>
+                      <td className="border-r border-black py-1.5 px-1.5 text-right font-mono font-semibold whitespace-nowrap">
                         {formatVND(item.unitPrice)}
                       </td>
-                      <td className="py-2.5 text-right font-mono font-semibold whitespace-nowrap">
+                      <td className="py-1.5 px-1.5 text-right font-mono font-extrabold whitespace-nowrap">
                         {formatVND(item.lineTotal)}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            )}
+            </div>
 
-            <div className="border-t-2 border-slate-800 pt-3 space-y-1.5">
+            {/* Tạm tính, Giảm giá, Phí thẻ & Tổng thanh toán (1 dòng, giảm font-size, chữ đen đậm) */}
+            <div className="border-t-2 border-black pt-2 space-y-1 text-black text-[11px]">
               {(Number(order.itemDiscountTotal) || 0) > 0 && (
                 <>
-                  <div className="flex justify-between items-center text-slate-500">
-                    <span>Tổng tiền hàng (giá niêm yết):</span>
-                    <span className="font-mono whitespace-nowrap">
+                  <div className="flex justify-between items-center whitespace-nowrap gap-2">
+                    <span className="font-semibold">Tiền hàng (niêm yết):</span>
+                    <span className="font-mono font-bold">
                       {formatVND(order.rawSubtotal)}
                     </span>
                   </div>
-                  <div className="flex justify-between items-center text-rose-700">
-                    <span>Giảm giá trên sản phẩm:</span>
-                    <span className="font-mono font-semibold whitespace-nowrap">
+                  <div className="flex justify-between items-center whitespace-nowrap gap-2">
+                    <span className="font-semibold">Giảm giá sản phẩm:</span>
+                    <span className="font-mono font-bold">
                       -{formatVND(order.itemDiscountTotal)}
                     </span>
                   </div>
                 </>
               )}
 
-              <div className="flex justify-between items-center">
-                <span className="text-slate-600">Tạm tính tiền hàng (Subtotal):</span>
-                <span className="font-mono font-semibold whitespace-nowrap">
+              <div className="flex justify-between items-center whitespace-nowrap gap-2">
+                <span className="font-semibold">Tạm tính tiền hàng (Subtotal):</span>
+                <span className="font-mono font-bold">
                   {formatVND(order.subtotal)}
                 </span>
               </div>
 
               {(Number(order.billDiscountAmount) || 0) > 0 && (
-                <div className="flex justify-between items-center text-rose-700 bg-rose-50 px-2 py-1 rounded">
-                  <span>
-                    Giảm giá Bill{" "}
+                <div className="flex justify-between items-center whitespace-nowrap gap-2">
+                  <span className="font-semibold">
+                    Giảm giá Bill
                     {order.billDiscountType === "PERCENT"
-                      ? `(${order.billDiscountValue}%)`
+                      ? ` (${order.billDiscountValue}%)`
                       : ""}
                     :
                   </span>
-                  <span className="font-mono font-semibold whitespace-nowrap">
+                  <span className="font-mono font-bold">
                     -{formatVND(order.billDiscountAmount)}
                   </span>
                 </div>
               )}
 
               {order.paymentMethod === "CARD" && (
-                <div className="flex justify-between items-center text-amber-800 bg-amber-50 px-2 py-1 rounded">
-                  <span>
-                    Phí quẹt thẻ {order.hasCardFee ? "(3% khách chịu)" : "(0% - Miễn phí)"}:
+                <div className="flex justify-between items-center whitespace-nowrap gap-2">
+                  <span className="font-semibold">
+                    Phí quẹt thẻ {order.hasCardFee ? "(3%)" : "(0%)"}:
                   </span>
-                  <span className="font-mono font-semibold whitespace-nowrap">
+                  <span className="font-mono font-bold">
                     +{formatVND(order.cardFee)}
                   </span>
                 </div>
               )}
 
-              <div className="flex justify-between items-center text-base font-extrabold text-slate-900 pt-2 border-t border-slate-200">
+              <div className="flex justify-between items-center whitespace-nowrap gap-2 text-xs font-extrabold text-black pt-1.5 border-t border-black">
                 <span>TỔNG THANH TOÁN:</span>
-                <span className="font-mono text-emerald-700 whitespace-nowrap">
+                <span className="font-mono text-xs sm:text-[13px] font-black">
                   {formatVND(order.totalAmount)}
                 </span>
               </div>
             </div>
 
-            <div className="mt-6 pt-3 border-t border-dashed border-slate-300 text-center space-y-1">
-              <div className="italic font-semibold text-slate-700">
+            {/* Ghi chú thuế & lời cảm ơn */}
+            <div className="mt-4 pt-2.5 border-t border-dashed border-black text-center space-y-1 text-black">
+              <div className="italic font-bold text-[11px]">
                 Ghi chú: {order.note || "Giá đã bao gồm thuế"}
               </div>
-              <div className="text-xs text-slate-500">
+              <div className="text-[10px] font-semibold leading-snug">
                 Cảm ơn Quý khách đã mua sắm tại 11Sport! Vui lòng giữ hóa đơn khi cần đổi/trả hàng.
               </div>
             </div>

@@ -126,9 +126,14 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     fetchSellableProducts();
   }, [fetchSellableProducts]);
 
+  // Chỉ lấy các sản phẩm có ở Kho Tầng 1 (stockFloor1 > 0), không hiển thị sản phẩm ở Kho Tầng 2
+  const floor1Products = useMemo(() => {
+    return products.filter((p) => getFloor1Stock(p) > 0);
+  }, [products]);
+
   // Lọc và sắp xếp sản phẩm theo Category
   const filteredAndSortedProducts = useMemo(() => {
-    const filtered = products.filter((p) => {
+    const filtered = floor1Products.filter((p) => {
       if (selectedCategoryId && getCategoryId(p) !== selectedCategoryId) {
         return false;
       }
@@ -160,7 +165,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     });
 
     return sorted;
-  }, [products, selectedCategoryId, sortBy, categories]);
+  }, [floor1Products, selectedCategoryId, sortBy, categories]);
 
   // Nhóm sản phẩm theo Category khi chọn chế độ sắp xếp theo Category
   const groupedByCategory = useMemo(() => {
@@ -413,7 +418,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
 
   const renderProductCard = (p: Product) => {
     const floor1Stock = getFloor1Stock(p);
-    const floor2Stock = Math.max(0, Number(p.stockFloor2) || 0);
     const canSell = p.sellingPrice > 0 && floor1Stock > 0;
     const catName = getCategoryName(p);
 
@@ -442,11 +446,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
               >
                 🏢 Kho Tầng 1: {floor1Stock} {p.unit}
               </span>
-              {floor1Stock === 0 && floor2Stock > 0 && (
-                <div className="text-[10px] font-semibold text-amber-700 mt-0.5">
-                  (Kho Tầng 2 còn: {floor2Stock} — cần chuyển xuống T1)
-                </div>
-              )}
             </div>
           </div>
           <h3 className="font-semibold text-slate-900 text-sm mt-2 break-words">
@@ -526,10 +525,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                     : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200"
                 }`}
               >
-                Tất cả ({products.length})
+                Tất cả ({floor1Products.length})
               </button>
               {categories.map((cat) => {
-                const count = products.filter((p) => getCategoryId(p) === cat._id).length;
+                const count = floor1Products.filter((p) => getCategoryId(p) === cat._id).length;
                 return (
                   <button
                     key={cat._id}

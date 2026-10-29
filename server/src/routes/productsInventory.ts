@@ -37,8 +37,9 @@ productsInventoryRouter.get('/products', async (req, res, next) => {
     const categories = await categoryRepo.find({});
     const catMap = new Map(categories.map((c) => [String(c._id), c]));
 
-    // Ẩn giá gốc với nhân viên bán hàng
-    const hideCost = req.user?.role === 'SALES';
+    // Ẩn giá gốc và chỉ hiển thị sản phẩm Kho Tầng 1 đối với nhân viên bán hàng (SALES)
+    const isSalesRole = req.user?.role === 'SALES';
+    const hideCost = isSalesRole;
     const filtered = allProducts
       .map((p) => {
         const cat = catMap.get(String(p.categoryId));
@@ -47,14 +48,16 @@ productsInventoryRouter.get('/products', async (req, res, next) => {
         return {
           ...rest,
           stockFloor1: floors.stockFloor1,
-          stockFloor2: floors.stockFloor2,
-          stock: floors.stock,
+          stockFloor2: isSalesRole ? 0 : floors.stockFloor2,
+          stock: isSalesRole ? floors.stockFloor1 : floors.stock,
           ...(hideCost ? {} : { costPrice: Number(costPrice) || 0 }),
           categoryCode: cat?.code || p.categoryCode || '',
           categoryName: cat?.name || p.categoryName || '',
         };
       })
       .filter((p) => {
+        // Nhân viên bán hàng (SALES) chỉ được thấy sản phẩm có ở Kho Tầng 1 (không hiển thị sản phẩm chỉ có ở Kho Tầng 2)
+        if (isSalesRole && (Number(p.stockFloor1) || 0) <= 0) return false;
         if (categoryId && String(p.categoryId) !== String(categoryId)) return false;
         if (onlySellable === 'true') {
           if (!(p.sellingPrice > 0 && p.stockFloor1 > 0)) return false;
