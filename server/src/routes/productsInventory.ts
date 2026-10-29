@@ -81,7 +81,7 @@ productsInventoryRouter.get('/products', async (req, res, next) => {
 // POST /api/v1/products
 productsInventoryRouter.post('/products', async (req, res, next) => {
   try {
-    const { name, categoryId, unit, sellingPrice } = req.body || {};
+    const { name, categoryId, unit, sellingPrice, costPrice } = req.body || {};
     if (!name || !String(name).trim()) {
       throw new ApiError(400, 'VALIDATION_ERROR', 'Tên sản phẩm là bắt buộc', {
         name: 'Bắt buộc',
@@ -129,6 +129,14 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
       throw new ApiError(403, 'SELLING_PRICE_FORBIDDEN', 'Chỉ Quản lý/Admin mới được đặt giá bán');
     }
 
+    const cost = costPrice !== undefined ? Math.round(Number(costPrice)) : 0;
+    if (isNaN(cost) || cost < 0) {
+      throw new ApiError(400, 'INVALID_COST_PRICE', 'Giá gốc phải là số nguyên không âm');
+    }
+    if (cost > 0 && !isPriceManager(req.user?.role)) {
+      throw new ApiError(403, 'COST_PRICE_FORBIDDEN', 'Chỉ Quản lý/Admin mới được đặt giá gốc');
+    }
+
     // BR-05: Tồn kho khởi tạo luôn = 0, không cho phép nhập tay trực tiếp khi tạo
     const created = await productRepo.create({
       code,
@@ -138,6 +146,7 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
       categoryName: category.name,
       unit: unit ? String(unit).trim() : 'Cái',
       sellingPrice: price,
+      costPrice: cost,
       stock: 0,
       status: 'ACTIVE',
     });
@@ -236,7 +245,14 @@ productsInventoryRouter.patch('/products/:id', async (req, res, next) => {
 productsInventoryRouter.get('/inventory/movements', async (req, res, next) => {
   try {
     const { productId, type, from, to, search } = req.query;
-    const movements = await stockMovementRepo.find({}, { createdAt: -1 });
+    const [movements, allProducts] = await Promise.all([
+      stockMovementRepo.find({}, { createdAt: -1 }),
+      productRepo.find({}),
+    ]);
+
+    const hideCost = req.user?.role === 'SALES';
+    const prodById = new Map(allProducts.map((p) => [String(p._id), p]));
+    const prodByCode = new Map(allProducts.map((p) => [String(p.code), p]));
 
     const fromDate = from ? new Date(String(from)) : null;
     if (fromDate) fromDate.setHours(0, 0, 0, 0);
@@ -244,23 +260,33 @@ productsInventoryRouter.get('/inventory/movements', async (req, res, next) => {
     const toDate = to ? new Date(String(to)) : null;
     if (toDate) toDate.setHours(23, 59, 59, 999);
 
-    const filtered = movements.filter((m) => {
-      if (productId && String(m.productId) !== String(productId)) return false;
-      if (type && m.type !== String(type).toUpperCase()) return false;
-      const mTime = new Date(m.createdAt).getTime();
-      if (fromDate && mTime < fromDate.getTime()) return false;
-      if (toDate && mTime > toDate.getTime()) return false;
-      if (search) {
-        const q = String(search).toLowerCase();
-        const match =
-          m.productCode.toLowerCase().includes(q) ||
-          m.productName.toLowerCase().includes(q) ||
-          m.referenceCode.toLowerCase().includes(q) ||
-          (m.note || '').toLowerCase().includes(q);
-        if (!match) return false;
-      }
-      return true;
-    });
+    const filtered = movements
+      .filter((m) => {
+        if (productId && String(m.productId) !== String(productId)) return false;
+        if (type && m.type !== String(type).toUpperCase()) return false;
+        const mTime = new Date(m.createdAt).getTime();
+        if (fromDate && mTime < fromDate.getTime()) return false;
+        if (toDate && mTime > toDate.getTime()) return false;
+        if (search) {
+          const q = String(search).toLowerCase();
+          const match =
+            m.productCode.toLowerCase().includes(q) ||
+            m.productName.toLowerCase().includes(q) ||
+            m.referenceCode.toLowerCase().includes(q) ||
+            (m.note || '').toLowerCase().includes(q);
+          if (!match) return false;
+        }
+        return true;
+      })
+      .map((m) => {
+        const prod = prodById.get(String(m.productId)) || prodByCode.get(String(m.productCode));
+        return {
+          ...(m as any),
+          sellingPrice: Number(prod?.sellingPrice || 0),
+          currentStock: Number(prod?.stock ?? m.balanceAfter ?? 0),
+          ...(hideCost ? {} : { costPrice: Number(prod?.costPrice || 0) }),
+        };
+      });
 
     res.json({
       data: filtered,
@@ -276,6 +302,7 @@ productsInventoryRouter.get('/inventory/movements', async (req, res, next) => {
 productsInventoryRouter.get('/inventory/report', async (req, res, next) => {
   try {
     const { from, to, categoryId, search } = req.query;
+    const hideCost = req.user?.role === 'SALES';
 
     const fromDate = from ? new Date(String(from)) : new Date(0);
     if (from) fromDate.setHours(0, 0, 0, 0);
@@ -334,7 +361,8 @@ productsInventoryRouter.get('/inventory/report', async (req, res, next) => {
           categoryCode: product.categoryCode,
           categoryName: product.categoryName,
           unit: product.unit,
-          sellingPrice: product.sellingPrice,
+          sellingPrice: Number(product.sellingPrice || 0),
+          ...(hideCost ? {} : { costPrice: Number(product.costPrice || 0) }),
           openingStock,
           importedQty,
           soldQty,

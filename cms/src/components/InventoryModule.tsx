@@ -2,7 +2,12 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import ExportExcelButton from "./ExportExcelButton";
-import { exportProducts, exportInventoryReport, exportMovements, exportImports } from "@/lib/exports";
+import {
+  exportProducts,
+  exportInventoryReport,
+  exportMovements,
+  exportImports,
+} from "@/lib/exports";
 import {
   Product,
   Category,
@@ -24,6 +29,8 @@ import {
   CheckCircle2,
   AlertCircle,
   Search,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
 type SubTab = "PRODUCTS" | "REPORT" | "MOVEMENTS" | "IMPORTS" | "ADJUSTMENT";
@@ -36,6 +43,7 @@ export default function InventoryModule() {
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [reportRows, setReportRows] = useState<InventoryReportRow[]>([]);
   const [importsList, setImportsList] = useState<any[]>([]);
+  const [expandedImportId, setExpandedImportId] = useState<string | null>(null);
 
   // Filter
   const [search, setSearch] = useState("");
@@ -44,13 +52,15 @@ export default function InventoryModule() {
   const [toDate, setToDate] = useState("");
   const [movementType, setMovementType] = useState("");
 
-  // Giá bán chỉnh sửa theo productId
+  // Giá gốc & Giá bán chỉnh sửa theo productId
+  const [editingCosts, setEditingCosts] = useState<Record<string, number>>({});
   const [editingPrices, setEditingPrices] = useState<Record<string, number>>({});
 
   // Tạo sản phẩm mới nhanh
   const [newProdName, setNewProdName] = useState("");
   const [newProdCatId, setNewProdCatId] = useState("");
   const [newProdUnit, setNewProdUnit] = useState("Cái");
+  const [newProdCost, setNewProdCost] = useState<number>(0);
   const [newProdPrice, setNewProdPrice] = useState<number>(0);
 
   // Lập phiếu điều chỉnh kho
@@ -80,10 +90,13 @@ export default function InventoryModule() {
       setProducts(pList);
       setCategories(cList);
 
+      const costMap: Record<string, number> = {};
       const priceMap: Record<string, number> = {};
       pList.forEach((p) => {
+        costMap[p._id] = Number(p.costPrice || 0);
         priceMap[p._id] = Number(p.sellingPrice || 0);
       });
+      setEditingCosts(costMap);
       setEditingPrices(priceMap);
 
       if (cList.length > 0 && !newProdCatId) setNewProdCatId(cList[0]._id);
@@ -154,11 +167,12 @@ export default function InventoryModule() {
     if (subTab === "IMPORTS") loadImports();
   }, [subTab, loadReport, loadMovements, loadImports]);
 
-  const handleUpdateSellingPrice = async (prod: Product) => {
+  const handleUpdateProductPrices = async (prod: Product) => {
     setStatusMsg(null);
-    const newPrice = Number(editingPrices[prod._id] ?? prod.sellingPrice);
-    if (newPrice < 0) {
-      setStatusMsg({ type: "error", text: "Giá bán không được âm." });
+    const newCost = Number(editingCosts[prod._id] ?? prod.costPrice ?? 0);
+    const newPrice = Number(editingPrices[prod._id] ?? prod.sellingPrice ?? 0);
+    if (newCost < 0 || newPrice < 0) {
+      setStatusMsg({ type: "error", text: "Giá gốc và giá bán không được âm." });
       return;
     }
     try {
@@ -167,18 +181,19 @@ export default function InventoryModule() {
         body: JSON.stringify({
           name: prod.name,
           unit: prod.unit,
+          costPrice: newCost,
           sellingPrice: newPrice,
         }),
       });
       setStatusMsg({
         type: "success",
-        text: `Đã cập nhật giá bán cho "${prod.name}" thành ${formatVND(newPrice)}!`,
+        text: `Đã lưu giá cho "${prod.name}": Giá gốc ${formatVND(newCost)} · Giá bán ${formatVND(newPrice)}!`,
       });
       loadProductsAndCats();
     } catch (err: any) {
       setStatusMsg({
         type: "error",
-        text: err?.message || "Lỗi khi cập nhật giá bán sản phẩm.",
+        text: err?.message || "Lỗi khi cập nhật giá sản phẩm.",
       });
     }
   };
@@ -194,7 +209,8 @@ export default function InventoryModule() {
           name: newProdName.trim(),
           categoryId: newProdCatId,
           unit: newProdUnit,
-          sellingPrice: Number(newProdPrice || 0),
+          costPrice: Math.max(0, Number(newProdCost || 0)),
+          sellingPrice: Math.max(0, Number(newProdPrice || 0)),
         }),
       });
       setStatusMsg({
@@ -204,6 +220,8 @@ export default function InventoryModule() {
         )}" thành công!`,
       });
       setNewProdName("");
+      setNewProdCost(0);
+      setNewProdPrice(0);
       loadProductsAndCats();
     } catch (err: any) {
       setStatusMsg({
@@ -246,6 +264,21 @@ export default function InventoryModule() {
     }
   };
 
+  // Thống kê tổng hợp trên danh sách sản phẩm đang hiển thị
+  const totalStockQty = products.reduce((s, p) => s + (Number(p.stock) || 0), 0);
+  const totalCostInventoryValue = products.reduce(
+    (s, p) => s + (Number(p.stock) || 0) * (Number(editingCosts[p._id] ?? p.costPrice) || 0),
+    0
+  );
+  const totalSellInventoryValue = products.reduce(
+    (s, p) => s + (Number(p.stock) || 0) * (Number(editingPrices[p._id] ?? p.sellingPrice) || 0),
+    0
+  );
+  const totalExpectedMargin = totalSellInventoryValue - totalCostInventoryValue;
+
+  // Map tra cứu nhanh sản phẩm theo mã/id cho Phiếu nhập
+  const productByCode = new Map(products.map((p) => [p.code, p]));
+
   return (
     <div className="space-y-6">
       {/* Thanh chuyển Sub-Tab trong Module Kho */}
@@ -260,7 +293,7 @@ export default function InventoryModule() {
           }`}
         >
           <Package className="w-4 h-4 text-emerald-400" />
-          1. Sản phẩm & Cập nhật Giá bán
+          1. Sản phẩm, Số lượng, Giá gốc & Giá bán
         </button>
 
         <button
@@ -273,7 +306,7 @@ export default function InventoryModule() {
           }`}
         >
           <BarChart3 className="w-4 h-4 text-emerald-400" />
-          2. Báo cáo Tồn kho theo kỳ (Đầu kỳ / Cuối kỳ)
+          2. Báo cáo Tồn kho theo kỳ (SL, Giá gốc, Giá bán)
         </button>
 
         <button
@@ -286,7 +319,7 @@ export default function InventoryModule() {
           }`}
         >
           <BookOpen className="w-4 h-4 text-emerald-400" />
-          3. Sổ kho (Stock Movements)
+          3. Sổ kho (Số lượng, Giá gốc, Giá bán)
         </button>
 
         <button
@@ -333,10 +366,65 @@ export default function InventoryModule() {
         </div>
       )}
 
-      {/* SUB-TAB 1: SẢN PHẨM & CẬP NHẬT GIÁ BÁN LẺ */}
+      {/* SUB-TAB 1: SẢN PHẨM, SỐ LƯỢNG, GIÁ GỐC & GIÁ BÁN LẺ */}
       {subTab === "PRODUCTS" && (
         <div className="space-y-6">
-          {/* Form tạo nhanh sản phẩm mới (Mã tự sinh từ ngoặc đơn) */}
+          {/* 4 Thẻ KPI Tổng hợp Số lượng, Giá gốc, Giá bán */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+              <div className="text-[11px] font-bold uppercase text-slate-500">
+                Tổng số lượng tồn kho ({products.length} mã SP)
+              </div>
+              <div className="text-2xl font-extrabold font-mono text-slate-900 mt-1">
+                {totalStockQty.toLocaleString("vi-VN")}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-0.5">
+                Đơn vị sản phẩm đang có trong kho
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+              <div className="text-[11px] font-bold uppercase text-slate-500">
+                Tổng giá trị kho (Theo Giá gốc)
+              </div>
+              <div className="text-2xl font-extrabold font-mono text-amber-700 mt-1">
+                {formatVND(totalCostInventoryValue)}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-0.5">
+                Chỉ hiển thị cho Quản lý/Admin (ẩn với Saler)
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+              <div className="text-[11px] font-bold uppercase text-slate-500">
+                Tổng giá trị kho (Theo Giá bán)
+              </div>
+              <div className="text-2xl font-extrabold font-mono text-emerald-700 mt-1">
+                {formatVND(totalSellInventoryValue)}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-0.5">
+                Doanh thu dự kiến nếu bán hết tồn kho
+              </div>
+            </div>
+
+            <div className="bg-slate-900 text-white rounded-xl p-4 shadow-sm">
+              <div className="text-[11px] font-bold uppercase text-emerald-400">
+                Lãi gộp dự kiến trên tồn kho
+              </div>
+              <div
+                className={`text-2xl font-extrabold font-mono mt-1 ${
+                  totalExpectedMargin >= 0 ? "text-emerald-400" : "text-red-400"
+                }`}
+              >
+                {formatVND(totalExpectedMargin)}
+              </div>
+              <div className="text-[11px] text-slate-300 mt-0.5">
+                = Tổng giá bán − Tổng giá gốc
+              </div>
+            </div>
+          </div>
+
+          {/* Form tạo nhanh sản phẩm mới (Mã tự sinh từ ngoặc đơn + Giá gốc + Giá bán) */}
           <form
             onSubmit={handleCreateProduct}
             className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4"
@@ -346,7 +434,7 @@ export default function InventoryModule() {
               Thêm Sản phẩm mới (Tự sinh Mã sản phẩm từ `(...)` theo BR-03)
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-              <div className="md:col-span-5">
+              <div className="md:col-span-4">
                 <label className="block text-xs font-bold text-slate-600 mb-1">
                   Tên hàng hóa (Có chứa ngoặc đơn) *
                 </label>
@@ -359,9 +447,9 @@ export default function InventoryModule() {
                   className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs"
                 />
               </div>
-              <div className="md:col-span-3">
+              <div className="md:col-span-2">
                 <label className="block text-xs font-bold text-slate-600 mb-1">
-                  Mã tự sinh (Xem trước)
+                  Mã tự sinh
                 </label>
                 <input
                   type="text"
@@ -387,6 +475,32 @@ export default function InventoryModule() {
                   ))}
                 </select>
               </div>
+              <div className="md:col-span-1">
+                <label className="block text-xs font-bold text-slate-600 mb-1">
+                  Giá gốc
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step={1000}
+                  value={newProdCost}
+                  onChange={(e) => setNewProdCost(Math.max(0, Number(e.target.value)))}
+                  className="w-full px-2 py-2 rounded-lg border border-slate-300 text-xs font-mono text-right"
+                />
+              </div>
+              <div className="md:col-span-1">
+                <label className="block text-xs font-bold text-slate-600 mb-1">
+                  Giá bán
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step={1000}
+                  value={newProdPrice}
+                  onChange={(e) => setNewProdPrice(Math.max(0, Number(e.target.value)))}
+                  className="w-full px-2 py-2 rounded-lg border border-slate-300 text-xs font-mono text-right"
+                />
+              </div>
               <div className="md:col-span-2">
                 <button
                   type="submit"
@@ -398,15 +512,15 @@ export default function InventoryModule() {
             </div>
           </form>
 
-          {/* Bảng danh sách sản phẩm & Cập nhật giá bán */}
+          {/* Bảng danh sách sản phẩm: Số lượng, Giá gốc & Giá bán */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h3 className="font-bold text-slate-900 text-base">
-                  Danh mục Sản phẩm & Cập nhật Giá bán lẻ (BR-04)
+                  Danh mục Sản phẩm — Số lượng, Giá gốc & Giá bán lẻ (BR-04)
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Sản phẩm mới tạo khi Nhập kho có giá bán mặc định = 0 ₫. Giá gốc do thủ kho nhập khi lập phiếu nhập; Quản lý/Admin tham khảo giá gốc và cập nhật giá bán lẻ tại đây để mở bán trên POS.
+                  Quản lý/Admin xem và cập nhật cả <strong>Giá gốc</strong> lẫn <strong>Giá bán lẻ</strong>. Bên màn hình Saler (nhân viên bán hàng) chỉ nhìn thấy <strong>Số lượng</strong> và <strong>Giá bán</strong>, hoàn toàn không thấy Giá gốc.
                 </p>
               </div>
 
@@ -447,103 +561,140 @@ export default function InventoryModule() {
                     <th className="py-3 px-3">Mã hàng (Không sửa)</th>
                     <th className="py-3 px-3">Tên sản phẩm</th>
                     <th className="py-3 px-3">Category</th>
-                    <th className="py-3 px-3 text-center">ĐVT</th>
-                    <th className="py-3 px-3 text-right">Tồn kho (Sổ kho)</th>
-                    <th className="py-3 px-3 text-right whitespace-nowrap">Giá gốc (VND)</th>
-                    <th className="py-3 px-3 text-right w-48">Giá bán lẻ (VND)</th>
+                    <th className="py-3 px-2.5 text-center">ĐVT</th>
+                    <th className="py-3 px-3 text-right whitespace-nowrap">Số lượng tồn</th>
+                    <th className="py-3 px-3 text-right w-44 whitespace-nowrap">Giá gốc (VND)</th>
+                    <th className="py-3 px-3 text-right w-44 whitespace-nowrap">Giá bán lẻ (VND)</th>
                     <th className="py-3 px-3 text-right w-32">Thao tác</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {products.map((p) => (
-                    <tr key={p._id} className="hover:bg-slate-50">
-                      <td className="py-3 px-3 font-mono font-bold text-slate-800">
-                        {p.code}
-                      </td>
-                      <td className="py-3 px-3 font-semibold text-slate-900">
-                        {p.name}
-                      </td>
-                      <td className="py-3 px-3 text-slate-600">
-                        {p.categoryName ||
-                          (typeof p.categoryId === "object" && p.categoryId?.name) ||
-                          "-"}
-                      </td>
-                      <td className="py-3 px-3 text-center">{p.unit}</td>
-                      <td className="py-3 px-3 text-right font-mono font-extrabold text-emerald-700">
-                        {p.stock}
-                      </td>
-                      <td className="py-3 px-3 text-right font-mono text-slate-700 whitespace-nowrap">
-                        {Number(p.costPrice) > 0 ? (
-                          formatVND(p.costPrice)
-                        ) : (
-                          <span className="text-slate-400">Chưa có</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-3 text-right">
-                        <input
-                          type="number"
-                          min={0}
-                          step={1000}
-                          value={editingPrices[p._id] ?? p.sellingPrice}
-                          onChange={(e) =>
-                            setEditingPrices((prev) => ({
-                              ...prev,
-                              [p._id]: Math.max(0, Number(e.target.value)),
-                            }))
-                          }
-                          className={`w-40 px-2.5 py-1.5 rounded border text-right font-mono font-bold ${
-                            (editingPrices[p._id] ?? p.sellingPrice) === 0
-                              ? "border-amber-400 bg-amber-50 text-amber-900"
-                              : "border-slate-300 bg-white text-slate-900"
-                          }`}
-                        />
-                        {(() => {
-                          const sell = Number(editingPrices[p._id] ?? p.sellingPrice) || 0;
-                          const cost = Number(p.costPrice) || 0;
-                          if (sell <= 0 || cost <= 0) return null;
-                          const margin = sell - cost;
-                          return (
+                  {products.map((p) => {
+                    const qty = Number(p.stock) || 0;
+                    const costVal = Number(editingCosts[p._id] ?? p.costPrice ?? 0);
+                    const sellVal = Number(editingPrices[p._id] ?? p.sellingPrice ?? 0);
+                    const margin = sellVal - costVal;
+                    return (
+                      <tr key={p._id} className="hover:bg-slate-50">
+                        <td className="py-3 px-3 font-mono font-bold text-slate-800">
+                          {p.code}
+                        </td>
+                        <td className="py-3 px-3 font-semibold text-slate-900">
+                          {p.name}
+                        </td>
+                        <td className="py-3 px-3 text-slate-600">
+                          {p.categoryName ||
+                            (typeof p.categoryId === "object" && p.categoryId?.name) ||
+                            "-"}
+                        </td>
+                        <td className="py-3 px-2.5 text-center">{p.unit}</td>
+                        <td className="py-3 px-3 text-right font-mono font-extrabold text-emerald-700">
+                          {qty}
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          <input
+                            type="number"
+                            min={0}
+                            step={1000}
+                            value={costVal}
+                            onChange={(e) =>
+                              setEditingCosts((prev) => ({
+                                ...prev,
+                                [p._id]: Math.max(0, Number(e.target.value)),
+                              }))
+                            }
+                            className={`w-36 px-2.5 py-1.5 rounded border text-right font-mono font-bold ${
+                              costVal === 0
+                                ? "border-orange-300 bg-orange-50 text-orange-900"
+                                : "border-slate-300 bg-white text-slate-800"
+                            }`}
+                          />
+                          <div className="mt-1 text-[10px] text-slate-500 font-mono">
+                            Tổng vốn: {formatVND(qty * costVal)}
+                          </div>
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          <input
+                            type="number"
+                            min={0}
+                            step={1000}
+                            value={sellVal}
+                            onChange={(e) =>
+                              setEditingPrices((prev) => ({
+                                ...prev,
+                                [p._id]: Math.max(0, Number(e.target.value)),
+                              }))
+                            }
+                            className={`w-36 px-2.5 py-1.5 rounded border text-right font-mono font-bold ${
+                              sellVal === 0
+                                ? "border-amber-400 bg-amber-50 text-amber-900"
+                                : "border-slate-300 bg-white text-slate-900"
+                            }`}
+                          />
+                          <div className="mt-1 text-[10px] text-slate-500 font-mono">
+                            Tổng bán: {formatVND(qty * sellVal)}
+                          </div>
+                          {sellVal > 0 && costVal > 0 && (
                             <div
-                              className={`mt-1 text-[10px] font-bold ${
+                              className={`mt-0.5 text-[10px] font-bold ${
                                 margin < 0 ? "text-red-600" : "text-emerald-700"
                               }`}
                             >
-                              {margin < 0 ? "Lỗ" : "Lãi"}: {formatVND(Math.abs(margin))} (
-                              {Math.round((margin / cost) * 100)}%)
+                              {margin < 0 ? "Lỗ" : "Lãi"}: {formatVND(Math.abs(margin))}/SP (
+                              {Math.round((margin / costVal) * 100)}%)
                             </div>
-                          );
-                        })()}
-                      </td>
-                      <td className="py-3 px-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => handleUpdateSellingPrice(p)}
-                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold inline-flex items-center gap-1"
-                        >
-                          <Save className="w-3.5 h-3.5" /> Lưu giá
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                          )}
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateProductPrices(p)}
+                            className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold inline-flex items-center gap-1"
+                          >
+                            <Save className="w-3.5 h-3.5" /> Lưu giá
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
+                {products.length > 0 && (
+                  <tfoot className="bg-slate-100 border-t-2 border-slate-300 font-extrabold text-slate-900">
+                    <tr>
+                      <td colSpan={4} className="py-3 px-3 text-right uppercase">
+                        Tổng cộng ({products.length} sản phẩm):
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono text-emerald-700">
+                        {totalStockQty}
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono text-amber-800">
+                        {formatVND(totalCostInventoryValue)}
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono text-emerald-800">
+                        {formatVND(totalSellInventoryValue)}
+                      </td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
           </div>
         </div>
       )}
 
-      {/* SUB-TAB 2: BÁO CÁO TỒN KHO THEO KỲ (TỒN ĐẦU KỲ / CUỐI KỲ) */}
+      {/* SUB-TAB 2: BÁO CÁO TỒN KHO THEO KỲ (SỐ LƯỢNG + GIÁ GỐC + GIÁ BÁN) */}
       {subTab === "REPORT" && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <h3 className="font-bold text-slate-900 text-base">
-                Báo cáo Kế toán Tồn kho theo kỳ (BR-06)
+                Báo cáo Kế toán Tồn kho theo kỳ — Số lượng, Giá gốc & Giá bán (BR-06)
               </h3>
               <p className="text-xs text-slate-500">
                 Công thức chuẩn:{" "}
                 <strong className="text-slate-800">
-                  Tồn cuối kỳ = Tồn đầu kỳ + Nhập trong kỳ − Bán trong kỳ ± Điều chỉnh
+                  Số lượng Tồn cuối kỳ = Tồn đầu kỳ + Nhập trong kỳ − Bán trong kỳ ± Điều chỉnh
                 </strong>
               </p>
             </div>
@@ -582,84 +733,144 @@ export default function InventoryModule() {
                 <tr>
                   <th className="py-3 px-3">Mã sản phẩm</th>
                   <th className="py-3 px-3">Tên sản phẩm</th>
-                  <th className="py-3 px-3 text-center">ĐVT</th>
-                  <th className="py-3 px-3 text-right">Tồn Đầu Kỳ</th>
-                  <th className="py-3 px-3 text-right text-emerald-300">
-                    + Nhập Trong Kỳ
-                  </th>
-                  <th className="py-3 px-3 text-right text-amber-300">
-                    − Bán Trong Kỳ
-                  </th>
-                  <th className="py-3 px-3 text-right text-blue-300">
-                    ± Trả/Đổi/Điều Chỉnh
-                  </th>
+                  <th className="py-3 px-2.5 text-center">ĐVT</th>
+                  <th className="py-3 px-2.5 text-right">Đầu Kỳ</th>
+                  <th className="py-3 px-2.5 text-right text-emerald-300">+ Nhập</th>
+                  <th className="py-3 px-2.5 text-right text-amber-300">− Bán</th>
+                  <th className="py-3 px-2.5 text-right text-blue-300">± Đ.Chỉnh</th>
                   <th className="py-3 px-3 text-right font-extrabold bg-slate-800">
-                    = Tồn Cuối Kỳ
+                    = SL Tồn Cuối
+                  </th>
+                  <th className="py-3 px-3 text-right whitespace-nowrap">Giá gốc (VND)</th>
+                  <th className="py-3 px-3 text-right whitespace-nowrap">Giá bán (VND)</th>
+                  <th className="py-3 px-3 text-right whitespace-nowrap bg-slate-800 text-amber-300">
+                    Tổng vốn tồn
+                  </th>
+                  <th className="py-3 px-3 text-right whitespace-nowrap bg-slate-800 text-emerald-300">
+                    Tổng giá bán tồn
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {reportRows.map((r, i) => (
-                  <tr key={r.productId || i} className="hover:bg-slate-50">
-                    <td className="py-3 px-3 font-mono font-bold">{r.productCode}</td>
-                    <td className="py-3 px-3 font-semibold">{r.productName}</td>
-                    <td className="py-3 px-3 text-center">{r.unit}</td>
-                    <td className="py-3 px-3 text-right font-mono font-bold">
-                      {r.openingStock}
+                {reportRows.map((r, i) => {
+                  const cost = Number(r.costPrice) || 0;
+                  const sell = Number(r.sellingPrice) || 0;
+                  const closing = Number(r.closingStock) || 0;
+                  return (
+                    <tr key={r.productId || i} className="hover:bg-slate-50">
+                      <td className="py-3 px-3 font-mono font-bold">{r.productCode}</td>
+                      <td className="py-3 px-3 font-semibold">{r.productName}</td>
+                      <td className="py-3 px-2.5 text-center">{r.unit}</td>
+                      <td className="py-3 px-2.5 text-right font-mono font-bold">
+                        {r.openingStock}
+                      </td>
+                      <td className="py-3 px-2.5 text-right font-mono font-bold text-emerald-700">
+                        +{r.importedQty}
+                      </td>
+                      <td className="py-3 px-2.5 text-right font-mono font-bold text-amber-700">
+                        -{r.soldQty}
+                      </td>
+                      <td className="py-3 px-2.5 text-right font-mono font-bold text-blue-700">
+                        {r.adjustedAndReturnedQty > 0
+                          ? `+${r.adjustedAndReturnedQty}`
+                          : r.adjustedAndReturnedQty}
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono font-extrabold text-slate-900 bg-slate-50">
+                        {closing}
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono text-slate-700 whitespace-nowrap">
+                        {cost > 0 ? formatVND(cost) : <span className="text-slate-400">0 ₫</span>}
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
+                        {sell > 0 ? formatVND(sell) : <span className="text-amber-700">0 ₫</span>}
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono font-semibold text-amber-800 bg-amber-50/40 whitespace-nowrap">
+                        {formatVND(closing * cost)}
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono font-semibold text-emerald-800 bg-emerald-50/40 whitespace-nowrap">
+                        {formatVND(closing * sell)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              {reportRows.length > 0 && (
+                <tfoot className="bg-slate-100 border-t-2 border-slate-300 font-extrabold text-slate-900">
+                  <tr>
+                    <td colSpan={3} className="py-3 px-3 text-right uppercase">
+                      Tổng cộng ({reportRows.length} SP):
                     </td>
-                    <td className="py-3 px-3 text-right font-mono font-bold text-emerald-700">
-                      +{r.importedQty}
+                    <td className="py-3 px-2.5 text-right font-mono">
+                      {reportRows.reduce((s, r) => s + (Number(r.openingStock) || 0), 0)}
                     </td>
-                    <td className="py-3 px-3 text-right font-mono font-bold text-amber-700">
-                      -{r.soldQty}
+                    <td className="py-3 px-2.5 text-right font-mono text-emerald-700">
+                      +{reportRows.reduce((s, r) => s + (Number(r.importedQty) || 0), 0)}
                     </td>
-                    <td className="py-3 px-3 text-right font-mono font-bold text-blue-700">
-                      {r.adjustedAndReturnedQty > 0
-                        ? `+${r.adjustedAndReturnedQty}`
-                        : r.adjustedAndReturnedQty}
+                    <td className="py-3 px-2.5 text-right font-mono text-amber-700">
+                      -{reportRows.reduce((s, r) => s + (Number(r.soldQty) || 0), 0)}
                     </td>
-                    <td className="py-3 px-3 text-right font-mono font-extrabold text-slate-900 bg-slate-50">
-                      {r.closingStock}
+                    <td className="py-3 px-2.5 text-right font-mono text-blue-700">
+                      {reportRows.reduce((s, r) => s + (Number(r.adjustedAndReturnedQty) || 0), 0)}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono">
+                      {reportRows.reduce((s, r) => s + (Number(r.closingStock) || 0), 0)}
+                    </td>
+                    <td colSpan={2}></td>
+                    <td className="py-3 px-3 text-right font-mono text-amber-800 whitespace-nowrap">
+                      {formatVND(
+                        reportRows.reduce(
+                          (s, r) => s + (Number(r.closingStock) || 0) * (Number(r.costPrice) || 0),
+                          0
+                        )
+                      )}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono text-emerald-800 whitespace-nowrap">
+                      {formatVND(
+                        reportRows.reduce(
+                          (s, r) => s + (Number(r.closingStock) || 0) * (Number(r.sellingPrice) || 0),
+                          0
+                        )
+                      )}
                     </td>
                   </tr>
-                ))}
-              </tbody>
+                </tfoot>
+              )}
             </table>
           </div>
         </div>
       )}
 
-      {/* SUB-TAB 3: SỔ KHO (STOCK MOVEMENTS) */}
+      {/* SUB-TAB 3: SỔ KHO (STOCK MOVEMENTS — SỐ LƯỢNG, GIÁ GỐC, GIÁ BÁN) */}
       {subTab === "MOVEMENTS" && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="font-bold text-slate-900 text-base">
-                Sổ Kho Kế Toán (Stock Movements — BR-07)
+                Sổ Kho Kế Toán — Số lượng, Giá gốc & Giá bán (Stock Movements — BR-07)
               </h3>
               <p className="text-xs text-slate-500">
-                Lưu vết toàn bộ lịch sử biến động tồn kho kèm mã chứng từ tham chiếu và nhân viên thực hiện.
+                Lưu vết toàn bộ lịch sử biến động tồn kho kèm Số lượng, Giá gốc, Giá bán, mã chứng từ tham chiếu và nhân viên thực hiện.
               </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-            <ExportExcelButton
-              onExport={() => exportMovements(movements, movementType)}
-              disabled={movements.length === 0}
-            />
-            <select
-              value={movementType}
-              onChange={(e) => setMovementType(e.target.value)}
-              className="px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white font-semibold"
-            >
-              <option value="">Tất cả loại giao dịch</option>
-              <option value="IMPORT">IMPORT (Nhập kho)</option>
-              <option value="SALE">SALE (Bán hàng)</option>
-              <option value="RETURN">RETURN (Trả hàng)</option>
-              <option value="EXCHANGE_IN">EXCHANGE_IN (Nhận hàng đổi)</option>
-              <option value="EXCHANGE_OUT">EXCHANGE_OUT (Xuất hàng đổi)</option>
-              <option value="ADJUSTMENT">ADJUSTMENT (Điều chỉnh kho)</option>
-            </select>
+              <ExportExcelButton
+                onExport={() => exportMovements(movements, movementType)}
+                disabled={movements.length === 0}
+              />
+              <select
+                value={movementType}
+                onChange={(e) => setMovementType(e.target.value)}
+                className="px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white font-semibold"
+              >
+                <option value="">Tất cả loại giao dịch</option>
+                <option value="IMPORT">IMPORT (Nhập kho)</option>
+                <option value="SALE">SALE (Bán hàng)</option>
+                <option value="RETURN">RETURN (Trả hàng)</option>
+                <option value="EXCHANGE_IN">EXCHANGE_IN (Nhận hàng đổi)</option>
+                <option value="EXCHANGE_OUT">EXCHANGE_OUT (Xuất hàng đổi)</option>
+                <option value="ADJUSTMENT">ADJUSTMENT (Điều chỉnh kho)</option>
+              </select>
             </div>
           </div>
 
@@ -670,54 +881,72 @@ export default function InventoryModule() {
                   <th className="py-3 px-3">Thời gian</th>
                   <th className="py-3 px-3">Loại</th>
                   <th className="py-3 px-3">Sản phẩm</th>
-                  <th className="py-3 px-3 text-right">Biến động</th>
-                  <th className="py-3 px-3 text-right">Tồn sau GD</th>
+                  <th className="py-3 px-3 text-right whitespace-nowrap">SL Biến động</th>
+                  <th className="py-3 px-3 text-right whitespace-nowrap">SL Tồn sau GD</th>
+                  <th className="py-3 px-3 text-right whitespace-nowrap">Giá gốc (VND)</th>
+                  <th className="py-3 px-3 text-right whitespace-nowrap">Giá bán (VND)</th>
                   <th className="py-3 px-3">Chứng từ</th>
                   <th className="py-3 px-3">Ghi chú</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {movements.map((m) => (
-                  <tr key={m._id} className="hover:bg-slate-50">
-                    <td className="py-2.5 px-3 text-slate-500">
-                      {formatDateTime(m.createdAt)}
-                    </td>
-                    <td className="py-2.5 px-3 font-mono font-bold">{m.type}</td>
-                    <td className="py-2.5 px-3">
-                      <div className="font-semibold text-slate-900">{m.productName}</div>
-                      <div className="font-mono text-[10px] text-slate-500">
-                        {m.productCode}
-                      </div>
-                    </td>
-                    <td
-                      className={`py-2.5 px-3 text-right font-mono font-extrabold ${
-                        m.quantityChange > 0 ? "text-emerald-700" : "text-red-600"
-                      }`}
-                    >
-                      {m.quantityChange > 0 ? `+${m.quantityChange}` : m.quantityChange}
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-mono font-bold">
-                      {m.balanceAfter}
-                    </td>
-                    <td className="py-2.5 px-3 font-mono font-semibold text-blue-700">
-                      {m.referenceCode || "-"}
-                    </td>
-                    <td className="py-2.5 px-3 text-slate-600">{m.note || "-"}</td>
-                  </tr>
-                ))}
+                {movements.map((m) => {
+                  const fallbackProd = productByCode.get(m.productCode);
+                  const cost = Number(m.costPrice ?? fallbackProd?.costPrice ?? 0);
+                  const sell = Number(m.sellingPrice ?? fallbackProd?.sellingPrice ?? 0);
+                  return (
+                    <tr key={m._id} className="hover:bg-slate-50">
+                      <td className="py-2.5 px-3 text-slate-500 whitespace-nowrap">
+                        {formatDateTime(m.createdAt)}
+                      </td>
+                      <td className="py-2.5 px-3 font-mono font-bold">{m.type}</td>
+                      <td className="py-2.5 px-3">
+                        <div className="font-semibold text-slate-900">{m.productName}</div>
+                        <div className="font-mono text-[10px] text-slate-500">
+                          {m.productCode}
+                        </div>
+                      </td>
+                      <td
+                        className={`py-2.5 px-3 text-right font-mono font-extrabold ${
+                          m.quantityChange > 0 ? "text-emerald-700" : "text-red-600"
+                        }`}
+                      >
+                        {m.quantityChange > 0 ? `+${m.quantityChange}` : m.quantityChange}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-mono font-bold">
+                        {m.balanceAfter}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-mono text-amber-800 whitespace-nowrap">
+                        {cost > 0 ? formatVND(cost) : <span className="text-slate-400">0 ₫</span>}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-800 whitespace-nowrap">
+                        {sell > 0 ? formatVND(sell) : <span className="text-slate-400">0 ₫</span>}
+                      </td>
+                      <td className="py-2.5 px-3 font-mono font-semibold text-blue-700 whitespace-nowrap">
+                        {m.referenceCode || "-"}
+                      </td>
+                      <td className="py-2.5 px-3 text-slate-600">{m.note || "-"}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </div>
       )}
 
-      {/* SUB-TAB 4: DANH SÁCH PHIẾU NHẬP KHO */}
+      {/* SUB-TAB 4: DANH SÁCH PHIẾU NHẬP KHO (KÈM SỐ LƯỢNG, GIÁ GỐC, GIÁ BÁN) */}
       {subTab === "IMPORTS" && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h3 className="font-bold text-slate-900 text-base">
-              Danh sách Phiếu Nhập Kho (BR-09, BR-10)
-            </h3>
+            <div>
+              <h3 className="font-bold text-slate-900 text-base">
+                Danh sách Phiếu Nhập Kho — Số lượng, Giá gốc & Giá bán (BR-09, BR-10)
+              </h3>
+              <p className="text-xs text-slate-500">
+                Bấm vào một dòng phiếu nhập để xem chi tiết từng mặt hàng (Số lượng, Giá gốc, Giá bán).
+              </p>
+            </div>
             <ExportExcelButton
               label="Xuất Excel (kèm chi tiết hàng)"
               onExport={() => exportImports(importsList)}
@@ -730,69 +959,174 @@ export default function InventoryModule() {
                 <tr>
                   <th className="py-3 px-3">Mã Phiếu</th>
                   <th className="py-3 px-3">Trạng thái</th>
-                  <th className="py-3 px-3">Số dòng hàng</th>
+                  <th className="py-3 px-3 text-right">Số dòng</th>
+                  <th className="py-3 px-3 text-right">Tổng SL thực nhận</th>
                   <th className="py-3 px-3 text-right">Tổng giá gốc</th>
+                  <th className="py-3 px-3 text-right">Tổng theo giá bán</th>
                   <th className="py-3 px-3">Người lập</th>
                   <th className="py-3 px-3">Người kiểm (chiếc)</th>
                   <th className="py-3 px-3">Người hoàn thành</th>
-                  <th className="py-3 px-3">Ghi chú</th>
                   <th className="py-3 px-3">Ngày tạo</th>
+                  <th className="py-3 px-2 w-10"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {importsList.map((imp) => (
-                  <tr key={imp._id} className="hover:bg-slate-50">
-                    <td className="py-3 px-3 font-mono font-bold">
-                      {imp.code || imp.receiptCode || imp._id}
-                    </td>
-                    <td className="py-3 px-3">
-                      <span
-                        className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                          imp.status === "COMPLETED"
-                            ? "bg-emerald-100 text-emerald-800"
-                            : imp.status === "CHECKING"
-                            ? "bg-amber-100 text-amber-800"
-                            : "bg-blue-100 text-blue-800"
-                        }`}
+                {importsList.map((imp) => {
+                  const items: any[] = imp.items || [];
+                  const totalQty = items.reduce(
+                    (s, it) => s + (Number(it.actualQuantity ?? it.expectedQuantity) || 0),
+                    0
+                  );
+                  const totalCost = items.reduce(
+                    (s, it) =>
+                      s +
+                      (Number(it.costPrice) || 0) *
+                        (Number(it.actualQuantity ?? it.expectedQuantity) || 0),
+                    0
+                  );
+                  const totalSell = items.reduce((s, it) => {
+                    const p = productByCode.get(it.productCode);
+                    const sellPrice = Number(p?.sellingPrice || 0);
+                    return (
+                      s + sellPrice * (Number(it.actualQuantity ?? it.expectedQuantity) || 0)
+                    );
+                  }, 0);
+                  const isExpanded = expandedImportId === imp._id;
+
+                  return (
+                    <React.Fragment key={imp._id}>
+                      <tr
+                        onClick={() =>
+                          setExpandedImportId(isExpanded ? null : imp._id)
+                        }
+                        className="hover:bg-slate-50 cursor-pointer"
                       >
-                        {imp.status}
-                      </span>
-                    </td>
-                    <td className="py-3 px-3 font-mono font-bold">
-                      {imp.items?.length || 0} mặt hàng
-                    </td>
-                    <td className="py-3 px-3 text-right font-mono font-bold">
-                      {formatVND(
-                        (imp.items || []).reduce(
-                          (sum: number, it: any) =>
-                            sum + (Number(it.costPrice) || 0) * (Number(it.actualQuantity) || 0),
-                          0
-                        )
+                        <td className="py-3 px-3 font-mono font-bold text-slate-900">
+                          {imp.code || imp.receiptCode || imp._id}
+                        </td>
+                        <td className="py-3 px-3">
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                              imp.status === "COMPLETED"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : imp.status === "CHECKING"
+                                ? "bg-amber-100 text-amber-800"
+                                : "bg-blue-100 text-blue-800"
+                            }`}
+                          >
+                            {imp.status}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono font-bold">
+                          {items.length}
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono font-extrabold text-slate-900">
+                          {totalQty}
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono font-bold text-amber-800 whitespace-nowrap">
+                          {formatVND(totalCost)}
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono font-bold text-emerald-800 whitespace-nowrap">
+                          {formatVND(totalSell)}
+                        </td>
+                        <td className="py-3 px-3 whitespace-nowrap">
+                          {imp.createdByName || "-"}
+                        </td>
+                        <td className="py-3 px-3">
+                          {(() => {
+                            const byName = new Map<string, number>();
+                            items.forEach((it: any) =>
+                              (it.scanCounts || []).forEach((s: any) =>
+                                byName.set(
+                                  s.name,
+                                  (byName.get(s.name) || 0) + (Number(s.quantity) || 0)
+                                )
+                              )
+                            );
+                            return byName.size === 0
+                              ? "-"
+                              : Array.from(byName.entries())
+                                  .map(([n, q]) => `${n} (${q})`)
+                                  .join(", ");
+                          })()}
+                        </td>
+                        <td className="py-3 px-3 whitespace-nowrap">
+                          {imp.completedByName || "-"}
+                        </td>
+                        <td className="py-3 px-3 text-slate-500 whitespace-nowrap">
+                          {formatDateTime(imp.createdAt)}
+                        </td>
+                        <td className="py-3 px-2 text-center text-slate-500">
+                          {isExpanded ? (
+                            <ChevronUp className="w-4 h-4 inline" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4 inline" />
+                          )}
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr className="bg-slate-50">
+                          <td colSpan={11} className="p-3">
+                            <div className="border border-slate-200 rounded-lg overflow-x-auto bg-white">
+                              <table className="w-full text-[11px] text-left">
+                                <thead className="bg-slate-800 text-white uppercase">
+                                  <tr>
+                                    <th className="py-2 px-2.5 text-center">STT</th>
+                                    <th className="py-2 px-2.5">Mã hàng</th>
+                                    <th className="py-2 px-2.5">Tên sản phẩm</th>
+                                    <th className="py-2 px-2.5 text-center">ĐVT</th>
+                                    <th className="py-2 px-2.5 text-right">SL Dự kiến</th>
+                                    <th className="py-2 px-2.5 text-right">SL Thực nhận</th>
+                                    <th className="py-2 px-2.5 text-right">Giá gốc (VND)</th>
+                                    <th className="py-2 px-2.5 text-right">Giá bán hiện tại</th>
+                                    <th className="py-2 px-2.5 text-right">Thành tiền (Giá gốc)</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-200">
+                                  {items.map((it: any, idx: number) => {
+                                    const prod = productByCode.get(it.productCode);
+                                    const qty = Number(it.actualQuantity ?? it.expectedQuantity) || 0;
+                                    const cost = Number(it.costPrice || prod?.costPrice || 0);
+                                    const sell = Number(prod?.sellingPrice || 0);
+                                    return (
+                                      <tr key={idx}>
+                                        <td className="py-1.5 px-2.5 text-center font-mono">
+                                          {it.stt || idx + 1}
+                                        </td>
+                                        <td className="py-1.5 px-2.5 font-mono font-bold">
+                                          {it.productCode}
+                                        </td>
+                                        <td className="py-1.5 px-2.5 font-semibold">
+                                          {it.productName}
+                                        </td>
+                                        <td className="py-1.5 px-2.5 text-center">{it.unit}</td>
+                                        <td className="py-1.5 px-2.5 text-right font-mono">
+                                          {it.expectedQuantity}
+                                        </td>
+                                        <td className="py-1.5 px-2.5 text-right font-mono font-extrabold text-emerald-700">
+                                          {qty}
+                                        </td>
+                                        <td className="py-1.5 px-2.5 text-right font-mono text-amber-800">
+                                          {formatVND(cost)}
+                                        </td>
+                                        <td className="py-1.5 px-2.5 text-right font-mono font-bold text-emerald-800">
+                                          {sell > 0 ? formatVND(sell) : "Chưa đặt (0 ₫)"}
+                                        </td>
+                                        <td className="py-1.5 px-2.5 text-right font-mono font-bold">
+                                          {formatVND(qty * cost)}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </td>
+                        </tr>
                       )}
-                    </td>
-                    <td className="py-3 px-3 whitespace-nowrap">{imp.createdByName || "-"}</td>
-                    <td className="py-3 px-3">
-                      {(() => {
-                        const byName = new Map<string, number>();
-                        (imp.items || []).forEach((it: any) =>
-                          (it.scanCounts || []).forEach((s: any) =>
-                            byName.set(s.name, (byName.get(s.name) || 0) + (Number(s.quantity) || 0))
-                          )
-                        );
-                        return byName.size === 0
-                          ? "-"
-                          : Array.from(byName.entries())
-                              .map(([n, q]) => `${n} (${q})`)
-                              .join(", ");
-                      })()}
-                    </td>
-                    <td className="py-3 px-3 whitespace-nowrap">{imp.completedByName || "-"}</td>
-                    <td className="py-3 px-3">{imp.note || "-"}</td>
-                    <td className="py-3 px-3 text-slate-500">
-                      {formatDateTime(imp.createdAt)}
-                    </td>
-                  </tr>
-                ))}
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -821,7 +1155,7 @@ export default function InventoryModule() {
               >
                 {products.map((p) => (
                   <option key={p._id} value={p._id}>
-                    {p.name} ({p.code}) — Tồn hiện tại: {p.stock} {p.unit}
+                    {p.name} ({p.code}) — Tồn: {p.stock} {p.unit} · Giá gốc: {formatVND(p.costPrice)} · Giá bán: {formatVND(p.sellingPrice)}
                   </option>
                 ))}
               </select>

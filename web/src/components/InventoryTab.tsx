@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { Product, Category, apiRequest, formatVND } from "@/lib/api";
+import { Product, Category, apiRequest, formatVND, getStoredUser } from "@/lib/api";
 import { Package, Layers, Search, Filter, RefreshCw } from "lucide-react";
 
 export default function InventoryTab() {
@@ -12,6 +12,11 @@ export default function InventoryTab() {
   const [totalProducts, setTotalProducts] = useState(0);
   const [totalStock, setTotalStock] = useState(0);
   const [loading, setLoading] = useState(false);
+
+  // Saler (role SALES) chỉ được thấy Giá bán & Số lượng, KHÔNG được thấy Giá gốc
+  const currentUser = getStoredUser();
+  const canSeeCostPrice =
+    currentUser?.role === "ADMIN" || currentUser?.role === "WAREHOUSE";
 
   const loadCategories = async () => {
     try {
@@ -50,6 +55,8 @@ export default function InventoryTab() {
     loadInventory();
   }, [loadInventory]);
 
+  const colCount = canSeeCostPrice ? 8 : 7;
+
   return (
     <div className="space-y-4 md:space-y-6">
       {/* Thẻ KPI Tổng số sản phẩm & Tổng tồn kho */}
@@ -84,11 +91,12 @@ export default function InventoryTab() {
 
         <div className="bg-slate-900 text-white rounded-xl p-4 md:p-5 shadow-sm flex flex-col justify-center sm:col-span-2 lg:col-span-1">
           <p className="text-xs font-bold uppercase text-emerald-400">
-            Quy tắc kế toán kho (BR-05)
+            Quy tắc kế toán kho & Phân quyền giá (BR-04, BR-05)
           </p>
           <p className="text-xs text-slate-300 mt-1">
-            Tồn kho được tự động tính từ <strong>Sổ kho (StockMovement)</strong> qua Nhập kho,
-            Bán hàng, Trả/Đổi và Điều chỉnh kho. Không sửa tay trực tiếp.
+            {canSeeCostPrice
+              ? "Tồn kho tự động tính từ Sổ kho (StockMovement). Bạn đang xem đầy đủ Số lượng, Giá gốc và Giá bán."
+              : "Tồn kho tự động tính từ Sổ kho. Tài khoản Bán hàng (Saler) chỉ hiển thị Số lượng và Giá bán niêm yết (ẩn Giá gốc)."}
           </p>
         </div>
       </div>
@@ -144,20 +152,23 @@ export default function InventoryTab() {
                 <th className="py-3 px-4">Tên hàng hóa</th>
                 <th className="py-3 px-4">Danh mục (Category)</th>
                 <th className="py-3 px-4 text-center">ĐVT</th>
+                <th className="py-3 px-4 text-right">Số lượng tồn kho</th>
+                {canSeeCostPrice && (
+                  <th className="py-3 px-4 text-right">Giá gốc (VND)</th>
+                )}
                 <th className="py-3 px-4 text-right">Giá bán niêm yết</th>
-                <th className="py-3 px-4 text-right">Tồn kho hiện tại</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="py-10 text-center text-slate-500">
+                  <td colSpan={colCount} className="py-10 text-center text-slate-500">
                     Đang tải dữ liệu tồn kho...
                   </td>
                 </tr>
               ) : products.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-10 text-center text-slate-500">
+                  <td colSpan={colCount} className="py-10 text-center text-slate-500">
                     Không có mặt hàng nào khớp bộ lọc.
                   </td>
                 </tr>
@@ -180,17 +191,6 @@ export default function InventoryTab() {
                       <td className="py-3 px-4 font-semibold text-slate-900">{p.name}</td>
                       <td className="py-3 px-4 text-xs text-slate-600">{catName}</td>
                       <td className="py-3 px-4 text-center text-xs">{p.unit}</td>
-                      <td className="py-3 px-4 text-right font-mono whitespace-nowrap">
-                        {p.sellingPrice > 0 ? (
-                          <span className="font-bold text-slate-900">
-                            {formatVND(p.sellingPrice)}
-                          </span>
-                        ) : (
-                          <span className="text-xs font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded">
-                            Chưa cập nhật giá (0 ₫)
-                          </span>
-                        )}
-                      </td>
                       <td className="py-3 px-4 text-right font-mono font-extrabold">
                         <span
                           className={`px-2.5 py-1 rounded-full text-xs ${
@@ -201,6 +201,26 @@ export default function InventoryTab() {
                         >
                           {p.stock}
                         </span>
+                      </td>
+                      {canSeeCostPrice && (
+                        <td className="py-3 px-4 text-right font-mono whitespace-nowrap text-amber-800 font-semibold">
+                          {Number(p.costPrice) > 0 ? (
+                            formatVND(p.costPrice)
+                          ) : (
+                            <span className="text-xs text-slate-400">Chưa có (0 ₫)</span>
+                          )}
+                        </td>
+                      )}
+                      <td className="py-3 px-4 text-right font-mono whitespace-nowrap">
+                        {p.sellingPrice > 0 ? (
+                          <span className="font-bold text-slate-900">
+                            {formatVND(p.sellingPrice)}
+                          </span>
+                        ) : (
+                          <span className="text-xs font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded">
+                            Chưa cập nhật giá (0 ₫)
+                          </span>
+                        )}
                       </td>
                     </tr>
                   );

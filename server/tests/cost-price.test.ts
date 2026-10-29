@@ -103,5 +103,26 @@ describe('v1.1: Giá gốc khi nhập kho & phân quyền giá bán', () => {
     expect(admin.status).toBe(200);
     expect(admin.body.data.sellingPrice).toBe(299000);
     expect(admin.body.data.costPrice).toBe(160000);
+
+    // Kiểm tra /inventory/report và /inventory/movements: ADMIN thấy cả costPrice + sellingPrice, SALES chỉ thấy sellingPrice
+    const adminReport = await request(app).get('/api/v1/inventory/report').set('x-user-id', 'admin');
+    const repRowAdmin = adminReport.body.data.find((r: any) => r.productCode === productCode);
+    expect(repRowAdmin.costPrice).toBe(160000);
+    expect(repRowAdmin.sellingPrice).toBe(299000);
+
+    const salesReport = await request(app).get('/api/v1/inventory/report').set('x-user-id', 'sales1');
+    const repRowSales = salesReport.body.data.find((r: any) => r.productCode === productCode);
+    expect(repRowSales.costPrice).toBeUndefined();
+    expect(repRowSales.sellingPrice).toBe(299000);
+
+    const adminMov = await request(app).get('/api/v1/inventory/movements').set('x-user-id', 'admin');
+    const movAdmin = adminMov.body.data.find((m: any) => m.productCode === productCode);
+    expect(movAdmin.costPrice).toBe(160000);
+    expect(movAdmin.sellingPrice).toBe(299000);
+
+    const salesMov = await request(app).get('/api/v1/inventory/movements').set('x-user-id', 'sales1');
+    const movSales = salesMov.body.data.find((m: any) => m.productCode === productCode);
+    expect(movSales.costPrice).toBeUndefined();
+    expect(movSales.sellingPrice).toBe(299000);
   });
 });

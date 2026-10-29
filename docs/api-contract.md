@@ -58,21 +58,22 @@
   - Query: `?categoryId=...&search=...&onlySellable=true|false`
   - Response: `{ "data": [...], "meta": { "totalProducts": 12, "totalStock": 350 } }`
 - `POST /api/v1/products`
-  - Body: `{ "name": "string", "categoryId": "string", "unit": "Cái | Đôi | Bộ", "sellingPrice": 0 }`
+  - Body: `{ "name": "string", "categoryId": "string", "unit": "Cái | Đôi | Bộ", "sellingPrice": 0, "costPrice": 0 }`
   - Lưu ý: `code` tự sinh từ `()` trong `name` và không được sửa sau khi tạo; `stock` khởi tạo = `0`.
-  - `sellingPrice` > 0 chỉ được phép khi người gọi có role `ADMIN` (Quản lý/Admin); role khác gửi `sellingPrice > 0` → `403 SELLING_PRICE_FORBIDDEN`.
+  - `sellingPrice` > 0 hoặc `costPrice` > 0 chỉ được phép khi người gọi có role `ADMIN` (Quản lý/Admin); role khác gửi `sellingPrice > 0` → `403 SELLING_PRICE_FORBIDDEN`, gửi `costPrice > 0` → `403 COST_PRICE_FORBIDDEN`.
 - `PATCH /api/v1/products/:id`
   - Body: `{ "name": "string", "categoryId": "string", "unit": "string", "sellingPrice": 250000, "costPrice": 180000 }`
   - Lưu ý: Không cho phép sửa `code` hoặc `stock` trực tiếp.
   - *(v1.1)* Chỉ role `ADMIN` được đổi `sellingPrice` / `costPrice`; role khác → `403 SELLING_PRICE_FORBIDDEN` / `403 COST_PRICE_FORBIDDEN`.
-- *(v1.1)* Trường mới của `Product`: `costPrice` (giá gốc / giá nhập gần nhất, VND, số nguyên ≥ 0, mặc định `0`). Được cập nhật tự động khi hoàn thành phiếu nhập kho. Response `GET /products` **ẩn** `costPrice` với role `SALES`.
+- *(v1.1 & v1.6)* Trường mới của `Product`: `costPrice` (giá gốc / giá nhập gần nhất, VND, số nguyên ≥ 0, mặc định `0`). Được cập nhật tự động khi hoàn thành phiếu nhập kho hoặc do `ADMIN` cập nhật trên CMS. Response `GET /products`, `GET /inventory/report`, `GET /inventory/movements` **ẩn hoàn toàn** `costPrice` với role `SALES` (Saler chỉ thấy `sellingPrice` và số lượng tồn kho).
 - `GET /api/v1/inventory/movements`
   - Query: `?productId=...&type=IMPORT|SALE|RETURN|EXCHANGE_IN|EXCHANGE_OUT|ADJUSTMENT&from=...&to=...`
-  - Response: Lịch sử sổ kho (`StockMovement`).
+  - Response: Lịch sử sổ kho (`StockMovement`) kèm `sellingPrice`, `stock` hiện tại và `costPrice` (ẩn `costPrice` nếu role `SALES`).
 - `GET /api/v1/inventory/report`
   - Query: `?from=YYYY-MM-DD&to=YYYY-MM-DD&categoryId=...`
   - Response: Báo cáo kế toán kho theo công thức:
     `closingStock (Tồn cuối kỳ) = openingStock (Tồn đầu kỳ) + importedQty (Nhập trong kỳ) - soldQty (Bán trong kỳ) + adjustedAndReturnedQty (± Điều chỉnh trả/đổi)`
+    Kèm `sellingPrice` và `costPrice` của từng sản phẩm (ẩn `costPrice` nếu role `SALES`).
 - `POST /api/v1/inventory/adjustments`
   - Body: `{ "productId": "string", "quantityChange": -2, "reason": "Kiểm kê lệch phiếu nhập PN-0001" }`
   - Tạo phiếu điều chỉnh kho, cập nhật `stock` sản phẩm và ghi `StockMovement` loại `ADJUSTMENT`.

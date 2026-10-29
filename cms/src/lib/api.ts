@@ -41,7 +41,11 @@ export interface StockMovement {
   productCode: string;
   productName: string;
   quantityChange: number;
+  balanceBefore?: number;
   balanceAfter: number;
+  currentStock?: number;
+  costPrice?: number;
+  sellingPrice?: number;
   referenceType?: string;
   referenceCode?: string;
   performedBy?: string;
@@ -56,6 +60,8 @@ export interface InventoryReportRow {
   productName: string;
   categoryName?: string;
   unit: string;
+  costPrice?: number;
+  sellingPrice?: number;
   openingStock: number;
   importedQty: number;
   soldQty: number;
