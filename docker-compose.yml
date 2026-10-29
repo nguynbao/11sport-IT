@@ -33,7 +33,7 @@ services:
       PORT: 4000
       MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017/11sport}
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://11sport-it.vercel.app,https://11sport-it-m1ei.vercel.app,http://localhost:3000,http://localhost:3001}
     volumes:
       - ./server:/app
       - server_node_modules:/app/node_modules

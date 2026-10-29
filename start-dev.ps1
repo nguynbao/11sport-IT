@@ -11,12 +11,17 @@ Write-Host "=== [11Sport DevOps] Kiem tra moi truong Node.js ===" -ForegroundCol
 node -v
 npm -v
 
-Write-Host "=== [11Sport DevOps] Khoi dong MongoDB (Docker Port 27017) ===" -ForegroundColor Cyan
-try {
-    Set-Location $RootDir
-    docker compose up -d mongodb
-} catch {
-    Write-Warning "Khong the khoi dong Docker MongoDB, server se tu dong dung bo nho fallback."
+Write-Host "=== [11Sport DevOps] Kiem tra MongoDB (Port 27017) ===" -ForegroundColor Cyan
+$mongoService = Get-Service -Name "MongoDB" -ErrorAction SilentlyContinue
+if ($mongoService -and $mongoService.Status -eq "Running") {
+    Write-Host "-> Dich vu MongoDB Windows dang chay tai port 27017 (Automatic)." -ForegroundColor Green
+} else {
+    try {
+        Set-Location $RootDir
+        docker compose up -d mongodb
+    } catch {
+        Write-Warning "Khong the khoi dong Docker MongoDB, server se tu dong dung bo nho fallback."
+    }
 }
 
 function Start-ServiceProcess {

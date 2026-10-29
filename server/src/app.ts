@@ -12,14 +12,41 @@ import { returnsRouter } from './routes/returns';
 export function createApp() {
   const app = express();
 
+  const defaultOrigins = [
+    'https://11sport-it.vercel.app',
+    'https://11sport-it-m1ei.vercel.app',
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:3001',
+  ];
+  const envOrigins = (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((o) => o.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+  const allowedOrigins = Array.from(new Set([...defaultOrigins, ...envOrigins]));
+
+  // Hỗ trợ Chrome/Edge Private Network Access khi gọi từ HTTPS (Vercel) về localhost:4000
+  app.use((req, res, next) => {
+    if (req.headers['access-control-request-private-network']) {
+      res.setHeader('Access-Control-Allow-Private-Network', 'true');
+    }
+    next();
+  });
+
   app.use(
     cors({
-      origin: [
-        'http://localhost:3000',
-        'http://localhost:3001',
-        'http://127.0.0.1:3000',
-        'http://127.0.0.1:3001',
-      ],
+      origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+        const normalized = origin.replace(/\/+$/, '');
+        if (
+          allowedOrigins.includes(normalized) ||
+          normalized.endsWith('.vercel.app')
+        ) {
+          return callback(null, true);
+        }
+        return callback(null, false);
+      },
       credentials: true,
     })
   );

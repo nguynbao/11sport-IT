@@ -172,12 +172,12 @@ export default function WebPosHomePage() {
             </div>
 
             <a
-              href="http://localhost:3001"
+              href={process.env.NEXT_PUBLIC_CMS_URL || "https://11sport-it-m1ei.vercel.app"}
               target="_blank"
               rel="noreferrer"
               className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-emerald-400 border border-slate-700 flex items-center gap-1"
             >
-              Mở CMS (3001) <ExternalLink className="w-3.5 h-3.5" />
+              Mở CMS <ExternalLink className="w-3.5 h-3.5" />
             </a>
           </div>
         </div>

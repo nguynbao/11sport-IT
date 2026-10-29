@@ -30,12 +30,12 @@
                           └───────────────────┘
 ```
 
-| Dịch vụ | Thư mục | Công nghệ | Port mặc định | URL Local / Dev |
-| --- | --- | --- | --- | --- |
-| **Backend API (`server`)** | `server/` | Node.js 20 + Express + TypeScript | `4000` | `http://localhost:4000/api/v1` |
-| **POS & Kho (`web`)** | `web/` | Next.js + React + TailwindCSS | `3000` | `http://localhost:3000` |
-| **Quản trị (`cms`)** | `cms/` | Next.js + React + TailwindCSS | `3001` | `http://localhost:3001` |
-| **Database (`mongodb`)** | Docker / Service | MongoDB 7.0 | `27017` | `mongodb://localhost:27017/11sport` |
+| Dịch vụ | Thư mục | Công nghệ | Port mặc định | URL Local / Dev | URL Production (Vercel) |
+| --- | --- | --- | --- | --- | --- |
+| **Backend API (`server`)** | `server/` | Node.js 20 + Express + TypeScript | `4000` | `http://localhost:4000/api/v1` | - |
+| **POS & Kho (`web`)** | `web/` | Next.js + React + TailwindCSS | `3000` | `http://localhost:3000` | `https://11sport-it.vercel.app` |
+| **Quản trị (`cms`)** | `cms/` | Next.js + React + TailwindCSS | `3001` | `http://localhost:3001` | `https://11sport-it-m1ei.vercel.app` |
+| **Database (`mongodb`)** | Docker / Service | MongoDB 7.0+ | `27017` | `mongodb://localhost:27017/11sport` | - |
 
 ---
 

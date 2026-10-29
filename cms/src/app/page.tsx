@@ -94,12 +94,12 @@ export default function CmsDashboardPage() {
             </div>
 
             <a
-              href="http://localhost:3000"
+              href={process.env.NEXT_PUBLIC_WEB_URL || "https://11sport-it.vercel.app"}
               target="_blank"
               rel="noreferrer"
               className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-emerald-400 border border-slate-700 flex items-center gap-1"
             >
-              Mở Web POS & Kho (3000) <ExternalLink className="w-3.5 h-3.5" />
+              Mở Web POS & Kho <ExternalLink className="w-3.5 h-3.5" />
             </a>
           </div>
         </div>
