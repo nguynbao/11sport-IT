@@ -27,6 +27,8 @@ export interface IImportReceiptItem {
   checkedAt?: Date;
   /** Số chiếc từng nhân viên đã quét kiểm */
   scanCounts?: IScanCount[];
+  /** Mã vạch EAN/Code128 được ghi nhớ khi quét tag thực tế */
+  barcode?: string;
   note: string;
   isChecked: boolean;
   isConfirmed: boolean;
@@ -74,6 +76,7 @@ const ImportReceiptItemSchema = new Schema<IImportReceiptItem>(
       ],
       default: [],
     },
+    barcode: { type: String, default: '' },
     note: { type: String, default: '' },
     isChecked: { type: Boolean, default: false },
     isConfirmed: { type: Boolean, default: false },

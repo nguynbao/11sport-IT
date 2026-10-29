@@ -30,6 +30,7 @@ export interface Product {
   sellingPrice: number;
   /** Giá gốc (giá nhập gần nhất) — server ẩn với role SALES */
   costPrice?: number;
+  barcode?: string;
   stock: number;
 }
 
@@ -45,6 +46,8 @@ export interface ImportItem {
   costPrice?: number;
   /** Số chiếc đã quét tag ở bước kiểm thực tế */
   scannedQuantity?: number;
+  /** Mã vạch đã học được khi quét tag */
+  barcode?: string;
   note: string;
   isChecked: boolean;
   isConfirmed: boolean;
@@ -246,4 +249,11 @@ export async function apiRequest<T = any>(
     throw error;
   }
   return json;
+}
+
+/** Chu kỳ đánh thức server chống sleep trên Render Free (8 phút — nằm trong khoảng 5-10 phút) */
+export const KEEP_ALIVE_INTERVAL_MS = 8 * 60 * 1000;
+
+export function pingServerHealth(): void {
+  fetch(`${API_BASE_URL}/health`, { method: "GET", cache: "no-store" }).catch(() => {});
 }

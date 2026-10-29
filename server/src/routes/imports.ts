@@ -15,6 +15,7 @@ import {
   validateOcrInput,
   ocrScanTable,
   ocrScanTag,
+  sanitizeBarcode,
 } from '../utils/ocr';
 
 export const importsRouter = Router();
@@ -58,6 +59,7 @@ function normalizeImportItems(rawItems: any[], defaultCategoryId = ''): IImportR
         actualQuantity,
         costPrice: parseCostPrice(item.costPrice, Number(item.stt) || idx + 1),
         scannedQuantity: Math.max(0, Math.round(Number(item.scannedQuantity) || 0)),
+        barcode: item.barcode ? sanitizeBarcode(item.barcode) : '',
         note: item.note ? String(item.note).trim() : '',
         isChecked: Boolean(item.isChecked),
         isConfirmed: Boolean(item.isConfirmed),
@@ -67,7 +69,7 @@ function normalizeImportItems(rawItems: any[], defaultCategoryId = ''): IImportR
 }
 
 /**
- * Giữ các trường do server ghi (người quét kiểm) khi client gửi lại danh sách items.
+ * Giữ các trường do server ghi (người quét kiểm + mã vạch đã học) khi client gửi lại danh sách items.
  * Không tin dữ liệu người kiểm từ client: luôn lấy từ bản ghi hiện có (khớp theo vị trí + mã hàng).
  */
 function keepCheckerFields(newItems: IImportReceiptItem[], oldItems: IImportReceiptItem[]): IImportReceiptItem[] {
@@ -75,11 +77,14 @@ function keepCheckerFields(newItems: IImportReceiptItem[], oldItems: IImportRece
   return newItems.map((item, idx) => {
     let oi = oldItems[idx] && oldItems[idx].productCode === item.productCode && !used.has(idx) ? idx : -1;
     if (oi < 0) oi = oldItems.findIndex((o, j) => !used.has(j) && o.productCode === item.productCode);
-    if (oi < 0) return { ...item, checkedBy: '', checkedByName: '', checkedAt: undefined, scanCounts: [] };
+    if (oi < 0) {
+      return { ...item, checkedBy: '', checkedByName: '', checkedAt: undefined, scanCounts: [], barcode: item.barcode || '' };
+    }
     used.add(oi);
     const old = oldItems[oi];
     return {
       ...item,
+      barcode: old.barcode || item.barcode || '',
       checkedBy: old.checkedBy || '',
       checkedByName: old.checkedByName || '',
       checkedAt: old.checkedAt,
@@ -100,11 +105,142 @@ function rowsToImportItems(rows: OcrTableRow[], defaultCatId: string): IImportRe
     actualQuantity: r.expectedQuantity,
     costPrice: 0,
     scannedQuantity: 0,
+    barcode: '',
     note: r.note || '',
     isChecked: false,
     isConfirmed: false,
     discrepancyNote: '',
   }));
+}
+
+const isFullItem = (it: IImportReceiptItem) =>
+  (Number(it.scannedQuantity) || 0) >= Math.max(1, Number(it.expectedQuantity) || 0);
+
+const progressOfItems = (list: IImportReceiptItem[]) => ({
+  checked: list.filter(isFullItem).length,
+  total: list.length,
+  scannedUnits: list.reduce((s, i) => s + (Number(i.scannedQuantity) || 0), 0),
+  expectedUnits: list.reduce((s, i) => s + (Number(i.expectedQuantity) || 0), 0),
+});
+
+async function applyMatchedScan(params: {
+  id: string;
+  receipt: any;
+  items: IImportReceiptItem[];
+  matchedIndex: number;
+  delta: 1 | -1;
+  user?: { userId?: string; fullName?: string };
+  learnedBarcode?: string;
+}) {
+  const { id, receipt, items, matchedIndex, delta, user, learnedBarcode } = params;
+  const current = items[matchedIndex];
+  const expected = Number(current.expectedQuantity) || 0;
+  const cleanBarcode = sanitizeBarcode(learnedBarcode);
+
+  // Đã đủ số lượng mà quét thêm => không cộng, chỉ cảnh báo (vẫn lưu mã vạch nếu mới học được)
+  if (delta === 1 && isFullItem(current)) {
+    let latestReceipt = receipt;
+    if (cleanBarcode && !current.barcode) {
+      items[matchedIndex] = { ...current, barcode: cleanBarcode };
+      latestReceipt = await importReceiptRepo.updateById(id, { items });
+    }
+    return {
+      matched: true,
+      alreadyFull: true,
+      isFull: true,
+      matchedIndex,
+      matchedItem: items[matchedIndex],
+      scannedQuantity: current.scannedQuantity,
+      expectedQuantity: expected,
+      warning: `"${current.productName}" đã đủ số lượng (${current.scannedQuantity}/${expected}). Chiếc này có thể là hàng THỪA.`,
+      progress: progressOfItems(items),
+      receipt: latestReceipt,
+    };
+  }
+
+  const scanned = Math.max(0, current.scannedQuantity + delta);
+  const full = scanned >= Math.max(1, expected);
+
+  // Ghi nhận nhân viên quét kiểm (theo user đăng nhập)
+  const userId = String(user?.userId || '');
+  const userName = user?.fullName || 'Không xác định';
+  const scanCounts = (Array.isArray(current.scanCounts) ? current.scanCounts : []).map((s) => ({ ...s }));
+  if (scanned !== current.scannedQuantity) {
+    if (delta === 1) {
+      const mine = scanCounts.find((s) => s.userId === userId);
+      if (mine) {
+        mine.quantity += 1;
+        mine.name = userName;
+      } else {
+        scanCounts.push({ userId, name: userName, quantity: 1 });
+      }
+    } else {
+      const target =
+        scanCounts.find((s) => s.userId === userId && s.quantity > 0) ||
+        [...scanCounts].reverse().find((s) => s.quantity > 0);
+      if (target) target.quantity -= 1;
+    }
+  }
+
+  const matchedItem: IImportReceiptItem = {
+    ...current,
+    barcode: cleanBarcode || current.barcode || '',
+    scanCounts: scanCounts.filter((s) => s.quantity > 0),
+    ...(delta === 1
+      ? { checkedBy: userId, checkedByName: userName, checkedAt: new Date() }
+      : {}),
+    scannedQuantity: scanned,
+    actualQuantity: scanned,
+    isChecked: scanned > 0,
+    isConfirmed: full,
+    discrepancyNote:
+      scanned === 0
+        ? ''
+        : full
+        ? scanned === expected
+          ? 'Khớp đủ'
+          : `Thừa ${scanned - expected} ${current.unit}`
+        : `Đã quét ${scanned}/${expected} ${current.unit}`,
+  };
+  items[matchedIndex] = matchedItem;
+  const updatedReceipt = await importReceiptRepo.updateById(id, { items });
+
+  return {
+    matched: true,
+    alreadyFull: false,
+    isFull: full,
+    undone: delta === -1,
+    matchedIndex,
+    matchedItem,
+    scannedQuantity: scanned,
+    expectedQuantity: expected,
+    progress: progressOfItems(items),
+    receipt: updatedReceipt,
+  };
+}
+
+/** Tìm dòng khớp theo mã vạch đã lưu trên phiếu hoặc trên danh mục sản phẩm (Product.barcode). */
+async function findRowByKnownBarcode(items: IImportReceiptItem[], barcode: string): Promise<number | null> {
+  if (!barcode) return null;
+  const direct = items
+    .map((it, i) => ({ it, i }))
+    .filter(({ it }) => it.barcode && it.barcode === barcode);
+  if (direct.length > 0) {
+    const unfull = direct.find(({ it }) => !isFullItem(it));
+    return (unfull || direct[0]).i;
+  }
+
+  const product = await productRepo.findOne({ barcode });
+  if (product && product.code) {
+    const byProduct = items
+      .map((it, i) => ({ it, i }))
+      .filter(({ it }) => it.productCode === product.code);
+    if (byProduct.length > 0) {
+      const unfull = byProduct.find(({ it }) => !isFullItem(it));
+      return (unfull || byProduct[0]).i;
+    }
+  }
+  return null;
 }
 
 // POST /api/v1/imports/ocr-preview — tách văn bản dán tay thành 6 cột
@@ -344,10 +480,11 @@ importsRouter.post('/imports/:id/scan-check', async (req, res, next) => {
       );
     }
 
-    const { query, productCode, productName, rawText, rowIndex } = req.body || {};
-    const delta = Number(req.body?.delta) === -1 ? -1 : 1;
+    const { query, productCode, productName, barcode, codes, rawText, rowIndex } = req.body || {};
+    const delta: 1 | -1 = Number(req.body?.delta) === -1 ? -1 : 1;
     const hasRowIndex = rowIndex !== undefined && rowIndex !== null && rowIndex !== '';
-    const label = String(productName || query || productCode || '').trim();
+    const cleanBarcode = sanitizeBarcode(barcode);
+    const label = String(productName || query || productCode || cleanBarcode || '').trim();
     if (!hasRowIndex && !label) {
       throw new ApiError(400, 'VALIDATION_ERROR', 'Vui lòng cung cấp mã hoặc tên hàng đọc được từ tag');
     }
@@ -359,14 +496,6 @@ importsRouter.post('/imports/:id/scan-check', async (req, res, next) => {
       ...it,
       scannedQuantity: Math.max(0, Number(it.scannedQuantity) || 0),
     }));
-    const isFull = (it: IImportReceiptItem) =>
-      (Number(it.scannedQuantity) || 0) >= Math.max(1, Number(it.expectedQuantity) || 0);
-    const progressOf = (list: IImportReceiptItem[]) => ({
-      checked: list.filter(isFull).length,
-      total: list.length,
-      scannedUnits: list.reduce((s, i) => s + (Number(i.scannedQuantity) || 0), 0),
-      expectedUnits: list.reduce((s, i) => s + (Number(i.expectedQuantity) || 0), 0),
-    });
 
     let matchedIndex: number | null = null;
     if (hasRowIndex) {
@@ -376,32 +505,41 @@ importsRouter.post('/imports/:id/scan-check', async (req, res, next) => {
       }
       matchedIndex = idx;
     } else {
-      // isChecked dùng để ưu tiên dòng CHƯA ĐỦ số lượng khi trùng nhiều dòng
-      const result = matchTagToItems(
-        items.map((it) => ({ productCode: it.productCode, productName: it.productName, isChecked: isFull(it) })),
-        { query, productCode, productName, rawText }
-      );
-      if (result.ambiguous) {
-        res.json({
-          data: {
-            matched: false,
-            ambiguous: true,
-            candidates: result.candidates.map((i) => ({
-              index: i,
-              productCode: items[i].productCode,
-              productName: items[i].productName,
-              scannedQuantity: items[i].scannedQuantity,
-              expectedQuantity: items[i].expectedQuantity,
-            })),
-            warning: `Tag "${label}" khớp nhiều dòng trong danh sách. Vui lòng chọn đúng dòng.`,
-            progress: progressOf(items),
-            receipt,
-          },
-          meta: {},
-        });
-        return;
+      if (cleanBarcode) {
+        matchedIndex = await findRowByKnownBarcode(items, cleanBarcode);
       }
-      matchedIndex = result.index;
+      if (matchedIndex === null) {
+        const result = matchTagToItems(
+          items.map((it) => ({
+            productCode: it.productCode,
+            productName: it.productName,
+            barcode: it.barcode,
+            isChecked: isFullItem(it),
+          })),
+          { query, productCode, productName, barcode: cleanBarcode, codes, rawText }
+        );
+        if (result.ambiguous) {
+          res.json({
+            data: {
+              matched: false,
+              ambiguous: true,
+              candidates: result.candidates.map((i) => ({
+                index: i,
+                productCode: items[i].productCode,
+                productName: items[i].productName,
+                scannedQuantity: items[i].scannedQuantity,
+                expectedQuantity: items[i].expectedQuantity,
+              })),
+              warning: `Tag "${label}" khớp nhiều dòng trong danh sách. Vui lòng chọn đúng dòng.`,
+              progress: progressOfItems(items),
+              receipt,
+            },
+            meta: {},
+          });
+          return;
+        }
+        matchedIndex = result.index;
+      }
     }
 
     if (matchedIndex === null) {
@@ -409,7 +547,7 @@ importsRouter.post('/imports/:id/scan-check', async (req, res, next) => {
         data: {
           matched: false,
           warning: `Tag "${label}" KHÔNG có trong danh sách kiểm hàng. Hàng này không được tự thêm vào phiếu.`,
-          progress: progressOf(items),
+          progress: progressOfItems(items),
           receipt,
         },
         meta: {},
@@ -417,84 +555,237 @@ importsRouter.post('/imports/:id/scan-check', async (req, res, next) => {
       return;
     }
 
-    const current = items[matchedIndex];
-    const expected = Number(current.expectedQuantity) || 0;
+    const applied = await applyMatchedScan({
+      id,
+      receipt,
+      items,
+      matchedIndex,
+      delta,
+      user: req.user,
+      learnedBarcode: cleanBarcode,
+    });
 
-    // Đã đủ số lượng mà quét thêm => không cộng, chỉ cảnh báo
-    if (delta === 1 && isFull(current)) {
-      res.json({
-        data: {
-          matched: true,
-          alreadyFull: true,
-          isFull: true,
-          matchedIndex,
-          matchedItem: current,
-          scannedQuantity: current.scannedQuantity,
-          expectedQuantity: expected,
-          warning: `"${current.productName}" đã đủ số lượng (${current.scannedQuantity}/${expected}). Chiếc này có thể là hàng THỪA.`,
-          progress: progressOf(items),
-          receipt,
-        },
-        meta: {},
-      });
-      return;
+    res.json({ data: applied, meta: {} });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/v1/imports/:id/scan-tag (v1.5: Gộp OCR tag + đối chiếu + đếm chiếc trong 1 request <= 5s)
+importsRouter.post('/imports/:id/scan-tag', async (req, res, next) => {
+  const startedAt = Date.now();
+  let ocrMs = 0;
+  const finishWithTiming = (payload: Record<string, any>) => {
+    const totalMs = Date.now() - startedAt;
+    res.setHeader('Server-Timing', `ocr;dur=${ocrMs}, total;dur=${totalMs}`);
+    res.json({
+      data: {
+        ...payload,
+        timing: { ocrMs, totalMs },
+      },
+      meta: {},
+    });
+  };
+
+  try {
+    const { id } = req.params;
+    const receipt = await importReceiptRepo.findById(id);
+    if (!receipt) {
+      throw new ApiError(404, 'IMPORT_RECEIPT_NOT_FOUND', 'Không tìm thấy phiếu nhập kho');
+    }
+    if (receipt.status === 'COMPLETED') {
+      throw new ApiError(400, 'IMPORT_RECEIPT_LOCKED', 'Phiếu nhập đã hoàn thành');
+    }
+    if (receipt.status !== 'CHECKING') {
+      throw new ApiError(
+        400,
+        'IMPORT_NOT_CHECKING',
+        'Vui lòng bấm "Hoàn tất" danh sách kiểm hàng trước khi quét tag kiểm tra thực tế'
+      );
     }
 
-    const scanned = Math.max(0, current.scannedQuantity + delta);
-    const full = scanned >= Math.max(1, expected);
+    const { fileBase64, mimeType, barcode: rawBarcode } = req.body || {};
+    const clientBarcode = sanitizeBarcode(rawBarcode);
+    const hasFile = typeof fileBase64 === 'string' && fileBase64.trim().length > 0;
 
-    // Ghi nhận nhân viên quét kiểm (theo user đăng nhập)
-    const userId = String(req.user?.userId || '');
-    const userName = req.user?.fullName || 'Không xác định';
-    const scanCounts = (Array.isArray(current.scanCounts) ? current.scanCounts : []).map((s) => ({ ...s }));
-    if (scanned !== current.scannedQuantity) {
-      if (delta === 1) {
-        const mine = scanCounts.find((s) => s.userId === userId);
-        if (mine) {
-          mine.quantity += 1;
-          mine.name = userName;
-        } else {
-          scanCounts.push({ userId, name: userName, quantity: 1 });
+    if (!clientBarcode && !hasFile) {
+      throw new ApiError(400, 'OCR_INVALID_FILE', 'Thiếu ảnh chụp tag (fileBase64) hoặc mã vạch (barcode).');
+    }
+
+    const items = receipt.items.map((it) => ({
+      ...it,
+      scannedQuantity: Math.max(0, Number(it.scannedQuantity) || 0),
+    }));
+
+    // 1. Đường tắt (fast-path): trình duyệt đọc được barcode và mã này đã được ghi nhớ trên dòng/sản phẩm
+    if (clientBarcode) {
+      const fastRowIndex = await findRowByKnownBarcode(items, clientBarcode);
+      if (fastRowIndex !== null) {
+        const applied = await applyMatchedScan({
+          id,
+          receipt,
+          items,
+          matchedIndex: fastRowIndex,
+          delta: 1,
+          user: req.user,
+          learnedBarcode: clientBarcode,
+        });
+        finishWithTiming({
+          ...applied,
+          source: 'barcode',
+          barcode: clientBarcode,
+          ocr: null,
+        });
+        return;
+      }
+
+      // Nếu không gửi ảnh (chỉ gửi barcode), thử so khớp trực tiếp mã barcode với mã hàng
+      if (!hasFile) {
+        const byCode = matchTagToItems(
+          items.map((it) => ({
+            productCode: it.productCode,
+            productName: it.productName,
+            barcode: it.barcode,
+            isChecked: isFullItem(it),
+          })),
+          { query: clientBarcode, productCode: clientBarcode, barcode: clientBarcode }
+        );
+        if (byCode.index !== null) {
+          const applied = await applyMatchedScan({
+            id,
+            receipt,
+            items,
+            matchedIndex: byCode.index,
+            delta: 1,
+            user: req.user,
+            learnedBarcode: clientBarcode,
+          });
+          finishWithTiming({
+            ...applied,
+            source: 'barcode',
+            barcode: clientBarcode,
+            ocr: null,
+          });
+          return;
         }
-      } else {
-        // Hoàn tác: trừ của chính người thao tác, nếu không có thì trừ người quét gần nhất
-        const target =
-          scanCounts.find((s) => s.userId === userId && s.quantity > 0) ||
-          [...scanCounts].reverse().find((s) => s.quantity > 0);
-        if (target) target.quantity -= 1;
+        finishWithTiming({
+          matched: false,
+          source: 'barcode',
+          barcode: clientBarcode,
+          ocr: null,
+          warning: `Mã vạch "${clientBarcode}" chưa khớp dòng nào trong danh sách kiểm hàng.`,
+          progress: progressOfItems(items),
+          receipt,
+        });
+        return;
       }
     }
 
-    const matchedItem: IImportReceiptItem = {
-      ...current,
-      scanCounts: scanCounts.filter((s) => s.quantity > 0),
-      ...(delta === 1
-        ? { checkedBy: userId, checkedByName: userName, checkedAt: new Date() }
-        : {}),
-      scannedQuantity: scanned,
-      actualQuantity: scanned,
-      isChecked: scanned > 0,
-      isConfirmed: full,
-      discrepancyNote:
-        scanned === 0 ? '' : full ? (scanned === expected ? 'Khớp đủ' : `Thừa ${scanned - expected} ${current.unit}`) : `Đã quét ${scanned}/${expected} ${current.unit}`,
-    };
-    items[matchedIndex] = matchedItem;
-    const updatedReceipt = await importReceiptRepo.updateById(id, { items });
+    // 2. Đường OCR (Gemini Vision tắt thinking + hedging + hạn chót <= 5s)
+    const { data, mime } = validateOcrInput(fileBase64, mimeType || 'image/jpeg');
+    const ocrStartedAt = Date.now();
+    const tag = await ocrScanTag(data, mime);
+    ocrMs = Date.now() - ocrStartedAt;
 
-    res.json({
-      data: {
-        matched: true,
-        alreadyFull: false,
-        isFull: full,
-        undone: delta === -1,
-        matchedIndex,
-        matchedItem,
-        scannedQuantity: scanned,
-        expectedQuantity: expected,
-        progress: progressOf(items),
-        receipt: updatedReceipt,
-      },
-      meta: {},
+    const finalBarcode = clientBarcode || tag.barcode || '';
+    const ocrSummary = {
+      productName: tag.productName,
+      productCode: tag.productCode,
+      barcode: finalBarcode,
+      model: tag.model || tag.engine,
+    };
+
+    if (!tag.productCode && !tag.productName && !finalBarcode) {
+      finishWithTiming({
+        matched: false,
+        unreadable: true,
+        source: 'ocr',
+        barcode: '',
+        ocr: ocrSummary,
+        warning: 'Không đọc được tag. Đưa tag gần hơn, đủ sáng, chụp thẳng rồi thử lại.',
+        progress: progressOfItems(items),
+        receipt,
+      });
+      return;
+    }
+
+    // Nếu OCR đọc được số dưới mã vạch và số này đã có trên phiếu / Product -> khớp ngay
+    let matchedIndex: number | null = null;
+    if (finalBarcode) {
+      matchedIndex = await findRowByKnownBarcode(items, finalBarcode);
+    }
+
+    if (matchedIndex === null) {
+      const result = matchTagToItems(
+        items.map((it) => ({
+          productCode: it.productCode,
+          productName: it.productName,
+          barcode: it.barcode,
+          isChecked: isFullItem(it),
+        })),
+        {
+          productCode: tag.productCode,
+          productName: tag.productName,
+          barcode: finalBarcode,
+          codes: tag.codes,
+          rawText: tag.rawText,
+        }
+      );
+
+      if (result.ambiguous) {
+        const label = tag.productName || tag.productCode || finalBarcode;
+        finishWithTiming({
+          matched: false,
+          ambiguous: true,
+          source: 'ocr',
+          barcode: finalBarcode,
+          ocr: ocrSummary,
+          candidates: result.candidates.map((i) => ({
+            index: i,
+            productCode: items[i].productCode,
+            productName: items[i].productName,
+            scannedQuantity: items[i].scannedQuantity,
+            expectedQuantity: items[i].expectedQuantity,
+          })),
+          warning: `Tag "${label}" khớp nhiều dòng trong danh sách. Vui lòng chọn đúng dòng.`,
+          progress: progressOfItems(items),
+          receipt,
+        });
+        return;
+      }
+      matchedIndex = result.index;
+    }
+
+    if (matchedIndex === null) {
+      const label = tag.productName || tag.productCode || finalBarcode;
+      finishWithTiming({
+        matched: false,
+        source: 'ocr',
+        barcode: finalBarcode,
+        ocr: ocrSummary,
+        warning: `Tag "${label}" KHÔNG có trong danh sách kiểm hàng. Hàng này không được tự thêm vào phiếu.`,
+        progress: progressOfItems(items),
+        receipt,
+      });
+      return;
+    }
+
+    // 3. Khớp thành công -> cộng số lượng và ghi nhớ barcode cho những chiếc tiếp theo
+    const applied = await applyMatchedScan({
+      id,
+      receipt,
+      items,
+      matchedIndex,
+      delta: 1,
+      user: req.user,
+      learnedBarcode: finalBarcode,
+    });
+
+    finishWithTiming({
+      ...applied,
+      source: 'ocr',
+      barcode: finalBarcode,
+      ocr: ocrSummary,
     });
   } catch (err) {
     next(err);
@@ -556,6 +847,7 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
       // Nếu sản phẩm chưa có trên hệ thống -> Tự động tạo mới với sellingPrice = 0 (BR-04, BR-09)
       // Giá bán do Quản lý/Admin cập nhật trên CMS; giá gốc lấy theo dòng nhập
       const itemCostPrice = Math.max(0, Math.round(Number(item.costPrice) || 0));
+      const itemBarcode = sanitizeBarcode(item.barcode);
       if (!product) {
         product = await productRepo.create({
           code,
@@ -566,6 +858,7 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
           unit: item.unit || 'Cái',
           sellingPrice: 0,
           costPrice: itemCostPrice,
+          barcode: itemBarcode,
           stock: 0,
           status: 'ACTIVE',
         });
@@ -578,6 +871,8 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
       const productUpdate: Record<string, any> = { stock: balanceAfter };
       // Cập nhật giá gốc theo lần nhập gần nhất (bỏ qua nếu dòng không nhập giá)
       if (itemCostPrice > 0) productUpdate.costPrice = itemCostPrice;
+      // Ghi nhớ mã vạch lên sản phẩm nếu sản phẩm chưa có mã vạch
+      if (itemBarcode && !product.barcode) productUpdate.barcode = itemBarcode;
       await productRepo.updateById(product._id, productUpdate);
 
       const movement = await stockMovementRepo.create({

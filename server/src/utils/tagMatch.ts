@@ -2,7 +2,8 @@ import { generateProductCode, normalizeToUpperCode } from './productCode';
 
 /**
  * So khớp kết quả quét tag với các dòng trong phiếu nhập (danh sách đã OCR ở bước Kiểm hàng).
- * - Ưu tiên khớp chính xác mã hàng.
+ * - Ưu tiên khớp chính xác mã vạch (barcode) đã được ghi nhớ trên dòng hàng.
+ * - Tiếp theo khớp chính xác mã hàng (productCode).
  * - Sau đó chấm điểm theo token của mã hàng (mã mẫu/SKU có chữ số bắt buộc phải khớp, màu/size phải có trên tag).
  * - Không bao giờ thêm dòng mới: không khớp => trả về null.
  */
@@ -10,12 +11,15 @@ export interface TagScanInput {
   query?: string;
   productCode?: string;
   productName?: string;
+  barcode?: string;
+  codes?: string[];
   rawText?: string;
 }
 
 export interface TagMatchItem {
   productCode: string;
   productName: string;
+  barcode?: string;
   isChecked?: boolean;
 }
 
@@ -35,9 +39,36 @@ const tokensOf = (s?: string): string[] =>
 const isSkuToken = (t: string) => t.length >= 3 && /\d/.test(t);
 
 export function matchTagToItems(items: TagMatchItem[], scan: TagScanInput): TagMatchResult {
-  const sources = [scan.productCode, scan.productName, scan.query].filter(
-    (s): s is string => Boolean(s && String(s).trim())
-  );
+  const cleanBarcode = String(scan.barcode || '').trim();
+  if (cleanBarcode) {
+    const barcodeMatches = items
+      .map((it, idx) => ({ it, idx }))
+      .filter(({ it }) => it.barcode && String(it.barcode).trim() === cleanBarcode)
+      .map(({ idx }) => idx);
+
+    if (barcodeMatches.length === 1) {
+      return { index: barcodeMatches[0], ambiguous: false, candidates: barcodeMatches };
+    }
+    if (barcodeMatches.length > 1) {
+      const unchecked = barcodeMatches.filter((i) => !items[i].isChecked);
+      if (unchecked.length === 1) {
+        return { index: unchecked[0], ambiguous: false, candidates: barcodeMatches };
+      }
+      if (unchecked.length > 1) {
+        return { index: unchecked[0], ambiguous: false, candidates: barcodeMatches };
+      }
+      return { index: barcodeMatches[0], ambiguous: false, candidates: barcodeMatches };
+    }
+  }
+
+  const sources = [
+    scan.productCode,
+    scan.productName,
+    scan.query,
+    scan.barcode,
+    ...(Array.isArray(scan.codes) ? scan.codes : []),
+  ].filter((s): s is string => Boolean(s && String(s).trim()));
+
   const tagCodes = new Set<string>();
   for (const s of sources) {
     const c1 = generateProductCode(s);

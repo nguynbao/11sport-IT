@@ -142,6 +142,19 @@
   - Response: `{ "data": { "matched": boolean, "alreadyFull"?: boolean, "isFull"?: boolean, "scannedQuantity"?: 1, "expectedQuantity"?: 2, "ambiguous"?: boolean, "candidates"?: [{ "index", "productCode", "productName", "scannedQuantity", "expectedQuantity" }], "matchedIndex"?: number, "matchedItem"?: {...}, "warning"?: "string", "progress": { "checked": 3, "total": 10, "scannedUnits": 25, "expectedUnits": 40 }, "receipt": {...} } }`
     - `progress.checked` = số dòng đã đủ số lượng.
   - Chỉ cho phép khi phiếu ở trạng thái `CHECKING` (`400 IMPORT_NOT_CHECKING`); phiếu `COMPLETED` → `400 IMPORT_RECEIPT_LOCKED`.
+- `POST /api/v1/imports/:id/scan-tag` *(v1.5 — chụp tag 1 request, mục tiêu ≤ 5s)*
+  - Gộp OCR tag + đối chiếu + đếm chiếc trong **một** request (thay cho `ocr-scan` → `scan-check` nối tiếp).
+  - Body: `{ "fileBase64"?: "<ảnh JPEG đã cắt theo khung ngắm>", "mimeType"?: "image/jpeg", "barcode"?: "8935364308672" }` (cần `fileBase64` hoặc `barcode`)
+  - Thứ tự xử lý:
+    1. Có `barcode` (trình duyệt tự đọc mã vạch) và mã này đã được **ghi nhớ** trên dòng phiếu (`items[].barcode`) hoặc trên sản phẩm (`Product.barcode`) → khớp ngay, **không gọi OCR**.
+    2. Ngược lại → OCR tag (Gemini, model nhanh trước, tắt thinking, **hạn chót 5s**, gửi thêm model dự phòng song song nếu sau ~2,5s chưa có kết quả) → so khớp như `scan-check`.
+    3. Khớp thành công và có mã vạch (từ trình duyệt hoặc OCR đọc được) → ghi nhớ vào `items[].barcode` để các chiếc sau khớp tức thì.
+  - Response: giống `scan-check` (v1.3) và thêm `"source": "barcode" | "ocr"`, `"barcode"`, `"ocr": { "productName", "productCode", "barcode", "model" } | null`, `"timing": { "ocrMs", "totalMs" }`. Header `Server-Timing: ocr;dur=..., total;dur=...`.
+  - OCR không đọc được chữ nào → `matched = false`, `unreadable = true`.
+  - Lỗi: `400 IMPORT_NOT_CHECKING`, `400 IMPORT_RECEIPT_LOCKED`, `400 OCR_INVALID_FILE`, `504 OCR_TIMEOUT` (quá 5s, client hiển thị "chụp lại"), `502 OCR_ENGINE_ERROR`.
+  - Trường mới: `items[].barcode` (server ghi, được giữ khi client `PUT` lại items), `Product.barcode` (cập nhật khi hoàn thành nhập kho nếu sản phẩm chưa có).
+- *(v1.5)* `POST /api/v1/imports/ocr-scan` chế độ `TAG`: cùng cấu hình tăng tốc (model nhanh trước, tắt thinking, hạn chót 5s); response thêm `barcode`, `codes`. Chế độ `TABLE`: tắt thinking, thời gian chờ mỗi model giảm còn 20s.
+- *(v1.5)* **Chống ngủ server (Render Free)**: server tự gọi `GET {KEEP_ALIVE_URL | RENDER_EXTERNAL_URL}/api/v1/health` mỗi `KEEP_ALIVE_INTERVAL_MIN` phút (mặc định 8, giới hạn 5–10).
 - `POST /api/v1/imports/:id/complete`
   - Bước 7 ("Hoàn thành" nhập kho):
   - Chỉ các dòng có `isConfirmed === true` mới được cộng `actualQuantity` vào tồn kho (tự tạo sản phẩm mới nếu `productCode` chưa có trong hệ thống), ghi `StockMovement` loại `IMPORT`, và khóa phiếu (`status = "COMPLETED"`).

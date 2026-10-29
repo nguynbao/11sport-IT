@@ -116,6 +116,15 @@ export default function WebPosHomePage() {
     setCheckingAuth(false);
   }, []);
 
+  // Định kỳ 8 phút gửi 1 API đánh thức server chống sleep (5-10 phút/lần)
+  useEffect(() => {
+    apiRequest("/health").catch(() => {});
+    const timer = setInterval(() => {
+      apiRequest("/health").catch(() => {});
+    }, 8 * 60 * 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError("");

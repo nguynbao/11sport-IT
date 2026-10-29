@@ -4,7 +4,6 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   X,
   ScanLine,
-  Loader2,
   CheckCircle2,
   AlertTriangle,
   XCircle,
@@ -15,14 +14,24 @@ import {
   Minus,
   Plus,
   HelpCircle,
+  Zap,
 } from "lucide-react";
-import { apiRequest, ImportItem, ImportReceipt } from "@/lib/api";
+import {
+  apiRequest,
+  ImportItem,
+  ImportReceipt,
+  KEEP_ALIVE_INTERVAL_MS,
+  pingServerHealth,
+} from "@/lib/api";
 
 /**
- * Bước 4 — Chụp tag kiểm tra thực tế (ĐẾM TỪNG CHIẾC)
- * - Bấm chụp → ảnh được giữ lại + vòng loading trong lúc đọc tag & đối chiếu.
- * - Khớp: +1 chiếc cho dòng đó; đủ số lượng dự kiến mới tick xác nhận.
- * - Không khớp / đã đủ / không đọc được: hiện cảnh báo, không thay đổi phiếu.
+ * Bước 4 — Chụp tag kiểm tra thực tế (ĐẾM TỪNG CHIẾC, TỐI ĐA <= 5 GIÂY)
+ * - Mở modal: tự động gửi ping đánh thức server (/health) và duy trì mỗi 8 phút.
+ * - Khi bấm chụp:
+ *   1) Cắt vùng khung ngắm trung tâm & nén JPEG <= 960px (quality 0.8, ~60-110KB).
+ *   2) Dùng BarcodeDetector (nếu trình duyệt hỗ trợ) đọc mã vạch EAN-13/Code-128 trong ~30ms.
+ *      Nếu mã vạch đã được ghi nhớ trên dòng hàng -> gửi mỗi mã vạch, khớp tức thì (~0.1s).
+ *   3) Gọi 1 request duy nhất POST /imports/:id/scan-tag (gộp OCR + đối chiếu + đếm chiếc, hạn chót <= 5s).
  */
 interface TagCheckScannerModalProps {
   receiptId: string;
@@ -38,6 +47,7 @@ interface ScanResult {
   kind: ResultKind;
   title: string;
   detail?: string;
+  badge?: string;
   rowIndex?: number;
 }
 
@@ -49,8 +59,10 @@ interface Candidate {
   expectedQuantity?: number;
 }
 
-const MAX_IMAGE_DIM = 1280;
-const AUTO_RETURN_MS = 1600; // tự quay lại camera sau khi khớp thành công
+const MAX_IMAGE_DIM = 960;
+const JPEG_QUALITY = 0.8;
+const CLIENT_SCAN_TIMEOUT_MS = 5200; // Hạn chót phía client ~5s
+const AUTO_RETURN_MS = 1100; // Tự quay lại camera nhanh sau khi khớp thành công
 
 const scannedOf = (it: ImportItem) => Number(it.scannedQuantity) || 0;
 const expectedOf = (it: ImportItem) => Math.max(0, Number(it.expectedQuantity) || 0);
@@ -81,6 +93,25 @@ function feedback(ok: boolean) {
   }
 }
 
+/** Thử đọc mã vạch trên canvas bằng BarcodeDetector của trình duyệt (nếu có), tối đa 150ms. */
+async function detectBarcodeFromCanvas(canvas: HTMLCanvasElement): Promise<string> {
+  try {
+    const Detector = typeof window !== "undefined" ? (window as any).BarcodeDetector : undefined;
+    if (!Detector) return "";
+    const detector = new Detector({
+      formats: ["ean_13", "ean_8", "code_128", "code_39", "upc_a", "qr_code"],
+    });
+    const codes: any[] = await Promise.race([
+      detector.detect(canvas),
+      new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 150)),
+    ]);
+    const raw = codes?.[0]?.rawValue;
+    return typeof raw === "string" ? raw.trim() : "";
+  } catch {
+    return "";
+  }
+}
+
 export default function TagCheckScannerModal({
   receiptId,
   items,
@@ -97,6 +128,7 @@ export default function TagCheckScannerModal({
 
   const [phase, setPhase] = useState<Phase>("live");
   const [processingText, setProcessingText] = useState("");
+  const [elapsedMs, setElapsedMs] = useState(0);
   const [frozenUrl, setFrozenUrl] = useState<string | null>(null);
   const [result, setResult] = useState<ScanResult | null>(null);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -112,6 +144,26 @@ export default function TagCheckScannerModal({
   const percent = expectedUnits ? Math.min(100, Math.round((scannedUnits / expectedUnits) * 100)) : 0;
   const allDone = totalRows > 0 && fullRows === totalRows;
   const busy = phase === "processing" || rowBusy;
+
+  // Đánh thức server ngay khi mở modal + định kỳ 8 phút chống sleep
+  useEffect(() => {
+    pingServerHealth();
+    const keepAliveTimer = setInterval(pingServerHealth, KEEP_ALIVE_INTERVAL_MS);
+    return () => clearInterval(keepAliveTimer);
+  }, []);
+
+  // Đồng hồ đếm thời gian xử lý thực tế (hiển thị 0.1s -> 5.0s trên vòng xoay)
+  useEffect(() => {
+    if (phase !== "processing") {
+      setElapsedMs(0);
+      return;
+    }
+    const start = Date.now();
+    const timer = setInterval(() => {
+      setElapsedMs(Date.now() - start);
+    }, 100);
+    return () => clearInterval(timer);
+  }, [phase]);
 
   /* ------------------------------ Camera ------------------------------ */
 
@@ -132,7 +184,7 @@ export default function TagCheckScannerModal({
       let stream: MediaStream;
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: facing }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+          video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } },
           audio: false,
         });
       } catch {
@@ -190,14 +242,27 @@ export default function TagCheckScannerModal({
     if (ok) returnTimerRef.current = setTimeout(backToLive, AUTO_RETURN_MS);
   };
 
-  /** Gọi API đối chiếu, trả về kết quả hiển thị */
-  const runScanCheck = async (body: Record<string, any>) => {
-    const res = await apiRequest<any>(`/imports/${receiptId}/scan-check`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    });
-    const d = res.data || {};
+  /** Xử lý dữ liệu phản hồi từ /scan-tag hoặc /scan-check */
+  const applyScanResponse = (d: any, clientDurationMs?: number) => {
     if (d.receipt) onReceiptUpdate(d.receipt as ImportReceipt);
+
+    const totalSec = ((d.timing?.totalMs ?? clientDurationMs ?? 0) / 1000).toFixed(1);
+    const speedBadge =
+      d.source === "barcode"
+        ? `⚡ Mã vạch · ${totalSec}s`
+        : d.source === "ocr"
+        ? `🤖 OCR · ${totalSec}s`
+        : undefined;
+
+    if (d.unreadable) {
+      showResult({
+        kind: "unreadable",
+        title: "Không đọc được tag",
+        detail: d.warning || "Đưa tag gần hơn, đủ sáng, chụp thẳng và rõ phần mã hàng/size rồi chụp lại.",
+        badge: speedBadge,
+      });
+      return;
+    }
 
     if (d.ambiguous) {
       setCandidates(Array.isArray(d.candidates) ? d.candidates : []);
@@ -215,12 +280,14 @@ export default function TagCheckScannerModal({
         kind: "notfound",
         title: "Không có trong danh sách kiểm hàng",
         detail: d.warning || "Hàng này không được thêm vào phiếu. Kiểm tra lại với nhà cung cấp.",
+        badge: speedBadge,
       });
     } else if (d.alreadyFull) {
       showResult({
         kind: "alreadyFull",
         title: `Đã đủ số lượng ${qty}`,
         detail: `#${rowNo} ${name} — chiếc này có thể là hàng THỪA, không được cộng thêm.`,
+        badge: speedBadge,
         rowIndex: d.matchedIndex,
       });
     } else if (d.undone) {
@@ -236,56 +303,100 @@ export default function TagCheckScannerModal({
         kind: d.isFull ? "full" : "added",
         title: d.isFull ? `ĐỦ ${qty} — đã tick xác nhận` : `+1 chiếc — ${qty}`,
         detail: `#${rowNo} ${name}`,
+        badge: speedBadge,
         rowIndex: d.matchedIndex,
       });
     }
   };
 
-  const captureFrame = (): string | null => {
+  /** Gọi API đối chiếu nhanh theo dòng hoặc từ khóa nhập tay */
+  const runScanCheck = async (body: Record<string, any>) => {
+    const started = Date.now();
+    const res = await apiRequest<any>(`/imports/${receiptId}/scan-check`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    applyScanResponse(res.data || {}, Date.now() - started);
+  };
+
+  /** Cắt vùng khung ngắm trung tâm (84% x 80%) và thu nhỏ tối đa 960px để giảm tải mạng & tăng tốc OCR */
+  const captureCroppedFrame = (): { dataUrl: string; canvas: HTMLCanvasElement } | null => {
     const video = videoRef.current;
-    if (!video || !video.videoWidth) return null;
-    const scale = Math.min(1, MAX_IMAGE_DIM / Math.max(video.videoWidth, video.videoHeight));
+    if (!video || !video.videoWidth || !video.videoHeight) return null;
+
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    const sx = Math.round(vw * 0.08);
+    const sy = Math.round(vh * 0.1);
+    const sw = Math.round(vw * 0.84);
+    const sh = Math.round(vh * 0.8);
+
+    const scale = Math.min(1, MAX_IMAGE_DIM / Math.max(sw, sh));
     const canvas = document.createElement("canvas");
-    canvas.width = Math.round(video.videoWidth * scale);
-    canvas.height = Math.round(video.videoHeight * scale);
+    canvas.width = Math.max(1, Math.round(sw * scale));
+    canvas.height = Math.max(1, Math.round(sh * scale));
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL("image/jpeg", 0.88);
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+    return {
+      dataUrl: canvas.toDataURL("image/jpeg", JPEG_QUALITY),
+      canvas,
+    };
   };
 
   const handleCapture = async () => {
     if (busy || phase !== "live") return;
-    const dataUrl = captureFrame();
-    if (!dataUrl) {
+    const captured = captureCroppedFrame();
+    if (!captured) {
       setCameraError("Camera chưa sẵn sàng, vui lòng đợi 1 giây rồi chụp lại.");
       return;
     }
+
+    const { dataUrl, canvas } = captured;
     setFrozenUrl(dataUrl);
     setPhase("processing");
-    setProcessingText("Đang đọc tag...");
+    setProcessingText("Đang đọc tag & đối chiếu...");
+
+    const startedAt = Date.now();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), CLIENT_SCAN_TIMEOUT_MS);
+
     try {
-      const ocr = await apiRequest<any>("/imports/ocr-scan", {
-        method: "POST",
-        body: JSON.stringify({
-          mode: "TAG",
-          fileBase64: dataUrl.replace(/^data:[^;]+;base64,/, ""),
-          mimeType: "image/jpeg",
-        }),
-      });
-      const t = ocr.data || {};
-      if (!t.productCode && !t.productName) {
-        showResult({
-          kind: "unreadable",
-          title: "Không đọc được tag",
-          detail: "Đưa tag gần hơn, đủ sáng, chụp thẳng và rõ phần mã hàng/size rồi chụp lại.",
-        });
-        return;
+      // Thử đọc mã vạch ngay trên trình duyệt (~30ms)
+      const detectedBarcode = await detectBarcodeFromCanvas(canvas);
+      const knownOnReceipt =
+        detectedBarcode && items.some((it) => it.barcode && it.barcode === detectedBarcode);
+
+      if (knownOnReceipt) {
+        setProcessingText(`Khớp mã vạch ${detectedBarcode}...`);
       }
-      setProcessingText(`Đang đối chiếu: ${t.productName || t.productCode}`);
-      await runScanCheck({ productCode: t.productCode, productName: t.productName, rawText: t.rawText });
+
+      const payload: Record<string, any> = knownOnReceipt
+        ? { barcode: detectedBarcode }
+        : {
+            fileBase64: dataUrl.replace(/^data:[^;]+;base64,/, ""),
+            mimeType: "image/jpeg",
+            ...(detectedBarcode ? { barcode: detectedBarcode } : {}),
+          };
+
+      const res = await apiRequest<any>(`/imports/${receiptId}/scan-tag`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+
+      applyScanResponse(res.data || {}, Date.now() - startedAt);
     } catch (err: any) {
-      showResult({ kind: "error", title: "Lỗi khi kiểm tra", detail: err?.message || "Vui lòng chụp lại." });
+      const isTimeout = err?.name === "AbortError" || err?.code === "OCR_TIMEOUT";
+      showResult({
+        kind: isTimeout ? "unreadable" : "error",
+        title: isTimeout ? "Quá 5 giây — vui lòng chụp lại" : "Lỗi khi kiểm tra",
+        detail: isTimeout
+          ? "Giữ tag phẳng, đủ sáng và nằm gọn trong khung ngắm để đọc nhanh dưới 5s."
+          : err?.message || "Vui lòng chụp lại.",
+      });
+    } finally {
+      clearTimeout(timeoutId);
     }
   };
 
@@ -322,7 +433,7 @@ export default function TagCheckScannerModal({
     e.preventDefault();
     const q = manualQuery.trim();
     if (!q) return;
-    await runRowAction({ query: q, productName: q });
+    await runRowAction({ query: q, productName: q, barcode: q });
     setManualQuery("");
   };
 
@@ -352,6 +463,9 @@ export default function TagCheckScannerModal({
             <div className="flex items-center gap-2 min-w-0">
               <ScanLine className="w-5 h-5 text-amber-400 shrink-0" />
               <h3 className="font-bold text-base sm:text-lg truncate">Bước 4: Chụp tag kiểm tra thực tế</h3>
+              <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 text-[11px] font-bold">
+                <Zap className="w-3 h-3" /> Fast OCR ≤ 5s
+              </span>
             </div>
             <button
               type="button"
@@ -402,7 +516,7 @@ export default function TagCheckScannerModal({
                   <div className="pointer-events-none absolute inset-x-[12%] inset-y-[14%] border-2 border-dashed border-amber-400/80 rounded-lg" />
                   <div className="absolute top-2 left-2 right-2 flex items-center justify-between gap-2">
                     <span className="px-2.5 py-1 rounded-full bg-black/60 text-white text-[11px] font-bold">
-                      Đưa tag vào khung rồi bấm chụp (Space)
+                      Đưa tag (tên + mã vạch + SKU) vào khung rồi bấm chụp (Space)
                     </span>
                     <button
                       type="button"
@@ -425,11 +539,17 @@ export default function TagCheckScannerModal({
                 </>
               )}
 
-              {/* Vòng loading */}
+              {/* Vòng loading + bộ đếm giây */}
               {phase === "processing" && (
                 <div className="absolute inset-0 bg-black/55 flex flex-col items-center justify-center gap-3 text-white p-4 text-center">
-                  <div className="w-16 h-16 rounded-full border-4 border-white/25 border-t-amber-400 animate-spin" />
+                  <div className="relative flex items-center justify-center">
+                    <div className="w-16 h-16 rounded-full border-4 border-white/25 border-t-amber-400 animate-spin" />
+                    <span className="absolute text-xs font-mono font-extrabold text-amber-300">
+                      {(elapsedMs / 1000).toFixed(1)}s
+                    </span>
+                  </div>
                   <div className="text-sm font-bold">{processingText}</div>
+                  <div className="text-[11px] text-slate-300">Mục tiêu ≤ 5.0s · Tự động dùng model dự phòng nếu chậm</div>
                 </div>
               )}
 
@@ -449,6 +569,11 @@ export default function TagCheckScannerModal({
                     {resultStyle[result.kind].icon}
                     <div className="text-lg font-extrabold leading-tight">{result.title}</div>
                     {result.detail && <div className="text-xs font-semibold opacity-90">{result.detail}</div>}
+                    {result.badge && (
+                      <div className="px-2.5 py-0.5 rounded-full bg-black/20 text-[11px] font-mono font-bold">
+                        {result.badge}
+                      </div>
+                    )}
                     <div className="mt-1 text-[11px] font-bold underline opacity-90">
                       {result.kind === "added" || result.kind === "full" || result.kind === "undone"
                         ? "Tự quay lại camera..."
@@ -509,7 +634,7 @@ export default function TagCheckScannerModal({
                     type="text"
                     value={manualQuery}
                     onChange={(e) => setManualQuery(e.target.value)}
-                    placeholder="Tag mờ? Nhập mã / tên hàng (+1)..."
+                    placeholder="Tag mờ? Nhập mã SKU / mã vạch / tên hàng (+1)..."
                     className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 text-base sm:text-sm focus:border-emerald-600 focus:outline-none"
                   />
                 </div>
@@ -566,7 +691,10 @@ export default function TagCheckScannerModal({
                         <div className={`font-semibold ${full ? "text-emerald-900" : "text-slate-900"}`}>
                           #{idx + 1} {it.productName}
                         </div>
-                        <div className="text-[10px] text-slate-500 font-mono truncate">{it.productCode}</div>
+                        <div className="text-[10px] text-slate-500 font-mono truncate">
+                          {it.productCode}
+                          {it.barcode ? ` · EAN ${it.barcode}` : ""}
+                        </div>
                       </div>
                       <span
                         className={`font-mono font-extrabold whitespace-nowrap ${

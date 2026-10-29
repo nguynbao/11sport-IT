@@ -10,6 +10,8 @@ export interface IProduct extends Document {
   sellingPrice: number;
   /** Giá gốc (giá nhập gần nhất) — cập nhật khi hoàn thành phiếu nhập kho */
   costPrice: number;
+  /** Mã vạch EAN/Code128 in trên tag sản phẩm */
+  barcode?: string;
   stock: number;
   status: 'ACTIVE' | 'INACTIVE';
   createdAt: Date;
@@ -26,6 +28,7 @@ const ProductSchema = new Schema<IProduct>(
     unit: { type: String, required: true, default: 'Cái', trim: true },
     sellingPrice: { type: Number, required: true, default: 0, min: 0 },
     costPrice: { type: Number, default: 0, min: 0 },
+    barcode: { type: String, default: '', trim: true },
     stock: { type: Number, required: true, default: 0 },
     status: { type: String, enum: ['ACTIVE', 'INACTIVE'], default: 'ACTIVE' },
   },
