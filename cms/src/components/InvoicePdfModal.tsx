@@ -171,13 +171,13 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
                 }`}
               />
               <div className="font-semibold text-black text-[11px] leading-snug">
-                Đ/c: 24 Tố Hữu, P.Hòa Cường, TP. Đà Nẵng
+                Địa chỉ: 24 Tố Hữu, P.Hòa Cường, TP. Đà Nẵng
               </div>
               <div className="font-bold text-black text-[11px] leading-snug mt-0.5">
                 Hotline: 076.576.3456
               </div>
               <div className="mt-2 font-extrabold uppercase tracking-wider text-xs sm:text-sm text-black">
-                HÓA ĐƠN BÁN HÀNG ({paperSize})
+                HÓA ĐƠN BÁN HÀNG
               </div>
               <div className="font-mono text-[11px] font-semibold text-black mt-0.5">
                 Mã đơn: <strong className="font-extrabold">{orderCode}</strong>
@@ -187,22 +187,19 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
               </div>
             </div>
 
-            {/* Thông tin khách hàng & thu ngân (cùng 1 dòng) */}
+            {/* Thông tin khách hàng & thu ngân */}
             <div className="space-y-1 mb-3 pb-2.5 border-b border-black text-black text-[11px]">
-              <div className="flex items-baseline justify-between gap-2">
-                <div>
-                  <span className="font-semibold">Khách hàng: </span>
-                  <span className="font-extrabold">{order.customerName}</span>
-                </div>
-                <div className="font-mono font-bold whitespace-nowrap">
-                  SĐT: {order.customerPhone}
-                </div>
+              <div>
+                <span className="font-semibold">Khách hàng: </span>
+                <span className="font-extrabold">{order.customerName}</span>
               </div>
-              <div className="flex items-baseline justify-between gap-2">
-                <div>
-                  <span className="font-semibold">Thu ngân / Người bán: </span>
-                  <span className="font-extrabold">{sellerName}</span>
-                </div>
+              <div className="font-mono">
+                <span className="font-semibold font-sans">SĐT: </span>
+                <span className="font-bold">{order.customerPhone}</span>
+              </div>
+              <div>
+                <span className="font-semibold">Thu ngân / Người bán: </span>
+                <span className="font-extrabold">{sellerName}</span>
               </div>
               <div>
                 <span className="font-semibold">Thanh toán: </span>
@@ -222,10 +219,10 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
                       SL
                     </th>
                     <th className="border-r border-black py-1.5 px-1.5 text-right whitespace-nowrap">
-                      Đ.Giá
+                      Đơn giá
                     </th>
                     <th className="py-1.5 px-1.5 text-right whitespace-nowrap">
-                      T.Tiền
+                      Thành tiền
                     </th>
                   </tr>
                 </thead>
