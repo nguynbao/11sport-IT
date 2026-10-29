@@ -49,8 +49,15 @@ export function applyFloorDelta(
   product: any,
   floor: WarehouseFloor,
   delta: number
-): { stockFloor1: number; stockFloor2: number; stock: number } {
+): {
+  stockFloor1: number;
+  stockFloor2: number;
+  stock: number;
+  balanceBefore: number;
+  balanceAfter: number;
+} {
   const current = getFloorStocks(product);
+  const balanceBefore = current.stock;
   let f1 = current.stockFloor1;
   let f2 = current.stockFloor2;
 
@@ -60,10 +67,14 @@ export function applyFloorDelta(
     f1 = Math.max(0, f1 + delta);
   }
 
+  const stock = f1 + f2;
+
   return {
     stockFloor1: f1,
     stockFloor2: f2,
-    stock: f1 + f2,
+    stock,
+    balanceBefore,
+    balanceAfter: stock,
   };
 }
 

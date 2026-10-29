@@ -39,9 +39,12 @@ import {
 } from "lucide-react";
 
 type SubTab = "PRODUCTS" | "REPORT" | "MOVEMENTS" | "IMPORTS" | "ADJUSTMENT" | "TRANSFER";
+type ActiveWarehouseTab = "FLOOR_1" | "FLOOR_2" | "ALL";
 
 export default function InventoryModule() {
   const [subTab, setSubTab] = useState<SubTab>("PRODUCTS");
+  const [activeWarehouse, setActiveWarehouse] = useState<ActiveWarehouseTab>("FLOOR_1");
+  const [showZeroFloorItems, setShowZeroFloorItems] = useState(false);
 
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -57,11 +60,12 @@ export default function InventoryModule() {
   const [toDate, setToDate] = useState("");
   const [movementType, setMovementType] = useState("");
 
-  // Tên, Category, ĐVT, Số lượng, Giá gốc & Giá bán chỉnh sửa theo productId
+  // Tên, Category, ĐVT, Số lượng từng tầng (Tầng 1, Tầng 2), Giá gốc & Giá bán chỉnh sửa theo productId
   const [editingNames, setEditingNames] = useState<Record<string, string>>({});
   const [editingCats, setEditingCats] = useState<Record<string, string>>({});
   const [editingUnits, setEditingUnits] = useState<Record<string, string>>({});
-  const [editingStocks, setEditingStocks] = useState<Record<string, number>>({});
+  const [editingFloor1, setEditingFloor1] = useState<Record<string, number>>({});
+  const [editingFloor2, setEditingFloor2] = useState<Record<string, number>>({});
   const [editingCosts, setEditingCosts] = useState<Record<string, number>>({});
   const [editingPrices, setEditingPrices] = useState<Record<string, number>>({});
 
@@ -100,19 +104,23 @@ export default function InventoryModule() {
       if (categoryId) q.set("categoryId", categoryId);
       if (search.trim()) q.set("search", search.trim());
 
-      const [prodRes, catRes] = await Promise.all([
+      const [prodRes, catRes, impRes] = await Promise.all([
         apiRequest<Product[]>(`/products?${q.toString()}`),
         apiRequest<Category[]>("/categories"),
+        apiRequest<any[]>("/imports"),
       ]);
       const pList = Array.isArray(prodRes.data) ? prodRes.data : [];
       const cList = Array.isArray(catRes.data) ? catRes.data : [];
+      const iList = Array.isArray(impRes.data) ? impRes.data : [];
       setProducts(pList);
       setCategories(cList);
+      setImportsList(iList);
 
       const nameMap: Record<string, string> = {};
       const catMap: Record<string, string> = {};
       const unitMap: Record<string, string> = {};
-      const stockMap: Record<string, number> = {};
+      const f1Map: Record<string, number> = {};
+      const f2Map: Record<string, number> = {};
       const costMap: Record<string, number> = {};
       const priceMap: Record<string, number> = {};
       pList.forEach((p) => {
@@ -120,14 +128,16 @@ export default function InventoryModule() {
         catMap[p._id] =
           typeof p.categoryId === "object" ? p.categoryId?._id || "" : String(p.categoryId || "");
         unitMap[p._id] = p.unit || "Cái";
-        stockMap[p._id] = Number(p.stock || 0);
+        f1Map[p._id] = Number(p.stockFloor1 ?? p.stock ?? 0);
+        f2Map[p._id] = Number(p.stockFloor2 ?? 0);
         costMap[p._id] = Number(p.costPrice || 0);
         priceMap[p._id] = Number(p.sellingPrice || 0);
       });
       setEditingNames(nameMap);
       setEditingCats(catMap);
       setEditingUnits(unitMap);
-      setEditingStocks(stockMap);
+      setEditingFloor1(f1Map);
+      setEditingFloor2(f2Map);
       setEditingCosts(costMap);
       setEditingPrices(priceMap);
 
@@ -213,6 +223,14 @@ export default function InventoryModule() {
     if (subTab === "TRANSFER") loadTransfers();
   }, [subTab, loadReport, loadMovements, loadImports, loadTransfers]);
 
+  const handleSelectWarehouseTab = (wh: ActiveWarehouseTab) => {
+    setActiveWarehouse(wh);
+    if (wh === "FLOOR_1" || wh === "FLOOR_2") {
+      setNewProdWarehouse(wh);
+      setAdjWarehouse(wh);
+    }
+  };
+
   const handleUpdateProductPrices = async (prod: Product) => {
     setStatusMsg(null);
     const newName = String(editingNames[prod._id] ?? prod.name ?? "").trim();
@@ -222,17 +240,22 @@ export default function InventoryModule() {
         ""
     );
     const newUnit = String(editingUnits[prod._id] ?? prod.unit ?? "Cái").trim() || "Cái";
-    const newStock = Math.max(
+    const newF1 = Math.max(
       0,
-      Math.round(Number(editingStocks[prod._id] ?? prod.stock ?? 0))
+      Math.round(Number(editingFloor1[prod._id] ?? prod.stockFloor1 ?? prod.stock ?? 0))
     );
+    const newF2 = Math.max(
+      0,
+      Math.round(Number(editingFloor2[prod._id] ?? prod.stockFloor2 ?? 0))
+    );
+    const newStock = newF1 + newF2;
     const newCost = Number(editingCosts[prod._id] ?? prod.costPrice ?? 0);
     const newPrice = Number(editingPrices[prod._id] ?? prod.sellingPrice ?? 0);
     if (!newName) {
       setStatusMsg({ type: "error", text: "Tên sản phẩm không được để trống." });
       return;
     }
-    if (newStock < 0 || newCost < 0 || newPrice < 0) {
+    if (newF1 < 0 || newF2 < 0 || newCost < 0 || newPrice < 0) {
       setStatusMsg({
         type: "error",
         text: "Số lượng, giá gốc và giá bán không được âm.",
@@ -246,6 +269,8 @@ export default function InventoryModule() {
           name: newName,
           ...(newCatId ? { categoryId: newCatId } : {}),
           unit: newUnit,
+          stockFloor1: newF1,
+          stockFloor2: newF2,
           stock: newStock,
           allowDirectStock: true,
           costPrice: newCost,
@@ -254,7 +279,7 @@ export default function InventoryModule() {
       });
       setStatusMsg({
         type: "success",
-        text: `Đã cập nhật "${newName}": SL tồn ${newStock} ${newUnit} · Giá gốc ${formatVND(
+        text: `Đã cập nhật "${newName}": 🏢 Kho Tầng 1: ${newF1} ${newUnit} · 🏬 Kho Tầng 2: ${newF2} ${newUnit} (Tổng: ${newStock}) · Giá gốc ${formatVND(
           newCost
         )} · Giá bán ${formatVND(newPrice)}!`,
       });
@@ -439,23 +464,159 @@ export default function InventoryModule() {
     }
   };
 
-  // Thống kê tổng hợp trên danh sách sản phẩm đang hiển thị
-  const totalStockQty = products.reduce((s, p) => s + (Number(p.stock) || 0), 0);
-  const totalCostInventoryValue = products.reduce(
-    (s, p) => s + (Number(p.stock) || 0) * (Number(editingCosts[p._id] ?? p.costPrice) || 0),
+  // Tập mã hàng đã từng nhập vào Kho Tầng 1 và Kho Tầng 2 (từ danh sách Phiếu nhập)
+  const floor1ImportedCodes = new Set<string>();
+  const floor2ImportedCodes = new Set<string>();
+  importsList.forEach((rc) => {
+    const wh = rc.targetWarehouse === "FLOOR_2" ? "FLOOR_2" : "FLOOR_1";
+    (rc.items || []).forEach((it: any) => {
+      if (it.productCode) {
+        if (wh === "FLOOR_2") floor2ImportedCodes.add(String(it.productCode));
+        else floor1ImportedCodes.add(String(it.productCode));
+      }
+    });
+  });
+
+  // Lọc sản phẩm theo Kho đang chọn (Kho Tầng 1 / Kho Tầng 2 / Xem gộp cả 2 Kho)
+  const displayedProducts = products.filter((p) => {
+    const f1 = Number(p.stockFloor1 ?? p.stock ?? 0);
+    const f2 = Number(p.stockFloor2 ?? 0);
+    if (activeWarehouse === "FLOOR_1") {
+      if (showZeroFloorItems) return true;
+      return f1 > 0 || floor1ImportedCodes.has(p.code) || !floor2ImportedCodes.has(p.code);
+    }
+    if (activeWarehouse === "FLOOR_2") {
+      if (showZeroFloorItems) return true;
+      return f2 > 0 || floor2ImportedCodes.has(p.code);
+    }
+    return true;
+  });
+
+  // Thống kê tổng hợp riêng cho Kho Tầng 1, Kho Tầng 2 và Kho đang chọn
+  const totalFloor1Qty = products.reduce(
+    (s, p) => s + (Number(p.stockFloor1 ?? p.stock) || 0),
     0
   );
-  const totalSellInventoryValue = products.reduce(
-    (s, p) => s + (Number(p.stock) || 0) * (Number(editingPrices[p._id] ?? p.sellingPrice) || 0),
+  const totalFloor2Qty = products.reduce(
+    (s, p) => s + (Number(p.stockFloor2) || 0),
+    0
+  );
+  const getActiveQty = (p: Product) => {
+    const f1 = Number(p.stockFloor1 ?? p.stock ?? 0);
+    const f2 = Number(p.stockFloor2 ?? 0);
+    if (activeWarehouse === "FLOOR_1") return f1;
+    if (activeWarehouse === "FLOOR_2") return f2;
+    return f1 + f2;
+  };
+
+  const totalStockQty = displayedProducts.reduce((s, p) => s + getActiveQty(p), 0);
+  const totalCostInventoryValue = displayedProducts.reduce(
+    (s, p) => s + getActiveQty(p) * (Number(editingCosts[p._id] ?? p.costPrice) || 0),
+    0
+  );
+  const totalSellInventoryValue = displayedProducts.reduce(
+    (s, p) => s + getActiveQty(p) * (Number(editingPrices[p._id] ?? p.sellingPrice) || 0),
     0
   );
   const totalExpectedMargin = totalSellInventoryValue - totalCostInventoryValue;
 
   // Map tra cứu nhanh sản phẩm theo mã/id cho Phiếu nhập
   const productByCode = new Map(products.map((p) => [p.code, p]));
+  const activeWarehouseLabel =
+    activeWarehouse === "FLOOR_1"
+      ? "🏢 Kho Tầng 1"
+      : activeWarehouse === "FLOOR_2"
+      ? "🏬 Kho Tầng 2"
+      : "📊 Tổng hợp Cả 2 Kho (Tầng 1 + Tầng 2)";
 
   return (
     <div className="space-y-6">
+      {/* THANH CHỌN KHO (CHIA RIÊNG KHO TẦNG 1 VÀ KHO TẦNG 2) */}
+      <div className="bg-slate-900 text-white rounded-xl p-4 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <div className="text-[11px] font-bold uppercase text-emerald-400">
+            Hệ thống Quản lý 2 Kho tách biệt — 11Sport
+          </div>
+          <h2 className="text-base font-extrabold mt-0.5">
+            Đang quản lý: <span className="text-emerald-300">{activeWarehouseLabel}</span>
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 w-full lg:w-auto">
+          <button
+            type="button"
+            onClick={() => handleSelectWarehouseTab("FLOOR_1")}
+            className={`px-4 py-2.5 rounded-xl text-left transition border-2 ${
+              activeWarehouse === "FLOOR_1"
+                ? "bg-emerald-500 text-slate-950 border-emerald-300 shadow-lg"
+                : "bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700"
+            }`}
+          >
+            <div className="text-xs font-extrabold flex items-center justify-between gap-2">
+              <span>🏢 KHO TẦNG 1</span>
+              <span className="font-mono text-sm">
+                {totalFloor1Qty.toLocaleString("vi-VN")} SP
+              </span>
+            </div>
+            <div
+              className={`text-[10px] mt-0.5 ${
+                activeWarehouse === "FLOOR_1" ? "text-slate-900 font-semibold" : "text-slate-400"
+              }`}
+            >
+              Quản lý tồn & giá bán Kho Tầng 1
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleSelectWarehouseTab("FLOOR_2")}
+            className={`px-4 py-2.5 rounded-xl text-left transition border-2 ${
+              activeWarehouse === "FLOOR_2"
+                ? "bg-purple-500 text-white border-purple-300 shadow-lg"
+                : "bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700"
+            }`}
+          >
+            <div className="text-xs font-extrabold flex items-center justify-between gap-2">
+              <span>🏬 KHO TẦNG 2</span>
+              <span className="font-mono text-sm">
+                {totalFloor2Qty.toLocaleString("vi-VN")} SP
+              </span>
+            </div>
+            <div
+              className={`text-[10px] mt-0.5 ${
+                activeWarehouse === "FLOOR_2" ? "text-purple-100 font-semibold" : "text-slate-400"
+              }`}
+            >
+              Quản lý tồn & giá bán Kho Tầng 2
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleSelectWarehouseTab("ALL")}
+            className={`px-4 py-2.5 rounded-xl text-left transition border-2 ${
+              activeWarehouse === "ALL"
+                ? "bg-blue-500 text-white border-blue-300 shadow-lg"
+                : "bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700"
+            }`}
+          >
+            <div className="text-xs font-extrabold flex items-center justify-between gap-2">
+              <span>📊 XEM GỘP 2 KHO</span>
+              <span className="font-mono text-sm">
+                {(totalFloor1Qty + totalFloor2Qty).toLocaleString("vi-VN")} SP
+              </span>
+            </div>
+            <div
+              className={`text-[10px] mt-0.5 ${
+                activeWarehouse === "ALL" ? "text-blue-100 font-semibold" : "text-slate-400"
+              }`}
+            >
+              So sánh Tầng 1 + Tầng 2 trên cùng bảng
+            </div>
+          </button>
+        </div>
+      </div>
+
       {/* Thanh chuyển Sub-Tab trong Module Kho */}
       <div className="bg-white rounded-xl border border-slate-200 p-2 shadow-sm flex flex-wrap items-center gap-1.5">
         <button
@@ -557,23 +718,25 @@ export default function InventoryModule() {
       {/* SUB-TAB 1: SẢN PHẨM, SỐ LƯỢNG, GIÁ GỐC & GIÁ BÁN LẺ */}
       {subTab === "PRODUCTS" && (
         <div className="space-y-6">
-          {/* 4 Thẻ KPI Tổng hợp Số lượng, Giá gốc, Giá bán */}
+          {/* 4 Thẻ KPI Tổng hợp Số lượng, Giá gốc, Giá bán theo Kho đang chọn */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
               <div className="text-[11px] font-bold uppercase text-slate-500">
-                Tổng số lượng tồn kho ({products.length} mã SP)
+                Tổng tồn {activeWarehouseLabel} ({displayedProducts.length} mã SP)
               </div>
               <div className="text-2xl font-extrabold font-mono text-slate-900 mt-1">
                 {totalStockQty.toLocaleString("vi-VN")}
               </div>
               <div className="text-[11px] text-slate-500 mt-0.5">
-                Đơn vị sản phẩm đang có trong kho
+                {activeWarehouse === "ALL"
+                  ? `Tầng 1: ${totalFloor1Qty.toLocaleString("vi-VN")} · Tầng 2: ${totalFloor2Qty.toLocaleString("vi-VN")}`
+                  : `Đơn vị sản phẩm đang có tại ${activeWarehouseLabel}`}
               </div>
             </div>
 
             <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
               <div className="text-[11px] font-bold uppercase text-slate-500">
-                Tổng giá trị kho (Theo Giá gốc)
+                Giá trị {activeWarehouseLabel} (Theo Giá gốc)
               </div>
               <div className="text-2xl font-extrabold font-mono text-amber-700 mt-1">
                 {formatVND(totalCostInventoryValue)}
@@ -585,19 +748,19 @@ export default function InventoryModule() {
 
             <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
               <div className="text-[11px] font-bold uppercase text-slate-500">
-                Tổng giá trị kho (Theo Giá bán)
+                Giá trị {activeWarehouseLabel} (Theo Giá bán)
               </div>
               <div className="text-2xl font-extrabold font-mono text-emerald-700 mt-1">
                 {formatVND(totalSellInventoryValue)}
               </div>
               <div className="text-[11px] text-slate-500 mt-0.5">
-                Doanh thu dự kiến nếu bán hết tồn kho
+                Doanh thu dự kiến của {activeWarehouseLabel}
               </div>
             </div>
 
             <div className="bg-slate-900 text-white rounded-xl p-4 shadow-sm">
               <div className="text-[11px] font-bold uppercase text-emerald-400">
-                Lãi gộp dự kiến trên tồn kho
+                Lãi gộp dự kiến ({activeWarehouseLabel})
               </div>
               <div
                 className={`text-2xl font-extrabold font-mono mt-1 ${
@@ -750,22 +913,40 @@ export default function InventoryModule() {
             </div>
           </form>
 
-          {/* Bảng danh sách sản phẩm: Số lượng, Giá gốc & Giá bán */}
+          {/* Bảng danh sách sản phẩm: Chia rõ Kho Tầng 1 & Kho Tầng 2 */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h3 className="font-bold text-slate-900 text-base">
-                  Danh mục Sản phẩm — Số lượng, Giá gốc & Giá bán lẻ (BR-04)
+                <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                  <span>Danh mục Sản phẩm — {activeWarehouseLabel}</span>
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-mono bg-emerald-100 text-emerald-800">
+                    {displayedProducts.length} mặt hàng · {totalStockQty.toLocaleString("vi-VN")} đơn vị
+                  </span>
                 </h3>
-                <p className="text-xs text-slate-500">
-                  Quản lý/Admin xem và cập nhật cả <strong>Giá gốc</strong> lẫn <strong>Giá bán lẻ</strong>. Bên màn hình Saler (nhân viên bán hàng) chỉ nhìn thấy <strong>Số lượng</strong> và <strong>Giá bán</strong>, hoàn toàn không thấy Giá gốc.
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {activeWarehouse === "FLOOR_1"
+                    ? "Đang xem và chỉnh sửa trực tiếp tồn kho tại Kho Tầng 1. Bấm sang tab 'Kho Tầng 2' ở trên để quản lý riêng Kho Tầng 2."
+                    : activeWarehouse === "FLOOR_2"
+                    ? "Đang xem và chỉnh sửa trực tiếp tồn kho tại Kho Tầng 2. Có thể bật 'Hiện toàn bộ SP' nếu muốn nhập số lượng Tầng 2 cho các mã hàng khác."
+                    : "Đang xem gộp cả 2 kho: có thể chỉnh sửa riêng cột Tồn Kho Tầng 1 và Tồn Kho Tầng 2 trên cùng một dòng."}
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                {activeWarehouse !== "ALL" && (
+                  <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 bg-slate-100 px-3 py-2 rounded-lg cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showZeroFloorItems}
+                      onChange={(e) => setShowZeroFloorItems(e.target.checked)}
+                      className="rounded border-slate-300"
+                    />
+                    Hiện cả SP ngoài {activeWarehouse === "FLOOR_2" ? "Tầng 2" : "Tầng 1"} ({products.length} SP)
+                  </label>
+                )}
                 <ExportExcelButton
-                  onExport={() => exportProducts(products)}
-                  disabled={products.length === 0}
+                  onExport={() => exportProducts(displayedProducts)}
+                  disabled={displayedProducts.length === 0}
                 />
                 <div className="relative w-full sm:w-64">
                   <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
@@ -796,18 +977,32 @@ export default function InventoryModule() {
               <table className="w-full text-xs text-left">
                 <thead className="bg-slate-900 text-white uppercase">
                   <tr>
-                    <th className="py-3 px-3">Mã hàng (Không sửa)</th>
-                    <th className="py-3 px-3 min-w-[260px]">Tên sản phẩm</th>
-                    <th className="py-3 px-3 min-w-[140px]">Category</th>
+                    <th className="py-3 px-3">Mã hàng</th>
+                    <th className="py-3 px-3 min-w-[240px]">Tên sản phẩm</th>
+                    <th className="py-3 px-3 min-w-[130px]">Category</th>
                     <th className="py-3 px-2.5 text-center w-20">ĐVT</th>
-                    <th className="py-3 px-3 text-right w-36 whitespace-nowrap">Số lượng tồn</th>
-                    <th className="py-3 px-3 text-right w-44 whitespace-nowrap">Giá gốc (VND)</th>
-                    <th className="py-3 px-3 text-right w-44 whitespace-nowrap">Giá bán lẻ (VND)</th>
+                    {(activeWarehouse === "FLOOR_1" || activeWarehouse === "ALL") && (
+                      <th className="py-3 px-3 text-right w-36 whitespace-nowrap bg-emerald-950 text-emerald-300">
+                        🏢 Tồn Kho Tầng 1
+                      </th>
+                    )}
+                    {(activeWarehouse === "FLOOR_2" || activeWarehouse === "ALL") && (
+                      <th className="py-3 px-3 text-right w-36 whitespace-nowrap bg-purple-950 text-purple-300">
+                        🏬 Tồn Kho Tầng 2
+                      </th>
+                    )}
+                    {activeWarehouse === "ALL" && (
+                      <th className="py-3 px-3 text-right w-28 whitespace-nowrap bg-slate-800">
+                        Tổng 2 Kho
+                      </th>
+                    )}
+                    <th className="py-3 px-3 text-right w-40 whitespace-nowrap">Giá gốc (VND)</th>
+                    <th className="py-3 px-3 text-right w-40 whitespace-nowrap">Giá bán lẻ (VND)</th>
                     <th className="py-3 px-3 text-right w-40 whitespace-nowrap">Thao tác</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {products.map((p) => {
+                  {displayedProducts.map((p) => {
                     const nameVal = editingNames[p._id] ?? p.name ?? "";
                     const catVal =
                       editingCats[p._id] ??
@@ -815,8 +1010,16 @@ export default function InventoryModule() {
                         ? p.categoryId?._id || ""
                         : String(p.categoryId || ""));
                     const unitVal = editingUnits[p._id] ?? p.unit ?? "Cái";
-                    const qty = Number(editingStocks[p._id] ?? p.stock ?? 0);
-                    const origQty = Number(p.stock) || 0;
+                    const origF1 = Number(p.stockFloor1 ?? p.stock ?? 0);
+                    const origF2 = Number(p.stockFloor2 ?? 0);
+                    const f1Val = Number(editingFloor1[p._id] ?? origF1);
+                    const f2Val = Number(editingFloor2[p._id] ?? origF2);
+                    const activeQty =
+                      activeWarehouse === "FLOOR_1"
+                        ? f1Val
+                        : activeWarehouse === "FLOOR_2"
+                        ? f2Val
+                        : f1Val + f2Val;
                     const costVal = Number(editingCosts[p._id] ?? p.costPrice ?? 0);
                     const sellVal = Number(editingPrices[p._id] ?? p.sellingPrice ?? 0);
                     const margin = sellVal - costVal;
@@ -869,35 +1072,79 @@ export default function InventoryModule() {
                             className="w-16 px-2 py-1.5 rounded border border-slate-300 text-center"
                           />
                         </td>
+
+                        {(activeWarehouse === "FLOOR_1" || activeWarehouse === "ALL") && (
+                          <td className="py-3 px-3 text-right align-top bg-emerald-50/30">
+                            <input
+                              type="number"
+                              min={0}
+                              step={1}
+                              value={f1Val}
+                              onChange={(e) =>
+                                setEditingFloor1((prev) => ({
+                                  ...prev,
+                                  [p._id]: Math.max(0, Math.round(Number(e.target.value) || 0)),
+                                }))
+                              }
+                              className={`w-28 px-2.5 py-1.5 rounded border text-right font-mono font-extrabold ${
+                                f1Val !== origF1
+                                  ? "border-emerald-500 bg-emerald-50 text-emerald-900"
+                                  : "border-slate-300 bg-white text-emerald-700"
+                              }`}
+                            />
+                            {activeWarehouse === "FLOOR_1" && origF2 > 0 && (
+                              <div className="mt-1 text-[10px] text-purple-700 font-mono">
+                                (Kho Tầng 2 đang có: <b>{origF2}</b>)
+                              </div>
+                            )}
+                            {f1Val !== origF1 && (
+                              <div className="mt-0.5 text-[10px] font-mono font-bold text-emerald-700">
+                                Hiện tại: {origF1} ({f1Val > origF1 ? `+${f1Val - origF1}` : f1Val - origF1})
+                              </div>
+                            )}
+                          </td>
+                        )}
+
+                        {(activeWarehouse === "FLOOR_2" || activeWarehouse === "ALL") && (
+                          <td className="py-3 px-3 text-right align-top bg-purple-50/30">
+                            <input
+                              type="number"
+                              min={0}
+                              step={1}
+                              value={f2Val}
+                              onChange={(e) =>
+                                setEditingFloor2((prev) => ({
+                                  ...prev,
+                                  [p._id]: Math.max(0, Math.round(Number(e.target.value) || 0)),
+                                }))
+                              }
+                              className={`w-28 px-2.5 py-1.5 rounded border text-right font-mono font-extrabold ${
+                                f2Val !== origF2
+                                  ? "border-purple-500 bg-purple-50 text-purple-900"
+                                  : "border-slate-300 bg-white text-purple-700"
+                              }`}
+                            />
+                            {activeWarehouse === "FLOOR_2" && origF1 > 0 && (
+                              <div className="mt-1 text-[10px] text-emerald-700 font-mono">
+                                (Kho Tầng 1 đang có: <b>{origF1}</b>)
+                              </div>
+                            )}
+                            {f2Val !== origF2 && (
+                              <div className="mt-0.5 text-[10px] font-mono font-bold text-purple-700">
+                                Hiện tại: {origF2} ({f2Val > origF2 ? `+${f2Val - origF2}` : f2Val - origF2})
+                              </div>
+                            )}
+                          </td>
+                        )}
+
+                        {activeWarehouse === "ALL" && (
+                          <td className="py-3 px-3 text-right align-top font-mono font-extrabold text-slate-900 bg-slate-50">
+                            <div className="py-1.5">{f1Val + f2Val}</div>
+                          </td>
+                        )}
+
                         <td className="py-3 px-3 text-right align-top">
-                          <input
-                            type="number"
-                            min={0}
-                            step={1}
-                            value={qty}
-                            onChange={(e) =>
-                              setEditingStocks((prev) => ({
-                                ...prev,
-                                [p._id]: Math.max(0, Math.round(Number(e.target.value) || 0)),
-                              }))
-                            }
-                            className={`w-28 px-2.5 py-1.5 rounded border text-right font-mono font-extrabold ${
-                              qty !== origQty
-                                ? "border-emerald-500 bg-emerald-50 text-emerald-900"
-                                : "border-slate-300 bg-white text-emerald-700"
-                            }`}
-                          />
-                          <div className="mt-1 text-[10px] text-slate-600 font-mono">
-                            🏢 T1: <b>{p.stockFloor1 ?? p.stock}</b> · 🏬 T2: <b>{p.stockFloor2 ?? 0}</b>
-                          </div>
-                          {qty !== origQty && (
-                            <div className="mt-0.5 text-[10px] font-mono font-bold text-emerald-700">
-                              Hiện tại: {origQty} ({qty > origQty ? `+${qty - origQty}` : qty - origQty})
-                            </div>
-                          )}
-                        </td>
-                        <td className="py-3 px-3 text-right align-top">
-                          <div className="relative inline-block w-40">
+                          <div className="relative inline-block w-36">
                             <input
                               type="text"
                               inputMode="numeric"
@@ -920,11 +1167,11 @@ export default function InventoryModule() {
                             </span>
                           </div>
                           <div className="mt-1 text-[10px] text-slate-500 font-mono">
-                            Tổng vốn: {formatVND(qty * costVal)}
+                            Tổng vốn: {formatVND(activeQty * costVal)}
                           </div>
                         </td>
                         <td className="py-3 px-3 text-right align-top">
-                          <div className="relative inline-block w-40">
+                          <div className="relative inline-block w-36">
                             <input
                               type="text"
                               inputMode="numeric"
@@ -947,7 +1194,7 @@ export default function InventoryModule() {
                             </span>
                           </div>
                           <div className="mt-1 text-[10px] text-slate-500 font-mono">
-                            Tổng bán: {formatVND(qty * sellVal)}
+                            Tổng bán: {formatVND(activeQty * sellVal)}
                           </div>
                           {sellVal > 0 && costVal > 0 && (
                             <div
@@ -974,6 +1221,11 @@ export default function InventoryModule() {
                               type="button"
                               onClick={() => {
                                 setTransferProductId(p._id);
+                                if (activeWarehouse === "FLOOR_2") {
+                                  setTransferDirection("F2_TO_F1");
+                                } else if (activeWarehouse === "FLOOR_1") {
+                                  setTransferDirection("F1_TO_F2");
+                                }
                                 setSubTab("TRANSFER");
                               }}
                               className="p-1.5 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 inline-flex items-center justify-center"
@@ -995,15 +1247,33 @@ export default function InventoryModule() {
                     );
                   })}
                 </tbody>
-                {products.length > 0 && (
+                {displayedProducts.length > 0 && (
                   <tfoot className="bg-slate-100 border-t-2 border-slate-300 font-extrabold text-slate-900">
                     <tr>
                       <td colSpan={4} className="py-3 px-3 text-right uppercase">
-                        Tổng cộng ({products.length} sản phẩm):
+                        Tổng cộng {activeWarehouseLabel} ({displayedProducts.length} sản phẩm):
                       </td>
-                      <td className="py-3 px-3 text-right font-mono text-emerald-700">
-                        {totalStockQty}
-                      </td>
+                      {(activeWarehouse === "FLOOR_1" || activeWarehouse === "ALL") && (
+                        <td className="py-3 px-3 text-right font-mono text-emerald-700">
+                          {displayedProducts.reduce(
+                            (s, p) => s + (Number(p.stockFloor1 ?? p.stock) || 0),
+                            0
+                          )}
+                        </td>
+                      )}
+                      {(activeWarehouse === "FLOOR_2" || activeWarehouse === "ALL") && (
+                        <td className="py-3 px-3 text-right font-mono text-purple-700">
+                          {displayedProducts.reduce(
+                            (s, p) => s + (Number(p.stockFloor2) || 0),
+                            0
+                          )}
+                        </td>
+                      )}
+                      {activeWarehouse === "ALL" && (
+                        <td className="py-3 px-3 text-right font-mono text-slate-900">
+                          {totalStockQty}
+                        </td>
+                      )}
                       <td className="py-3 px-3 text-right font-mono text-amber-800">
                         {formatVND(totalCostInventoryValue)}
                       </td>
@@ -1031,7 +1301,7 @@ export default function InventoryModule() {
               <p className="text-xs text-slate-500">
                 Công thức chuẩn:{" "}
                 <strong className="text-slate-800">
-                  Số lượng Tồn cuối kỳ = Tồn đầu kỳ + Nhập trong kỳ − Bán trong kỳ ± Điều chỉnh
+                  Số lượng Tồn cuối kỳ = Tồn đầu kỳ + Nhập trong kỳ − Bán trong kỳ ± Điều chỉnh (Tách riêng Kho Tầng 1 & Kho Tầng 2)
                 </strong>
               </p>
             </div>
@@ -1075,8 +1345,14 @@ export default function InventoryModule() {
                   <th className="py-3 px-2.5 text-right text-emerald-300">+ Nhập</th>
                   <th className="py-3 px-2.5 text-right text-amber-300">− Bán</th>
                   <th className="py-3 px-2.5 text-right text-blue-300">± Đ.Chỉnh</th>
-                  <th className="py-3 px-3 text-right font-extrabold bg-slate-800">
-                    = SL Tồn Cuối
+                  <th className="py-3 px-2.5 text-right text-emerald-300 bg-slate-800 whitespace-nowrap">
+                    🏢 Tồn Tầng 1
+                  </th>
+                  <th className="py-3 px-2.5 text-right text-blue-300 bg-slate-800 whitespace-nowrap">
+                    🏬 Tồn Tầng 2
+                  </th>
+                  <th className="py-3 px-3 text-right font-extrabold bg-slate-800 whitespace-nowrap">
+                    = Tổng 2 Kho
                   </th>
                   <th className="py-3 px-3 text-right whitespace-nowrap">Giá gốc (VND)</th>
                   <th className="py-3 px-3 text-right whitespace-nowrap">Giá bán (VND)</th>
@@ -1089,10 +1365,23 @@ export default function InventoryModule() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {reportRows.map((r, i) => {
+                {reportRows
+                  .filter((r) => {
+                    if (activeWarehouse === "FLOOR_1") {
+                      return (Number(r.stockFloor1 ?? r.closingStock) || 0) > 0 || floor1ImportedCodes.has(r.productCode);
+                    }
+                    if (activeWarehouse === "FLOOR_2") {
+                      return (Number(r.stockFloor2) || 0) > 0 || floor2ImportedCodes.has(r.productCode);
+                    }
+                    return true;
+                  })
+                  .map((r, i) => {
                   const cost = Number(r.costPrice) || 0;
                   const sell = Number(r.sellingPrice) || 0;
+                  const f1 = Number(r.stockFloor1 ?? r.closingStock) || 0;
+                  const f2 = Number(r.stockFloor2) || 0;
                   const closing = Number(r.closingStock) || 0;
+                  const activeQty = activeWarehouse === "FLOOR_1" ? f1 : activeWarehouse === "FLOOR_2" ? f2 : closing;
                   return (
                     <tr key={r.productId || i} className="hover:bg-slate-50">
                       <td className="py-3 px-3 font-mono font-bold">{r.productCode}</td>
@@ -1112,6 +1401,12 @@ export default function InventoryModule() {
                           ? `+${r.adjustedAndReturnedQty}`
                           : r.adjustedAndReturnedQty}
                       </td>
+                      <td className="py-3 px-2.5 text-right font-mono font-bold text-emerald-700 bg-emerald-50/40">
+                        {f1}
+                      </td>
+                      <td className="py-3 px-2.5 text-right font-mono font-bold text-blue-700 bg-blue-50/40">
+                        {f2}
+                      </td>
                       <td className="py-3 px-3 text-right font-mono font-extrabold text-slate-900 bg-slate-50">
                         {closing}
                       </td>
@@ -1122,10 +1417,10 @@ export default function InventoryModule() {
                         {sell > 0 ? formatVND(sell) : <span className="text-amber-700">0 VND</span>}
                       </td>
                       <td className="py-3 px-3 text-right font-mono font-semibold text-amber-800 bg-amber-50/40 whitespace-nowrap">
-                        {formatVND(closing * cost)}
+                        {formatVND(activeQty * cost)}
                       </td>
                       <td className="py-3 px-3 text-right font-mono font-semibold text-emerald-800 bg-emerald-50/40 whitespace-nowrap">
-                        {formatVND(closing * sell)}
+                        {formatVND(activeQty * sell)}
                       </td>
                     </tr>
                   );
@@ -1148,6 +1443,12 @@ export default function InventoryModule() {
                     </td>
                     <td className="py-3 px-2.5 text-right font-mono text-blue-700">
                       {reportRows.reduce((s, r) => s + (Number(r.adjustedAndReturnedQty) || 0), 0)}
+                    </td>
+                    <td className="py-3 px-2.5 text-right font-mono text-emerald-700">
+                      {reportRows.reduce((s, r) => s + (Number(r.stockFloor1 ?? r.closingStock) || 0), 0)}
+                    </td>
+                    <td className="py-3 px-2.5 text-right font-mono text-blue-700">
+                      {reportRows.reduce((s, r) => s + (Number(r.stockFloor2) || 0), 0)}
                     </td>
                     <td className="py-3 px-3 text-right font-mono">
                       {reportRows.reduce((s, r) => s + (Number(r.closingStock) || 0), 0)}
@@ -1183,10 +1484,16 @@ export default function InventoryModule() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="font-bold text-slate-900 text-base">
-                Sổ Kho Kế Toán — Số lượng, Giá gốc & Giá bán (Stock Movements — BR-07)
+                Sổ Kho Kế Toán —{" "}
+                {activeWarehouse === "FLOOR_1"
+                  ? "🏢 Kho Tầng 1"
+                  : activeWarehouse === "FLOOR_2"
+                  ? "🏬 Kho Tầng 2"
+                  : "📊 Cả 2 Kho"}{" "}
+                (Stock Movements — BR-07)
               </h3>
               <p className="text-xs text-slate-500">
-                Lưu vết toàn bộ lịch sử biến động tồn kho kèm Số lượng, Giá gốc, Giá bán, mã chứng từ tham chiếu và nhân viên thực hiện.
+                Lưu vết toàn bộ lịch sử biến động tồn kho kèm Kho tầng, Số lượng, Giá gốc, Giá bán, mã chứng từ tham chiếu và nhân viên thực hiện.
               </p>
             </div>
 
@@ -1217,6 +1524,7 @@ export default function InventoryModule() {
               <thead className="bg-slate-900 text-white uppercase">
                 <tr>
                   <th className="py-3 px-3">Thời gian</th>
+                  <th className="py-3 px-3">Kho tầng</th>
                   <th className="py-3 px-3">Loại</th>
                   <th className="py-3 px-3">Sản phẩm</th>
                   <th className="py-3 px-3 text-right whitespace-nowrap">SL Biến động</th>
@@ -1228,14 +1536,32 @@ export default function InventoryModule() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {movements.map((m) => {
+                {movements
+                  .filter((m) => {
+                    if (activeWarehouse === "ALL") return true;
+                    const loc = m.warehouseLocation || "FLOOR_1";
+                    return loc === activeWarehouse;
+                  })
+                  .map((m) => {
                   const fallbackProd = productByCode.get(m.productCode);
                   const cost = Number(m.costPrice ?? fallbackProd?.costPrice ?? 0);
                   const sell = Number(m.sellingPrice ?? fallbackProd?.sellingPrice ?? 0);
+                  const loc = m.warehouseLocation || "FLOOR_1";
                   return (
                     <tr key={m._id} className="hover:bg-slate-50">
                       <td className="py-2.5 px-3 text-slate-500 whitespace-nowrap">
                         {formatDateTime(m.createdAt)}
+                      </td>
+                      <td className="py-2.5 px-3 whitespace-nowrap">
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                            loc === "FLOOR_2"
+                              ? "bg-blue-100 text-blue-800"
+                              : "bg-emerald-100 text-emerald-800"
+                          }`}
+                        >
+                          {loc === "FLOOR_2" ? "🏬 Kho Tầng 2" : "🏢 Kho Tầng 1"}
+                        </span>
                       </td>
                       <td className="py-2.5 px-3 font-mono font-bold">{m.type}</td>
                       <td className="py-2.5 px-3">
@@ -1279,7 +1605,13 @@ export default function InventoryModule() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="font-bold text-slate-900 text-base">
-                Danh sách Phiếu Nhập Kho — Số lượng, Giá gốc & Giá bán (BR-09, BR-10)
+                Danh sách Phiếu Nhập Kho —{" "}
+                {activeWarehouse === "FLOOR_1"
+                  ? "🏢 Kho Tầng 1"
+                  : activeWarehouse === "FLOOR_2"
+                  ? "🏬 Kho Tầng 2"
+                  : "📊 Cả 2 Kho"}{" "}
+                (BR-09, BR-10)
               </h3>
               <p className="text-xs text-slate-500">
                 Bấm vào một dòng phiếu nhập để xem chi tiết từng mặt hàng (Số lượng, Giá gốc, Giá bán).
@@ -1296,6 +1628,7 @@ export default function InventoryModule() {
               <thead className="bg-slate-900 text-white uppercase">
                 <tr>
                   <th className="py-3 px-3">Mã Phiếu</th>
+                  <th className="py-3 px-3">Kho nhận</th>
                   <th className="py-3 px-3">Trạng thái</th>
                   <th className="py-3 px-3 text-right">Số dòng</th>
                   <th className="py-3 px-3 text-right">Tổng SL thực nhận</th>
@@ -1309,7 +1642,13 @@ export default function InventoryModule() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {importsList.map((imp) => {
+                {importsList
+                  .filter((imp) => {
+                    if (activeWarehouse === "ALL") return true;
+                    const wh = imp.targetWarehouse === "FLOOR_2" ? "FLOOR_2" : "FLOOR_1";
+                    return wh === activeWarehouse;
+                  })
+                  .map((imp) => {
                   const items: any[] = imp.items || [];
                   const totalQty = items.reduce(
                     (s, it) => s + (Number(it.actualQuantity ?? it.expectedQuantity) || 0),
@@ -1330,6 +1669,7 @@ export default function InventoryModule() {
                     );
                   }, 0);
                   const isExpanded = expandedImportId === imp._id;
+                  const wh = imp.targetWarehouse === "FLOOR_2" ? "FLOOR_2" : "FLOOR_1";
 
                   return (
                     <React.Fragment key={imp._id}>
@@ -1341,6 +1681,17 @@ export default function InventoryModule() {
                       >
                         <td className="py-3 px-3 font-mono font-bold text-slate-900">
                           {imp.code || imp.receiptCode || imp._id}
+                        </td>
+                        <td className="py-3 px-3 whitespace-nowrap">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                              wh === "FLOOR_2"
+                                ? "bg-blue-100 text-blue-800"
+                                : "bg-emerald-100 text-emerald-800"
+                            }`}
+                          >
+                            {wh === "FLOOR_2" ? "🏬 Kho Tầng 2" : "🏢 Kho Tầng 1"}
+                          </span>
                         </td>
                         <td className="py-3 px-3">
                           <span
@@ -1414,7 +1765,7 @@ export default function InventoryModule() {
                       </tr>
                       {isExpanded && (
                         <tr className="bg-slate-50">
-                          <td colSpan={11} className="p-3">
+                          <td colSpan={12} className="p-3">
                             <div className="border border-slate-200 rounded-lg overflow-x-auto bg-white">
                               <table className="w-full text-[11px] text-left">
                                 <thead className="bg-slate-800 text-white uppercase">

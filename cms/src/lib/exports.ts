@@ -56,7 +56,9 @@ export function exportProducts(products: Product[]) {
     { header: "Tên sản phẩm", value: (p) => p.name, width: 50 },
     { header: "Category", value: categoryNameOf },
     { header: "ĐVT", value: (p) => p.unit, width: 8 },
-    { header: "Tồn kho", value: (p) => Number(p.stock) || 0, format: "int", total: true },
+    { header: "Tồn Kho Tầng 1", value: (p) => Number(p.stockFloor1 ?? p.stock) || 0, format: "int", total: true },
+    { header: "Tồn Kho Tầng 2", value: (p) => Number(p.stockFloor2) || 0, format: "int", total: true },
+    { header: "Tổng tồn 2 kho", value: (p) => Number(p.stock) || 0, format: "int", total: true },
     { header: "Giá gốc", value: (p) => Number(p.costPrice) || 0, format: "money" },
     { header: "Giá bán lẻ", value: (p) => Number(p.sellingPrice) || 0, format: "money" },
     {
@@ -79,7 +81,7 @@ export function exportProducts(products: Product[]) {
     { header: "Trạng thái bán", value: (p) => (p.sellingPrice > 0 ? "Đang bán" : "Chưa có giá bán") },
   ];
   downloadExcel(excelFileName("SanPham_TonKho"), [
-    buildSheet("San pham", cols, products, { title: "DANH MỤC SẢN PHẨM & TỒN KHO" }),
+    buildSheet("San pham", cols, products, { title: "DANH MỤC SẢN PHẨM & TỒN KHO (TẦNG 1 & TẦNG 2)" }),
   ]);
 }
 
@@ -96,7 +98,9 @@ export function exportInventoryReport(rows: InventoryReportRow[], from?: string,
     { header: "Nhập trong kỳ", value: (r) => r.importedQty, format: "int", total: true },
     { header: "Bán trong kỳ", value: (r) => r.soldQty, format: "int", total: true },
     { header: "± Trả/Đổi/Điều chỉnh", value: (r) => r.adjustedAndReturnedQty, format: "int", total: true },
-    { header: "Số lượng tồn cuối kỳ", value: (r) => r.closingStock, format: "int", total: true },
+    { header: "Tồn Kho Tầng 1", value: (r) => Number(r.stockFloor1 ?? r.closingStock) || 0, format: "int", total: true },
+    { header: "Tồn Kho Tầng 2", value: (r) => Number(r.stockFloor2) || 0, format: "int", total: true },
+    { header: "Tổng tồn cuối 2 kho", value: (r) => r.closingStock, format: "int", total: true },
     { header: "Giá gốc (VND)", value: (r) => Number(r.costPrice) || 0, format: "money" },
     { header: "Giá bán (VND)", value: (r) => Number(r.sellingPrice) || 0, format: "money" },
     {
@@ -115,7 +119,7 @@ export function exportInventoryReport(rows: InventoryReportRow[], from?: string,
   const period = `Kỳ báo cáo: ${from || "đầu kỳ"} → ${to || "hiện tại"}`;
   downloadExcel(excelFileName("BaoCao_TonKho"), [
     buildSheet("Bao cao ton kho", cols, rows, {
-      title: "BÁO CÁO TỒN KHO THEO KỲ",
+      title: "BÁO CÁO TỒN KHO THEO KỲ (TẦNG 1 & TẦNG 2)",
       subtitle: `${period} — Tồn cuối = Tồn đầu + Nhập − Bán ± Điều chỉnh — Xuất lúc ${new Date().toLocaleString(
         "vi-VN"
       )}`,
@@ -128,6 +132,7 @@ export function exportInventoryReport(rows: InventoryReportRow[], from?: string,
 export function exportMovements(movements: StockMovement[], typeFilter?: string) {
   const cols: ExcelColumn<StockMovement>[] = [
     { header: "Thời gian", value: (m) => toDate(m.createdAt), format: "datetime", width: 17 },
+    { header: "Kho tầng", value: (m) => (m.warehouseLocation === "FLOOR_2" ? "Kho Tầng 2" : "Kho Tầng 1") },
     { header: "Loại giao dịch", value: (m) => MOVEMENT_LABEL[m.type] || m.type },
     { header: "Mã hàng", value: (m) => m.productCode },
     { header: "Tên sản phẩm", value: (m) => m.productName, width: 45 },
@@ -171,6 +176,7 @@ const receiptCostTotal = (imp: any) =>
 export function exportImports(imports: any[]) {
   const summaryCols: ExcelColumn<any>[] = [
     { header: "Mã phiếu", value: (r) => r.code || r.receiptCode || r._id },
+    { header: "Kho nhận", value: (r) => (r.targetWarehouse === "FLOOR_2" ? "Kho Tầng 2" : "Kho Tầng 1") },
     { header: "Trạng thái", value: (r) => IMPORT_STATUS[r.status] || r.status },
     { header: "Số dòng hàng", value: (r) => r.items?.length || 0, format: "int", total: true },
     {

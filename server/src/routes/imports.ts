@@ -887,8 +887,16 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
         continue;
       }
 
-      const code = item.productCode || generateProductCode(item.productName);
+      const itemUnit = String(item.unit || 'Cái').trim() || 'Cái';
+      let code = item.productCode || generateProductCode(item.productName);
       let product = await productRepo.findOne({ code });
+      if (
+        product &&
+        String(product.unit || 'Cái').trim().toLowerCase() !== itemUnit.toLowerCase()
+      ) {
+        code = `${code}_${generateProductCode(itemUnit)}`;
+        product = await productRepo.findOne({ code });
+      }
 
       const itemCat =
         categories.find((c) => String(c._id) === String(item.categoryId)) ||

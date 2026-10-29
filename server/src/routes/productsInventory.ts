@@ -103,7 +103,8 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
       });
     }
 
-    const code = generateProductCode(String(name));
+    const normalizedUnit = unit ? String(unit).trim() : 'Cái';
+    let code = generateProductCode(String(name));
     if (!code) {
       throw new ApiError(400, 'INVALID_PRODUCT_NAME', 'Không thể sinh mã sản phẩm từ tên này');
     }
@@ -136,9 +137,16 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
       );
     }
 
-    const existing = await productRepo.findOne({ code });
+    let existing = await productRepo.findOne({ code });
+    if (
+      existing &&
+      String(existing.unit || 'Cái').trim().toLowerCase() !== normalizedUnit.toLowerCase()
+    ) {
+      code = `${code}_${generateProductCode(normalizedUnit)}`;
+      existing = await productRepo.findOne({ code });
+    }
     if (existing) {
-      if (upsertIfExists && isPriceManager(req.user?.role) && qty > 0) {
+      if (upsertIfExists && isPriceManager(req.user?.role)) {
         const floorResult = applyFloorDelta(existing, targetFloor, qty);
         const patchFields: Record<string, any> = {
           stockFloor1: floorResult.stockFloor1,
@@ -149,24 +157,26 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
         if (price > 0) patchFields.sellingPrice = price;
 
         const updated = await productRepo.updateById(existing._id, patchFields);
-        await stockMovementRepo.create({
-          type: 'IMPORT',
-          productId: existing._id,
-          productCode: existing.code,
-          productName: existing.name,
-          categoryId: existing.categoryId,
-          unit: existing.unit,
-          quantityChange: qty,
-          balanceBefore: floorResult.balanceBefore,
-          balanceAfter: floorResult.balanceAfter,
-          warehouseLocation: targetFloor,
-          referenceType: 'IMPORT_RECEIPT',
-          referenceId: existing._id,
-          referenceCode: 'CMS-NHAP-THANG',
-          performedBy: req.user?.userId || 'ADMIN',
-          performedByName: req.user?.fullName || 'Quản lý kho (CMS)',
-          note: `Admin nhập thêm ${qty} ${existing.unit} thẳng vào ${floorLabel(targetFloor)} trên CMS`,
-        });
+        if (qty > 0) {
+          await stockMovementRepo.create({
+            type: 'IMPORT',
+            productId: existing._id,
+            productCode: existing.code,
+            productName: existing.name,
+            categoryId: existing.categoryId,
+            unit: existing.unit,
+            quantityChange: qty,
+            balanceBefore: floorResult.balanceBefore,
+            balanceAfter: floorResult.balanceAfter,
+            warehouseLocation: targetFloor,
+            referenceType: 'IMPORT_RECEIPT',
+            referenceId: existing._id,
+            referenceCode: 'CMS-NHAP-THANG',
+            performedBy: req.user?.userId || 'ADMIN',
+            performedByName: req.user?.fullName || 'Quản lý kho (CMS)',
+            note: `Admin nhập thêm ${qty} ${existing.unit} thẳng vào ${floorLabel(targetFloor)} trên CMS`,
+          });
+        }
 
         return res.status(200).json({
           data: updated,
