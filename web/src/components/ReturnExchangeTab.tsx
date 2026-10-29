@@ -238,10 +238,10 @@ export default function ReturnExchangeTab() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {/* Khung tìm đơn hàng gốc */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-        <h2 className="text-lg font-bold text-slate-900">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 sm:p-5">
+        <h2 className="text-base sm:text-lg font-bold text-slate-900">
           Trả Hàng & Đổi Hàng Tại Quầy (BR-14, BR-15, BR-16)
         </h2>
         <p className="text-xs text-slate-500 mt-0.5">
@@ -249,21 +249,21 @@ export default function ReturnExchangeTab() {
           <strong>Còn bán được (GOOD)</strong> và tính tiền trên giá gốc sản phẩm (không hoàn phí thẻ 3%).
         </p>
 
-        <form onSubmit={handleSearchOrder} className="mt-4 flex flex-wrap gap-3">
-          <div className="relative flex-1 min-w-[260px] max-w-md">
+        <form onSubmit={handleSearchOrder} className="mt-4 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+          <div className="relative w-full sm:flex-1 sm:max-w-md">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
             <input
               type="text"
               value={orderCodeInput}
               onChange={(e) => setOrderCodeInput(e.target.value)}
               placeholder="Nhập Mã đơn hàng gốc (VD: DH-0001)..."
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 font-mono text-sm focus:border-emerald-600 focus:outline-none"
+              className="w-full min-h-[44px] pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 font-mono text-sm focus:border-emerald-600 focus:outline-none"
             />
           </div>
           <button
             type="submit"
             disabled={loading}
-            className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm"
+            className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm"
           >
             {loading ? "Đang kiểm tra..." : "Kiểm tra Đơn hàng"}
           </button>
@@ -282,7 +282,7 @@ export default function ReturnExchangeTab() {
                   key={o._id}
                   type="button"
                   onClick={() => prepareOrderForReturn(o)}
-                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-xs font-mono font-bold text-slate-700"
+                  className="min-h-[36px] max-w-full truncate px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-xs font-mono font-bold text-slate-700"
                 >
                   {code} ({o.customerName})
                 </button>
@@ -310,15 +310,15 @@ export default function ReturnExchangeTab() {
       {selectedOrder && (
         <form
           onSubmit={handleSubmitReturnExchange}
-          className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-6"
+          className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 sm:p-5 space-y-4 sm:space-y-6"
         >
           {/* Header thông tin đơn gốc */}
-          <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
-            <div>
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 lg:gap-4 bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200">
+            <div className="min-w-0">
               <div className="text-xs font-bold uppercase text-slate-500">
                 Đơn hàng gốc đang chọn
               </div>
-              <div className="text-lg font-mono font-extrabold text-slate-900">
+              <div className="text-base sm:text-lg font-mono font-extrabold text-slate-900 break-words">
                 {selectedOrder.orderCode || selectedOrder.code} — {selectedOrder.customerName} (
                 {selectedOrder.customerPhone})
               </div>
@@ -331,11 +331,11 @@ export default function ReturnExchangeTab() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:items-center gap-2 lg:shrink-0">
               <button
                 type="button"
                 onClick={() => setMode("RETURN")}
-                className={`px-4 py-2 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition ${
+                className={`min-h-[44px] px-4 py-2 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition ${
                   mode === "RETURN"
                     ? "bg-emerald-600 text-white shadow"
                     : "bg-white border border-slate-300 text-slate-700"
@@ -346,7 +346,7 @@ export default function ReturnExchangeTab() {
               <button
                 type="button"
                 onClick={() => setMode("EXCHANGE")}
-                className={`px-4 py-2 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition ${
+                className={`min-h-[44px] px-4 py-2 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition ${
                   mode === "EXCHANGE"
                     ? "bg-emerald-600 text-white shadow"
                     : "bg-white border border-slate-300 text-slate-700"
@@ -362,8 +362,8 @@ export default function ReturnExchangeTab() {
             <h3 className="font-bold text-slate-900 text-sm">
               1. Chọn sản phẩm khách trả lại & Tình trạng hàng (GOOD / DAMAGED):
             </h3>
-            <div className="overflow-x-auto border border-slate-200 rounded-xl">
-              <table className="w-full text-xs text-left">
+            <div className="overflow-x-auto border border-slate-200 rounded-xl max-w-full">
+              <table className="w-full min-w-[820px] text-xs text-left">
                 <thead className="bg-slate-900 text-white uppercase">
                   <tr>
                     <th className="py-2.5 px-3">Sản phẩm trong đơn</th>
@@ -407,7 +407,7 @@ export default function ReturnExchangeTab() {
                               )
                             );
                           }}
-                          className="w-20 px-2 py-1.5 rounded border border-slate-300 text-center font-mono font-bold"
+                          className="w-20 min-h-[40px] px-2 py-1.5 rounded border border-slate-300 text-center font-mono font-bold"
                         />
                       </td>
                       <td className="py-3 px-3">
@@ -426,7 +426,7 @@ export default function ReturnExchangeTab() {
                               )
                             )
                           }
-                          className="w-full px-2.5 py-1.5 rounded border border-slate-300 bg-white font-semibold"
+                          className="w-full min-h-[40px] px-2.5 py-1.5 rounded border border-slate-300 bg-white font-semibold"
                         >
                           <option value="GOOD">
                             Còn bán được (GOOD) — Cộng lại Kho
@@ -448,15 +448,15 @@ export default function ReturnExchangeTab() {
 
           {/* 2. Nếu là ĐỔI HÀNG: Chọn sản phẩm mới từ kho */}
           {mode === "EXCHANGE" && (
-            <div className="space-y-3 bg-emerald-50/50 p-4 rounded-xl border border-emerald-200">
+            <div className="space-y-3 bg-emerald-50/50 p-3 sm:p-4 rounded-xl border border-emerald-200">
               <h3 className="font-bold text-slate-900 text-sm">
                 2. Chọn sản phẩm mới xuất kho đổi cho khách:
               </h3>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                 <select
                   value={selectedExchangeProductId}
                   onChange={(e) => setSelectedExchangeProductId(e.target.value)}
-                  className="flex-1 min-w-[260px] px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white font-semibold"
+                  className="w-full sm:flex-1 min-w-0 min-h-[40px] px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white font-semibold"
                 >
                   {sellableProducts.map((p) => (
                     <option key={p._id} value={p._id}>
@@ -467,15 +467,15 @@ export default function ReturnExchangeTab() {
                 <button
                   type="button"
                   onClick={handleAddExchangeProduct}
-                  className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1"
+                  className="min-h-[40px] px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1 shrink-0"
                 >
                   <Plus className="w-4 h-4" /> Thêm sản phẩm đổi
                 </button>
               </div>
 
               {exchangeRows.length > 0 && (
-                <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white">
-                  <table className="w-full text-xs text-left">
+                <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white max-w-full">
+                  <table className="w-full min-w-[560px] text-xs text-left">
                     <thead className="bg-slate-800 text-white uppercase">
                       <tr>
                         <th className="py-2 px-3">Sản phẩm đổi mới</th>
@@ -514,7 +514,7 @@ export default function ReturnExchangeTab() {
                                   )
                                 );
                               }}
-                              className="w-16 px-2 py-1 rounded border border-slate-300 text-center font-mono font-bold"
+                              className="w-16 min-h-[40px] px-2 py-1 rounded border border-slate-300 text-center font-mono font-bold"
                             />
                           </td>
                           <td className="py-2 px-3 text-right font-mono font-bold">
@@ -528,7 +528,7 @@ export default function ReturnExchangeTab() {
                                   prev.filter((_, idx) => idx !== i)
                                 )
                               }
-                              className="text-red-500 hover:bg-red-50 p-1 rounded"
+                              className="w-10 h-10 inline-flex items-center justify-center text-red-500 hover:bg-red-50 rounded"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -543,7 +543,7 @@ export default function ReturnExchangeTab() {
           )}
 
           {/* 3. Hình thức thanh toán hoàn/thu & Tổng kết tiền chênh lệch */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 items-start">
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-bold uppercase text-slate-700 mb-1">
@@ -554,7 +554,7 @@ export default function ReturnExchangeTab() {
                   onChange={(e) =>
                     setRefundMethod(e.target.value as "CASH" | "BANKING" | "CARD")
                   }
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white font-semibold"
+                  className="w-full min-h-[40px] px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white font-semibold"
                 >
                   <option value="CASH">Tiền mặt (CASH)</option>
                   <option value="BANKING">Chuyển khoản (BANKING)</option>
@@ -571,27 +571,27 @@ export default function ReturnExchangeTab() {
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                   placeholder="VD: Đổi size rộng hơn / Hàng lỗi đường may..."
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm"
+                  className="w-full min-h-[40px] px-3 py-2 rounded-lg border border-slate-300 text-sm"
                 />
               </div>
             </div>
 
-            <div className="bg-slate-900 text-white p-5 rounded-xl space-y-2">
-              <div className="flex justify-between text-xs text-slate-300">
+            <div className="bg-slate-900 text-white p-4 sm:p-5 rounded-xl space-y-2">
+              <div className="flex justify-between gap-2 text-xs text-slate-300">
                 <span>Tổng giá trị hàng trả lại (Giá gốc):</span>
                 <span className="font-mono font-bold text-amber-400">
                   {formatVND(returnTotal)}
                 </span>
               </div>
               {mode === "EXCHANGE" && (
-                <div className="flex justify-between text-xs text-slate-300">
+                <div className="flex justify-between gap-2 text-xs text-slate-300">
                   <span>Tổng giá trị hàng đổi mới:</span>
                   <span className="font-mono font-bold text-emerald-400">
                     {formatVND(exchangeTotal)}
                   </span>
                 </div>
               )}
-              <div className="pt-2 border-t border-slate-700 flex justify-between items-center">
+              <div className="pt-2 border-t border-slate-700 flex flex-wrap justify-between items-center gap-x-2 gap-y-1">
                 <span className="text-sm font-extrabold uppercase">
                   {netDifference > 0
                     ? "Khách cần trả thêm:"
@@ -611,7 +611,7 @@ export default function ReturnExchangeTab() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full mt-3 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm shadow-lg"
+                className="w-full min-h-[48px] mt-3 py-3 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm shadow-lg"
               >
                 {submitting
                   ? "Đang xử lý..."
@@ -626,12 +626,12 @@ export default function ReturnExchangeTab() {
 
       {/* Danh sách phiếu trả/đổi gần đây */}
       {recentReturns.length > 0 && (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 sm:p-5">
           <h3 className="font-bold text-slate-900 text-sm mb-3">
             Lịch sử Phiếu Trả / Đổi Hàng gần đây
           </h3>
-          <div className="overflow-x-auto border border-slate-200 rounded-xl">
-            <table className="w-full text-xs text-left">
+          <div className="overflow-x-auto border border-slate-200 rounded-xl max-w-full">
+            <table className="w-full min-w-[760px] text-xs text-left">
               <thead className="bg-slate-100 text-slate-700 uppercase">
                 <tr>
                   <th className="py-2.5 px-3">Mã Phiếu</th>
@@ -659,14 +659,14 @@ export default function ReturnExchangeTab() {
                     <td className="py-2.5 px-3 text-right font-mono">
                       {formatVND(r.exchangeTotal)}
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono font-bold">
+                    <td className="py-2.5 px-3 text-right font-mono font-bold whitespace-nowrap">
                       {r.netDifference < 0
                         ? `Hoàn khách ${formatVND(Math.abs(r.netDifference))}`
                         : r.netDifference > 0
                         ? `Thu thêm ${formatVND(r.netDifference)}`
                         : "0 ₫"}
                     </td>
-                    <td className="py-2.5 px-3 text-slate-500">
+                    <td className="py-2.5 px-3 text-slate-500 whitespace-nowrap">
                       {formatDateTime(r.createdAt)}
                     </td>
                   </tr>

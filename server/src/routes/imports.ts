@@ -18,6 +18,18 @@ import {
 
 export const importsRouter = Router();
 
+// Giá gốc (đơn giá nhập) do thủ kho nhập — số nguyên VND >= 0
+function parseCostPrice(raw: any, stt: number): number {
+  if (raw === undefined || raw === null || raw === '') return 0;
+  const value = Math.round(Number(raw));
+  if (isNaN(value) || value < 0) {
+    throw new ApiError(400, 'INVALID_COST_PRICE', `Giá gốc dòng #${stt} phải là số nguyên không âm`, {
+      costPrice: 'Giá gốc không hợp lệ',
+    });
+  }
+  return value;
+}
+
 function normalizeImportItems(rawItems: any[], defaultCategoryId = ''): IImportReceiptItem[] {
   if (!Array.isArray(rawItems)) return [];
   return rawItems
@@ -43,6 +55,7 @@ function normalizeImportItems(rawItems: any[], defaultCategoryId = ''): IImportR
         unit: item.unit ? String(item.unit).trim() : 'Cái',
         expectedQuantity,
         actualQuantity,
+        costPrice: parseCostPrice(item.costPrice, Number(item.stt) || idx + 1),
         note: item.note ? String(item.note).trim() : '',
         isChecked: Boolean(item.isChecked),
         isConfirmed: Boolean(item.isConfirmed),
@@ -61,6 +74,7 @@ function rowsToImportItems(rows: OcrTableRow[], defaultCatId: string): IImportRe
     unit: r.unit || 'Cái',
     expectedQuantity: r.expectedQuantity,
     actualQuantity: r.expectedQuantity,
+    costPrice: 0,
     note: r.note || '',
     isChecked: false,
     isConfirmed: false,
@@ -328,6 +342,7 @@ importsRouter.post('/imports/:id/scan-check', async (req, res, next) => {
             unit: 'Cái',
             expectedQuantity: 0,
             actualQuantity: actualQuantity !== undefined ? Number(actualQuantity) : 1,
+            costPrice: 0,
             note: 'Phát sinh ngoài danh sách dự kiến',
             isChecked: true,
             isConfirmed: false,
@@ -427,6 +442,8 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
         defaultCategory;
 
       // Nếu sản phẩm chưa có trên hệ thống -> Tự động tạo mới với sellingPrice = 0 (BR-04, BR-09)
+      // Giá bán do Quản lý/Admin cập nhật trên CMS; giá gốc lấy theo dòng nhập
+      const itemCostPrice = Math.max(0, Math.round(Number(item.costPrice) || 0));
       if (!product) {
         product = await productRepo.create({
           code,
@@ -436,6 +453,7 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
           categoryName: itemCat ? itemCat.name : 'Áo thể thao',
           unit: item.unit || 'Cái',
           sellingPrice: 0,
+          costPrice: itemCostPrice,
           stock: 0,
           status: 'ACTIVE',
         });
@@ -445,9 +463,10 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
       const balanceBefore = product.stock;
       const balanceAfter = balanceBefore + qtyToAdd;
 
-      await productRepo.updateById(product._id, {
-        stock: balanceAfter,
-      });
+      const productUpdate: Record<string, any> = { stock: balanceAfter };
+      // Cập nhật giá gốc theo lần nhập gần nhất (bỏ qua nếu dòng không nhập giá)
+      if (itemCostPrice > 0) productUpdate.costPrice = itemCostPrice;
+      await productRepo.updateById(product._id, productUpdate);
 
       const movement = await stockMovementRepo.create({
         type: 'IMPORT',

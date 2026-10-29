@@ -123,6 +123,7 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
             unit: 'Cái',
             expectedQuantity: 15,
             actualQuantity: 15,
+            costPrice: 180000,
             note: 'Dòng 1',
           },
           {
@@ -179,6 +180,7 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
     );
     expect(createdProd).toBeDefined();
     expect(createdProd.sellingPrice).toBe(0);
+    expect(createdProd.costPrice).toBe(180000);
     expect(createdProd.stock).toBe(18);
 
     // Sản phẩm dòng 2 (isConfirmed = false) không được đẩy vào kho

@@ -433,10 +433,10 @@ export default function CameraScannerModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-2 sm:p-4 overflow-y-auto">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[96vh]">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[96vh] sm:max-h-[90vh]">
         {/* Header */}
-        <div className="bg-slate-900 text-white px-4 sm:px-6 py-3.5 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="bg-slate-900 text-white px-3 sm:px-6 py-3 sm:py-3.5 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <ScanLine className="w-5 h-5 text-emerald-400" />
             <h3 className="font-bold text-base sm:text-lg">
               {title ||
@@ -448,7 +448,7 @@ export default function CameraScannerModal({
           <button
             type="button"
             onClick={closeModal}
-            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300"
+            className="w-10 h-10 shrink-0 flex items-center justify-center rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300"
           >
             <X className="w-5 h-5" />
           </button>
@@ -507,7 +507,7 @@ export default function CameraScannerModal({
                     <button
                       type="button"
                       onClick={() => startCamera()}
-                      className="mt-1 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold"
+                      className="mt-1 min-h-[44px] px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold"
                     >
                       Mở Camera
                     </button>
@@ -567,7 +567,7 @@ export default function CameraScannerModal({
                 <button
                   type="button"
                   onClick={handleRetake}
-                  className="px-4 py-2 rounded-lg bg-white/90 hover:bg-white text-slate-900 text-xs font-bold flex items-center gap-1.5"
+                  className="min-h-[40px] px-4 py-2 rounded-lg bg-white/90 hover:bg-white text-slate-900 text-xs font-bold flex items-center gap-1.5"
                 >
                   <RotateCcw className="w-4 h-4" /> Chụp lại
                 </button>
@@ -575,7 +575,7 @@ export default function CameraScannerModal({
                   <button
                     type="button"
                     onClick={() => runOcrScan(lastPayload.dataUrl, lastPayload.mime)}
-                    className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5"
+                    className="min-h-[40px] px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5"
                   >
                     <RefreshCw className="w-4 h-4" /> Quét lại
                   </button>
@@ -589,28 +589,28 @@ export default function CameraScannerModal({
             <button
               type="button"
               onClick={() => imageInputRef.current?.click()}
-              className="px-3 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold flex items-center justify-center gap-1.5"
+              className="min-h-[44px] px-2 sm:px-3 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold flex items-center justify-center gap-1.5 text-center"
             >
               <ImageIcon className="w-4 h-4" /> Ảnh từ thư viện
             </button>
             <button
               type="button"
               onClick={() => nativeCameraInputRef.current?.click()}
-              className="px-3 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold flex items-center justify-center gap-1.5"
+              className="min-h-[44px] px-2 sm:px-3 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold flex items-center justify-center gap-1.5 text-center"
             >
               <Camera className="w-4 h-4" /> Chụp bằng app Camera
             </button>
             <button
               type="button"
               onClick={() => pdfInputRef.current?.click()}
-              className="px-3 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold flex items-center justify-center gap-1.5"
+              className="min-h-[44px] px-2 sm:px-3 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold flex items-center justify-center gap-1.5 text-center"
             >
               <FileText className="w-4 h-4" /> Tải file PDF
             </button>
             <button
               type="button"
               onClick={() => textInputRef.current?.click()}
-              className="px-3 py-2.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold flex items-center justify-center gap-1.5"
+              className="min-h-[44px] px-2 sm:px-3 py-2.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold flex items-center justify-center gap-1.5 text-center"
             >
               <FileSpreadsheet className="w-4 h-4" /> Tải TXT / CSV
             </button>
@@ -683,40 +683,40 @@ export default function CameraScannerModal({
                 <summary className="text-xs font-bold text-slate-700 cursor-pointer">
                   Hoặc dán văn bản (mỗi dòng: Tên hàng | ĐVT | Số lượng | Ghi chú)
                 </summary>
-                <div className="flex gap-2 mt-2">
+                <div className="flex flex-col sm:flex-row gap-2 mt-2">
                   <textarea
                     rows={3}
                     value={pasteText}
                     onChange={(e) => setPasteText(e.target.value)}
                     placeholder="Áo Polo V1 (Áo Polo V1 Đỏ size L) | Cái | 20 | Lô 1"
-                    className="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs focus:border-emerald-600 focus:outline-none"
+                    className="w-full sm:flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs focus:border-emerald-600 focus:outline-none"
                   />
                   <button
                     type="button"
                     disabled={scanning || !pasteText.trim()}
                     onClick={() => handleParsePastedText(pasteText)}
-                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-semibold self-end"
+                    className="min-h-[40px] px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-semibold self-stretch sm:self-end"
                   >
                     Tách vào bảng
                   </button>
                 </div>
               </details>
 
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h4 className="font-bold text-slate-900 text-sm">
                   Kết quả (sửa trực tiếp từng ô trước khi đưa vào phiếu):
                 </h4>
                 <button
                   type="button"
                   onClick={handleAddOcrRow}
-                  className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold flex items-center gap-1"
+                  className="min-h-[40px] px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold flex items-center gap-1"
                 >
                   <Plus className="w-4 h-4" /> Thêm dòng
                 </button>
               </div>
 
-              <div className="overflow-x-auto border border-slate-200 rounded-xl">
-                <table className="w-full text-xs text-left">
+              <div className="overflow-x-auto border border-slate-200 rounded-xl max-w-full">
+                <table className="w-full min-w-[860px] text-xs text-left">
                   <thead className="bg-slate-900 text-white uppercase">
                     <tr>
                       <th className="py-2.5 px-3 w-12 text-center">STT</th>
@@ -782,7 +782,7 @@ export default function CameraScannerModal({
                           <button
                             type="button"
                             onClick={() => handleRemoveOcrRow(idx)}
-                            className="p-1.5 text-red-500 hover:bg-red-50 rounded"
+                            className="w-10 h-10 inline-flex items-center justify-center text-red-500 hover:bg-red-50 rounded"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -794,7 +794,7 @@ export default function CameraScannerModal({
               </div>
             </div>
           ) : (
-            <div className="space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+            <div className="space-y-4 bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200">
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
                   Mã hàng / Tên hàng đọc từ Tag (có thể sửa):
@@ -816,7 +816,7 @@ export default function CameraScannerModal({
                   min={0}
                   value={tagActualQty}
                   onChange={(e) => setTagActualQty(Math.max(0, Number(e.target.value)))}
-                  className="w-48 px-3.5 py-2.5 rounded-lg border border-slate-300 font-mono text-sm font-bold focus:border-emerald-600 focus:outline-none"
+                  className="w-full sm:w-48 px-3.5 py-2.5 rounded-lg border border-slate-300 font-mono text-sm font-bold focus:border-emerald-600 focus:outline-none"
                 />
               </div>
             </div>
@@ -824,11 +824,11 @@ export default function CameraScannerModal({
         </div>
 
         {/* Footer */}
-        <div className="bg-slate-100 px-4 sm:px-6 py-3.5 flex items-center justify-end gap-3 border-t border-slate-200">
+        <div className="bg-slate-100 px-3 sm:px-6 py-3 sm:py-3.5 flex flex-col-reverse sm:flex-row sm:items-center justify-end gap-2 sm:gap-3 border-t border-slate-200">
           <button
             type="button"
             onClick={closeModal}
-            className="px-4 py-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm"
+            className="min-h-[44px] px-4 py-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm"
           >
             Hủy bỏ
           </button>
@@ -842,7 +842,7 @@ export default function CameraScannerModal({
                 onConfirmOcrItems?.(ocrItems.filter((i) => i.productName.trim() !== ""));
                 onClose();
               }}
-              className="px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-sm flex items-center gap-2 shadow"
+              className="min-h-[44px] px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-sm flex items-center justify-center gap-2 shadow"
             >
               <Check className="w-4 h-4" />
               Đưa {validOcrCount} dòng vào phiếu nhập
@@ -856,7 +856,7 @@ export default function CameraScannerModal({
                 onConfirmTagScan?.(tagQuery.trim(), tagActualQty);
                 onClose();
               }}
-              className="px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-sm flex items-center gap-2 shadow"
+              className="min-h-[44px] px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-sm flex items-center justify-center gap-2 shadow"
             >
               <Check className="w-4 h-4" />
               Xác nhận đối chiếu Tag

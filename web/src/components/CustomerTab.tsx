@@ -61,10 +61,10 @@ export default function CustomerTab({ onOpenInvoice }: CustomerTabProps) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {/* Thanh tìm kiếm theo SĐT */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-        <h2 className="text-lg font-bold text-slate-900">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 sm:p-5">
+        <h2 className="text-base sm:text-lg font-bold text-slate-900">
           Tra cứu Khách hàng theo Số Điện Thoại & Xuất Hóa Đơn PDF
         </h2>
         <p className="text-xs text-slate-500 mt-0.5">
@@ -76,23 +76,23 @@ export default function CustomerTab({ onOpenInvoice }: CustomerTabProps) {
             e.preventDefault();
             handleLookup();
           }}
-          className="mt-4 flex flex-wrap items-center gap-3"
+          className="mt-4 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3"
         >
-          <div className="relative flex-1 min-w-[260px] max-w-md">
+          <div className="relative w-full sm:flex-1 sm:max-w-md">
             <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
             <input
               type="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="Nhập SĐT khách hàng (VD: 0901234567)..."
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 font-mono text-sm focus:border-emerald-600 focus:outline-none"
+              className="w-full min-h-[44px] pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 font-mono text-sm focus:border-emerald-600 focus:outline-none"
             />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm flex items-center gap-2 shadow"
+            className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm flex items-center justify-center gap-2 shadow"
           >
             <Search className="w-4 h-4" />
             {loading ? "Đang tra cứu..." : "Tra cứu SĐT"}
@@ -113,7 +113,7 @@ export default function CustomerTab({ onOpenInvoice }: CustomerTabProps) {
                   key={c._id || cPhone}
                   type="button"
                   onClick={() => handleLookup(cPhone)}
-                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-xs font-mono font-semibold text-slate-700 transition"
+                  className="min-h-[36px] max-w-full truncate px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-xs font-mono font-semibold text-slate-700 transition"
                 >
                   {cName} ({cPhone})
                 </button>
@@ -131,17 +131,17 @@ export default function CustomerTab({ onOpenInvoice }: CustomerTabProps) {
 
       {/* Kết quả Hồ sơ Khách hàng & Lịch sử Đơn hàng */}
       {customerInfo && (
-        <div className="space-y-6">
-          <div className="bg-slate-900 text-white rounded-xl p-5 flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-emerald-600 flex items-center justify-center">
+        <div className="space-y-4 md:space-y-6">
+          <div className="bg-slate-900 text-white rounded-xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-12 h-12 shrink-0 rounded-xl bg-emerald-600 flex items-center justify-center">
                 <User className="w-6 h-6 text-white" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <div className="text-xs uppercase text-emerald-400 font-bold">
                   Hồ sơ Khách hàng 11Sport
                 </div>
-                <div className="text-xl font-extrabold">
+                <div className="text-lg sm:text-xl font-extrabold break-words">
                   {customerInfo.fullName || customerInfo.name || customerInfo.customerName}
                 </div>
                 <div className="font-mono text-sm text-slate-300">
@@ -150,16 +150,16 @@ export default function CustomerTab({ onOpenInvoice }: CustomerTabProps) {
               </div>
             </div>
 
-            <div className="flex items-center gap-6">
-              <div className="text-right">
+            <div className="grid grid-cols-2 md:flex md:items-center gap-4 md:gap-6">
+              <div className="md:text-right">
                 <div className="text-xs text-slate-400">Tổng số đơn đã mua</div>
-                <div className="text-2xl font-mono font-extrabold text-white">
+                <div className="text-xl sm:text-2xl font-mono font-extrabold text-white">
                   {orders.length} đơn
                 </div>
               </div>
-              <div className="text-right">
+              <div className="md:text-right">
                 <div className="text-xs text-slate-400">Tổng chi tiêu tích lũy</div>
-                <div className="text-2xl font-mono font-extrabold text-emerald-400">
+                <div className="text-xl sm:text-2xl font-mono font-extrabold text-emerald-400 break-all">
                   {formatVND(
                     orders.reduce((s, o) => s + Number(o.totalAmount || 0), 0)
                   )}
@@ -169,7 +169,7 @@ export default function CustomerTab({ onOpenInvoice }: CustomerTabProps) {
           </div>
 
           {/* Bảng danh sách đơn hàng của khách */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 sm:p-5">
             <h3 className="font-bold text-slate-900 text-base flex items-center gap-2 mb-4">
               <ShoppingBag className="w-5 h-5 text-emerald-600" />
               Lịch sử Đơn hàng ({orders.length})
@@ -180,8 +180,8 @@ export default function CustomerTab({ onOpenInvoice }: CustomerTabProps) {
                 Khách hàng chưa có đơn hàng nào.
               </div>
             ) : (
-              <div className="overflow-x-auto border border-slate-200 rounded-xl">
-                <table className="w-full text-sm text-left">
+              <div className="overflow-x-auto border border-slate-200 rounded-xl max-w-full">
+                <table className="w-full min-w-[900px] text-sm text-left">
                   <thead className="bg-slate-900 text-white text-xs uppercase">
                     <tr>
                       <th className="py-3 px-4">Mã Đơn</th>
@@ -197,10 +197,10 @@ export default function CustomerTab({ onOpenInvoice }: CustomerTabProps) {
                   <tbody className="divide-y divide-slate-200">
                     {orders.map((ord) => (
                       <tr key={ord._id} className="hover:bg-slate-50">
-                        <td className="py-3 px-4 font-mono font-bold text-slate-900">
+                        <td className="py-3 px-4 font-mono font-bold text-slate-900 whitespace-nowrap">
                           {ord.orderCode || ord.code}
                         </td>
-                        <td className="py-3 px-4 text-xs text-slate-600">
+                        <td className="py-3 px-4 text-xs text-slate-600 whitespace-nowrap">
                           {formatDateTime(ord.createdAt)}
                         </td>
                         <td className="py-3 px-4 text-xs">
@@ -216,12 +216,12 @@ export default function CustomerTab({ onOpenInvoice }: CustomerTabProps) {
                         <td className="py-3 px-4 text-right font-mono text-xs text-amber-700">
                           {formatVND(ord.cardFee)}
                         </td>
-                        <td className="py-3 px-4 text-right font-mono font-extrabold text-emerald-700">
+                        <td className="py-3 px-4 text-right font-mono font-extrabold text-emerald-700 whitespace-nowrap">
                           {formatVND(ord.totalAmount)}
                         </td>
                         <td className="py-3 px-4 text-center">
                           <span
-                            className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
+                            className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full whitespace-nowrap ${
                               ord.status === "PAID"
                                 ? "bg-emerald-100 text-emerald-800"
                                 : ord.status === "PARTIALLY_RETURNED"
@@ -240,7 +240,7 @@ export default function CustomerTab({ onOpenInvoice }: CustomerTabProps) {
                           <button
                             type="button"
                             onClick={() => onOpenInvoice(ord)}
-                            className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold inline-flex items-center gap-1 shadow-sm"
+                            className="min-h-[40px] whitespace-nowrap px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold inline-flex items-center gap-1 shadow-sm"
                           >
                             <Printer className="w-3.5 h-3.5" /> In PDF (K80/A4)
                           </button>
@@ -255,7 +255,7 @@ export default function CustomerTab({ onOpenInvoice }: CustomerTabProps) {
 
           {/* Lịch sử trả / đổi hàng nếu có */}
           {returns.length > 0 && (
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 sm:p-5">
               <h3 className="font-bold text-slate-900 text-base flex items-center gap-2 mb-3">
                 <RotateCcw className="w-5 h-5 text-amber-600" />
                 Lịch sử Phiếu Trả / Đổi Hàng ({returns.length})

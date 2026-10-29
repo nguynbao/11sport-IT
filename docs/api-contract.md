@@ -60,9 +60,12 @@
 - `POST /api/v1/products`
   - Body: `{ "name": "string", "categoryId": "string", "unit": "Cái | Đôi | Bộ", "sellingPrice": 0 }`
   - Lưu ý: `code` tự sinh từ `()` trong `name` và không được sửa sau khi tạo; `stock` khởi tạo = `0`.
+  - `sellingPrice` > 0 chỉ được phép khi người gọi có role `ADMIN` (Quản lý/Admin); role khác gửi `sellingPrice > 0` → `403 SELLING_PRICE_FORBIDDEN`.
 - `PATCH /api/v1/products/:id`
-  - Body: `{ "name": "string", "categoryId": "string", "unit": "string", "sellingPrice": 250000 }`
+  - Body: `{ "name": "string", "categoryId": "string", "unit": "string", "sellingPrice": 250000, "costPrice": 180000 }`
   - Lưu ý: Không cho phép sửa `code` hoặc `stock` trực tiếp.
+  - *(v1.1)* Chỉ role `ADMIN` được đổi `sellingPrice` / `costPrice`; role khác → `403 SELLING_PRICE_FORBIDDEN` / `403 COST_PRICE_FORBIDDEN`.
+- *(v1.1)* Trường mới của `Product`: `costPrice` (giá gốc / giá nhập gần nhất, VND, số nguyên ≥ 0, mặc định `0`). Được cập nhật tự động khi hoàn thành phiếu nhập kho. Response `GET /products` **ẩn** `costPrice` với role `SALES`.
 - `GET /api/v1/inventory/movements`
   - Query: `?productId=...&type=IMPORT|SALE|RETURN|EXCHANGE_IN|EXCHANGE_OUT|ADJUSTMENT&from=...&to=...`
   - Response: Lịch sử sổ kho (`StockMovement`).
@@ -111,6 +114,7 @@
           "unit": "Cái",
           "expectedQuantity": 20,
           "actualQuantity": 20,
+          "costPrice": 180000,
           "note": "",
           "isChecked": false,
           "isConfirmed": false,
@@ -119,6 +123,7 @@
       ]
     }
     ```
+  - *(v1.1)* `costPrice`: **giá gốc (đơn giá nhập)** do thủ kho nhập, VND, số nguyên ≥ 0 (không bắt buộc, mặc định `0`). Giá trị âm/không hợp lệ → `400 INVALID_COST_PRICE`. Thủ kho **không** nhập giá bán; giá bán do Quản lý/Admin cập nhật trên CMS.
 - `PUT /api/v1/imports/:id`
   - Lưu nháp hoặc cập nhật danh sách dòng hàng, trạng thái kiểm hàng (`DRAFT` hoặc `CHECKING`). Chặn sửa nếu phiếu đã `COMPLETED`.
 - `POST /api/v1/imports/:id/finish-listing`
@@ -130,6 +135,7 @@
 - `POST /api/v1/imports/:id/complete`
   - Bước 7 ("Hoàn thành" nhập kho):
   - Chỉ các dòng có `isConfirmed === true` mới được cộng `actualQuantity` vào tồn kho (tự tạo sản phẩm mới nếu `productCode` chưa có trong hệ thống), ghi `StockMovement` loại `IMPORT`, và khóa phiếu (`status = "COMPLETED"`).
+  - *(v1.1)* Với mỗi dòng xác nhận có `costPrice > 0`: cập nhật `Product.costPrice = costPrice` (giá nhập gần nhất). Sản phẩm tự tạo mới có `costPrice` theo dòng nhập và `sellingPrice = 0` (chờ Quản lý/Admin đặt giá bán).
 
 ### 2.5 Bán hàng POS & Khách hàng (`/orders`, `/customers`)
 - `GET /api/v1/customers/lookup?phone=...`

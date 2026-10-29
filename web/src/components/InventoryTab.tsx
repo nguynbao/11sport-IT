@@ -51,38 +51,38 @@ export default function InventoryTab() {
   }, [loadInventory]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {/* Thẻ KPI Tổng số sản phẩm & Tổng tồn kho */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm flex items-center justify-between">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
+        <div className="bg-white rounded-xl p-4 md:p-5 border border-slate-200 shadow-sm flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-bold uppercase text-slate-500">
               Tổng số mặt hàng (SKU)
             </p>
-            <p className="text-3xl font-extrabold font-mono text-slate-900 mt-1">
+            <p className="text-2xl md:text-3xl font-extrabold font-mono text-slate-900 mt-1">
               {totalProducts}
             </p>
           </div>
-          <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+          <div className="w-12 h-12 shrink-0 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
             <Package className="w-6 h-6" />
           </div>
         </div>
 
-        <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm flex items-center justify-between">
+        <div className="bg-white rounded-xl p-4 md:p-5 border border-slate-200 shadow-sm flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-bold uppercase text-slate-500">
               Tổng số lượng tồn kho hiện tại
             </p>
-            <p className="text-3xl font-extrabold font-mono text-emerald-600 mt-1">
+            <p className="text-2xl md:text-3xl font-extrabold font-mono text-emerald-600 mt-1">
               {totalStock}
             </p>
           </div>
-          <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+          <div className="w-12 h-12 shrink-0 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
             <Layers className="w-6 h-6" />
           </div>
         </div>
 
-        <div className="bg-slate-900 text-white rounded-xl p-5 shadow-sm flex flex-col justify-center">
+        <div className="bg-slate-900 text-white rounded-xl p-4 md:p-5 shadow-sm flex flex-col justify-center sm:col-span-2 lg:col-span-1">
           <p className="text-xs font-bold uppercase text-emerald-400">
             Quy tắc kế toán kho (BR-05)
           </p>
@@ -94,26 +94,26 @@ export default function InventoryTab() {
       </div>
 
       {/* Bộ lọc & Tìm kiếm */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 md:p-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="relative w-72">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-3 w-full md:w-auto">
+            <div className="relative w-full sm:w-72">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Tìm theo mã hàng hoặc tên hàng..."
-                className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                className="w-full min-h-[40px] pl-9 pr-3 py-2 rounded-lg border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
               />
             </div>
 
-            <div className="flex items-center gap-2">
-              <Filter className="w-4 h-4 text-slate-500" />
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <Filter className="w-4 h-4 shrink-0 text-slate-500" />
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                className="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white focus:border-emerald-600 focus:outline-none"
+                className="flex-1 sm:flex-none min-w-0 min-h-[40px] px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white focus:border-emerald-600 focus:outline-none"
               >
                 <option value="">Tất cả Category</option>
                 {categories.map((c) => (
@@ -128,15 +128,15 @@ export default function InventoryTab() {
           <button
             type="button"
             onClick={loadInventory}
-            className="px-3.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 self-start"
+            className="min-h-[40px] px-3.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center justify-center gap-1.5 self-stretch sm:self-start md:self-auto"
           >
             <RefreshCw className="w-4 h-4" /> Làm mới dữ liệu
           </button>
         </div>
 
         {/* Bảng tồn kho */}
-        <div className="overflow-x-auto border border-slate-200 rounded-xl">
-          <table className="w-full text-sm text-left">
+        <div className="overflow-x-auto border border-slate-200 rounded-xl max-w-full">
+          <table className="w-full min-w-[760px] text-sm text-left">
             <thead className="bg-slate-900 text-white text-xs uppercase">
               <tr>
                 <th className="py-3 px-4">STT</th>
@@ -173,14 +173,14 @@ export default function InventoryTab() {
                         {idx + 1}
                       </td>
                       <td className="py-3 px-4">
-                        <span className="font-mono text-xs font-bold px-2.5 py-1 rounded bg-slate-100 text-slate-800">
+                        <span className="font-mono text-xs font-bold px-2.5 py-1 rounded bg-slate-100 text-slate-800 whitespace-nowrap">
                           {p.code}
                         </span>
                       </td>
                       <td className="py-3 px-4 font-semibold text-slate-900">{p.name}</td>
                       <td className="py-3 px-4 text-xs text-slate-600">{catName}</td>
                       <td className="py-3 px-4 text-center text-xs">{p.unit}</td>
-                      <td className="py-3 px-4 text-right font-mono">
+                      <td className="py-3 px-4 text-right font-mono whitespace-nowrap">
                         {p.sellingPrice > 0 ? (
                           <span className="font-bold text-slate-900">
                             {formatVND(p.sellingPrice)}

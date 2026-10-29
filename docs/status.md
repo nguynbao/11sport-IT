@@ -13,3 +13,6 @@ Trạng thái: `Backlog` | `Đang làm` | `Chờ review` | `Đang test` | `Xong`
 | FE-02 | Xây dựng giao diện Web POS & Kho (`web/`): Kho, Nhập kho 7 bước + Camera, Bán hàng POS, Khách hàng & PDF, Trả/Đổi | web | Frontend | Xong | DES-01, BE-01 | Đã bàn giao `web/`, PASS `npm run build` |
 | OPS-01 | Cấu hình Docker, `docker-compose.yml`, môi trường Dev/Prod và tài liệu `docs/devops/` | server / web / cms | DevOps | Xong | BE-01 | Đã bàn giao `.gitignore`, `docker-compose.yml`, `start-dev.ps1`, `docs/devops/deployment-and-runbook.md` |
 | QA-01 | Viết Test Cases (`docs/test/`) & Kiểm thử tích hợp toàn hệ thống | docs/test | Tester | Xong | BE-02, FE-01, FE-02 | PASS 18/18 Test Cases & 8/8 API Test Suites (`AC-01`..`AC-07`), 0 lỗi mở |
+| FE-03 | Responsive Web (`web/`): header/tab, bảng, modal, POS cho mobile/tablet | web | Frontend | Chờ review | FE-02 | Sửa className/bố cục, không đổi logic |
+| BE-03 | Giá gốc (`costPrice`) khi nhập kho + phân quyền giá bán chỉ ADMIN | server / docs | Backend | Chờ review | BE-02 | Cập nhật `docs/api-contract.md` v1.1, test `server/tests/cost-price.test.ts` 3/3 PASS |
+| FE-04 | Ô Giá gốc trong phiếu nhập (web) + hiển thị giá gốc/lãi gộp khi đặt giá bán (cms) | web / cms | Frontend | Chờ review | BE-03 | `ImportTab.tsx`, `InventoryModule.tsx` |

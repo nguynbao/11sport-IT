@@ -11,6 +11,8 @@ export interface IImportReceiptItem {
   unit: string;
   expectedQuantity: number;
   actualQuantity: number;
+  /** Giá gốc (đơn giá nhập, VND) do thủ kho nhập */
+  costPrice: number;
   note: string;
   isChecked: boolean;
   isConfirmed: boolean;
@@ -42,6 +44,7 @@ const ImportReceiptItemSchema = new Schema<IImportReceiptItem>(
     unit: { type: String, default: 'Cái' },
     expectedQuantity: { type: Number, required: true, default: 0 },
     actualQuantity: { type: Number, required: true, default: 0 },
+    costPrice: { type: Number, default: 0, min: 0 },
     note: { type: String, default: '' },
     isChecked: { type: Boolean, default: false },
     isConfirmed: { type: Boolean, default: false },

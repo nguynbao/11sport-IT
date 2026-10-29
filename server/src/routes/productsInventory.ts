@@ -5,6 +5,9 @@ import { ApiError } from '../utils/errors';
 
 export const productsInventoryRouter = Router();
 
+// Chỉ Quản lý/Admin (role ADMIN) được đặt giá bán và sửa giá gốc
+const isPriceManager = (role?: string) => role === 'ADMIN';
+
 // POST /api/v1/products/generate-code
 productsInventoryRouter.post('/products/generate-code', async (req, res, next) => {
   try {
@@ -33,11 +36,15 @@ productsInventoryRouter.get('/products', async (req, res, next) => {
     const categories = await categoryRepo.find({});
     const catMap = new Map(categories.map((c) => [String(c._id), c]));
 
+    // Ẩn giá gốc với nhân viên bán hàng
+    const hideCost = req.user?.role === 'SALES';
     const filtered = allProducts
       .map((p) => {
         const cat = catMap.get(String(p.categoryId));
+        const { costPrice, ...rest } = p as any;
         return {
-          ...p,
+          ...rest,
+          ...(hideCost ? {} : { costPrice: Number(costPrice) || 0 }),
           categoryCode: cat?.code || p.categoryCode || '',
           categoryName: cat?.name || p.categoryName || '',
         };
@@ -118,6 +125,9 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
     if (isNaN(price) || price < 0) {
       throw new ApiError(400, 'INVALID_PRICE', 'Giá bán phải là số nguyên không âm');
     }
+    if (price > 0 && !isPriceManager(req.user?.role)) {
+      throw new ApiError(403, 'SELLING_PRICE_FORBIDDEN', 'Chỉ Quản lý/Admin mới được đặt giá bán');
+    }
 
     // BR-05: Tồn kho khởi tạo luôn = 0, không cho phép nhập tay trực tiếp khi tạo
     const created = await productRepo.create({
@@ -150,7 +160,7 @@ productsInventoryRouter.patch('/products/:id', async (req, res, next) => {
       throw new ApiError(404, 'PRODUCT_NOT_FOUND', 'Không tìm thấy sản phẩm');
     }
 
-    const { code, stock, name, categoryId, unit, sellingPrice, status } = req.body || {};
+    const { code, stock, name, categoryId, unit, sellingPrice, costPrice, status } = req.body || {};
 
     // BR-03: Mã sản phẩm không được sửa sau khi tạo
     if (code !== undefined && String(code).toUpperCase() !== product.code) {
@@ -193,7 +203,20 @@ productsInventoryRouter.patch('/products/:id', async (req, res, next) => {
       if (isNaN(price) || price < 0) {
         throw new ApiError(400, 'INVALID_PRICE', 'Giá bán phải là số nguyên không âm');
       }
+      if (price !== product.sellingPrice && !isPriceManager(req.user?.role)) {
+        throw new ApiError(403, 'SELLING_PRICE_FORBIDDEN', 'Chỉ Quản lý/Admin mới được cập nhật giá bán');
+      }
       updateData.sellingPrice = price;
+    }
+    if (costPrice !== undefined) {
+      const cost = Math.round(Number(costPrice));
+      if (isNaN(cost) || cost < 0) {
+        throw new ApiError(400, 'INVALID_COST_PRICE', 'Giá gốc phải là số nguyên không âm');
+      }
+      if (cost !== (product.costPrice || 0) && !isPriceManager(req.user?.role)) {
+        throw new ApiError(403, 'COST_PRICE_FORBIDDEN', 'Chỉ Quản lý/Admin mới được sửa giá gốc');
+      }
+      updateData.costPrice = cost;
     }
     if (status !== undefined && ['ACTIVE', 'INACTIVE'].includes(status)) {
       updateData.status = status;

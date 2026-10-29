@@ -29,6 +29,8 @@ export interface Product {
   categoryName?: string;
   unit: string;
   sellingPrice: number;
+  /** Giá gốc (giá nhập gần nhất) — cập nhật khi hoàn thành phiếu nhập kho */
+  costPrice?: number;
   stock: number;
 }
 

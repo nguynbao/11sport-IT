@@ -28,6 +28,8 @@ export interface Product {
   categoryName?: string;
   unit: string;
   sellingPrice: number;
+  /** Giá gốc (giá nhập gần nhất) — server ẩn với role SALES */
+  costPrice?: number;
   stock: number;
 }
 
@@ -39,6 +41,8 @@ export interface ImportItem {
   unit: string;
   expectedQuantity: number;
   actualQuantity: number;
+  /** Giá gốc (đơn giá nhập, VND) do thủ kho nhập */
+  costPrice?: number;
   note: string;
   isChecked: boolean;
   isConfirmed: boolean;

@@ -186,7 +186,7 @@ export default function WebPosHomePage() {
             </p>
           </div>
 
-          <form onSubmit={handleLoginSubmit} className="p-6 space-y-4">
+          <form onSubmit={handleLoginSubmit} className="p-4 sm:p-6 space-y-4">
             {loginError && (
               <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-medium flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -264,28 +264,33 @@ export default function WebPosHomePage() {
   return (
     <div className="min-h-screen flex flex-col bg-slate-100">
       {/* Header thương hiệu 11Sport & Thông tin người dùng */}
-      <header className="bg-slate-900 text-white shadow-lg print:hidden">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center font-black text-lg tracking-tighter">
+      <header className="sticky top-0 z-30 bg-slate-900 text-white shadow-lg print:hidden">
+        <div className="max-w-7xl mx-auto px-3 md:px-4 py-2.5 md:py-3 flex items-center justify-between gap-2 md:gap-3">
+          <div className="flex items-center gap-2 md:gap-3 min-w-0">
+            <div className="w-9 h-9 md:w-10 md:h-10 shrink-0 rounded-xl bg-emerald-600 flex items-center justify-center font-black text-base md:text-lg tracking-tighter">
               11S
             </div>
-            <div>
-              <div className="font-extrabold text-base tracking-tight flex items-center gap-2">
-                11SPORT POS & KHO VẬN
-                <span className="text-[11px] font-mono bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded">
+            <div className="min-w-0">
+              <div className="font-extrabold text-sm md:text-base tracking-tight flex items-center gap-2 truncate">
+                <span className="truncate">11SPORT POS & KHO VẬN</span>
+                <span className="hidden sm:inline text-[11px] font-mono bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded">
                   v1.0
                 </span>
               </div>
-              <div className="text-xs text-slate-400">
+              <div className="hidden md:block text-xs text-slate-400">
                 Hệ thống Bán hàng, Xuất PDF (K80/A4), Camera OCR Kiểm kho & Đổi trả
+              </div>
+              {/* Mobile: tên nhân sự rút gọn dưới tên thương hiệu */}
+              <div className="md:hidden text-[11px] text-slate-400 truncate">
+                {currentUser.fullName} ·{" "}
+                <span className="text-emerald-400 font-bold">{currentUser.role}</span>
               </div>
             </div>
           </div>
 
           {/* Thông tin tài khoản đang đăng nhập & Đăng xuất */}
-          <div className="flex flex-wrap items-center gap-2.5">
-            <div className="flex items-center gap-2 bg-slate-800 px-3.5 py-2 rounded-xl border border-slate-700">
+          <div className="flex items-center gap-1.5 md:gap-2.5 shrink-0">
+            <div className="hidden md:flex items-center gap-2 bg-slate-800 px-3.5 py-2 rounded-xl border border-slate-700">
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
               <div className="text-xs">
                 <span className="text-slate-400">Nhân sự: </span>
@@ -304,26 +309,29 @@ export default function WebPosHomePage() {
                 }
                 target="_blank"
                 rel="noreferrer"
-                className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-emerald-400 border border-slate-700 flex items-center gap-1"
+                title="Mở CMS"
+                className="min-h-[40px] min-w-[40px] px-2.5 md:px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-emerald-400 border border-slate-700 flex items-center justify-center gap-1"
               >
-                Mở CMS <ExternalLink className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Mở CMS</span>{" "}
+                <ExternalLink className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
               </a>
             )}
 
             <button
               type="button"
               onClick={handleLogout}
-              className="px-3 py-2 rounded-xl bg-red-600/90 hover:bg-red-600 text-xs font-bold text-white flex items-center gap-1.5 transition"
+              title="Đăng xuất"
+              className="min-h-[40px] min-w-[40px] px-2.5 md:px-3 py-2 rounded-xl bg-red-600/90 hover:bg-red-600 text-xs font-bold text-white flex items-center justify-center gap-1.5 transition"
             >
-              <LogOut className="w-3.5 h-3.5" />
-              Đăng xuất
+              <LogOut className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+              <span className="hidden sm:inline">Đăng xuất</span>
             </button>
           </div>
         </div>
 
-        {/* Thanh 5 Tab chức năng phân quyền theo Role */}
+        {/* Thanh 5 Tab chức năng phân quyền theo Role (mobile: cuộn ngang) */}
         <div className="bg-slate-800/90 border-t border-slate-800">
-          <div className="max-w-7xl mx-auto px-4 flex items-center gap-1.5 overflow-x-auto py-1.5">
+          <div className="max-w-7xl mx-auto px-2 md:px-4 flex items-center gap-1 md:gap-1.5 overflow-x-auto no-scrollbar snap-x py-1.5">
             {TABS_CONFIG.map((tab) => {
               const Icon = tab.icon;
               const isAllowed = tab.allowedRoles.includes(currentUser.role);
@@ -342,7 +350,7 @@ export default function WebPosHomePage() {
                   onClick={() => {
                     if (isAllowed) setActiveTab(tab.id);
                   }}
-                  className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 whitespace-nowrap transition ${
+                  className={`min-h-[40px] shrink-0 snap-start px-3 md:px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 md:gap-2 whitespace-nowrap transition ${
                     !isAllowed
                       ? "opacity-40 cursor-not-allowed text-slate-400 bg-slate-900/40"
                       : isActive
@@ -364,7 +372,7 @@ export default function WebPosHomePage() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6 print:p-0">
+      <main className="flex-1 max-w-7xl w-full min-w-0 mx-auto px-3 py-3 md:px-4 md:py-6 print:p-0">
         {!isCurrentTabAllowed ? (
           <div className="bg-white rounded-xl border border-slate-200 p-8 text-center space-y-2">
             <Lock className="w-10 h-10 text-amber-500 mx-auto" />

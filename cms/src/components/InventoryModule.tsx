@@ -404,7 +404,7 @@ export default function InventoryModule() {
                   Danh mục Sản phẩm & Cập nhật Giá bán lẻ (BR-04)
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Sản phẩm mới tạo khi Nhập kho có giá mặc định = 0 ₫. Quản lý cập nhật giá bán lẻ tại đây để mở bán trên POS.
+                  Sản phẩm mới tạo khi Nhập kho có giá bán mặc định = 0 ₫. Giá gốc do thủ kho nhập khi lập phiếu nhập; Quản lý/Admin tham khảo giá gốc và cập nhật giá bán lẻ tại đây để mở bán trên POS.
                 </p>
               </div>
 
@@ -443,6 +443,7 @@ export default function InventoryModule() {
                     <th className="py-3 px-3">Category</th>
                     <th className="py-3 px-3 text-center">ĐVT</th>
                     <th className="py-3 px-3 text-right">Tồn kho (Sổ kho)</th>
+                    <th className="py-3 px-3 text-right whitespace-nowrap">Giá gốc (VND)</th>
                     <th className="py-3 px-3 text-right w-48">Giá bán lẻ (VND)</th>
                     <th className="py-3 px-3 text-right w-32">Thao tác</th>
                   </tr>
@@ -465,6 +466,13 @@ export default function InventoryModule() {
                       <td className="py-3 px-3 text-right font-mono font-extrabold text-emerald-700">
                         {p.stock}
                       </td>
+                      <td className="py-3 px-3 text-right font-mono text-slate-700 whitespace-nowrap">
+                        {Number(p.costPrice) > 0 ? (
+                          formatVND(p.costPrice)
+                        ) : (
+                          <span className="text-slate-400">Chưa có</span>
+                        )}
+                      </td>
                       <td className="py-3 px-3 text-right">
                         <input
                           type="number"
@@ -483,6 +491,22 @@ export default function InventoryModule() {
                               : "border-slate-300 bg-white text-slate-900"
                           }`}
                         />
+                        {(() => {
+                          const sell = Number(editingPrices[p._id] ?? p.sellingPrice) || 0;
+                          const cost = Number(p.costPrice) || 0;
+                          if (sell <= 0 || cost <= 0) return null;
+                          const margin = sell - cost;
+                          return (
+                            <div
+                              className={`mt-1 text-[10px] font-bold ${
+                                margin < 0 ? "text-red-600" : "text-emerald-700"
+                              }`}
+                            >
+                              {margin < 0 ? "Lỗ" : "Lãi"}: {formatVND(Math.abs(margin))} (
+                              {Math.round((margin / cost) * 100)}%)
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="py-3 px-3 text-right">
                         <button
@@ -684,6 +708,7 @@ export default function InventoryModule() {
                   <th className="py-3 px-3">Mã Phiếu</th>
                   <th className="py-3 px-3">Trạng thái</th>
                   <th className="py-3 px-3">Số dòng hàng</th>
+                  <th className="py-3 px-3 text-right">Tổng giá gốc</th>
                   <th className="py-3 px-3">Ghi chú</th>
                   <th className="py-3 px-3">Ngày tạo</th>
                 </tr>
@@ -709,6 +734,15 @@ export default function InventoryModule() {
                     </td>
                     <td className="py-3 px-3 font-mono font-bold">
                       {imp.items?.length || 0} mặt hàng
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono font-bold">
+                      {formatVND(
+                        (imp.items || []).reduce(
+                          (sum: number, it: any) =>
+                            sum + (Number(it.costPrice) || 0) * (Number(it.actualQuantity) || 0),
+                          0
+                        )
+                      )}
                     </td>
                     <td className="py-3 px-3">{imp.note || "-"}</td>
                     <td className="py-3 px-3 text-slate-500">

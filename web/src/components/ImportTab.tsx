@@ -8,6 +8,7 @@ import {
   apiRequest,
   generateProductCode,
   formatDateTime,
+  formatVND,
 } from "@/lib/api";
 import CameraScannerModal from "./CameraScannerModal";
 import {
@@ -95,6 +96,7 @@ export default function ImportTab() {
         unit: it.unit || "Cái",
         expectedQuantity: Number(it.expectedQuantity || 0),
         actualQuantity: Number(it.actualQuantity ?? it.expectedQuantity ?? 0),
+        costPrice: Number(it.costPrice || 0),
         note: it.note || "",
         isChecked: Boolean(it.isChecked),
         isConfirmed: Boolean(it.isConfirmed),
@@ -155,6 +157,7 @@ export default function ImportTab() {
         unit: "Cái",
         expectedQuantity: 10,
         actualQuantity: 10,
+        costPrice: 0,
         note: "",
         isChecked: false,
         isConfirmed: false,
@@ -408,6 +411,14 @@ export default function ImportTab() {
   const surplusRows = items.filter(
     (i) => i.isChecked && i.actualQuantity > i.expectedQuantity
   ).length;
+  // Tổng giá trị nhập theo giá gốc (SL thực nhận × giá gốc)
+  const totalCostValue = items.reduce(
+    (sum, i) => sum + (Number(i.costPrice) || 0) * (Number(i.actualQuantity) || 0),
+    0
+  );
+  const missingCostRows = items.filter(
+    (i) => i.productName.trim() !== "" && !(Number(i.costPrice) > 0)
+  ).length;
 
   const filteredItems = items.map((item, idx) => ({ item, idx })).filter(({ item }) => {
     if (!quickCheckSearch.trim()) return true;
@@ -434,7 +445,7 @@ export default function ImportTab() {
             </button>
           </div>
 
-          <div className="space-y-2 max-h-[600px] overflow-y-auto">
+          <div className="space-y-2 max-h-[260px] lg:max-h-[600px] overflow-y-auto">
             {receipts.length === 0 ? (
               <div className="text-xs text-slate-400 text-center py-6">
                 Chưa có phiếu nhập nào
@@ -593,7 +604,7 @@ export default function ImportTab() {
         )}
 
         {/* Khung thông tin chung & Thanh công cụ Camera / Kiểm hàng */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 sm:p-5 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="md:col-span-2">
               <label className="block text-xs font-bold uppercase text-slate-600 mb-1">
@@ -630,13 +641,13 @@ export default function ImportTab() {
 
           {/* Các nút thao tác chính của Bước 2, 3, 4 */}
           {!isCompleted && (
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100">
-              <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-col lg:flex-row lg:flex-wrap lg:items-center justify-between gap-3 pt-2 border-t border-slate-100">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
                 {/* Bước 2: Nút Kiểm hàng Camera OCR */}
                 <button
                   type="button"
                   onClick={() => setOpenOcrModal(true)}
-                  className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-2 shadow-sm"
+                  className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm"
                 >
                   <Camera className="w-4 h-4 text-emerald-400" />
                   📷 Kiểm hàng (Camera OCR Bảng 6 Cột)
@@ -645,22 +656,22 @@ export default function ImportTab() {
                 <button
                   type="button"
                   onClick={handleAddRow}
-                  className="px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center gap-1.5"
+                  className="px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center justify-center gap-1.5"
                 >
                   <Plus className="w-4 h-4" /> Thêm dòng mới
                 </button>
               </div>
 
               {/* Bước 4: Tìm kiếm nhanh & Quét Tag kiểm tra thực tế */}
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="relative w-60">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
+                <div className="relative w-full sm:w-60">
                   <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                   <input
                     type="text"
                     value={quickCheckSearch}
                     onChange={(e) => setQuickCheckSearch(e.target.value)}
                     placeholder="Tìm nhanh mã/tên trong phiếu..."
-                    className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-300 text-xs focus:border-emerald-600 focus:outline-none"
+                    className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-300 text-base sm:text-xs focus:border-emerald-600 focus:outline-none"
                   />
                 </div>
 
@@ -670,7 +681,7 @@ export default function ImportTab() {
                     setScanRowIndex(null);
                     setOpenTagModal(true);
                   }}
-                  className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-extrabold flex items-center gap-1.5 shadow-sm"
+                  className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-sm"
                 >
                   <Camera className="w-4 h-4" />
                   📷 Quét Tag Kiểm Tra Thực Tế
@@ -702,6 +713,14 @@ export default function ImportTab() {
               <span className="px-2.5 py-1 rounded-full bg-blue-100 text-blue-800 font-bold">
                 Đã tick xác nhận nhập kho: {confirmedRows}/{totalRows}
               </span>
+              <span className="px-2.5 py-1 rounded-full bg-slate-900 text-white font-bold">
+                Tổng giá gốc: {formatVND(totalCostValue)}
+              </span>
+              {missingCostRows > 0 && (
+                <span className="px-2.5 py-1 rounded-full bg-orange-100 text-orange-800 font-bold">
+                  Chưa nhập giá gốc: {missingCostRows} dòng
+                </span>
+              )}
             </div>
 
             {!isCompleted && (
@@ -735,6 +754,9 @@ export default function ImportTab() {
                   <th className="py-3 px-3 min-w-[260px]">TÊN HÀNG</th>
                   <th className="py-3 px-2.5 w-20 text-center">ĐVT</th>
                   <th className="py-3 px-2.5 w-24 text-right">SỐ LƯỢNG</th>
+                  <th className="py-3 px-2.5 min-w-[150px] text-right" title="Giá gốc (đơn giá nhập). Giá bán do Quản lý/Admin cập nhật trên CMS">
+                    GIÁ GỐC (VND)
+                  </th>
                   <th className="py-3 px-3 min-w-[140px]">GHI CHÚ</th>
                   <th className="py-3 px-3 w-48 bg-slate-800 text-amber-300">
                     BƯỚC 4: KIỂM THỰC TẾ
@@ -812,6 +834,36 @@ export default function ImportTab() {
                           }
                           className="w-full px-2 py-1.5 rounded border border-slate-300 text-right font-mono font-bold disabled:bg-slate-100"
                         />
+                      </td>
+
+                      {/* GIÁ GỐC: đơn giá nhập do thủ kho nhập (giá bán do Quản lý/Admin đặt trên CMS) */}
+                      <td className="py-2.5 px-2.5">
+                        <input
+                          type="number"
+                          min={0}
+                          step={1000}
+                          inputMode="numeric"
+                          disabled={isCompleted}
+                          value={row.costPrice ?? 0}
+                          onChange={(e) =>
+                            handleUpdateRow(
+                              idx,
+                              "costPrice",
+                              Math.max(0, Math.round(Number(e.target.value) || 0))
+                            )
+                          }
+                          placeholder="0"
+                          className={`w-full px-2 py-1.5 rounded border text-right font-mono font-bold disabled:bg-slate-100 ${
+                            Number(row.costPrice) > 0 || !row.productName.trim()
+                              ? "border-slate-300"
+                              : "border-orange-300 bg-orange-50"
+                          }`}
+                        />
+                        {Number(row.costPrice) > 0 && (
+                          <div className="mt-1 text-[10px] text-right text-slate-500">
+                            = {formatVND((Number(row.costPrice) || 0) * (Number(row.actualQuantity) || 0))}
+                          </div>
+                        )}
                       </td>
 
                       {/* Cột 6: GHI CHÚ */}
@@ -925,32 +977,32 @@ export default function ImportTab() {
           {/* Thanh hành động cuối phiếu: Lưu nháp (Bước 6), Hoàn tất DS (Bước 3), Hoàn thành nhập kho (Bước 7) */}
           {isCompleted ? (
             <div className="p-4 rounded-xl bg-slate-100 border border-slate-300 flex items-center justify-between text-xs text-slate-700">
-              <div className="flex items-center gap-2 font-bold">
-                <Lock className="w-4 h-4 text-slate-600" />
+              <div className="flex items-start sm:items-center gap-2 font-bold">
+                <Lock className="w-4 h-4 text-slate-600 shrink-0" />
                 Phiếu nhập này đã HOÀN THÀNH và bị khóa vĩnh viễn (BR-10). Nếu phát hiện sai lệch, vui lòng lập Phiếu Điều Chỉnh Kho trên CMS.
               </div>
             </div>
           ) : (
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-200">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center justify-between gap-3 pt-3 border-t border-slate-200">
               {/* Bước 6: Nút Lưu nháp */}
               <button
                 type="button"
                 disabled={loading}
                 onClick={handleSaveDraft}
-                className="px-5 py-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs flex items-center gap-2 shadow-sm"
+                className="px-5 py-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs flex items-center justify-center gap-2 shadow-sm"
               >
                 <Save className="w-4 h-4 text-blue-600" />
                 💾 Lưu nháp (Bước 6)
               </button>
 
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
                 {/* Bước 3: Nút Hoàn tất danh sách dự kiến */}
                 {currentStepStatus === "DRAFT" && (
                   <button
                     type="button"
                     disabled={loading}
                     onClick={handleFinishListing}
-                    className="px-5 py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs flex items-center gap-2 shadow"
+                    className="px-5 py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs flex items-center justify-center gap-2 shadow"
                   >
                     ➡️ Hoàn tất DS dự kiến (Sang Bước Kiểm Thực Tế)
                     <ArrowRight className="w-4 h-4" />
@@ -962,7 +1014,7 @@ export default function ImportTab() {
                   type="button"
                   disabled={loading}
                   onClick={handleCompleteImport}
-                  className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center gap-2 shadow-lg"
+                  className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   ✅ Hoàn thành Nhập Kho ({confirmedRows} dòng đã tick)

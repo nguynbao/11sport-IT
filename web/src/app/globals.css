@@ -2,12 +2,53 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Chỉ đặt trên body (propagate lên viewport) để không làm hỏng position: sticky */
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 body {
   background-color: #f8fafc;
   color: #0f172a;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Ảnh/video/canvas không bao giờ vượt quá khung chứa */
+img,
+video,
+canvas {
+  max-width: 100%;
+}
+
+/* Mobile: input/select/textarea >= 16px để tránh iOS tự zoom khi focus */
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+@layer utilities {
+  /* Ẩn thanh cuộn nhưng vẫn cuộn được (thanh tab ngang trên mobile) */
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  /* Vùng an toàn cho thiết bị có tai thỏ / thanh home */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
 }
 
 @media print {
+  body {
+    overflow: visible !important;
+  }
   body {
     background: #ffffff !important;
   }
