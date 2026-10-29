@@ -31,18 +31,17 @@ export default function ImportTab() {
   const [currentReceipt, setCurrentReceipt] = useState<ImportReceipt | null>(null);
 
   // State form chỉnh sửa phiếu
-  const [note, setNote] = useState("Nhập hàng mới từ Nhà cung cấp");
+  const [note, setNote] = useState("");
   const [defaultCategoryId, setDefaultCategoryId] = useState("");
   const [items, setItems] = useState<ImportItem[]>([
     {
       stt: 1,
-      productName:
-        "Áo Polo Thể thao Unisex V1 (Áo Polo Thể thao Unisex V1 KMAP262510 Đỏ size L)",
-      productCode: "AO_POLO_THE_THAO_UNISEX_V1_KMAP262510_DO_SIZE_L",
+      productName: "",
+      productCode: "",
       unit: "Cái",
-      expectedQuantity: 20,
-      actualQuantity: 20,
-      note: "Hàng đợt 1",
+      expectedQuantity: 1,
+      actualQuantity: 1,
+      note: "",
       isChecked: false,
       isConfirmed: false,
       discrepancyNote: "",
@@ -107,16 +106,15 @@ export default function ImportTab() {
 
   const handleStartNewReceipt = () => {
     setCurrentReceipt(null);
-    setNote("Nhập hàng mới từ Nhà cung cấp");
+    setNote("");
     setItems([
       {
         stt: 1,
-        productName:
-          "Áo Polo Thể thao Unisex V1 (Áo Polo Thể thao Unisex V1 KMAP262510 Đỏ size L)",
-        productCode: "AO_POLO_THE_THAO_UNISEX_V1_KMAP262510_DO_SIZE_L",
+        productName: "",
+        productCode: "",
         unit: "Cái",
-        expectedQuantity: 20,
-        actualQuantity: 20,
+        expectedQuantity: 1,
+        actualQuantity: 1,
         note: "",
         isChecked: false,
         isConfirmed: false,

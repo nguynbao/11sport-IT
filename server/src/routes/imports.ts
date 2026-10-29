@@ -94,59 +94,6 @@ importsRouter.post('/imports/ocr-preview', async (req, res, next) => {
           discrepancyNote: '',
         };
       });
-    } else {
-      // Dữ liệu mẫu trích xuất từ Camera OCR chứng từ nhập hàng 11Sport
-      const sampleRows =
-        sampleType === 'footwear'
-          ? [
-              {
-                productName: 'Giày Chạy Bộ 11Sport Pro (Giày Chạy Bộ 11Sport Pro GCB2026 Trắng size 42)',
-                unit: 'Đôi',
-                expectedQuantity: 12,
-                note: 'Hàng chính hãng đợt mới',
-              },
-              {
-                productName: 'Giày Cầu Lông 11Sport Speed (Giày Cầu Lông 11Sport Speed GCL09 Xanh size 41)',
-                unit: 'Đôi',
-                expectedQuantity: 8,
-                note: 'Mẫu mới về kho',
-              },
-            ]
-          : [
-              {
-                productName: 'Áo Polo Thể thao Unisex V1 (Áo Polo Thể thao Unisex V1 KMAP262510 Đỏ size L)',
-                unit: 'Cái',
-                expectedQuantity: 20,
-                note: 'Lô hàng KMAP262510',
-              },
-              {
-                productName: 'Áo Polo Thể thao Unisex V1 (Áo Polo Thể thao Unisex V1 KMAP262510 Xanh size M)',
-                unit: 'Cái',
-                expectedQuantity: 15,
-                note: 'Lô hàng KMAP262510',
-              },
-              {
-                productName: 'Quần Short Tập Luyện 11Sport (Quần Short Tập Luyện 11Sport QSTL02 Đen size XL)',
-                unit: 'Cái',
-                expectedQuantity: 25,
-                note: 'Mẫu mới nhập lần đầu',
-              },
-            ];
-
-      extractedItems = sampleRows.map((row, idx) => ({
-        stt: idx + 1,
-        productId: '',
-        productCode: generateProductCode(row.productName),
-        productName: row.productName,
-        categoryId: defaultCatId,
-        unit: row.unit,
-        expectedQuantity: row.expectedQuantity,
-        actualQuantity: row.expectedQuantity,
-        note: row.note,
-        isChecked: false,
-        isConfirmed: false,
-        discrepancyNote: '',
-      }));
     }
 
     res.json({

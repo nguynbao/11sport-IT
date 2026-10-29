@@ -49,14 +49,12 @@ export default function InventoryModule() {
   const [newProdName, setNewProdName] = useState("");
   const [newProdCatId, setNewProdCatId] = useState("");
   const [newProdUnit, setNewProdUnit] = useState("Cái");
-  const [newProdPrice, setNewProdPrice] = useState<number>(250000);
+  const [newProdPrice, setNewProdPrice] = useState<number>(0);
 
   // Lập phiếu điều chỉnh kho
   const [adjProductId, setAdjProductId] = useState("");
-  const [adjQuantityChange, setAdjQuantityChange] = useState<number>(-1);
-  const [adjReason, setAdjReason] = useState(
-    "Kiểm kê phát hiện chênh lệch thực tế so với phiếu nhập"
-  );
+  const [adjQuantityChange, setAdjQuantityChange] = useState<number>(0);
+  const [adjReason, setAdjReason] = useState("");
 
   const [statusMsg, setStatusMsg] = useState<{
     type: "success" | "error";
