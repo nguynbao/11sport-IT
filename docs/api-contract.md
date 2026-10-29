@@ -66,6 +66,10 @@
   - Body: `{ "name": "string", "categoryId": "string", "unit": "string", "sellingPrice": 250000, "costPrice": 180000, "stock"?: 20, "allowDirectStock"?: boolean }`
   - Lưu ý: Không cho phép sửa `code`. Sửa `stock` trực tiếp mặc định bị chặn (`400 STOCK_DIRECT_EDIT_FORBIDDEN`), trừ khi `ADMIN` gửi kèm `allowDirectStock: true` từ CMS (hệ thống sẽ cập nhật `stock` và tự động ghi `StockMovement` loại `IMPORT` nếu tăng hoặc `ADJUSTMENT` nếu giảm để cân bằng Sổ kho).
   - *(v1.1)* Chỉ role `ADMIN` được đổi `sellingPrice` / `costPrice` / `stock` (`allowDirectStock: true`); role khác → `403 SELLING_PRICE_FORBIDDEN` / `403 COST_PRICE_FORBIDDEN` / `403 DIRECT_STOCK_FORBIDDEN`.
+- `DELETE /api/v1/products/:id` *(v1.8)*
+  - Chỉ role `ADMIN` được xóa sản phẩm (`403 PRODUCT_DELETE_FORBIDDEN` nếu role khác).
+  - Xóa sản phẩm theo `id` và dọn các bút toán `StockMovement` liên quan để Báo cáo tồn kho luôn đồng nhất.
+  - Response: `{ "data": { "deleted": true, "_id": "...", "code": "...", "name": "..." }, "meta": {} }`
 - *(v1.1 & v1.6)* Trường mới của `Product`: `costPrice` (giá gốc / giá nhập gần nhất, VND, số nguyên ≥ 0, mặc định `0`). Được cập nhật tự động khi hoàn thành phiếu nhập kho hoặc do `ADMIN` cập nhật trên CMS. Response `GET /products`, `GET /inventory/report`, `GET /inventory/movements` **ẩn hoàn toàn** `costPrice` với role `SALES` (Saler chỉ thấy `sellingPrice` và số lượng tồn kho).
 - `GET /api/v1/inventory/movements`
   - Query: `?productId=...&type=IMPORT|SALE|RETURN|EXCHANGE_IN|EXCHANGE_OUT|ADJUSTMENT&from=...&to=...`
@@ -128,6 +132,11 @@
   - *(v1.1)* `costPrice`: **giá gốc (đơn giá nhập)** do thủ kho nhập, VND, số nguyên ≥ 0 (không bắt buộc, mặc định `0`). Giá trị âm/không hợp lệ → `400 INVALID_COST_PRICE`. Thủ kho **không** nhập giá bán; giá bán do Quản lý/Admin cập nhật trên CMS.
 - `PUT /api/v1/imports/:id`
   - Lưu nháp hoặc cập nhật danh sách dòng hàng, trạng thái kiểm hàng (`DRAFT` hoặc `CHECKING`). Chặn sửa nếu phiếu đã `COMPLETED`.
+- `DELETE /api/v1/imports/:id` *(v1.8)*
+  - Xóa phiếu nhập kho.
+  - Phiếu ở trạng thái `DRAFT` hoặc `CHECKING`: cho phép xóa trực tiếp.
+  - Phiếu đã `COMPLETED`: chỉ role `ADMIN` mới được xóa (khi xóa sẽ hoàn tác số lượng đã cộng vào kho và xóa các bút toán `StockMovement` của phiếu đó); role khác gọi sẽ nhận `400 IMPORT_RECEIPT_LOCKED`.
+  - Response: `{ "data": { "deleted": true, "_id": "...", "code": "..." }, "meta": {} }`
 - `POST /api/v1/imports/:id/finish-listing`
   - Bước 3 ("Hoàn tất" danh sách dự kiến): chuyển trạng thái từ `DRAFT` sang `CHECKING`.
 - `POST /api/v1/imports/:id/scan-check`

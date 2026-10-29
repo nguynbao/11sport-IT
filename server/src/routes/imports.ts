@@ -459,6 +459,50 @@ importsRouter.post('/imports/:id/finish-listing', async (req, res, next) => {
   }
 });
 
+// DELETE /api/v1/imports/:id — Xóa phiếu nhập kho
+importsRouter.delete('/imports/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const receipt = await importReceiptRepo.findById(id);
+    if (!receipt) {
+      throw new ApiError(404, 'IMPORT_RECEIPT_NOT_FOUND', 'Không tìm thấy phiếu nhập kho');
+    }
+
+    if (receipt.status === 'COMPLETED') {
+      if (req.user?.role !== 'ADMIN') {
+        throw new ApiError(
+          400,
+          'IMPORT_RECEIPT_LOCKED',
+          'Phiếu nhập đã hoàn thành và bị khóa; chỉ Quản lý/Admin mới có quyền xóa'
+        );
+      }
+      // Hoàn tác số lượng đã cộng vào kho và xóa các bút toán StockMovement của phiếu này
+      const movements = await stockMovementRepo.find({ referenceId: String(receipt._id) });
+      for (const m of movements) {
+        const prod = await productRepo.findById(String(m.productId));
+        if (prod) {
+          const nextStock = Math.max(0, (Number(prod.stock) || 0) - (Number(m.quantityChange) || 0));
+          await productRepo.updateById(prod._id, { stock: nextStock });
+        }
+        await stockMovementRepo.deleteById(m._id);
+      }
+    }
+
+    await importReceiptRepo.deleteById(receipt._id);
+
+    res.json({
+      data: {
+        deleted: true,
+        _id: receipt._id,
+        code: receipt.code,
+      },
+      meta: {},
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /api/v1/imports/:id/scan-check (Bước 4: Chụp tag kiểm thực tế — ĐẾM TỪNG CHIẾC)
 // Mỗi lần quét khớp = +1 chiếc; đủ số lượng dự kiến mới tick xác nhận. Không thêm dòng mới.
 importsRouter.post('/imports/:id/scan-check', async (req, res, next) => {

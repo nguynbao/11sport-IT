@@ -324,6 +324,36 @@ export default function ImportTab() {
     }
   };
 
+  const handleDeleteReceipt = async (rc: ImportReceipt, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const code = rc.code || rc.receiptCode || rc._id.slice(-6);
+    if (
+      !window.confirm(`Bạn có chắc chắn muốn XÓA phiếu nhập "${code}" không?`)
+    ) {
+      return;
+    }
+    setLoading(true);
+    setStatusMsg(null);
+    try {
+      await apiRequest(`/imports/${rc._id}`, { method: "DELETE" });
+      if (currentReceipt?._id === rc._id) {
+        handleStartNewReceipt();
+      }
+      await loadInitialData();
+      setStatusMsg({
+        type: "success",
+        text: `Đã xóa phiếu nhập "${code}" thành công!`,
+      });
+    } catch (err: any) {
+      setStatusMsg({
+        type: "error",
+        text: err?.message || "Không thể xóa phiếu nhập kho.",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Thống kê Bước 5 (Tổng kết)
   const totalRows = items.length;
   const checkedRows = items.filter((i) => i.isChecked).length;
@@ -390,25 +420,37 @@ export default function ImportTab() {
                         : "border-slate-200 hover:bg-slate-50"
                     }`}
                   >
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-1.5">
                       <span className="font-mono font-bold text-xs text-slate-900">
                         {code}
                       </span>
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                          rc.status === "COMPLETED"
-                            ? "bg-emerald-100 text-emerald-800"
+                      <div className="flex items-center gap-1">
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            rc.status === "COMPLETED"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : rc.status === "CHECKING"
+                              ? "bg-amber-100 text-amber-800"
+                              : "bg-blue-100 text-blue-800"
+                          }`}
+                        >
+                          {rc.status === "COMPLETED"
+                            ? "HOÀN THÀNH"
                             : rc.status === "CHECKING"
-                            ? "bg-amber-100 text-amber-800"
-                            : "bg-blue-100 text-blue-800"
-                        }`}
-                      >
-                        {rc.status === "COMPLETED"
-                          ? "HOÀN THÀNH"
-                          : rc.status === "CHECKING"
-                          ? "ĐANG KIỂM"
-                          : "NHÁP (DRAFT)"}
-                      </span>
+                            ? "ĐANG KIỂM"
+                            : "NHÁP (DRAFT)"}
+                        </span>
+                        {rc.status !== "COMPLETED" && (
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteReceipt(rc, e)}
+                            className="p-1 rounded hover:bg-red-50 text-red-500"
+                            title="Xóa phiếu nhập"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <div className="text-xs text-slate-600 mt-1 truncate">
                       {rc.note || "Phiếu nhập kho"}
@@ -915,16 +957,29 @@ export default function ImportTab() {
             </div>
           ) : (
             <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center justify-between gap-3 pt-3 border-t border-slate-200">
-              {/* Bước 6: Nút Lưu nháp */}
-              <button
-                type="button"
-                disabled={loading}
-                onClick={handleSaveDraft}
-                className="px-5 py-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs flex items-center justify-center gap-2 shadow-sm"
-              >
-                <Save className="w-4 h-4 text-blue-600" />
-                💾 Lưu nháp (Bước 6)
-              </button>
+              {/* Bước 6: Nút Lưu nháp & Xóa phiếu */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={handleSaveDraft}
+                  className="px-5 py-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs flex items-center justify-center gap-2 shadow-sm"
+                >
+                  <Save className="w-4 h-4 text-blue-600" />
+                  💾 Lưu nháp (Bước 6)
+                </button>
+                {currentReceipt?._id && (
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={() => handleDeleteReceipt(currentReceipt)}
+                    className="px-4 py-3 rounded-xl border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Xóa phiếu
+                  </button>
+                )}
+              </div>
 
               <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
                 {/* Bước 3: Nút Hoàn tất danh sách dự kiến */}

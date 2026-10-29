@@ -31,6 +31,7 @@ import {
   Search,
   ChevronDown,
   ChevronUp,
+  Trash2,
 } from "lucide-react";
 
 type SubTab = "PRODUCTS" | "REPORT" | "MOVEMENTS" | "IMPORTS" | "ADJUSTMENT";
@@ -52,7 +53,10 @@ export default function InventoryModule() {
   const [toDate, setToDate] = useState("");
   const [movementType, setMovementType] = useState("");
 
-  // Số lượng, Giá gốc & Giá bán chỉnh sửa theo productId
+  // Tên, Category, ĐVT, Số lượng, Giá gốc & Giá bán chỉnh sửa theo productId
+  const [editingNames, setEditingNames] = useState<Record<string, string>>({});
+  const [editingCats, setEditingCats] = useState<Record<string, string>>({});
+  const [editingUnits, setEditingUnits] = useState<Record<string, string>>({});
   const [editingStocks, setEditingStocks] = useState<Record<string, number>>({});
   const [editingCosts, setEditingCosts] = useState<Record<string, number>>({});
   const [editingPrices, setEditingPrices] = useState<Record<string, number>>({});
@@ -92,14 +96,24 @@ export default function InventoryModule() {
       setProducts(pList);
       setCategories(cList);
 
+      const nameMap: Record<string, string> = {};
+      const catMap: Record<string, string> = {};
+      const unitMap: Record<string, string> = {};
       const stockMap: Record<string, number> = {};
       const costMap: Record<string, number> = {};
       const priceMap: Record<string, number> = {};
       pList.forEach((p) => {
+        nameMap[p._id] = p.name || "";
+        catMap[p._id] =
+          typeof p.categoryId === "object" ? p.categoryId?._id || "" : String(p.categoryId || "");
+        unitMap[p._id] = p.unit || "Cái";
         stockMap[p._id] = Number(p.stock || 0);
         costMap[p._id] = Number(p.costPrice || 0);
         priceMap[p._id] = Number(p.sellingPrice || 0);
       });
+      setEditingNames(nameMap);
+      setEditingCats(catMap);
+      setEditingUnits(unitMap);
       setEditingStocks(stockMap);
       setEditingCosts(costMap);
       setEditingPrices(priceMap);
@@ -174,12 +188,23 @@ export default function InventoryModule() {
 
   const handleUpdateProductPrices = async (prod: Product) => {
     setStatusMsg(null);
+    const newName = String(editingNames[prod._id] ?? prod.name ?? "").trim();
+    const newCatId = String(
+      editingCats[prod._id] ??
+        (typeof prod.categoryId === "object" ? prod.categoryId?._id : prod.categoryId) ??
+        ""
+    );
+    const newUnit = String(editingUnits[prod._id] ?? prod.unit ?? "Cái").trim() || "Cái";
     const newStock = Math.max(
       0,
       Math.round(Number(editingStocks[prod._id] ?? prod.stock ?? 0))
     );
     const newCost = Number(editingCosts[prod._id] ?? prod.costPrice ?? 0);
     const newPrice = Number(editingPrices[prod._id] ?? prod.sellingPrice ?? 0);
+    if (!newName) {
+      setStatusMsg({ type: "error", text: "Tên sản phẩm không được để trống." });
+      return;
+    }
     if (newStock < 0 || newCost < 0 || newPrice < 0) {
       setStatusMsg({
         type: "error",
@@ -191,8 +216,9 @@ export default function InventoryModule() {
       await apiRequest(`/products/${prod._id}`, {
         method: "PATCH",
         body: JSON.stringify({
-          name: prod.name,
-          unit: prod.unit,
+          name: newName,
+          ...(newCatId ? { categoryId: newCatId } : {}),
+          unit: newUnit,
           stock: newStock,
           allowDirectStock: true,
           costPrice: newCost,
@@ -201,7 +227,7 @@ export default function InventoryModule() {
       });
       setStatusMsg({
         type: "success",
-        text: `Đã cập nhật "${prod.name}": SL tồn ${newStock} ${prod.unit} · Giá gốc ${formatVND(
+        text: `Đã cập nhật "${newName}": SL tồn ${newStock} ${newUnit} · Giá gốc ${formatVND(
           newCost
         )} · Giá bán ${formatVND(newPrice)}!`,
       });
@@ -210,6 +236,56 @@ export default function InventoryModule() {
       setStatusMsg({
         type: "error",
         text: err?.message || "Lỗi khi cập nhật sản phẩm.",
+      });
+    }
+  };
+
+  const handleDeleteProduct = async (prod: Product) => {
+    if (
+      !window.confirm(
+        `Bạn có chắc chắn muốn XÓA sản phẩm "${prod.name}" (Mã: ${prod.code}) khỏi kho không?`
+      )
+    ) {
+      return;
+    }
+    setStatusMsg(null);
+    try {
+      await apiRequest(`/products/${prod._id}`, { method: "DELETE" });
+      setStatusMsg({
+        type: "success",
+        text: `Đã xóa sản phẩm "${prod.name}" (${prod.code}) khỏi hệ thống!`,
+      });
+      loadProductsAndCats();
+    } catch (err: any) {
+      setStatusMsg({
+        type: "error",
+        text: err?.message || "Không thể xóa sản phẩm.",
+      });
+    }
+  };
+
+  const handleDeleteImportReceipt = async (imp: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const code = imp.code || imp.receiptCode || imp._id;
+    const isCompleted = imp.status === "COMPLETED";
+    const msg = isCompleted
+      ? `Phiếu nhập "${code}" đã HOÀN THÀNH. Nếu xóa, hệ thống sẽ hoàn tác số lượng đã cộng vào kho. Bạn có chắc chắn muốn xóa không?`
+      : `Bạn có chắc chắn muốn xóa phiếu nhập "${code}" không?`;
+    if (!window.confirm(msg)) return;
+    setStatusMsg(null);
+    try {
+      await apiRequest(`/imports/${imp._id}`, { method: "DELETE" });
+      setStatusMsg({
+        type: "success",
+        text: `Đã xóa phiếu nhập "${code}" thành công!`,
+      });
+      if (expandedImportId === imp._id) setExpandedImportId(null);
+      loadImports();
+      loadProductsAndCats();
+    } catch (err: any) {
+      setStatusMsg({
+        type: "error",
+        text: err?.message || "Không thể xóa phiếu nhập.",
       });
     }
   };
@@ -604,17 +680,24 @@ export default function InventoryModule() {
                 <thead className="bg-slate-900 text-white uppercase">
                   <tr>
                     <th className="py-3 px-3">Mã hàng (Không sửa)</th>
-                    <th className="py-3 px-3">Tên sản phẩm</th>
-                    <th className="py-3 px-3">Category</th>
-                    <th className="py-3 px-2.5 text-center">ĐVT</th>
+                    <th className="py-3 px-3 min-w-[260px]">Tên sản phẩm</th>
+                    <th className="py-3 px-3 min-w-[140px]">Category</th>
+                    <th className="py-3 px-2.5 text-center w-20">ĐVT</th>
                     <th className="py-3 px-3 text-right w-36 whitespace-nowrap">Số lượng tồn</th>
                     <th className="py-3 px-3 text-right w-44 whitespace-nowrap">Giá gốc (VND)</th>
                     <th className="py-3 px-3 text-right w-44 whitespace-nowrap">Giá bán lẻ (VND)</th>
-                    <th className="py-3 px-3 text-right w-32">Thao tác</th>
+                    <th className="py-3 px-3 text-right w-40 whitespace-nowrap">Thao tác</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {products.map((p) => {
+                    const nameVal = editingNames[p._id] ?? p.name ?? "";
+                    const catVal =
+                      editingCats[p._id] ??
+                      (typeof p.categoryId === "object"
+                        ? p.categoryId?._id || ""
+                        : String(p.categoryId || ""));
+                    const unitVal = editingUnits[p._id] ?? p.unit ?? "Cái";
                     const qty = Number(editingStocks[p._id] ?? p.stock ?? 0);
                     const origQty = Number(p.stock) || 0;
                     const costVal = Number(editingCosts[p._id] ?? p.costPrice ?? 0);
@@ -622,19 +705,54 @@ export default function InventoryModule() {
                     const margin = sellVal - costVal;
                     return (
                       <tr key={p._id} className="hover:bg-slate-50">
-                        <td className="py-3 px-3 font-mono font-bold text-slate-800">
+                        <td className="py-3 px-3 font-mono font-bold text-slate-800 align-top">
                           {p.code}
                         </td>
-                        <td className="py-3 px-3 font-semibold text-slate-900">
-                          {p.name}
+                        <td className="py-3 px-3 align-top">
+                          <textarea
+                            rows={Math.max(2, Math.ceil((nameVal.length || 0) / 36))}
+                            value={nameVal}
+                            onChange={(e) =>
+                              setEditingNames((prev) => ({
+                                ...prev,
+                                [p._id]: e.target.value,
+                              }))
+                            }
+                            className="w-full px-2.5 py-1.5 rounded border border-slate-300 font-semibold text-slate-900 whitespace-pre-wrap break-words leading-snug resize-y"
+                          />
                         </td>
-                        <td className="py-3 px-3 text-slate-600">
-                          {p.categoryName ||
-                            (typeof p.categoryId === "object" && p.categoryId?.name) ||
-                            "-"}
+                        <td className="py-3 px-3 align-top">
+                          <select
+                            value={catVal}
+                            onChange={(e) =>
+                              setEditingCats((prev) => ({
+                                ...prev,
+                                [p._id]: e.target.value,
+                              }))
+                            }
+                            className="w-full px-2 py-1.5 rounded border border-slate-300 bg-white text-slate-700"
+                          >
+                            {categories.map((c) => (
+                              <option key={c._id} value={c._id}>
+                                {c.name}
+                              </option>
+                            ))}
+                          </select>
                         </td>
-                        <td className="py-3 px-2.5 text-center">{p.unit}</td>
-                        <td className="py-3 px-3 text-right">
+                        <td className="py-3 px-2.5 text-center align-top">
+                          <input
+                            type="text"
+                            value={unitVal}
+                            onChange={(e) =>
+                              setEditingUnits((prev) => ({
+                                ...prev,
+                                [p._id]: e.target.value,
+                              }))
+                            }
+                            className="w-16 px-2 py-1.5 rounded border border-slate-300 text-center"
+                          />
+                        </td>
+                        <td className="py-3 px-3 text-right align-top">
                           <input
                             type="number"
                             min={0}
@@ -658,7 +776,7 @@ export default function InventoryModule() {
                             </div>
                           )}
                         </td>
-                        <td className="py-3 px-3 text-right">
+                        <td className="py-3 px-3 text-right align-top">
                           <input
                             type="number"
                             min={0}
@@ -680,7 +798,7 @@ export default function InventoryModule() {
                             Tổng vốn: {formatVND(qty * costVal)}
                           </div>
                         </td>
-                        <td className="py-3 px-3 text-right">
+                        <td className="py-3 px-3 text-right align-top">
                           <input
                             type="number"
                             min={0}
@@ -712,14 +830,25 @@ export default function InventoryModule() {
                             </div>
                           )}
                         </td>
-                        <td className="py-3 px-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() => handleUpdateProductPrices(p)}
-                            className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold inline-flex items-center gap-1"
-                          >
-                            <Save className="w-3.5 h-3.5" /> Lưu
-                          </button>
+                        <td className="py-3 px-3 text-right align-top">
+                          <div className="inline-flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateProductPrices(p)}
+                              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold inline-flex items-center gap-1"
+                              title="Lưu thay đổi sản phẩm"
+                            >
+                              <Save className="w-3.5 h-3.5" /> Lưu
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteProduct(p)}
+                              className="p-1.5 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 text-red-600 inline-flex items-center justify-center"
+                              title="Xóa sản phẩm"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -1034,7 +1163,7 @@ export default function InventoryModule() {
                   <th className="py-3 px-3">Người kiểm (chiếc)</th>
                   <th className="py-3 px-3">Người hoàn thành</th>
                   <th className="py-3 px-3">Ngày tạo</th>
-                  <th className="py-3 px-2 w-10"></th>
+                  <th className="py-3 px-2 w-20 text-center">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
@@ -1124,11 +1253,21 @@ export default function InventoryModule() {
                           {formatDateTime(imp.createdAt)}
                         </td>
                         <td className="py-3 px-2 text-center text-slate-500">
-                          {isExpanded ? (
-                            <ChevronUp className="w-4 h-4 inline" />
-                          ) : (
-                            <ChevronDown className="w-4 h-4 inline" />
-                          )}
+                          <div className="inline-flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => handleDeleteImportReceipt(imp, e)}
+                              className="p-1.5 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 text-red-600"
+                              title="Xóa phiếu nhập"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                            {isExpanded ? (
+                              <ChevronUp className="w-4 h-4 inline" />
+                            ) : (
+                              <ChevronDown className="w-4 h-4 inline" />
+                            )}
+                          </div>
                         </td>
                       </tr>
                       {isExpanded && (

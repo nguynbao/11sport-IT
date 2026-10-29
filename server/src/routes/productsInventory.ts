@@ -317,6 +317,23 @@ productsInventoryRouter.patch('/products/:id', async (req, res, next) => {
 
     const updated = await productRepo.updateById(id, updateData);
 
+    // Đồng bộ tên / đơn vị / category lên các bút toán Sổ kho liên quan nếu có thay đổi
+    if (
+      updated &&
+      (updateData.name !== undefined ||
+        updateData.unit !== undefined ||
+        updateData.categoryId !== undefined)
+    ) {
+      const relatedMovements = await stockMovementRepo.find({ productId: String(updated._id) });
+      for (const m of relatedMovements) {
+        await stockMovementRepo.updateById(m._id, {
+          productName: updated.name,
+          unit: updated.unit,
+          categoryId: updated.categoryId,
+        });
+      }
+    }
+
     if (stockDelta !== 0 && updated) {
       const isImport = stockDelta > 0;
       await stockMovementRepo.create({
@@ -342,6 +359,41 @@ productsInventoryRouter.patch('/products/:id', async (req, res, next) => {
 
     res.json({
       data: updated,
+      meta: {},
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/v1/products/:id
+productsInventoryRouter.delete('/products/:id', async (req, res, next) => {
+  try {
+    if (!isPriceManager(req.user?.role)) {
+      throw new ApiError(403, 'PRODUCT_DELETE_FORBIDDEN', 'Chỉ Quản lý/Admin mới được xóa sản phẩm');
+    }
+
+    const { id } = req.params;
+    const product = await productRepo.findById(id);
+    if (!product) {
+      throw new ApiError(404, 'PRODUCT_NOT_FOUND', 'Không tìm thấy sản phẩm cần xóa');
+    }
+
+    // Xóa các bút toán sổ kho của sản phẩm này để Báo cáo tồn kho luôn đồng nhất
+    const movements = await stockMovementRepo.find({ productId: String(product._id) });
+    for (const m of movements) {
+      await stockMovementRepo.deleteById(m._id);
+    }
+
+    await productRepo.deleteById(product._id);
+
+    res.json({
+      data: {
+        deleted: true,
+        _id: product._id,
+        code: product.code,
+        name: product.name,
+      },
       meta: {},
     });
   } catch (err) {

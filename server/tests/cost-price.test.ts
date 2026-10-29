@@ -181,5 +181,32 @@ describe('v1.1: Giá gốc khi nhập kho & phân quyền giá bán', () => {
     expect(row.importedQty).toBe(25);
     expect(row.closingStock).toBe(25);
     expect(row.currentStock).toBe(25);
+
+    // 5. Xóa sản phẩm trên CMS (DELETE /api/v1/products/:id) & Xóa phiếu nhập (DELETE /api/v1/imports/:id)
+    const nonAdminDel = await request(app)
+      .delete(`/api/v1/products/${createRes.body.data._id}`)
+      .set('x-user-id', 'warehouse1');
+    expect(nonAdminDel.status).toBe(403);
+
+    const adminDel = await request(app)
+      .delete(`/api/v1/products/${createRes.body.data._id}`)
+      .set('x-user-id', 'admin');
+    expect(adminDel.status).toBe(200);
+    expect(adminDel.body.data.deleted).toBe(true);
+
+    const draftImport = await request(app)
+      .post('/api/v1/imports')
+      .set('x-user-id', 'warehouse1')
+      .send({
+        defaultCategoryId: categoryId,
+        items: [{ productName, expectedQuantity: 3, actualQuantity: 3, costPrice: 150000 }],
+      });
+    expect(draftImport.status).toBe(201);
+
+    const delImport = await request(app)
+      .delete(`/api/v1/imports/${draftImport.body.data._id}`)
+      .set('x-user-id', 'warehouse1');
+    expect(delImport.status).toBe(200);
+    expect(delImport.body.data.deleted).toBe(true);
   });
 });
