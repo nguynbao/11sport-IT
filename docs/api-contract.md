@@ -58,30 +58,42 @@
   - Query: `?categoryId=...&search=...&onlySellable=true|false`
   - Response: `{ "data": [...], "meta": { "totalProducts": 12, "totalStock": 350 } }`
 - `POST /api/v1/products`
-  - Body: `{ "name": "string", "categoryId": "string", "unit": "Cái | Đôi | Bộ", "quantity"?: 0, "sellingPrice": 0, "costPrice": 0, "upsertIfExists"?: boolean }`
-  - Lưu ý: `code` tự sinh từ `()` trong `name` và không được sửa sau khi tạo; `stock` khởi tạo = `quantity` (mặc định `0`).
-  - *(v1.7)* Khi `ADMIN` truyền `quantity > 0`: tạo sản phẩm với `stock = quantity` và tự động ghi `StockMovement` loại `IMPORT` (`referenceCode: "CMS-NHAP-THANG"`). Nếu `upsertIfExists = true` và mã sản phẩm đã tồn tại, hệ thống cộng dồn `quantity` vào `stock` hiện có (đồng thời cập nhật `costPrice`/`sellingPrice` nếu > 0) và ghi `StockMovement` loại `IMPORT`.
+  - Body: `{ "name": "string", "categoryId": "string", "unit": "Cái | Đôi | Bộ", "quantity"?: 0, "targetWarehouse"?: "FLOOR_1 | FLOOR_2", "sellingPrice": 0, "costPrice": 0, "upsertIfExists"?: boolean }`
+  - Lưu ý: `code` tự sinh từ `()` trong `name` và không được sửa sau khi tạo; `stock` khởi tạo = `quantity` (mặc định `0`), cộng vào kho đích `targetWarehouse` (`"FLOOR_1"` = Kho Tầng 1 mặc định, hoặc `"FLOOR_2"` = Kho Tầng 2).
+  - *(v1.7 & v1.9)* Khi `ADMIN` truyền `quantity > 0`: tạo sản phẩm với `stock = quantity` (phân bổ vào `stockFloor1` hoặc `stockFloor2` theo `targetWarehouse`) và tự động ghi `StockMovement` loại `IMPORT` (`referenceCode: "CMS-NHAP-THANG"`). Nếu `upsertIfExists = true` và mã sản phẩm đã tồn tại, hệ thống cộng dồn `quantity` vào kho tầng đã chọn (đồng thời cập nhật `costPrice`/`sellingPrice` nếu > 0) và ghi `StockMovement` loại `IMPORT`.
   - `sellingPrice` > 0, `costPrice` > 0 hoặc `quantity` > 0 chỉ được phép khi người gọi có role `ADMIN` (Quản lý/Admin); role khác gửi `sellingPrice > 0` → `403 SELLING_PRICE_FORBIDDEN`, gửi `costPrice > 0` → `403 COST_PRICE_FORBIDDEN`, gửi `quantity > 0` → `403 DIRECT_STOCK_FORBIDDEN`.
 - `PATCH /api/v1/products/:id`
-  - Body: `{ "name": "string", "categoryId": "string", "unit": "string", "sellingPrice": 250000, "costPrice": 180000, "stock"?: 20, "allowDirectStock"?: boolean }`
-  - Lưu ý: Không cho phép sửa `code`. Sửa `stock` trực tiếp mặc định bị chặn (`400 STOCK_DIRECT_EDIT_FORBIDDEN`), trừ khi `ADMIN` gửi kèm `allowDirectStock: true` từ CMS (hệ thống sẽ cập nhật `stock` và tự động ghi `StockMovement` loại `IMPORT` nếu tăng hoặc `ADJUSTMENT` nếu giảm để cân bằng Sổ kho).
+  - Body: `{ "name": "string", "categoryId": "string", "unit": "string", "sellingPrice": 250000, "costPrice": 180000, "stock"?: 20, "stockFloor1"?: 12, "stockFloor2"?: 8, "allowDirectStock"?: boolean }`
+  - Lưu ý: Không cho phép sửa `code`. Sửa `stock` / `stockFloor1` / `stockFloor2` trực tiếp mặc định bị chặn (`400 STOCK_DIRECT_EDIT_FORBIDDEN`), trừ khi `ADMIN` gửi kèm `allowDirectStock: true` từ CMS (hệ thống sẽ cập nhật tồn kho tầng + tổng tồn kho và tự động ghi `StockMovement` loại `IMPORT` nếu tăng hoặc `ADJUSTMENT` nếu giảm để cân bằng Sổ kho).
   - *(v1.1)* Chỉ role `ADMIN` được đổi `sellingPrice` / `costPrice` / `stock` (`allowDirectStock: true`); role khác → `403 SELLING_PRICE_FORBIDDEN` / `403 COST_PRICE_FORBIDDEN` / `403 DIRECT_STOCK_FORBIDDEN`.
 - `DELETE /api/v1/products/:id` *(v1.8)*
   - Chỉ role `ADMIN` được xóa sản phẩm (`403 PRODUCT_DELETE_FORBIDDEN` nếu role khác).
   - Xóa sản phẩm theo `id` và dọn các bút toán `StockMovement` liên quan để Báo cáo tồn kho luôn đồng nhất.
   - Response: `{ "data": { "deleted": true, "_id": "...", "code": "...", "name": "..." }, "meta": {} }`
-- *(v1.1 & v1.6)* Trường mới của `Product`: `costPrice` (giá gốc / giá nhập gần nhất, VND, số nguyên ≥ 0, mặc định `0`). Được cập nhật tự động khi hoàn thành phiếu nhập kho hoặc do `ADMIN` cập nhật trên CMS. Response `GET /products`, `GET /inventory/report`, `GET /inventory/movements` **ẩn hoàn toàn** `costPrice` với role `SALES` (Saler chỉ thấy `sellingPrice` và số lượng tồn kho).
+- *(v1.1, v1.6 & v1.9)* Trường của `Product`:
+  - `costPrice`: giá gốc / giá nhập gần nhất, VND, số nguyên ≥ 0, mặc định `0`. Response `GET /products`, `GET /inventory/report`, `GET /inventory/movements` **ẩn hoàn toàn** `costPrice` với role `SALES`.
+  - `stockFloor1`: số lượng tồn tại **Kho Tầng 1** (mặc định bằng `stock` đối với dữ liệu cũ).
+  - `stockFloor2`: số lượng tồn tại **Kho Tầng 2** (mặc định `0`).
+  - `stock`: tổng tồn kho toàn cửa hàng (`stock = stockFloor1 + stockFloor2`).
 - `GET /api/v1/inventory/movements`
-  - Query: `?productId=...&type=IMPORT|SALE|RETURN|EXCHANGE_IN|EXCHANGE_OUT|ADJUSTMENT&from=...&to=...`
+  - Query: `?productId=...&type=IMPORT|SALE|RETURN|EXCHANGE_IN|EXCHANGE_OUT|ADJUSTMENT|TRANSFER&from=...&to=...`
   - Response: Lịch sử sổ kho (`StockMovement`) kèm `sellingPrice`, `stock` hiện tại và `costPrice` (ẩn `costPrice` nếu role `SALES`).
 - `GET /api/v1/inventory/report`
   - Query: `?from=YYYY-MM-DD&to=YYYY-MM-DD&categoryId=...`
   - Response: Báo cáo kế toán kho theo công thức:
     `closingStock (Tồn cuối kỳ) = openingStock (Tồn đầu kỳ) + importedQty (Nhập trong kỳ) - soldQty (Bán trong kỳ) + adjustedAndReturnedQty (± Điều chỉnh trả/đổi)`
-    Kèm `sellingPrice` và `costPrice` của từng sản phẩm (ẩn `costPrice` nếu role `SALES`).
+    Kèm `stockFloor1`, `stockFloor2`, `sellingPrice` và `costPrice` của từng sản phẩm (ẩn `costPrice` nếu role `SALES`). Các bút toán chuyển kho nội bộ (`TRANSFER` giữa Tầng 1 ↔ Tầng 2) không làm thay đổi tổng tồn cuối kỳ.
 - `POST /api/v1/inventory/adjustments`
-  - Body: `{ "productId": "string", "quantityChange": -2, "reason": "Kiểm kê lệch phiếu nhập PN-0001" }`
-  - Tạo phiếu điều chỉnh kho, cập nhật `stock` sản phẩm và ghi `StockMovement` loại `ADJUSTMENT`.
+  - Body: `{ "productId": "string", "quantityChange": -2, "warehouse"?: "FLOOR_1 | FLOOR_2", "reason": "Kiểm kê lệch phiếu nhập PN-0001" }`
+  - Tạo phiếu điều chỉnh kho, cập nhật `stockFloor1`/`stockFloor2` + `stock` sản phẩm và ghi `StockMovement` loại `ADJUSTMENT`.
+- `POST /api/v1/inventory/transfers` & `GET /api/v1/inventory/transfers` *(v1.9 — Phiếu Xuất Kho Chuyển Tầng giữa Kho Tầng 1 ↔ Kho Tầng 2)*
+  - Chỉ role `ADMIN` được phép thực hiện (`403 FORBIDDEN` nếu role khác).
+  - Body `POST`: `{ "productId": "string", "fromWarehouse": "FLOOR_1 | FLOOR_2", "toWarehouse": "FLOOR_1 | FLOOR_2", "quantity": 5, "note"?: "Dời hàng từ Kho Tầng 1 lên Kho Tầng 2" }`
+  - Nghiệp vụ:
+    - Kiểm tra `fromWarehouse !== toWarehouse` và tồn kho tại kho nguồn (`stockFloor1` hoặc `stockFloor2`) ≥ `quantity` (nếu thiếu → `400 INSUFFICIENT_FLOOR_STOCK`).
+    - Trừ `quantity` ở kho nguồn, cộng `quantity` vào kho đích (tổng `stock` không đổi).
+    - Sinh mã phiếu xuất kho chuyển tầng `PXK-0001`, ghi `StockMovement` loại `TRANSFER` (`referenceType: "TRANSFER"`, `fromWarehouse`, `toWarehouse`).
+    - Ghi nhận vào **Báo cáo hoạt động nhân viên** (`GET /api/v1/reports/staff-activity`) với loại hoạt động kho `EXPORT_TRANSFER`.
 
 ### 2.4 Nhập kho (`/imports`)
 - `GET /api/v1/imports` — Danh sách phiếu nhập kho (`DRAFT`, `CHECKING`, `COMPLETED`)
@@ -106,6 +118,7 @@
   - Lỗi: `400 OCR_INVALID_FILE`, `413 OCR_FILE_TOO_LARGE`, `422 OCR_UNSUPPORTED` (PDF khi không có Gemini), `502 OCR_ENGINE_ERROR`.
 - `POST /api/v1/imports`
   - Tạo phiếu nhập mới (mặc định trạng thái `DRAFT`).
+  - *(v1.9)* Trường `targetWarehouse`: `"FLOOR_1"` (Kho Tầng 1 — mặc định) hoặc `"FLOOR_2"` (Kho Tầng 2). Khi hoàn thành phiếu nhập (`POST /api/v1/imports/:id/complete`), số lượng thực nhận (`actualQuantity`) sẽ được cộng vào đúng kho tầng đã chọn (`stockFloor1` hoặc `stockFloor2`) và cập nhật tổng `stock`.
   - Body:
     ```json
     {
@@ -245,11 +258,11 @@
         "staff": [{
           "staffId": "...", "code": "NV002", "fullName": "...", "username": "...", "role": "SALES|WAREHOUSE|ADMIN", "status": "ACTIVE|LOCKED",
           "sales": { "orders": 12, "revenue": 3500000, "units": 20, "returnsHandled": 1, "returnTotal": 250000 },
-          "warehouse": { "importsCreated": 2, "importsCompleted": 1, "unitsScanned": 40, "rowsChecked": 10, "unitsImported": 38, "adjustments": 1 },
+          "warehouse": { "importsCreated": 2, "importsCompleted": 1, "unitsScanned": 40, "rowsChecked": 10, "unitsImported": 38, "adjustments": 1, "transfers": 1, "unitsTransferred": 5 },
           "lastActivityAt": "ISO date | null"
         }],
         "sales": [{ "type": "ORDER|RETURN|EXCHANGE", "at": "...", "staffId": "...", "staffName": "...", "referenceCode": "HD-0001", "customerName": "...", "amount": 350000, "units": 2, "paymentMethod": "CASH", "status": "PAID" }],
-        "warehouse": [{ "type": "IMPORT_CREATED|IMPORT_CHECKED|IMPORT_COMPLETED|ADJUSTMENT", "at": "...", "staffId": "...", "staffName": "...", "referenceCode": "PN-0001", "quantity": 10, "detail": "..." }]
+        "warehouse": [{ "type": "IMPORT_CREATED|IMPORT_CHECKED|IMPORT_COMPLETED|ADJUSTMENT|EXPORT_TRANSFER", "at": "...", "staffId": "...", "staffName": "...", "referenceCode": "PN-0001 | PXK-0001", "quantity": 10, "detail": "..." }]
       },
       "meta": { "from": "...|null", "to": "...|null" }
     }

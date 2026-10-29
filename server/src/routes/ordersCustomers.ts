@@ -8,6 +8,7 @@ import {
 } from '../config/db';
 import { ApiError } from '../utils/errors';
 import { IOrderItem, PaymentMethod } from '../models/Order';
+import { deductStockForSale, getFloorStocks } from '../utils/warehouseFloor';
 
 export const ordersCustomersRouter = Router();
 
@@ -288,13 +289,15 @@ ordersCustomersRouter.post('/orders', async (req, res, next) => {
       createdByName: req.user?.fullName || 'Nhân viên bán hàng',
     });
 
-    // Trừ tồn kho và ghi StockMovement loại SALE
+    // Trừ tồn kho và ghi StockMovement loại SALE (ưu tiên trừ Kho Tầng 1 trước, thiếu trừ tiếp Kho Tầng 2)
     for (const { product, qty } of productUpdates) {
-      const currentProd = await productRepo.findById(product._id);
-      const balanceBefore = currentProd ? currentProd.stock : product.stock;
-      const balanceAfter = balanceBefore - qty;
+      const currentProd = (await productRepo.findById(product._id)) || product;
+      const beforeFloors = getFloorStocks(currentProd);
+      const balanceBefore = beforeFloors.stock;
+      const nextFloors = deductStockForSale(currentProd, qty);
+      const balanceAfter = nextFloors.stock;
 
-      await productRepo.updateById(product._id, { stock: balanceAfter });
+      await productRepo.updateById(product._id, nextFloors);
 
       await stockMovementRepo.create({
         type: 'SALE',

@@ -6,7 +6,8 @@ export type StockMovementType =
   | 'RETURN'
   | 'EXCHANGE_IN'
   | 'EXCHANGE_OUT'
-  | 'ADJUSTMENT';
+  | 'ADJUSTMENT'
+  | 'TRANSFER';
 
 export interface IStockMovement extends Document {
   type: StockMovementType;
@@ -18,7 +19,13 @@ export interface IStockMovement extends Document {
   quantityChange: number;
   balanceBefore: number;
   balanceAfter: number;
-  referenceType: 'IMPORT_RECEIPT' | 'ORDER' | 'RETURN_EXCHANGE' | 'ADJUSTMENT';
+  /** Kho liên quan (FLOOR_1 | FLOOR_2) */
+  warehouseLocation?: 'FLOOR_1' | 'FLOOR_2';
+  /** Kho nguồn khi xuất chuyển tầng (TRANSFER) */
+  fromWarehouse?: 'FLOOR_1' | 'FLOOR_2';
+  /** Kho đích khi xuất chuyển tầng (TRANSFER) */
+  toWarehouse?: 'FLOOR_1' | 'FLOOR_2';
+  referenceType: 'IMPORT_RECEIPT' | 'ORDER' | 'RETURN_EXCHANGE' | 'ADJUSTMENT' | 'TRANSFER';
   referenceId: string;
   referenceCode: string;
   performedBy: string;
@@ -32,7 +39,7 @@ const StockMovementSchema = new Schema<IStockMovement>(
   {
     type: {
       type: String,
-      enum: ['IMPORT', 'SALE', 'RETURN', 'EXCHANGE_IN', 'EXCHANGE_OUT', 'ADJUSTMENT'],
+      enum: ['IMPORT', 'SALE', 'RETURN', 'EXCHANGE_IN', 'EXCHANGE_OUT', 'ADJUSTMENT', 'TRANSFER'],
       required: true,
       index: true,
     },
@@ -44,9 +51,12 @@ const StockMovementSchema = new Schema<IStockMovement>(
     quantityChange: { type: Number, required: true },
     balanceBefore: { type: Number, required: true },
     balanceAfter: { type: Number, required: true },
+    warehouseLocation: { type: String, default: 'FLOOR_1' },
+    fromWarehouse: { type: String, default: '' },
+    toWarehouse: { type: String, default: '' },
     referenceType: {
       type: String,
-      enum: ['IMPORT_RECEIPT', 'ORDER', 'RETURN_EXCHANGE', 'ADJUSTMENT'],
+      enum: ['IMPORT_RECEIPT', 'ORDER', 'RETURN_EXCHANGE', 'ADJUSTMENT', 'TRANSFER'],
       required: true,
     },
     referenceId: { type: String, default: '' },

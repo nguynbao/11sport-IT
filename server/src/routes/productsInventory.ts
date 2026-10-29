@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { categoryRepo, productRepo, stockMovementRepo } from '../config/db';
 import { generateProductCode } from '../utils/productCode';
 import { ApiError } from '../utils/errors';
+import { normalizeFloor, floorLabel, getFloorStocks, applyFloorDelta } from '../utils/warehouseFloor';
 
 export const productsInventoryRouter = Router();
 
@@ -42,8 +43,12 @@ productsInventoryRouter.get('/products', async (req, res, next) => {
       .map((p) => {
         const cat = catMap.get(String(p.categoryId));
         const { costPrice, ...rest } = p as any;
+        const floors = getFloorStocks(p);
         return {
           ...rest,
+          stockFloor1: floors.stockFloor1,
+          stockFloor2: floors.stockFloor2,
+          stock: floors.stock,
           ...(hideCost ? {} : { costPrice: Number(costPrice) || 0 }),
           categoryCode: cat?.code || p.categoryCode || '',
           categoryName: cat?.name || p.categoryName || '',
@@ -81,7 +86,17 @@ productsInventoryRouter.get('/products', async (req, res, next) => {
 // POST /api/v1/products
 productsInventoryRouter.post('/products', async (req, res, next) => {
   try {
-    const { name, categoryId, unit, sellingPrice, costPrice, quantity, upsertIfExists } = req.body || {};
+    const {
+      name,
+      categoryId,
+      unit,
+      sellingPrice,
+      costPrice,
+      quantity,
+      targetWarehouse,
+      upsertIfExists,
+    } = req.body || {};
+    const targetFloor = normalizeFloor(targetWarehouse);
     if (!name || !String(name).trim()) {
       throw new ApiError(400, 'VALIDATION_ERROR', 'Tên sản phẩm là bắt buộc', {
         name: 'Bắt buộc',
@@ -124,10 +139,11 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
     const existing = await productRepo.findOne({ code });
     if (existing) {
       if (upsertIfExists && isPriceManager(req.user?.role) && qty > 0) {
-        const balanceBefore = Number(existing.stock) || 0;
-        const balanceAfter = balanceBefore + qty;
+        const floorResult = applyFloorDelta(existing, targetFloor, qty);
         const patchFields: Record<string, any> = {
-          stock: balanceAfter,
+          stockFloor1: floorResult.stockFloor1,
+          stockFloor2: floorResult.stockFloor2,
+          stock: floorResult.stock,
         };
         if (cost > 0) patchFields.costPrice = cost;
         if (price > 0) patchFields.sellingPrice = price;
@@ -141,19 +157,20 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
           categoryId: existing.categoryId,
           unit: existing.unit,
           quantityChange: qty,
-          balanceBefore,
-          balanceAfter,
+          balanceBefore: floorResult.balanceBefore,
+          balanceAfter: floorResult.balanceAfter,
+          warehouseLocation: targetFloor,
           referenceType: 'IMPORT_RECEIPT',
           referenceId: existing._id,
           referenceCode: 'CMS-NHAP-THANG',
           performedBy: req.user?.userId || 'ADMIN',
           performedByName: req.user?.fullName || 'Quản lý kho (CMS)',
-          note: `Admin nhập thêm ${qty} ${existing.unit} thẳng vào kho trên CMS`,
+          note: `Admin nhập thêm ${qty} ${existing.unit} thẳng vào ${floorLabel(targetFloor)} trên CMS`,
         });
 
         return res.status(200).json({
           data: updated,
-          meta: { upserted: true, addedQuantity: qty },
+          meta: { upserted: true, addedQuantity: qty, targetWarehouse: targetFloor },
         });
       }
 
@@ -192,6 +209,8 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
       unit: unit ? String(unit).trim() : 'Cái',
       sellingPrice: price,
       costPrice: cost,
+      stockFloor1: targetFloor === 'FLOOR_1' ? qty : 0,
+      stockFloor2: targetFloor === 'FLOOR_2' ? qty : 0,
       stock: qty,
       status: 'ACTIVE',
     });
@@ -207,12 +226,13 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
         quantityChange: qty,
         balanceBefore: 0,
         balanceAfter: qty,
+        warehouseLocation: targetFloor,
         referenceType: 'IMPORT_RECEIPT',
         referenceId: created._id,
         referenceCode: 'CMS-NHAP-THANG',
         performedBy: req.user?.userId || 'ADMIN',
         performedByName: req.user?.fullName || 'Quản lý kho (CMS)',
-        note: `Admin nhập thẳng sản phẩm mới vào kho trên CMS (${qty} ${created.unit})`,
+        note: `Admin nhập thẳng sản phẩm mới vào ${floorLabel(targetFloor)} trên CMS (${qty} ${created.unit})`,
       });
     }
 
@@ -234,8 +254,19 @@ productsInventoryRouter.patch('/products/:id', async (req, res, next) => {
       throw new ApiError(404, 'PRODUCT_NOT_FOUND', 'Không tìm thấy sản phẩm');
     }
 
-    const { code, stock, allowDirectStock, name, categoryId, unit, sellingPrice, costPrice, status } =
-      req.body || {};
+    const {
+      code,
+      stock,
+      stockFloor1,
+      stockFloor2,
+      allowDirectStock,
+      name,
+      categoryId,
+      unit,
+      sellingPrice,
+      costPrice,
+      status,
+    } = req.body || {};
 
     // BR-03: Mã sản phẩm không được sửa sau khi tạo
     if (code !== undefined && String(code).toUpperCase() !== product.code) {
@@ -249,10 +280,13 @@ productsInventoryRouter.patch('/products/:id', async (req, res, next) => {
 
     const updateData: Record<string, any> = {};
     let stockDelta = 0;
-    const balanceBefore = Number(product.stock) || 0;
+    const currentFloors = getFloorStocks(product);
+    const balanceBefore = currentFloors.stock;
 
     // BR-05: Chỉ cho phép Admin sửa trực tiếp tồn kho từ CMS khi truyền allowDirectStock = true
-    if (stock !== undefined && Number(stock) !== balanceBefore) {
+    const hasFloorEdit = stockFloor1 !== undefined || stockFloor2 !== undefined;
+    const hasStockEdit = stock !== undefined && Number(stock) !== balanceBefore;
+    if (hasFloorEdit || hasStockEdit) {
       if (!allowDirectStock) {
         throw new ApiError(
           400,
@@ -268,12 +302,37 @@ productsInventoryRouter.patch('/products/:id', async (req, res, next) => {
           'Chỉ Quản lý/Admin mới được cập nhật số lượng kho trực tiếp'
         );
       }
-      const newStock = Math.round(Number(stock));
-      if (isNaN(newStock) || newStock < 0) {
-        throw new ApiError(400, 'INVALID_QUANTITY', 'Số lượng tồn kho phải là số nguyên không âm');
+
+      if (hasFloorEdit) {
+        const nextF1 =
+          stockFloor1 !== undefined ? Math.round(Number(stockFloor1)) : currentFloors.stockFloor1;
+        const nextF2 =
+          stockFloor2 !== undefined ? Math.round(Number(stockFloor2)) : currentFloors.stockFloor2;
+        if (isNaN(nextF1) || nextF1 < 0 || isNaN(nextF2) || nextF2 < 0) {
+          throw new ApiError(400, 'INVALID_QUANTITY', 'Số lượng tồn kho từng tầng phải là số nguyên không âm');
+        }
+        const newStock = nextF1 + nextF2;
+        stockDelta = newStock - balanceBefore;
+        updateData.stockFloor1 = nextF1;
+        updateData.stockFloor2 = nextF2;
+        updateData.stock = newStock;
+      } else {
+        const newStock = Math.round(Number(stock));
+        if (isNaN(newStock) || newStock < 0) {
+          throw new ApiError(400, 'INVALID_QUANTITY', 'Số lượng tồn kho phải là số nguyên không âm');
+        }
+        stockDelta = newStock - balanceBefore;
+        // Cộng/trừ phần chênh lệch vào Kho Tầng 1 (nếu giảm quá Tầng 1 thì trừ tiếp Tầng 2)
+        let nextF1 = currentFloors.stockFloor1 + stockDelta;
+        let nextF2 = currentFloors.stockFloor2;
+        if (nextF1 < 0) {
+          nextF2 = Math.max(0, nextF2 + nextF1);
+          nextF1 = 0;
+        }
+        updateData.stockFloor1 = nextF1;
+        updateData.stockFloor2 = nextF2;
+        updateData.stock = newStock;
       }
-      stockDelta = newStock - balanceBefore;
-      updateData.stock = newStock;
     }
 
     if (name !== undefined && String(name).trim()) {
@@ -495,6 +554,7 @@ productsInventoryRouter.get('/inventory/report', async (req, res, next) => {
         let adjustedAndReturnedQty = 0;
 
         for (const m of pMovements) {
+          if (m.type === 'TRANSFER') continue;
           const mTime = new Date(m.createdAt).getTime();
           if (mTime < fromDate.getTime()) {
             openingStock += m.quantityChange;
@@ -512,6 +572,7 @@ productsInventoryRouter.get('/inventory/report', async (req, res, next) => {
 
         const closingStock =
           openingStock + importedQty - soldQty + adjustedAndReturnedQty;
+        const floors = getFloorStocks(product);
 
         return {
           productId: product._id,
@@ -528,7 +589,9 @@ productsInventoryRouter.get('/inventory/report', async (req, res, next) => {
           soldQty,
           adjustedAndReturnedQty,
           closingStock,
-          currentStock: product.stock,
+          currentStock: floors.stock,
+          stockFloor1: floors.stockFloor1,
+          stockFloor2: floors.stockFloor2,
         };
       });
 
@@ -566,7 +629,7 @@ productsInventoryRouter.get('/inventory/report', async (req, res, next) => {
 // POST /api/v1/inventory/adjustments
 productsInventoryRouter.post('/inventory/adjustments', async (req, res, next) => {
   try {
-    const { productId, quantityChange, reason } = req.body || {};
+    const { productId, quantityChange, reason, warehouse } = req.body || {};
     if (!productId || quantityChange === undefined || !reason || !String(reason).trim()) {
       throw new ApiError(
         400,
@@ -590,7 +653,9 @@ productsInventoryRouter.post('/inventory/adjustments', async (req, res, next) =>
       throw new ApiError(404, 'PRODUCT_NOT_FOUND', 'Không tìm thấy sản phẩm cần điều chỉnh');
     }
 
-    const balanceBefore = product.stock;
+    const targetFloor = normalizeFloor(warehouse);
+    const floors = getFloorStocks(product);
+    const balanceBefore = floors.stock;
     const balanceAfter = balanceBefore + delta;
     if (balanceAfter < 0) {
       throw new ApiError(
@@ -600,7 +665,24 @@ productsInventoryRouter.post('/inventory/adjustments', async (req, res, next) =>
       );
     }
 
-    await productRepo.updateById(product._id, { stock: balanceAfter });
+    const floorResult = applyFloorDelta(product, targetFloor, delta);
+    if (
+      (targetFloor === 'FLOOR_1' && floors.stockFloor1 + delta < 0) ||
+      (targetFloor === 'FLOOR_2' && floors.stockFloor2 + delta < 0)
+    ) {
+      const targetCurrent = targetFloor === 'FLOOR_1' ? floors.stockFloor1 : floors.stockFloor2;
+      throw new ApiError(
+        400,
+        'INSUFFICIENT_FLOOR_STOCK_FOR_ADJUSTMENT',
+        `Tồn ${floorLabel(targetFloor)} không đủ để giảm ${Math.abs(delta)} (Hiện có: ${targetCurrent})`
+      );
+    }
+
+    await productRepo.updateById(product._id, {
+      stockFloor1: floorResult.stockFloor1,
+      stockFloor2: floorResult.stockFloor2,
+      stock: floorResult.stock,
+    });
 
     const adjCount = await stockMovementRepo.countDocuments({ type: 'ADJUSTMENT' });
     const referenceCode = `DC-${String(adjCount + 1).padStart(4, '0')}`;
@@ -614,16 +696,137 @@ productsInventoryRouter.post('/inventory/adjustments', async (req, res, next) =>
       unit: product.unit,
       quantityChange: delta,
       balanceBefore,
-      balanceAfter,
+      balanceAfter: floorResult.stock,
+      warehouseLocation: targetFloor,
       referenceType: 'ADJUSTMENT',
       referenceId: product._id,
       referenceCode,
       performedBy: req.user?.userId || 'ADMIN',
       performedByName: req.user?.fullName || 'Quản lý kho',
-      note: String(reason).trim(),
+      note: `[${floorLabel(targetFloor)}] ${String(reason).trim()}`,
     });
 
     const updatedProduct = await productRepo.findById(product._id);
+
+    res.status(201).json({
+      data: {
+        movement,
+        product: updatedProduct,
+      },
+      meta: {},
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/v1/inventory/transfers — Danh sách Phiếu xuất kho chuyển tầng (Tầng 1 <-> Tầng 2)
+productsInventoryRouter.get('/inventory/transfers', async (req, res, next) => {
+  try {
+    const movements = await stockMovementRepo.find({ type: 'TRANSFER' }, { createdAt: -1 });
+    res.json({
+      data: movements,
+      meta: { total: movements.length },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/v1/inventory/transfers — Admin tạo Phiếu xuất kho dời sản phẩm giữa Kho Tầng 1 và Kho Tầng 2
+productsInventoryRouter.post('/inventory/transfers', async (req, res, next) => {
+  try {
+    if (!isPriceManager(req.user?.role)) {
+      throw new ApiError(
+        403,
+        'TRANSFER_FORBIDDEN',
+        'Chỉ Quản lý/Admin mới được tạo Phiếu xuất kho chuyển tầng (Kho Tầng 1 ↔ Kho Tầng 2)'
+      );
+    }
+
+    const { productId, fromWarehouse, toWarehouse, quantity, note } = req.body || {};
+    if (!productId || !fromWarehouse || !toWarehouse || quantity === undefined) {
+      throw new ApiError(
+        400,
+        'VALIDATION_ERROR',
+        'Vui lòng chọn sản phẩm, kho xuất, kho nhận và số lượng cần chuyển',
+        {
+          productId: !productId ? 'Bắt buộc' : '',
+          fromWarehouse: !fromWarehouse ? 'Bắt buộc' : '',
+          toWarehouse: !toWarehouse ? 'Bắt buộc' : '',
+          quantity: quantity === undefined ? 'Bắt buộc' : '',
+        }
+      );
+    }
+
+    const fromFloor = normalizeFloor(fromWarehouse);
+    const toFloor = normalizeFloor(toWarehouse);
+    if (fromFloor === toFloor) {
+      throw new ApiError(
+        400,
+        'INVALID_WAREHOUSE_TRANSFER',
+        'Kho xuất và Kho nhận phải khác nhau (Kho Tầng 1 → Kho Tầng 2 hoặc Kho Tầng 2 → Kho Tầng 1)'
+      );
+    }
+
+    const qty = Math.round(Number(quantity));
+    if (isNaN(qty) || qty <= 0) {
+      throw new ApiError(400, 'INVALID_QUANTITY', 'Số lượng chuyển kho phải là số nguyên lớn hơn 0');
+    }
+
+    const product = await productRepo.findById(String(productId));
+    if (!product) {
+      throw new ApiError(404, 'PRODUCT_NOT_FOUND', 'Không tìm thấy sản phẩm cần chuyển kho');
+    }
+
+    const floors = getFloorStocks(product);
+    const sourceAvailable = fromFloor === 'FLOOR_1' ? floors.stockFloor1 : floors.stockFloor2;
+    if (sourceAvailable < qty) {
+      throw new ApiError(
+        400,
+        'INSUFFICIENT_FLOOR_STOCK',
+        `${floorLabel(fromFloor)} chỉ còn ${sourceAvailable} ${product.unit} "${product.name}", không đủ để xuất chuyển ${qty} ${product.unit}`
+      );
+    }
+
+    const nextFloor1 =
+      fromFloor === 'FLOOR_1' ? floors.stockFloor1 - qty : floors.stockFloor1 + qty;
+    const nextFloor2 =
+      fromFloor === 'FLOOR_2' ? floors.stockFloor2 - qty : floors.stockFloor2 + qty;
+    const totalStock = nextFloor1 + nextFloor2;
+
+    const updatedProduct = await productRepo.updateById(product._id, {
+      stockFloor1: nextFloor1,
+      stockFloor2: nextFloor2,
+      stock: totalStock,
+    });
+
+    const transferCount = await stockMovementRepo.countDocuments({ type: 'TRANSFER' });
+    const referenceCode = `PXK-${String(transferCount + 1).padStart(4, '0')}`;
+    const noteText = note && String(note).trim()
+      ? String(note).trim()
+      : `Xuất kho chuyển ${qty} ${product.unit} từ ${floorLabel(fromFloor)} sang ${floorLabel(toFloor)}`;
+
+    const movement = await stockMovementRepo.create({
+      type: 'TRANSFER',
+      productId: product._id,
+      productCode: product.code,
+      productName: product.name,
+      categoryId: product.categoryId,
+      unit: product.unit,
+      quantityChange: qty,
+      balanceBefore: floors.stock,
+      balanceAfter: totalStock,
+      warehouseLocation: toFloor,
+      fromWarehouse: fromFloor,
+      toWarehouse: toFloor,
+      referenceType: 'TRANSFER',
+      referenceId: product._id,
+      referenceCode,
+      performedBy: req.user?.userId || 'ADMIN',
+      performedByName: req.user?.fullName || 'Quản trị viên',
+      note: noteText,
+    });
 
     res.status(201).json({
       data: {

@@ -7,11 +7,17 @@ import {
   stockMovementRepo,
 } from '../config/db';
 import { ApiError } from '../utils/errors';
+import { floorLabel } from '../utils/warehouseFloor';
 
 export const reportsRouter = Router();
 
 type SalesType = 'ORDER' | 'RETURN' | 'EXCHANGE';
-type WarehouseType = 'IMPORT_CREATED' | 'IMPORT_CHECKED' | 'IMPORT_COMPLETED' | 'ADJUSTMENT';
+type WarehouseType =
+  | 'IMPORT_CREATED'
+  | 'IMPORT_CHECKED'
+  | 'IMPORT_COMPLETED'
+  | 'ADJUSTMENT'
+  | 'EXPORT_TRANSFER';
 
 interface SalesActivity {
   type: SalesType;
@@ -46,6 +52,8 @@ const emptyWarehouse = () => ({
   rowsChecked: 0,
   unitsImported: 0,
   adjustments: 0,
+  transfers: 0,
+  unitsTransferred: 0,
 });
 
 // GET /api/v1/reports/staff-activity — Quản lý xem nhân viên nào bán hàng / kiểm kho
@@ -69,12 +77,13 @@ reportsRouter.get('/reports/staff-activity', async (req, res, next) => {
       return true;
     };
 
-    const [staffList, orders, returns, imports, movements] = await Promise.all([
+    const [staffList, orders, returns, imports, movements, transferMovements] = await Promise.all([
       staffRepo.find({}, { createdAt: 1 }),
       orderRepo.find({}, { createdAt: -1 }),
       returnExchangeRepo.find({}, { createdAt: -1 }),
       importReceiptRepo.find({}, { createdAt: -1 }),
       stockMovementRepo.find({ type: 'ADJUSTMENT' }, { createdAt: -1 }),
+      stockMovementRepo.find({ type: 'TRANSFER' }, { createdAt: -1 }),
     ]);
 
     const knownIds = new Set(staffList.map((s) => String(s._id)));
@@ -117,6 +126,7 @@ reportsRouter.get('/reports/staff-activity', async (req, res, next) => {
     }
 
     for (const rc of imports) {
+      const targetFloorText = floorLabel(rc.targetWarehouse);
       if (inRange(rc.createdAt)) {
         warehouse.push({
           type: 'IMPORT_CREATED',
@@ -125,7 +135,7 @@ reportsRouter.get('/reports/staff-activity', async (req, res, next) => {
           staffName: rc.createdByName || 'Không xác định',
           referenceCode: rc.code,
           quantity: (rc.items || []).reduce((s, i) => s + (Number(i.expectedQuantity) || 0), 0),
-          detail: `Lập phiếu ${rc.items?.length || 0} dòng hàng${rc.note ? ` — ${rc.note}` : ''}`,
+          detail: `[${targetFloorText}] Lập phiếu ${rc.items?.length || 0} dòng hàng${rc.note ? ` — ${rc.note}` : ''}`,
         });
       }
 
@@ -156,7 +166,7 @@ reportsRouter.get('/reports/staff-activity', async (req, res, next) => {
           referenceCode: rc.code,
           quantity: v.units,
           rows: v.rows,
-          detail: `Quét kiểm ${v.units} chiếc / ${v.rows} dòng`,
+          detail: `[${targetFloorText}] Quét kiểm ${v.units} chiếc / ${v.rows} dòng`,
         });
       }
 
@@ -169,7 +179,7 @@ reportsRouter.get('/reports/staff-activity', async (req, res, next) => {
           staffName: rc.completedByName || 'Không xác định',
           referenceCode: rc.code,
           quantity: confirmed.reduce((s, i) => s + (Number(i.actualQuantity) || 0), 0),
-          detail: `Hoàn thành nhập kho ${confirmed.length} dòng`,
+          detail: `[${targetFloorText}] Hoàn thành nhập kho ${confirmed.length} dòng`,
         });
       }
     }
@@ -184,6 +194,22 @@ reportsRouter.get('/reports/staff-activity', async (req, res, next) => {
         referenceCode: m.referenceCode,
         quantity: m.quantityChange,
         detail: `${m.productName}: ${m.quantityChange > 0 ? '+' : ''}${m.quantityChange} — ${m.note || ''}`,
+      });
+    }
+
+    for (const m of transferMovements) {
+      if (!inRange(m.createdAt)) continue;
+      const fromText = floorLabel(m.fromWarehouse || 'FLOOR_1');
+      const toText = floorLabel(m.toWarehouse || 'FLOOR_2');
+      const qty = Math.abs(Number(m.quantityChange) || 0);
+      warehouse.push({
+        type: 'EXPORT_TRANSFER',
+        at: m.createdAt,
+        staffId: norm(m.performedBy),
+        staffName: m.performedByName || 'Không xác định',
+        referenceCode: m.referenceCode,
+        quantity: qty,
+        detail: `Xuất kho chuyển tầng: ${m.productName} (${fromText} → ${toText})${m.note ? ` — ${m.note}` : ''}`,
       });
     }
 
@@ -235,6 +261,10 @@ reportsRouter.get('/reports/staff-activity', async (req, res, next) => {
         row.warehouse.rowsChecked += a.rows || 0;
       }
       if (a.type === 'ADJUSTMENT') row.warehouse.adjustments += 1;
+      if (a.type === 'EXPORT_TRANSFER') {
+        row.warehouse.transfers += 1;
+        row.warehouse.unitsTransferred += a.quantity;
+      }
       touch(row, a.at);
     }
 

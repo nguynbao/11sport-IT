@@ -21,6 +21,8 @@ export interface Category {
   productCount?: number;
 }
 
+export type WarehouseFloor = "FLOOR_1" | "FLOOR_2";
+
 export interface Product {
   _id: string;
   code: string;
@@ -31,18 +33,23 @@ export interface Product {
   sellingPrice: number;
   /** Giá gốc (giá nhập gần nhất) — cập nhật khi hoàn thành phiếu nhập kho */
   costPrice?: number;
+  stockFloor1?: number;
+  stockFloor2?: number;
   stock: number;
 }
 
 export interface StockMovement {
   _id: string;
-  type: "IMPORT" | "SALE" | "RETURN" | "EXCHANGE_IN" | "EXCHANGE_OUT" | "ADJUSTMENT";
+  type: "IMPORT" | "SALE" | "RETURN" | "EXCHANGE_IN" | "EXCHANGE_OUT" | "ADJUSTMENT" | "TRANSFER";
   productId: string;
   productCode: string;
   productName: string;
   quantityChange: number;
   balanceBefore?: number;
   balanceAfter: number;
+  warehouseLocation?: WarehouseFloor;
+  fromWarehouse?: WarehouseFloor;
+  toWarehouse?: WarehouseFloor;
   currentStock?: number;
   costPrice?: number;
   sellingPrice?: number;
@@ -67,6 +74,8 @@ export interface InventoryReportRow {
   soldQty: number;
   adjustedAndReturnedQty: number;
   closingStock: number;
+  stockFloor1?: number;
+  stockFloor2?: number;
 }
 
 export interface OrderItem {
@@ -137,6 +146,8 @@ export interface StaffActivitySummary {
     rowsChecked: number;
     unitsImported: number;
     adjustments: number;
+    transfers?: number;
+    unitsTransferred?: number;
   };
   lastActivityAt: string | null;
 }
@@ -155,7 +166,12 @@ export interface SalesActivity {
 }
 
 export interface WarehouseActivity {
-  type: "IMPORT_CREATED" | "IMPORT_CHECKED" | "IMPORT_COMPLETED" | "ADJUSTMENT";
+  type:
+    | "IMPORT_CREATED"
+    | "IMPORT_CHECKED"
+    | "IMPORT_COMPLETED"
+    | "ADJUSTMENT"
+    | "EXPORT_TRANSFER";
   at: string;
   staffId: string;
   staffName: string;

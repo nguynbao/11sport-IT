@@ -9,6 +9,7 @@ import { generateProductCode } from '../utils/productCode';
 import { matchTagToItems } from '../utils/tagMatch';
 import { ApiError } from '../utils/errors';
 import { IImportReceiptItem } from '../models/ImportReceipt';
+import { normalizeFloor, floorLabel, applyFloorDelta, getFloorStocks } from '../utils/warehouseFloor';
 import {
   OcrTableRow,
   parseTextToRows,
@@ -347,7 +348,7 @@ importsRouter.get('/imports/:id', async (req, res, next) => {
 // POST /api/v1/imports
 importsRouter.post('/imports', async (req, res, next) => {
   try {
-    const { note, defaultCategoryId, items, status } = req.body || {};
+    const { note, defaultCategoryId, items, status, targetWarehouse } = req.body || {};
     const categories = await categoryRepo.find({ status: 'ACTIVE' });
     const fallbackCatId = defaultCategoryId || categories[0]?._id || '';
 
@@ -357,10 +358,12 @@ importsRouter.post('/imports', async (req, res, next) => {
     const code = `PN-${String(count + 1).padStart(4, '0')}`;
 
     const initialStatus = status === 'CHECKING' ? 'CHECKING' : 'DRAFT';
+    const warehouseFloor = normalizeFloor(targetWarehouse);
 
     const created = await importReceiptRepo.create({
       code,
       status: initialStatus,
+      targetWarehouse: warehouseFloor,
       defaultCategoryId: fallbackCatId,
       note: note ? String(note).trim() : '',
       items: normalizedItems,
@@ -395,11 +398,12 @@ importsRouter.put('/imports/:id', async (req, res, next) => {
       );
     }
 
-    const { note, defaultCategoryId, items, status } = req.body || {};
+    const { note, defaultCategoryId, items, status, targetWarehouse } = req.body || {};
     const updateData: Record<string, any> = {};
 
     if (note !== undefined) updateData.note = String(note).trim();
     if (defaultCategoryId !== undefined) updateData.defaultCategoryId = String(defaultCategoryId);
+    if (targetWarehouse !== undefined) updateData.targetWarehouse = normalizeFloor(targetWarehouse);
     if (items !== undefined) {
       updateData.items = keepCheckerFields(
         normalizeImportItems(items, defaultCategoryId || receipt.defaultCategoryId),
@@ -481,8 +485,9 @@ importsRouter.delete('/imports/:id', async (req, res, next) => {
       for (const m of movements) {
         const prod = await productRepo.findById(String(m.productId));
         if (prod) {
-          const nextStock = Math.max(0, (Number(prod.stock) || 0) - (Number(m.quantityChange) || 0));
-          await productRepo.updateById(prod._id, { stock: nextStock });
+          const floor = normalizeFloor(m.warehouseLocation || receipt.targetWarehouse);
+          const nextFloors = applyFloorDelta(prod, floor, -(Number(m.quantityChange) || 0));
+          await productRepo.updateById(prod._id, nextFloors);
         }
         await stockMovementRepo.deleteById(m._id);
       }
@@ -872,6 +877,7 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
       categories.find((c) => String(c._id) === String(receipt.defaultCategoryId)) ||
       categories[0];
 
+    const targetFloor = normalizeFloor(req.body?.targetWarehouse || receipt.targetWarehouse);
     const createdMovements: any[] = [];
     const updatedItems: IImportReceiptItem[] = [];
 
@@ -903,16 +909,22 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
           sellingPrice: 0,
           costPrice: itemCostPrice,
           barcode: itemBarcode,
+          stockFloor1: 0,
+          stockFloor2: 0,
           stock: 0,
           status: 'ACTIVE',
         });
       }
 
       const qtyToAdd = Math.max(0, Math.round(Number(item.actualQuantity)));
-      const balanceBefore = product.stock;
-      const balanceAfter = balanceBefore + qtyToAdd;
+      const beforeFloors = getFloorStocks(product);
+      const balanceBefore = beforeFloors.stock;
+      const nextFloors = applyFloorDelta(product, targetFloor, qtyToAdd);
+      const balanceAfter = nextFloors.stock;
 
-      const productUpdate: Record<string, any> = { stock: balanceAfter };
+      const productUpdate: Record<string, any> = {
+        ...nextFloors,
+      };
       // Cập nhật giá gốc theo lần nhập gần nhất (bỏ qua nếu dòng không nhập giá)
       if (itemCostPrice > 0) productUpdate.costPrice = itemCostPrice;
       // Ghi nhớ mã vạch lên sản phẩm nếu sản phẩm chưa có mã vạch
@@ -929,12 +941,13 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
         quantityChange: qtyToAdd,
         balanceBefore,
         balanceAfter,
+        warehouseLocation: targetFloor,
         referenceType: 'IMPORT_RECEIPT',
         referenceId: receipt._id,
         referenceCode: receipt.code,
         performedBy: req.user?.userId || receipt.createdBy || 'WAREHOUSE',
         performedByName: req.user?.fullName || receipt.createdByName || 'Thủ kho',
-        note: item.discrepancyNote || item.note || `Nhập kho theo phiếu ${receipt.code}`,
+        note: `${item.discrepancyNote || item.note || `Nhập kho theo phiếu ${receipt.code}`} (${floorLabel(targetFloor)})`,
       });
 
       createdMovements.push(movement);
@@ -947,6 +960,7 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
 
     const completedReceipt = await importReceiptRepo.updateById(id, {
       status: 'COMPLETED',
+      targetWarehouse: targetFloor,
       items: updatedItems,
       completedBy: req.user?.userId || 'WAREHOUSE',
       completedByName: req.user?.fullName || 'Thủ kho',

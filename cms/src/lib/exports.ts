@@ -21,6 +21,7 @@ const MOVEMENT_LABEL: Record<string, string> = {
   EXCHANGE_IN: "Nhận hàng đổi",
   EXCHANGE_OUT: "Xuất hàng đổi",
   ADJUSTMENT: "Điều chỉnh kho",
+  TRANSFER: "Xuất kho chuyển tầng (PXK)",
 };
 const IMPORT_STATUS: Record<string, string> = {
   DRAFT: "Nháp",
@@ -344,6 +345,7 @@ export const WAREHOUSE_ACTIVITY_LABEL: Record<string, string> = {
   IMPORT_CHECKED: "Quét kiểm hàng",
   IMPORT_COMPLETED: "Hoàn thành nhập kho",
   ADJUSTMENT: "Điều chỉnh kho",
+  EXPORT_TRANSFER: "Xuất kho chuyển tầng (PXK)",
 };
 
 export function exportStaffActivity(report: StaffActivityReport, from?: string, to?: string) {
@@ -363,6 +365,8 @@ export function exportStaffActivity(report: StaffActivityReport, from?: string, 
     { header: "Dòng đã kiểm", value: (s) => s.warehouse.rowsChecked, format: "int", total: true },
     { header: "Phiếu nhập hoàn thành", value: (s) => s.warehouse.importsCompleted, format: "int", total: true },
     { header: "SL nhập kho", value: (s) => s.warehouse.unitsImported, format: "int", total: true },
+    { header: "Phiếu xuất kho chuyển tầng (PXK)", value: (s) => s.warehouse.transfers || 0, format: "int", total: true },
+    { header: "SL xuất chuyển tầng", value: (s) => s.warehouse.unitsTransferred || 0, format: "int", total: true },
     { header: "Điều chỉnh kho", value: (s) => s.warehouse.adjustments, format: "int", total: true },
     { header: "Hoạt động gần nhất", value: (s) => toDate(s.lastActivityAt), format: "datetime", width: 17 },
   ];

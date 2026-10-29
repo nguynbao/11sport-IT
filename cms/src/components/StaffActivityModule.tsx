@@ -235,7 +235,7 @@ export default function StaffActivityModule() {
                 <th className="py-3 px-3" rowSpan={2}>Nhân viên</th>
                 <th className="py-3 px-3 text-center" rowSpan={2}>Vai trò</th>
                 <th className="py-2 px-3 text-center bg-blue-900/60" colSpan={3}>Bán hàng</th>
-                <th className="py-2 px-3 text-center bg-amber-900/50" colSpan={4}>Kiểm / Nhập kho</th>
+                <th className="py-2 px-3 text-center bg-amber-900/50" colSpan={5}>Kiểm / Nhập / Xuất chuyển kho</th>
                 <th className="py-3 px-3" rowSpan={2}>Hoạt động gần nhất</th>
               </tr>
               <tr className="text-[10px]">
@@ -245,13 +245,14 @@ export default function StaffActivityModule() {
                 <th className="py-2 px-3 text-right bg-amber-900/30">Lập phiếu</th>
                 <th className="py-2 px-3 text-right bg-amber-900/30">Quét kiểm (chiếc/dòng)</th>
                 <th className="py-2 px-3 text-right bg-amber-900/30">Hoàn thành</th>
+                <th className="py-2 px-3 text-right bg-amber-900/30">Xuất chuyển tầng (PXK)</th>
                 <th className="py-2 px-3 text-right bg-amber-900/30">Điều chỉnh</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {staffRows.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="py-6 text-center text-slate-400">
+                  <td colSpan={11} className="py-6 text-center text-slate-400">
                     {loading ? "Đang tải..." : "Không có dữ liệu trong kỳ này"}
                   </td>
                 </tr>
@@ -259,7 +260,12 @@ export default function StaffActivityModule() {
               {staffRows.map((s) => {
                 const idle =
                   s.sales.orders + s.sales.returnsHandled === 0 &&
-                  s.warehouse.importsCreated + s.warehouse.unitsScanned + s.warehouse.importsCompleted + s.warehouse.adjustments === 0;
+                  s.warehouse.importsCreated +
+                    s.warehouse.unitsScanned +
+                    s.warehouse.importsCompleted +
+                    (s.warehouse.transfers || 0) +
+                    s.warehouse.adjustments ===
+                    0;
                 return (
                   <tr
                     key={s.staffId || "unknown"}
@@ -286,6 +292,9 @@ export default function StaffActivityModule() {
                       {s.warehouse.unitsScanned} / {s.warehouse.rowsChecked}
                     </td>
                     <td className="py-2.5 px-3 text-right font-mono">{s.warehouse.importsCompleted}</td>
+                    <td className="py-2.5 px-3 text-right font-mono font-bold text-indigo-800 whitespace-nowrap">
+                      {s.warehouse.transfers || 0} phiếu ({s.warehouse.unitsTransferred || 0} SP)
+                    </td>
                     <td className="py-2.5 px-3 text-right font-mono">{s.warehouse.adjustments}</td>
                     <td className="py-2.5 px-3 text-slate-500 whitespace-nowrap">
                       {s.lastActivityAt ? formatDateTime(s.lastActivityAt) : "Chưa có"}
@@ -393,6 +402,8 @@ export default function StaffActivityModule() {
                             ? "bg-amber-100 text-amber-800"
                             : a.type === "IMPORT_COMPLETED"
                             ? "bg-emerald-100 text-emerald-800"
+                            : a.type === "EXPORT_TRANSFER"
+                            ? "bg-indigo-100 text-indigo-800"
                             : a.type === "ADJUSTMENT"
                             ? "bg-purple-100 text-purple-800"
                             : "bg-slate-100 text-slate-700"

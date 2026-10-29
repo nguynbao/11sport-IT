@@ -8,6 +8,7 @@ import {
 import { ApiError } from '../utils/errors';
 import { IReturnItem, IExchangeItem, ReturnCondition } from '../models/ReturnExchange';
 import { PaymentMethod } from '../models/Order';
+import { applyFloorDelta, deductStockForSale, getFloorStocks } from '../utils/warehouseFloor';
 
 export const returnsRouter = Router();
 
@@ -258,9 +259,11 @@ returnsRouter.post('/returns', async (req, res, next) => {
       if (rItem.condition === 'GOOD') {
         const product = await productRepo.findById(rItem.productId);
         if (product) {
-          const balanceBefore = product.stock;
-          const balanceAfter = balanceBefore + rItem.quantity;
-          await productRepo.updateById(product._id, { stock: balanceAfter });
+          const beforeFloors = getFloorStocks(product);
+          const balanceBefore = beforeFloors.stock;
+          const nextFloors = applyFloorDelta(product, 'FLOOR_1', rItem.quantity);
+          const balanceAfter = nextFloors.stock;
+          await productRepo.updateById(product._id, nextFloors);
 
           await stockMovementRepo.create({
             type: isExchange ? 'EXCHANGE_IN' : 'RETURN',
@@ -272,6 +275,7 @@ returnsRouter.post('/returns', async (req, res, next) => {
             quantityChange: rItem.quantity,
             balanceBefore,
             balanceAfter,
+            warehouseLocation: 'FLOOR_1',
             referenceType: 'RETURN_EXCHANGE',
             referenceId: createdRecord._id,
             referenceCode: createdRecord.code,
@@ -287,9 +291,11 @@ returnsRouter.post('/returns', async (req, res, next) => {
     for (const eItem of preparedExchangeItems) {
       const product = await productRepo.findById(eItem.productId);
       if (product) {
-        const balanceBefore = product.stock;
-        const balanceAfter = balanceBefore - eItem.quantity;
-        await productRepo.updateById(product._id, { stock: balanceAfter });
+        const beforeFloors = getFloorStocks(product);
+        const balanceBefore = beforeFloors.stock;
+        const nextFloors = deductStockForSale(product, eItem.quantity);
+        const balanceAfter = nextFloors.stock;
+        await productRepo.updateById(product._id, nextFloors);
 
         await stockMovementRepo.create({
           type: 'EXCHANGE_OUT',

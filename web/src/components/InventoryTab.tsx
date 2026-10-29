@@ -201,6 +201,9 @@ export default function InventoryTab() {
                         >
                           {p.stock}
                         </span>
+                        <div className="text-[11px] font-normal text-slate-500 mt-1">
+                          T1: <b>{p.stockFloor1 ?? p.stock}</b> · T2: <b>{p.stockFloor2 ?? 0}</b>
+                        </div>
                       </td>
                       {canSeeCostPrice && (
                         <td className="py-3 px-4 text-right font-mono whitespace-nowrap text-amber-800 font-semibold">

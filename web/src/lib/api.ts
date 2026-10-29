@@ -20,6 +20,8 @@ export interface Category {
   productCount?: number;
 }
 
+export type WarehouseFloor = "FLOOR_1" | "FLOOR_2";
+
 export interface Product {
   _id: string;
   code: string;
@@ -31,6 +33,8 @@ export interface Product {
   /** Giá gốc (giá nhập gần nhất) — server ẩn với role SALES */
   costPrice?: number;
   barcode?: string;
+  stockFloor1?: number;
+  stockFloor2?: number;
   stock: number;
 }
 
@@ -59,6 +63,7 @@ export interface ImportReceipt {
   code: string;
   receiptCode?: string;
   status: "DRAFT" | "CHECKING" | "COMPLETED";
+  targetWarehouse?: WarehouseFloor;
   note: string;
   defaultCategoryId?: string;
   items: ImportItem[];

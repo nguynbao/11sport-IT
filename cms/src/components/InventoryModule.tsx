@@ -13,6 +13,7 @@ import {
   Category,
   StockMovement,
   InventoryReportRow,
+  WarehouseFloor,
   apiRequest,
   formatVND,
   formatNumberDots,
@@ -34,9 +35,10 @@ import {
   ChevronDown,
   ChevronUp,
   Trash2,
+  ArrowLeftRight,
 } from "lucide-react";
 
-type SubTab = "PRODUCTS" | "REPORT" | "MOVEMENTS" | "IMPORTS" | "ADJUSTMENT";
+type SubTab = "PRODUCTS" | "REPORT" | "MOVEMENTS" | "IMPORTS" | "ADJUSTMENT" | "TRANSFER";
 
 export default function InventoryModule() {
   const [subTab, setSubTab] = useState<SubTab>("PRODUCTS");
@@ -68,13 +70,22 @@ export default function InventoryModule() {
   const [newProdCatId, setNewProdCatId] = useState("");
   const [newProdUnit, setNewProdUnit] = useState("Cái");
   const [newProdQty, setNewProdQty] = useState<number>(1);
+  const [newProdWarehouse, setNewProdWarehouse] = useState<WarehouseFloor>("FLOOR_1");
   const [newProdCost, setNewProdCost] = useState<number>(0);
   const [newProdPrice, setNewProdPrice] = useState<number>(0);
 
   // Lập phiếu điều chỉnh kho
   const [adjProductId, setAdjProductId] = useState("");
+  const [adjWarehouse, setAdjWarehouse] = useState<WarehouseFloor>("FLOOR_1");
   const [adjQuantityChange, setAdjQuantityChange] = useState<number>(0);
   const [adjReason, setAdjReason] = useState("");
+
+  // Lập phiếu xuất kho chuyển tầng (Kho Tầng 1 <-> Kho Tầng 2)
+  const [transfersList, setTransfersList] = useState<StockMovement[]>([]);
+  const [transferProductId, setTransferProductId] = useState("");
+  const [transferDirection, setTransferDirection] = useState<"F1_TO_F2" | "F2_TO_F1">("F1_TO_F2");
+  const [transferQty, setTransferQty] = useState<number>(1);
+  const [transferNote, setTransferNote] = useState("");
 
   const [statusMsg, setStatusMsg] = useState<{
     type: "success" | "error";
@@ -122,12 +133,13 @@ export default function InventoryModule() {
 
       if (cList.length > 0 && !newProdCatId) setNewProdCatId(cList[0]._id);
       if (pList.length > 0 && !adjProductId) setAdjProductId(pList[0]._id);
+      if (pList.length > 0 && !transferProductId) setTransferProductId(pList[0]._id);
     } catch {
       // ignore
     } finally {
       setLoading(false);
     }
-  }, [categoryId, search, newProdCatId, adjProductId]);
+  }, [categoryId, search, newProdCatId, adjProductId, transferProductId]);
 
   const loadReport = useCallback(async () => {
     setLoading(true);
@@ -178,6 +190,18 @@ export default function InventoryModule() {
     }
   }, []);
 
+  const loadTransfers = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await apiRequest<StockMovement[]>("/inventory/transfers");
+      setTransfersList(Array.isArray(res.data) ? res.data : []);
+    } catch {
+      setTransfersList([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadProductsAndCats();
   }, [loadProductsAndCats]);
@@ -186,7 +210,8 @@ export default function InventoryModule() {
     if (subTab === "REPORT") loadReport();
     if (subTab === "MOVEMENTS") loadMovements();
     if (subTab === "IMPORTS") loadImports();
-  }, [subTab, loadReport, loadMovements, loadImports]);
+    if (subTab === "TRANSFER") loadTransfers();
+  }, [subTab, loadReport, loadMovements, loadImports, loadTransfers]);
 
   const handleUpdateProductPrices = async (prod: Product) => {
     setStatusMsg(null);
@@ -297,6 +322,7 @@ export default function InventoryModule() {
     setStatusMsg(null);
     if (!newProdName.trim()) return;
     const qty = Math.max(0, Math.round(Number(newProdQty || 0)));
+    const floorText = newProdWarehouse === "FLOOR_2" ? "Kho Tầng 2" : "Kho Tầng 1";
     try {
       const res = await apiRequest<any>("/products", {
         method: "POST",
@@ -305,6 +331,7 @@ export default function InventoryModule() {
           categoryId: newProdCatId,
           unit: newProdUnit,
           quantity: qty,
+          targetWarehouse: newProdWarehouse,
           costPrice: Math.max(0, Number(newProdCost || 0)),
           sellingPrice: Math.max(0, Number(newProdPrice || 0)),
           upsertIfExists: true,
@@ -315,8 +342,8 @@ export default function InventoryModule() {
       setStatusMsg({
         type: "success",
         text: isUpserted
-          ? `Mã "${code}" đã có trong kho — Đã cộng thêm +${qty} ${newProdUnit} (Tồn mới: ${res?.data?.stock ?? qty})!`
-          : `Đã nhập thẳng sản phẩm "${code}" vào kho với số lượng ${qty} ${newProdUnit}!`,
+          ? `Mã "${code}" đã có — Đã cộng thêm +${qty} ${newProdUnit} vào ${floorText} (Tổng tồn: ${res?.data?.stock ?? qty})!`
+          : `Đã nhập thẳng sản phẩm "${code}" vào ${floorText} với số lượng ${qty} ${newProdUnit}!`,
       });
       setNewProdName("");
       setNewProdQty(1);
@@ -346,13 +373,14 @@ export default function InventoryModule() {
         method: "POST",
         body: JSON.stringify({
           productId: adjProductId,
+          warehouse: adjWarehouse,
           quantityChange: Number(adjQuantityChange),
           reason: adjReason.trim(),
         }),
       });
       setStatusMsg({
         type: "success",
-        text: "Đã lập Phiếu Điều Chỉnh Kho thành công! Tồn kho và Sổ kho đã được cập nhật.",
+        text: `Đã lập Phiếu Điều Chỉnh Kho (${adjWarehouse === "FLOOR_2" ? "Kho Tầng 2" : "Kho Tầng 1"}) thành công!`,
       });
       loadProductsAndCats();
       loadMovements();
@@ -360,6 +388,53 @@ export default function InventoryModule() {
       setStatusMsg({
         type: "error",
         text: err?.message || "Lỗi khi lập phiếu điều chỉnh kho.",
+      });
+    }
+  };
+
+  const handleCreateTransfer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setStatusMsg(null);
+    const qty = Math.round(Number(transferQty) || 0);
+    if (!transferProductId || qty <= 0) {
+      setStatusMsg({
+        type: "error",
+        text: "Vui lòng chọn sản phẩm và nhập số lượng cần dời lớn hơn 0.",
+      });
+      return;
+    }
+    const fromWarehouse: WarehouseFloor =
+      transferDirection === "F1_TO_F2" ? "FLOOR_1" : "FLOOR_2";
+    const toWarehouse: WarehouseFloor =
+      transferDirection === "F1_TO_F2" ? "FLOOR_2" : "FLOOR_1";
+
+    try {
+      const res = await apiRequest<any>("/inventory/transfers", {
+        method: "POST",
+        body: JSON.stringify({
+          productId: transferProductId,
+          fromWarehouse,
+          toWarehouse,
+          quantity: qty,
+          note: transferNote.trim(),
+        }),
+      });
+      const code = res?.data?.movement?.referenceCode || "PXK";
+      const fromText = fromWarehouse === "FLOOR_1" ? "Kho Tầng 1" : "Kho Tầng 2";
+      const toText = toWarehouse === "FLOOR_1" ? "Kho Tầng 1" : "Kho Tầng 2";
+      setStatusMsg({
+        type: "success",
+        text: `Đã tạo Phiếu Xuất Kho ${code}: Dời ${qty} sản phẩm từ ${fromText} sang ${toText} & ghi nhận vào Hoạt động nhân viên!`,
+      });
+      setTransferQty(1);
+      setTransferNote("");
+      loadProductsAndCats();
+      loadTransfers();
+      loadMovements();
+    } catch (err: any) {
+      setStatusMsg({
+        type: "error",
+        text: err?.message || "Không thể tạo phiếu xuất kho chuyển tầng.",
       });
     }
   };
@@ -446,6 +521,19 @@ export default function InventoryModule() {
         >
           <Sliders className="w-4 h-4 text-emerald-400" />
           5. Lập Phiếu Điều chỉnh Kho
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setSubTab("TRANSFER")}
+          className={`px-4 py-2.5 rounded-lg text-xs font-extrabold flex items-center gap-2 transition ${
+            subTab === "TRANSFER"
+              ? "bg-indigo-700 text-white shadow"
+              : "text-indigo-700 bg-indigo-50 hover:bg-indigo-100"
+          }`}
+        >
+          <ArrowLeftRight className="w-4 h-4" />
+          6. Xuất Kho Chuyển Tầng (Kho 1 ↔ Kho 2)
         </button>
       </div>
 
@@ -554,20 +642,37 @@ export default function InventoryModule() {
                   className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs"
                 />
               </div>
-              <div className="md:col-span-2">
+              <div className="md:col-span-1">
                 <label className="block text-xs font-bold text-slate-600 mb-1">
                   Category
                 </label>
                 <select
                   value={newProdCatId}
                   onChange={(e) => setNewProdCatId(e.target.value)}
-                  className="w-full px-2.5 py-2 rounded-lg border border-slate-300 text-xs bg-white"
+                  className="w-full px-2 py-2 rounded-lg border border-slate-300 text-xs bg-white"
                 >
                   {categories.map((c) => (
                     <option key={c._id} value={c._id}>
                       {c.name}
                     </option>
                   ))}
+                </select>
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-bold text-indigo-700 mb-1">
+                  Nhập vào Kho *
+                </label>
+                <select
+                  value={newProdWarehouse}
+                  onChange={(e) =>
+                    setNewProdWarehouse(
+                      e.target.value === "FLOOR_2" ? "FLOOR_2" : "FLOOR_1"
+                    )
+                  }
+                  className="w-full px-2 py-2 rounded-lg border border-indigo-400 bg-indigo-50/40 text-xs font-bold text-slate-900"
+                >
+                  <option value="FLOOR_1">🏢 Kho Tầng 1</option>
+                  <option value="FLOOR_2">🏬 Kho Tầng 2</option>
                 </select>
               </div>
               <div className="md:col-span-1">
@@ -598,9 +703,9 @@ export default function InventoryModule() {
                   className="w-full px-2 py-2 rounded-lg border border-emerald-400 bg-emerald-50/50 text-xs font-mono font-extrabold text-emerald-900 text-right"
                 />
               </div>
-              <div className="md:col-span-2">
+              <div className="md:col-span-1">
                 <label className="block text-xs font-bold text-slate-600 mb-1">
-                  Giá gốc (VND)
+                  Giá gốc
                 </label>
                 <div className="relative">
                   <input
@@ -609,9 +714,9 @@ export default function InventoryModule() {
                     value={newProdCost > 0 ? formatNumberDots(newProdCost) : ""}
                     onChange={(e) => setNewProdCost(parseNumberDots(e.target.value))}
                     placeholder="0"
-                    className="w-full pl-2.5 pr-10 py-2 rounded-lg border border-slate-300 text-xs font-mono font-bold text-right"
+                    className="w-full pl-2 pr-8 py-2 rounded-lg border border-slate-300 text-xs font-mono font-bold text-right"
                   />
-                  <span className="absolute right-2.5 top-2 text-[10px] font-mono font-bold text-slate-400 pointer-events-none">
+                  <span className="absolute right-1.5 top-2 text-[9px] font-mono font-bold text-slate-400 pointer-events-none">
                     VND
                   </span>
                 </div>
@@ -782,8 +887,11 @@ export default function InventoryModule() {
                                 : "border-slate-300 bg-white text-emerald-700"
                             }`}
                           />
+                          <div className="mt-1 text-[10px] text-slate-600 font-mono">
+                            🏢 T1: <b>{p.stockFloor1 ?? p.stock}</b> · 🏬 T2: <b>{p.stockFloor2 ?? 0}</b>
+                          </div>
                           {qty !== origQty && (
-                            <div className="mt-1 text-[10px] font-mono font-bold text-emerald-700">
+                            <div className="mt-0.5 text-[10px] font-mono font-bold text-emerald-700">
                               Hiện tại: {origQty} ({qty > origQty ? `+${qty - origQty}` : qty - origQty})
                             </div>
                           )}
@@ -861,6 +969,17 @@ export default function InventoryModule() {
                               title="Lưu thay đổi sản phẩm"
                             >
                               <Save className="w-3.5 h-3.5" /> Lưu
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setTransferProductId(p._id);
+                                setSubTab("TRANSFER");
+                              }}
+                              className="p-1.5 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 inline-flex items-center justify-center"
+                              title="Dời sản phẩm giữa Kho Tầng 1 và Kho Tầng 2 (Lập phiếu xuất kho)"
+                            >
+                              <ArrowLeftRight className="w-3.5 h-3.5" />
                             </button>
                             <button
                               type="button"
@@ -1088,6 +1207,7 @@ export default function InventoryModule() {
                 <option value="EXCHANGE_IN">EXCHANGE_IN (Nhận hàng đổi)</option>
                 <option value="EXCHANGE_OUT">EXCHANGE_OUT (Xuất hàng đổi)</option>
                 <option value="ADJUSTMENT">ADJUSTMENT (Điều chỉnh kho)</option>
+                <option value="TRANSFER">TRANSFER (Xuất kho chuyển tầng PXK)</option>
               </select>
             </div>
           </div>
@@ -1383,9 +1503,25 @@ export default function InventoryModule() {
               >
                 {products.map((p) => (
                   <option key={p._id} value={p._id}>
-                    {p.name} ({p.code}) — Tồn: {p.stock} {p.unit} · Giá gốc: {formatVND(p.costPrice)} · Giá bán: {formatVND(p.sellingPrice)}
+                    {p.name} ({p.code}) — Tổng tồn: {p.stock} {p.unit} (T1: {p.stockFloor1 ?? p.stock} · T2: {p.stockFloor2 ?? 0})
                   </option>
                 ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase text-slate-700 mb-1">
+                Chọn Kho điều chỉnh *
+              </label>
+              <select
+                value={adjWarehouse}
+                onChange={(e) =>
+                  setAdjWarehouse(e.target.value === "FLOOR_2" ? "FLOOR_2" : "FLOOR_1")
+                }
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm bg-white font-semibold"
+              >
+                <option value="FLOOR_1">🏢 Kho Tầng 1</option>
+                <option value="FLOOR_2">🏬 Kho Tầng 2</option>
               </select>
             </div>
 
@@ -1423,6 +1559,170 @@ export default function InventoryModule() {
               Xác nhận Điều chỉnh Kho & Ghi Sổ Kho
             </button>
           </form>
+        </div>
+      )}
+
+      {/* SUB-TAB 6: XUẤT KHO CHUYỂN TẦNG (KHO TẦNG 1 <-> KHO TẦNG 2) */}
+      {subTab === "TRANSFER" && (
+        <div className="space-y-6">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                  <ArrowLeftRight className="w-5 h-5 text-indigo-600" />
+                  Tạo Phiếu Xuất Kho Chuyển Tầng (Kho Tầng 1 ↔ Kho Tầng 2)
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Admin dời sản phẩm từ <strong>Kho Tầng 1</strong> xuống <strong>Kho Tầng 2</strong> hoặc ngược lại. Hệ thống tự động tạo <strong>Phiếu Xuất Kho (PXK-...)</strong>, cập nhật tồn từng tầng và ghi nhận vào mục <strong>Hoạt động nhân viên</strong>.
+                </p>
+              </div>
+            </div>
+
+            <form
+              onSubmit={handleCreateTransfer}
+              className="mt-5 grid grid-cols-1 md:grid-cols-12 gap-4 items-end"
+            >
+              <div className="md:col-span-5">
+                <label className="block text-xs font-bold uppercase text-slate-700 mb-1">
+                  Chọn Sản phẩm cần dời kho *
+                </label>
+                <select
+                  value={transferProductId}
+                  onChange={(e) => setTransferProductId(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-xs bg-white font-semibold"
+                >
+                  {products.map((p) => {
+                    const f1 = p.stockFloor1 ?? p.stock;
+                    const f2 = p.stockFloor2 ?? 0;
+                    return (
+                      <option key={p._id} value={p._id}>
+                        {p.name} ({p.code}) — 🏢 Tầng 1: {f1} {p.unit} | 🏬 Tầng 2: {f2} {p.unit} (Tổng: {p.stock})
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              <div className="md:col-span-3">
+                <label className="block text-xs font-bold uppercase text-indigo-700 mb-1">
+                  Hướng dời kho (Kho xuất → Kho nhận) *
+                </label>
+                <select
+                  value={transferDirection}
+                  onChange={(e) =>
+                    setTransferDirection(
+                      e.target.value === "F2_TO_F1" ? "F2_TO_F1" : "F1_TO_F2"
+                    )
+                  }
+                  className="w-full px-3 py-2.5 rounded-xl border-2 border-indigo-500 bg-indigo-50/40 text-xs font-extrabold text-indigo-950"
+                >
+                  <option value="F1_TO_F2">🏢 Kho Tầng 1 → 🏬 Kho Tầng 2</option>
+                  <option value="F2_TO_F1">🏬 Kho Tầng 2 → 🏢 Kho Tầng 1</option>
+                </select>
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-xs font-bold uppercase text-slate-700 mb-1">
+                  Số lượng xuất dời *
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  required
+                  value={transferQty}
+                  onChange={(e) =>
+                    setTransferQty(Math.max(1, Math.round(Number(e.target.value) || 1)))
+                  }
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-300 font-mono text-sm font-extrabold text-right"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <button
+                  type="submit"
+                  className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs shadow flex items-center justify-center gap-1.5"
+                >
+                  <ArrowLeftRight className="w-4 h-4" />
+                  Tạo Phiếu Xuất Kho
+                </button>
+              </div>
+
+              <div className="md:col-span-12">
+                <label className="block text-xs font-bold uppercase text-slate-700 mb-1">
+                  Ghi chú Phiếu Xuất Kho (Tùy chọn)
+                </label>
+                <input
+                  type="text"
+                  value={transferNote}
+                  onChange={(e) => setTransferNote(e.target.value)}
+                  placeholder="VD: Dời hàng xuống Kho Tầng 2 để trưng bày / bổ sung quầy bán..."
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs"
+                />
+              </div>
+            </form>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
+            <h3 className="font-bold text-slate-900 text-sm">
+              Lịch sử Phiếu Xuất Kho Chuyển Tầng (PXK — Đã ghi nhận vào Hoạt động nhân viên)
+            </h3>
+            <div className="overflow-x-auto border border-slate-200 rounded-xl">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-slate-900 text-white uppercase">
+                  <tr>
+                    <th className="py-3 px-3">Mã Phiếu Xuất</th>
+                    <th className="py-3 px-3">Thời gian</th>
+                    <th className="py-3 px-3">Sản phẩm</th>
+                    <th className="py-3 px-3">Từ Kho</th>
+                    <th className="py-3 px-3">Sang Kho</th>
+                    <th className="py-3 px-3 text-right">Số lượng xuất</th>
+                    <th className="py-3 px-3">Người thực hiện</th>
+                    <th className="py-3 px-3">Ghi chú</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {transfersList.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="py-8 text-center text-slate-400">
+                        Chưa có phiếu xuất kho chuyển tầng nào.
+                      </td>
+                    </tr>
+                  ) : (
+                    transfersList.map((t) => (
+                      <tr key={t._id} className="hover:bg-slate-50">
+                        <td className="py-2.5 px-3 font-mono font-bold text-indigo-700">
+                          {t.referenceCode}
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-500 whitespace-nowrap">
+                          {formatDateTime(t.createdAt)}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <div className="font-semibold text-slate-900">{t.productName}</div>
+                          <div className="font-mono text-[10px] text-slate-500">
+                            {t.productCode}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 font-bold text-slate-700">
+                          {t.fromWarehouse === "FLOOR_2" ? "🏬 Kho Tầng 2" : "🏢 Kho Tầng 1"}
+                        </td>
+                        <td className="py-2.5 px-3 font-bold text-indigo-700">
+                          {t.toWarehouse === "FLOOR_2" ? "🏬 Kho Tầng 2" : "🏢 Kho Tầng 1"}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono font-extrabold text-indigo-700">
+                          {t.quantityChange}
+                        </td>
+                        <td className="py-2.5 px-3 font-semibold text-slate-800">
+                          {t.performedByName || "Quản trị viên"}
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600">{t.note || "-"}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
     </div>

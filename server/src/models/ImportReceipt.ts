@@ -1,6 +1,7 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
 export type ImportReceiptStatus = 'DRAFT' | 'CHECKING' | 'COMPLETED';
+export type WarehouseFloor = 'FLOOR_1' | 'FLOOR_2';
 
 export interface IScanCount {
   userId: string;
@@ -38,6 +39,8 @@ export interface IImportReceiptItem {
 export interface IImportReceipt extends Document {
   code: string;
   status: ImportReceiptStatus;
+  /** Kho đích nhận hàng: Kho Tầng 1 (FLOOR_1) hoặc Kho Tầng 2 (FLOOR_2) */
+  targetWarehouse?: WarehouseFloor;
   defaultCategoryId: string;
   note: string;
   items: IImportReceiptItem[];
@@ -89,6 +92,7 @@ const ImportReceiptSchema = new Schema<IImportReceipt>(
   {
     code: { type: String, required: true, unique: true },
     status: { type: String, enum: ['DRAFT', 'CHECKING', 'COMPLETED'], default: 'DRAFT' },
+    targetWarehouse: { type: String, enum: ['FLOOR_1', 'FLOOR_2'], default: 'FLOOR_1' },
     defaultCategoryId: { type: String, default: '' },
     note: { type: String, default: '' },
     items: { type: [ImportReceiptItemSchema], default: [] },

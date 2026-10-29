@@ -265,4 +265,93 @@ describe('v1.1: Giá gốc khi nhập kho & phân quyền giá bán', () => {
     expect(repRow.closingStock).toBe(stockBefore - 4);
     expect(repRow.currentStock).toBe(stockBefore - 4);
   });
+
+  it('Hệ thống Kho 2 tầng (FLOOR_1 & FLOOR_2): chọn tầng khi nhập kho, Admin lập Phiếu xuất kho chuyển tầng (PXK-...) và ghi vào Hoạt động nhân viên', async () => {
+    const floorProdName = 'Giày Chạy Bộ 2 Tầng (Giày Chạy Bộ 2 Tầng GCB02 Trắng size 42)';
+    const floorProdCode = 'GIAY_CHAY_BO_2_TANG_GCB02_TRANG_SIZE_42';
+
+    // 1. Warehouse lập phiếu nhập 6 đôi vào Kho Tầng 2 (FLOOR_2)
+    const impF2 = await request(app)
+      .post('/api/v1/imports')
+      .set('x-user-id', 'warehouse1')
+      .send({
+        targetWarehouse: 'FLOOR_2',
+        defaultCategoryId: categoryId,
+        note: 'Nhập lô giày vào Kho Tầng 2',
+        items: [
+          {
+            productName: floorProdName,
+            unit: 'Đôi',
+            expectedQuantity: 6,
+            actualQuantity: 6,
+            costPrice: 500000,
+            isConfirmed: true,
+          },
+        ],
+      });
+    expect(impF2.status).toBe(201);
+    expect(impF2.body.data.targetWarehouse).toBe('FLOOR_2');
+
+    const doneF2 = await request(app)
+      .post(`/api/v1/imports/${impF2.body.data._id}/complete`)
+      .set('x-user-id', 'warehouse1')
+      .send({});
+    expect(doneF2.status).toBe(200);
+
+    let prodRes = await request(app).get('/api/v1/products').set('x-user-id', 'admin');
+    let prod = prodRes.body.data.find((p: any) => p.code === floorProdCode);
+    expect(prod.stockFloor1).toBe(0);
+    expect(prod.stockFloor2).toBe(6);
+    expect(prod.stock).toBe(6);
+
+    // 2. Admin lập Phiếu xuất kho dời 4 đôi từ Kho Tầng 2 lên Kho Tầng 1 (POST /api/v1/inventory/transfers)
+    const transferRes = await request(app)
+      .post('/api/v1/inventory/transfers')
+      .set('x-user-id', 'admin')
+      .send({
+        productId: prod._id,
+        fromWarehouse: 'FLOOR_2',
+        toWarehouse: 'FLOOR_1',
+        quantity: 4,
+        note: 'Dời 4 đôi lên Kho Tầng 1 để bán tại quầy',
+      });
+    expect(transferRes.status).toBe(201);
+    expect(transferRes.body.data.movement.referenceCode).toBe('PXK-0001');
+    expect(transferRes.body.data.product.stockFloor1).toBe(4);
+    expect(transferRes.body.data.product.stockFloor2).toBe(2);
+    expect(transferRes.body.data.product.stock).toBe(6);
+
+    // 3. Chặn dời vượt quá số lượng đang có tại tầng nguồn (Kho Tầng 2 chỉ còn 2, dời 5 -> 400 INSUFFICIENT_FLOOR_STOCK)
+    const overTransfer = await request(app)
+      .post('/api/v1/inventory/transfers')
+      .set('x-user-id', 'admin')
+      .send({
+        productId: prod._id,
+        fromWarehouse: 'FLOOR_2',
+        toWarehouse: 'FLOOR_1',
+        quantity: 5,
+      });
+    expect(overTransfer.status).toBe(400);
+    expect(overTransfer.body.code).toBe('INSUFFICIENT_FLOOR_STOCK');
+
+    // 4. Kiểm tra Hoạt động nhân viên (GET /api/v1/reports/staff-activity) có ghi nhận EXPORT_TRANSFER (PXK-0001)
+    const actRes = await request(app)
+      .get('/api/v1/reports/staff-activity')
+      .set('x-user-id', 'admin');
+    expect(actRes.status).toBe(200);
+    const pxkLog = actRes.body.data.warehouse.find(
+      (w: any) => w.type === 'EXPORT_TRANSFER' && w.referenceCode === 'PXK-0001'
+    );
+    expect(pxkLog).toBeDefined();
+    expect(pxkLog.quantity).toBe(4);
+    expect(pxkLog.detail).toContain('Kho Tầng 2 → Kho Tầng 1');
+
+    // 5. Kiểm tra Báo cáo tồn kho kế toán không bị lệch bởi phiếu chuyển tầng nội bộ
+    const repRes = await request(app).get('/api/v1/inventory/report').set('x-user-id', 'admin');
+    const repRow = repRes.body.data.find((r: any) => r.productCode === floorProdCode);
+    expect(repRow.closingStock).toBe(6);
+    expect(repRow.currentStock).toBe(6);
+    expect(repRow.stockFloor1).toBe(4);
+    expect(repRow.stockFloor2).toBe(2);
+  });
 });
