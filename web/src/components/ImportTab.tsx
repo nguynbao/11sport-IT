@@ -10,7 +10,7 @@ import {
   formatDateTime,
   formatVND,
 } from "@/lib/api";
-import CameraScannerModal from "./CameraScannerModal";
+import CameraScannerModal, { mergeOcrItemsList } from "./CameraScannerModal";
 import TagCheckScannerModal from "./TagCheckScannerModal";
 import {
   Camera,
@@ -570,14 +570,16 @@ export default function ImportTab() {
             <div className="flex flex-col lg:flex-row lg:flex-wrap lg:items-center justify-between gap-3 pt-2 border-t border-slate-100">
               {currentStepStatus === "DRAFT" ? (
               <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
-                {/* Bước 2: Nút Kiểm hàng Camera OCR */}
+                {/* Bước 2: Nút Kiểm hàng Camera OCR (hỗ trợ chụp/tải nhiều ảnh để cộng dồn) */}
                 <button
                   type="button"
                   onClick={() => setOpenOcrModal(true)}
                   className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm"
                 >
                   <Camera className="w-4 h-4 text-emerald-400" />
-                  📷 Kiểm hàng (Camera OCR Bảng 6 Cột)
+                  {items.some((i) => i.productName.trim() !== "")
+                    ? "📷 Chụp / Quét thêm ảnh Kiểm hàng (+)"
+                    : "📷 Kiểm hàng (Chụp / Tải nhiều ảnh OCR)"}
                 </button>
 
                 <button
@@ -954,22 +956,35 @@ export default function ImportTab() {
         </div>
       </div>
 
-      {/* Modal Camera OCR Bảng 6 cột */}
+      {/* Modal Camera OCR Bảng 6 cột (hỗ trợ chụp/tải nhiều ảnh và cộng thêm vào phiếu) */}
       {openOcrModal && (
         <CameraScannerModal
           mode="OCR_TABLE"
-          onConfirmOcrItems={(scannedItems) => {
-            setItems(
-              scannedItems.map((it, i) => ({
-                ...it,
-                stt: i + 1,
-                productCode: it.productCode || generateProductCode(it.productName),
-              }))
-            );
-            setStatusMsg({
-              type: "success",
-              text: `Đã nạp ${scannedItems.length} dòng hàng từ Camera OCR vào Bảng 6 Cột!`,
-            });
+          existingItemCount={items.filter((i) => i.productName.trim() !== "").length}
+          onConfirmOcrItems={(scannedItems, modeAction) => {
+            const hasExisting = items.some((i) => i.productName.trim() !== "");
+            if (modeAction === "append" && hasExisting) {
+              const { merged, addedRows, mergedRows } = mergeOcrItemsList(items, scannedItems, true);
+              setItems(merged);
+              const mergeNote =
+                mergedRows > 0 ? ` (+cộng dồn SL cho ${mergedRows} dòng trùng mã)` : "";
+              setStatusMsg({
+                type: "success",
+                text: `Đã cộng thêm ${addedRows} dòng mới${mergeNote} từ Camera OCR vào phiếu (tổng ${merged.length} dòng)!`,
+              });
+            } else {
+              setItems(
+                scannedItems.map((it, i) => ({
+                  ...it,
+                  stt: i + 1,
+                  productCode: it.productCode || generateProductCode(it.productName),
+                }))
+              );
+              setStatusMsg({
+                type: "success",
+                text: `Đã nạp ${scannedItems.length} dòng hàng từ Camera OCR vào Bảng 6 Cột!`,
+              });
+            }
           }}
           onClose={() => setOpenOcrModal(false)}
         />

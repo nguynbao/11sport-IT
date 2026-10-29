@@ -18,6 +18,7 @@ import {
   RotateCcw,
   AlertTriangle,
   Sparkles,
+  Images,
 } from "lucide-react";
 import { apiRequest, generateProductCode, ImportItem } from "@/lib/api";
 
@@ -25,12 +26,26 @@ interface CameraScannerModalProps {
   mode: "OCR_TABLE" | "SCAN_TAG";
   title?: string;
   expectedCodeHint?: string;
-  onConfirmOcrItems?: (items: ImportItem[]) => void;
+  /** Số dòng hàng hợp lệ hiện có ngoài Bảng 6 Cột của phiếu nhập */
+  existingItemCount?: number;
+  /** modeAction = 'append' (cộng thêm vào phiếu) | 'replace' (thay thế bảng) */
+  onConfirmOcrItems?: (items: ImportItem[], modeAction?: "append" | "replace") => void;
   onConfirmTagScan?: (query: string, actualQuantity?: number) => void;
   onClose: () => void;
 }
 
 type PreviewKind = "image" | "pdf" | null;
+type ScanTargetMode = "append" | "replaceLast";
+
+interface ScannedPage {
+  id: string;
+  name: string;
+  kind: "image" | "pdf" | "text";
+  dataUrl: string;
+  mime: string;
+  items: ImportItem[];
+  rawText: string;
+}
 
 const MAX_IMAGE_DIM = 1600;
 const MAX_PDF_BYTES = 6 * 1024 * 1024;
@@ -42,6 +57,7 @@ const createEmptyOcrItem = (stt: number): ImportItem => ({
   unit: "Cái",
   expectedQuantity: 1,
   actualQuantity: 1,
+  costPrice: 0,
   note: "",
   isChecked: false,
   isConfirmed: false,
@@ -109,6 +125,7 @@ function mapApiItems(list: any[]): ImportItem[] {
       unit: it.unit || "Cái",
       expectedQuantity: qty,
       actualQuantity: qty,
+      costPrice: Number(it.costPrice || 0),
       note: it.note || "",
       isChecked: false,
       isConfirmed: false,
@@ -116,10 +133,71 @@ function mapApiItems(list: any[]): ImportItem[] {
   });
 }
 
+/**
+ * Cộng thêm các dòng mới quét vào danh sách hiện có:
+ * - Bỏ qua các dòng trống.
+ * - Nếu mergeDuplicates = true và trùng productCode: cộng dồn expectedQuantity & actualQuantity.
+ * - Nếu không trùng (hoặc tắt gộp): nối thêm dòng vào cuối bảng.
+ */
+export function mergeOcrItemsList(
+  existing: ImportItem[],
+  incoming: ImportItem[],
+  mergeDuplicates: boolean
+): { merged: ImportItem[]; addedRows: number; mergedRows: number } {
+  const base = existing.filter((i) => i.productName.trim() !== "").map((i) => ({ ...i }));
+  let addedRows = 0;
+  let mergedRows = 0;
+
+  for (const raw of incoming) {
+    const pName = (raw.productName || "").trim();
+    if (!pName) continue;
+    const pCode = raw.productCode || generateProductCode(pName);
+    const qty = Math.max(1, Number(raw.expectedQuantity) || 1);
+
+    if (mergeDuplicates && pCode) {
+      const foundIdx = base.findIndex(
+        (b) => (b.productCode || generateProductCode(b.productName)) === pCode
+      );
+      if (foundIdx >= 0) {
+        const target = base[foundIdx];
+        const nextQty = (Number(target.expectedQuantity) || 0) + qty;
+        base[foundIdx] = {
+          ...target,
+          expectedQuantity: nextQty,
+          actualQuantity: nextQty,
+          note:
+            raw.note && raw.note !== target.note
+              ? [target.note, raw.note].filter(Boolean).join("; ")
+              : target.note,
+        };
+        mergedRows++;
+        continue;
+      }
+    }
+
+    base.push({
+      ...raw,
+      productName: pName,
+      productCode: pCode,
+      expectedQuantity: qty,
+      actualQuantity: qty,
+    });
+    addedRows++;
+  }
+
+  const finalItems =
+    base.length > 0
+      ? base.map((it, idx) => ({ ...it, stt: idx + 1 }))
+      : [createEmptyOcrItem(1)];
+
+  return { merged: finalItems, addedRows, mergedRows };
+}
+
 export default function CameraScannerModal({
   mode,
   title,
   expectedCodeHint,
+  existingItemCount = 0,
   onConfirmOcrItems,
   onConfirmTagScan,
   onClose,
@@ -141,7 +219,14 @@ export default function CameraScannerModal({
   const [previewName, setPreviewName] = useState("");
   const [lastPayload, setLastPayload] = useState<{ dataUrl: string; mime: string } | null>(null);
 
+  // Danh sách các ảnh/trang đã quét trong phiên này & chế độ chụp tiếp theo
+  const [scannedPages, setScannedPages] = useState<ScannedPage[]>([]);
+  const [activePageId, setActivePageId] = useState<string | null>(null);
+  const [scanTarget, setScanTarget] = useState<ScanTargetMode>("append");
+  const [mergeDuplicates, setMergeDuplicates] = useState(true);
+
   const [scanning, setScanning] = useState(false);
+  const [scanningProgressText, setScanningProgressText] = useState("");
   const [scanError, setScanError] = useState("");
   const [scanInfo, setScanInfo] = useState("");
   const [rawText, setRawText] = useState("");
@@ -170,7 +255,7 @@ export default function CameraScannerModal({
       try {
         if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
           throw new Error(
-            "Trình duyệt không hỗ trợ Camera (cần HTTPS). Hãy dùng nút 'Chụp bằng ứng dụng Camera' hoặc tải ảnh lên."
+            "Trình duyệt không hỗ trợ Camera (cần HTTPS). Hãy dùng nút 'Chụp bằng app Camera' hoặc tải nhiều ảnh lên."
           );
         }
         streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -238,11 +323,92 @@ export default function CameraScannerModal({
 
   /* ------------------------------- OCR calling ------------------------------ */
 
-  const runOcrScan = async (dataUrl: string, mime: string) => {
+  /** Áp dụng danh sách dòng vừa quét từ 1 ảnh/file vào bảng kết quả (cộng thêm hoặc thay ảnh cuối) */
+  const applyExtractedItems = useCallback(
+    (
+      newItems: ImportItem[],
+      pageMeta: {
+        name: string;
+        kind: "image" | "pdf" | "text";
+        dataUrl: string;
+        mime: string;
+        rawText: string;
+        engineLabel: string;
+      },
+      targetMode: ScanTargetMode
+    ) => {
+      const pageId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const newPage: ScannedPage = {
+        id: pageId,
+        name: pageMeta.name,
+        kind: pageMeta.kind,
+        dataUrl: pageMeta.dataUrl,
+        mime: pageMeta.mime,
+        items: newItems,
+        rawText: pageMeta.rawText,
+      };
+
+      setActivePageId(pageId);
+      setRawText((prev) =>
+        targetMode === "append" && prev
+          ? `${prev}\n--- [${pageMeta.name}] ---\n${pageMeta.rawText}`
+          : pageMeta.rawText
+      );
+
+      if (targetMode === "replaceLast" && scannedPages.length > 0) {
+        // Thay thế trang cuối cùng vừa chụp
+        const withoutLast = scannedPages.slice(0, -1);
+        const updatedPages = [...withoutLast, newPage];
+        setScannedPages(updatedPages);
+
+        let rebuilt: ImportItem[] = [];
+        for (const p of updatedPages) {
+          rebuilt = mergeOcrItemsList(rebuilt, p.items, mergeDuplicates).merged;
+        }
+        setOcrItems(rebuilt);
+        setScanInfo(
+          `Đã quét lại "${pageMeta.name}": ${newItems.length} dòng (${pageMeta.engineLabel}). Tổng cộng ${
+            rebuilt.filter((i) => i.productName.trim()).length
+          } dòng từ ${updatedPages.length} ảnh.`
+        );
+        return;
+      }
+
+      // Mặc định: Cộng thêm (append) vào danh sách hiện có
+      setScannedPages((prev) => [...prev, newPage]);
+      setOcrItems((prev) => {
+        const hadExisting = prev.some((i) => i.productName.trim() !== "");
+        const { merged, addedRows, mergedRows } = mergeOcrItemsList(
+          prev,
+          newItems,
+          mergeDuplicates
+        );
+        const totalValid = merged.filter((i) => i.productName.trim() !== "").length;
+        if (!hadExisting) {
+          setScanInfo(
+            `Ảnh #1 (${pageMeta.name}): đã quét được ${newItems.length} dòng hàng (${pageMeta.engineLabel}). Bấm "📷 Chụp thêm ảnh" hoặc "🖼️ Tải thêm ảnh" để cộng thêm vào danh sách.`
+          );
+        } else {
+          const mergeNote =
+            mergedRows > 0 ? ` (+cộng dồn SL cho ${mergedRows} dòng trùng mã)` : "";
+          setScanInfo(
+            `Đã cộng thêm từ "${pageMeta.name}": +${addedRows} dòng mới${mergeNote}. Tổng hiện có: ${totalValid} dòng hàng.`
+          );
+        }
+        return merged;
+      });
+    },
+    [mergeDuplicates, scannedPages]
+  );
+
+  const runOcrScanSingle = async (
+    dataUrl: string,
+    mime: string,
+    sourceName = "Ảnh chụp",
+    targetMode: ScanTargetMode = scanTarget
+  ) => {
     setScanning(true);
     setScanError("");
-    setScanInfo("");
-    setRawText("");
     setLastPayload({ dataUrl, mime });
     try {
       const res = await apiRequest<any>("/imports/ocr-scan", {
@@ -254,20 +420,32 @@ export default function CameraScannerModal({
         }),
       });
       const d = res.data || {};
-      setRawText(String(d.rawText || ""));
       const engineLabel = d.engine === "gemini" ? "AI Gemini" : "Tesseract";
 
       if (mode === "OCR_TABLE") {
         const list = Array.isArray(d.items) ? d.items : [];
         if (list.length === 0) {
           setScanError(
-            "Không nhận diện được dòng hàng nào. Hãy chụp lại rõ nét, đủ sáng, chụp thẳng bảng hàng."
+            `Không nhận diện được dòng hàng nào trên "${sourceName}". Hãy chụp lại rõ nét, đủ sáng, hoặc bấm "📷 Chụp thêm ảnh".`
           );
           return;
         }
-        setOcrItems(mapApiItems(list));
-        setScanInfo(`Đã quét được ${list.length} dòng hàng (${engineLabel}). Vui lòng kiểm tra & sửa lại nếu cần.`);
+        const mapped = mapApiItems(list);
+        applyExtractedItems(
+          mapped,
+          {
+            name: sourceName,
+            kind: mime === "application/pdf" ? "pdf" : "image",
+            dataUrl,
+            mime,
+            rawText: String(d.rawText || ""),
+            engineLabel,
+          },
+          targetMode
+        );
+        setScanTarget("append");
       } else {
+        setRawText(String(d.rawText || ""));
         const query = d.productCode || d.productName || "";
         if (!query) {
           setScanError("Không đọc được mã/tên hàng trên tag. Vui lòng chụp lại gần hơn.");
@@ -281,6 +459,7 @@ export default function CameraScannerModal({
       setScanError(err?.message || "Quét OCR thất bại. Vui lòng thử lại.");
     } finally {
       setScanning(false);
+      setScanningProgressText("");
     }
   };
 
@@ -294,89 +473,142 @@ export default function CameraScannerModal({
     }
     try {
       const dataUrl = compressImageToDataUrl(video, video.videoWidth, video.videoHeight);
+      const nextNum =
+        scanTarget === "replaceLast" && scannedPages.length > 0
+          ? scannedPages.length
+          : scannedPages.length + 1;
+      const shotName = `Ảnh chụp #${nextNum}`;
       setPreviewUrl(dataUrl);
       setPreviewKind("image");
-      setPreviewName("Ảnh chụp từ Camera");
+      setPreviewName(shotName);
       stopCamera();
-      await runOcrScan(dataUrl, "image/jpeg");
+      setScanningProgressText(`Đang quét ${shotName}...`);
+      await runOcrScanSingle(dataUrl, "image/jpeg", shotName, scanTarget);
     } catch (err: any) {
       setScanError(err?.message || "Không chụp được ảnh.");
     }
   };
 
-  const handleRetake = () => {
+  /** Mở camera để CHỤP THÊM ảnh mới và cộng dồn vào danh sách đã quét */
+  const handleStartCaptureMore = () => {
+    setScanTarget("append");
     setPreviewUrl(null);
     setPreviewKind(null);
     setScanError("");
-    setScanInfo("");
     startCamera();
   };
 
-  /* ------------------------------- File inputs ------------------------------ */
-
-  const processFile = async (file: File) => {
+  /** Mở camera để chụp lại ảnh vừa chụp bị mờ */
+  const handleRetakeLast = () => {
+    setScanTarget(scannedPages.length > 0 ? "replaceLast" : "append");
+    setPreviewUrl(null);
+    setPreviewKind(null);
     setScanError("");
-    setScanInfo("");
-    const name = file.name.toLowerCase();
-    try {
-      if (file.type.startsWith("image/") || /\.(jpe?g|png|webp|heic|heif|bmp|gif)$/.test(name)) {
-        const dataUrl = await loadImageFromFile(file);
-        stopCamera();
-        setPreviewUrl(dataUrl);
-        setPreviewKind("image");
-        setPreviewName(file.name);
-        await runOcrScan(dataUrl, "image/jpeg");
-        return;
-      }
+    startCamera();
+  };
 
-      if (file.type === "application/pdf" || name.endsWith(".pdf")) {
-        if (file.size > MAX_PDF_BYTES) {
-          setScanError("File PDF quá lớn (tối đa 6MB).");
-          return;
-        }
-        const dataUrl = await readFileAsDataUrl(file);
-        stopCamera();
-        setPreviewUrl(null);
-        setPreviewKind("pdf");
-        setPreviewName(file.name);
-        await runOcrScan(dataUrl, "application/pdf");
-        return;
-      }
-
-      if (/\.(txt|csv|tsv)$/.test(name) || file.type.startsWith("text/")) {
-        const text = await readFileAsText(file);
-        // CSV dùng dấu phẩy → đổi sang | để server tách cột
-        const normalized = name.endsWith(".csv") ? text.replace(/,/g, "|") : text;
-        if (mode === "OCR_TABLE") {
-          await handleParsePastedText(normalized);
-        } else {
-          const first = normalized.split(/\r?\n/).find((l) => l.trim()) || "";
-          setTagQuery(first.trim());
-        }
-        setPreviewName(file.name);
-        return;
-      }
-
-      setScanError("Định dạng chưa hỗ trợ. Chọn ảnh (JPG/PNG/WEBP), PDF, hoặc TXT/CSV.");
-    } catch (err: any) {
-      setScanError(err?.message || "Không xử lý được file.");
+  /** Xem lại 1 ảnh trong dải các ảnh đã quét */
+  const handleSelectScannedPage = (page: ScannedPage) => {
+    stopCamera();
+    setActivePageId(page.id);
+    setPreviewName(page.name);
+    if (page.kind === "image") {
+      setPreviewUrl(page.dataUrl);
+      setPreviewKind("image");
+      setLastPayload({ dataUrl: page.dataUrl, mime: page.mime });
+    } else if (page.kind === "pdf") {
+      setPreviewUrl(null);
+      setPreviewKind("pdf");
+      setLastPayload({ dataUrl: page.dataUrl, mime: page.mime });
     }
   };
 
+  /* ------------------------------- File inputs (Multi-file) ------------------------------ */
+
+  const processSingleFile = async (file: File, targetMode: ScanTargetMode = "append") => {
+    const name = file.name;
+    const lower = name.toLowerCase();
+    if (file.type.startsWith("image/") || /\.(jpe?g|png|webp|heic|heif|bmp|gif)$/.test(lower)) {
+      const dataUrl = await loadImageFromFile(file);
+      stopCamera();
+      setPreviewUrl(dataUrl);
+      setPreviewKind("image");
+      setPreviewName(name);
+      await runOcrScanSingle(dataUrl, "image/jpeg", name, targetMode);
+      return;
+    }
+
+    if (file.type === "application/pdf" || lower.endsWith(".pdf")) {
+      if (file.size > MAX_PDF_BYTES) {
+        setScanError(`File PDF "${name}" quá lớn (tối đa 6MB).`);
+        return;
+      }
+      const dataUrl = await readFileAsDataUrl(file);
+      stopCamera();
+      setPreviewUrl(null);
+      setPreviewKind("pdf");
+      setPreviewName(name);
+      await runOcrScanSingle(dataUrl, "application/pdf", name, targetMode);
+      return;
+    }
+
+    if (/\.(txt|csv|tsv)$/.test(lower) || file.type.startsWith("text/")) {
+      const text = await readFileAsText(file);
+      const normalized = lower.endsWith(".csv") ? text.replace(/,/g, "|") : text;
+      if (mode === "OCR_TABLE") {
+        await handleParsePastedText(normalized, name);
+      } else {
+        const first = normalized.split(/\r?\n/).find((l) => l.trim()) || "";
+        setTagQuery(first.trim());
+      }
+      setPreviewName(name);
+      return;
+    }
+
+    setScanError(`Định dạng "${name}" chưa hỗ trợ. Chọn ảnh (JPG/PNG/WEBP), PDF, hoặc TXT/CSV.`);
+  };
+
+  const processMultipleFiles = async (fileList: FileList | File[]) => {
+    const files = Array.from(fileList);
+    if (files.length === 0) return;
+    setScanError("");
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (files.length > 1) {
+        setScanningProgressText(`Đang quét ảnh ${i + 1}/${files.length}: ${file.name}...`);
+      } else {
+        setScanningProgressText(`Đang quét ${file.name}...`);
+      }
+      try {
+        await processSingleFile(file, "append");
+      } catch (err: any) {
+        setScanError(err?.message || `Không xử lý được file ${file.name}.`);
+      }
+    }
+    setScanningProgressText("");
+  };
+
   const handleFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = ""; // cho phép chọn lại cùng 1 file
-    if (file) await processFile(file);
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    e.target.value = ""; // cho phép chọn lại cùng file
+    if (files.length > 0) {
+      setScanTarget("append");
+      await processMultipleFiles(files);
+    }
   };
 
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) await processFile(file);
+    const files = e.dataTransfer.files ? Array.from(e.dataTransfer.files) : [];
+    if (files.length > 0) {
+      setScanTarget("append");
+      await processMultipleFiles(files);
+    }
   };
 
-  const handleParsePastedText = async (text: string) => {
+  const handleParsePastedText = async (text: string, sourceLabel = "Văn bản dán") => {
     if (!text.trim()) return;
     setScanning(true);
     setScanError("");
@@ -387,8 +619,19 @@ export default function CameraScannerModal({
       });
       const list = Array.isArray(res.data) ? res.data : res.data?.items || [];
       if (list.length > 0) {
-        setOcrItems(mapApiItems(list));
-        setScanInfo(`Đã tách ${list.length} dòng hàng từ văn bản.`);
+        const mapped = mapApiItems(list);
+        applyExtractedItems(
+          mapped,
+          {
+            name: sourceLabel,
+            kind: "text",
+            dataUrl: "",
+            mime: "text/plain",
+            rawText: text,
+            engineLabel: "Tách dòng",
+          },
+          "append"
+        );
       } else {
         setScanError("Không tách được dòng hàng nào từ văn bản.");
       }
@@ -422,6 +665,15 @@ export default function CameraScannerModal({
     });
   };
 
+  const handleClearAllScanned = () => {
+    setScannedPages([]);
+    setActivePageId(null);
+    setOcrItems([createEmptyOcrItem(1)]);
+    setRawText("");
+    setScanInfo("Đã xóa danh sách quét tạm để quét mới từ đầu.");
+    setScanError("");
+  };
+
   const validOcrCount = ocrItems.filter((i) => i.productName.trim()).length;
 
   const closeModal = () => {
@@ -433,17 +685,22 @@ export default function CameraScannerModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-2 sm:p-4 overflow-y-auto">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[96vh] sm:max-h-[90vh]">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[96vh] sm:max-h-[92vh]">
         {/* Header */}
         <div className="bg-slate-900 text-white px-3 sm:px-6 py-3 sm:py-3.5 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
-            <ScanLine className="w-5 h-5 text-emerald-400" />
-            <h3 className="font-bold text-base sm:text-lg">
+            <ScanLine className="w-5 h-5 text-emerald-400 shrink-0" />
+            <h3 className="font-bold text-base sm:text-lg truncate">
               {title ||
                 (mode === "OCR_TABLE"
-                  ? "Kiểm hàng: Chụp / Tải phiếu giao hàng"
+                  ? "Kiểm hàng: Chụp / Tải nhiều ảnh phiếu giao hàng"
                   : "Quét Tag kiểm hàng thực tế")}
             </h3>
+            {mode === "OCR_TABLE" && scannedPages.length > 0 && (
+              <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-extrabold whitespace-nowrap">
+                {scannedPages.length} ảnh · {validOcrCount} dòng
+              </span>
+            )}
           </div>
           <button
             type="button"
@@ -463,7 +720,7 @@ export default function CameraScannerModal({
             }}
             onDragLeave={() => setDragOver(false)}
             onDrop={handleDrop}
-            className={`relative w-full bg-black rounded-xl overflow-hidden aspect-[4/3] sm:aspect-video max-h-[55vh] ${
+            className={`relative w-full bg-black rounded-xl overflow-hidden aspect-[4/3] sm:aspect-video max-h-[50vh] ${
               dragOver ? "ring-4 ring-emerald-500" : ""
             }`}
           >
@@ -503,7 +760,9 @@ export default function CameraScannerModal({
                 ) : (
                   <>
                     <Camera className="w-12 h-12 text-emerald-400" />
-                    <p className="text-sm">Camera đang tắt. Bấm “Mở Camera” hoặc kéo-thả / tải file lên.</p>
+                    <p className="text-sm">
+                      Camera đang tắt. Bấm “Mở Camera” để chụp thêm hoặc tải nhiều ảnh lên cùng lúc.
+                    </p>
                     <button
                       type="button"
                       onClick={() => startCamera()}
@@ -516,6 +775,24 @@ export default function CameraScannerModal({
               </div>
             )}
 
+            {/* Banner thông báo khi đang mở Camera ở chế độ CHỤP THÊM */}
+            {cameraActive && !previewKind && mode === "OCR_TABLE" && scannedPages.length > 0 && (
+              <div className="absolute top-3 inset-x-3 flex items-center justify-between gap-2 bg-emerald-950/85 border border-emerald-400/60 text-white px-3 py-1.5 rounded-lg text-xs">
+                <span className="font-bold text-emerald-300">
+                  {scanTarget === "replaceLast"
+                    ? `🔄 Đang chụp lại Ảnh #${scannedPages.length}`
+                    : `➕ Đang chụp thêm Ảnh #${scannedPages.length + 1} (sẽ cộng vào ${validOcrCount} dòng đã có)`}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleSelectScannedPage(scannedPages[scannedPages.length - 1])}
+                  className="underline text-slate-200 hover:text-white whitespace-nowrap"
+                >
+                  Xem ảnh trước
+                </button>
+              </div>
+            )}
+
             {/* Khung căn chỉnh khi đang ngắm */}
             {cameraActive && !previewKind && (
               <div className="pointer-events-none absolute inset-6 sm:inset-10 border-2 border-dashed border-emerald-400/70 rounded-lg" />
@@ -523,10 +800,14 @@ export default function CameraScannerModal({
 
             {/* Overlay đang quét */}
             {scanning && (
-              <div className="absolute inset-0 bg-slate-900/70 flex flex-col items-center justify-center text-white gap-2">
+              <div className="absolute inset-0 bg-slate-900/75 flex flex-col items-center justify-center text-white gap-2 p-4 text-center">
                 <Loader2 className="w-10 h-10 animate-spin text-emerald-400" />
-                <p className="text-sm font-semibold">Đang quét & nhận diện chữ...</p>
-                <p className="text-xs text-slate-300">Có thể mất 5–20 giây</p>
+                <p className="text-sm font-semibold">
+                  {scanningProgressText || "Đang quét & nhận diện chữ..."}
+                </p>
+                <p className="text-xs text-slate-300">
+                  Dữ liệu mới sẽ tự động được cộng thêm vào bảng kết quả bên dưới
+                </p>
               </div>
             )}
 
@@ -561,21 +842,46 @@ export default function CameraScannerModal({
               </div>
             )}
 
-            {/* Sau khi chụp / tải file */}
+            {/* Sau khi chụp / tải file: Nút CHỤP THÊM + TẢI THÊM ẢNH nổi bật để cộng thêm */}
             {previewKind && !scanning && (
-              <div className="absolute bottom-0 inset-x-0 p-3 bg-gradient-to-t from-black/80 to-transparent flex flex-wrap items-center justify-center gap-2">
+              <div className="absolute bottom-0 inset-x-0 p-3 bg-gradient-to-t from-black/90 via-black/70 to-transparent flex flex-wrap items-center justify-center gap-2">
+                {mode === "OCR_TABLE" && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleStartCaptureMore}
+                      className="min-h-[42px] px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs sm:text-sm font-extrabold flex items-center gap-1.5 shadow-lg"
+                    >
+                      <Camera className="w-4 h-4" />
+                      📷 Chụp thêm ảnh (+cộng vào phiếu)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setScanTarget("append");
+                        imageInputRef.current?.click();
+                      }}
+                      className="min-h-[42px] px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs sm:text-sm font-bold flex items-center gap-1.5 shadow"
+                    >
+                      <Images className="w-4 h-4" />
+                      ➕ Tải thêm ảnh
+                    </button>
+                  </>
+                )}
                 <button
                   type="button"
-                  onClick={handleRetake}
-                  className="min-h-[40px] px-4 py-2 rounded-lg bg-white/90 hover:bg-white text-slate-900 text-xs font-bold flex items-center gap-1.5"
+                  onClick={handleRetakeLast}
+                  className="min-h-[40px] px-3.5 py-2 rounded-lg bg-white/90 hover:bg-white text-slate-900 text-xs font-bold flex items-center gap-1.5"
                 >
-                  <RotateCcw className="w-4 h-4" /> Chụp lại
+                  <RotateCcw className="w-4 h-4" /> Chụp lại ảnh này
                 </button>
                 {lastPayload && (
                   <button
                     type="button"
-                    onClick={() => runOcrScan(lastPayload.dataUrl, lastPayload.mime)}
-                    className="min-h-[40px] px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5"
+                    onClick={() =>
+                      runOcrScanSingle(lastPayload.dataUrl, lastPayload.mime, previewName || "Ảnh", "replaceLast")
+                    }
+                    className="min-h-[40px] px-3.5 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold flex items-center gap-1.5"
                   >
                     <RefreshCw className="w-4 h-4" /> Quét lại
                   </button>
@@ -584,38 +890,130 @@ export default function CameraScannerModal({
             )}
           </div>
 
-          {/* ===== Tùy chọn tải file ===== */}
+          {/* ===== Dải các ảnh đã quét (khi quét từ 1 ảnh trở lên ở chế độ OCR_TABLE) ===== */}
+          {mode === "OCR_TABLE" && scannedPages.length > 0 && (
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span className="font-bold text-slate-700">
+                  Các ảnh / trang đã quét ({scannedPages.length} ảnh → tổng {validOcrCount} dòng hàng):
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={scanning}
+                    onClick={handleStartCaptureMore}
+                    className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1"
+                  >
+                    <Camera className="w-3.5 h-3.5" /> + Chụp thêm
+                  </button>
+                  <button
+                    type="button"
+                    disabled={scanning}
+                    onClick={() => {
+                      setScanTarget("append");
+                      imageInputRef.current?.click();
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold flex items-center gap-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> + Thêm nhiều ảnh
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                {scannedPages.map((p, idx) => {
+                  const isSelected = activePageId === p.id;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => handleSelectScannedPage(p)}
+                      className={`shrink-0 flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-left text-xs transition ${
+                        isSelected
+                          ? "border-emerald-600 bg-emerald-50 text-emerald-950 font-bold"
+                          : "border-slate-200 bg-white hover:bg-slate-100 text-slate-700"
+                      }`}
+                    >
+                      {p.kind === "image" && p.dataUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={p.dataUrl}
+                          alt={p.name}
+                          className="w-9 h-9 rounded object-cover border border-slate-200"
+                        />
+                      ) : (
+                        <FileText className="w-6 h-6 text-slate-500" />
+                      )}
+                      <div>
+                        <div className="truncate max-w-[130px]">
+                          #{idx + 1} {p.name}
+                        </div>
+                        <div className="text-[10px] text-emerald-700 font-semibold">
+                          +{p.items.length} dòng
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ===== Tùy chọn tải file (Hỗ trợ chọn NHIỀU ẢNH cùng lúc) ===== */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <button
               type="button"
-              onClick={() => imageInputRef.current?.click()}
-              className="min-h-[44px] px-2 sm:px-3 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold flex items-center justify-center gap-1.5 text-center"
+              disabled={scanning}
+              onClick={() => {
+                setScanTarget("append");
+                imageInputRef.current?.click();
+              }}
+              className="min-h-[44px] px-2 sm:px-3 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-semibold flex items-center justify-center gap-1.5 text-center"
             >
-              <ImageIcon className="w-4 h-4" /> Ảnh từ thư viện
+              <ImageIcon className="w-4 h-4 shrink-0" />
+              {mode === "OCR_TABLE" ? "Chọn 1 hoặc nhiều ảnh" : "Ảnh từ thư viện"}
             </button>
             <button
               type="button"
-              onClick={() => nativeCameraInputRef.current?.click()}
-              className="min-h-[44px] px-2 sm:px-3 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold flex items-center justify-center gap-1.5 text-center"
+              disabled={scanning}
+              onClick={() => {
+                setScanTarget("append");
+                nativeCameraInputRef.current?.click();
+              }}
+              className="min-h-[44px] px-2 sm:px-3 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white text-xs font-semibold flex items-center justify-center gap-1.5 text-center"
             >
-              <Camera className="w-4 h-4" /> Chụp bằng app Camera
+              <Camera className="w-4 h-4 shrink-0" /> Chụp bằng app Camera
             </button>
             <button
               type="button"
-              onClick={() => pdfInputRef.current?.click()}
-              className="min-h-[44px] px-2 sm:px-3 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold flex items-center justify-center gap-1.5 text-center"
+              disabled={scanning}
+              onClick={() => {
+                setScanTarget("append");
+                pdfInputRef.current?.click();
+              }}
+              className="min-h-[44px] px-2 sm:px-3 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-semibold flex items-center justify-center gap-1.5 text-center"
             >
-              <FileText className="w-4 h-4" /> Tải file PDF
+              <FileText className="w-4 h-4 shrink-0" /> Tải file PDF
             </button>
             <button
               type="button"
-              onClick={() => textInputRef.current?.click()}
-              className="min-h-[44px] px-2 sm:px-3 py-2.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold flex items-center justify-center gap-1.5 text-center"
+              disabled={scanning}
+              onClick={() => {
+                setScanTarget("append");
+                textInputRef.current?.click();
+              }}
+              className="min-h-[44px] px-2 sm:px-3 py-2.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white text-xs font-semibold flex items-center justify-center gap-1.5 text-center"
             >
-              <FileSpreadsheet className="w-4 h-4" /> Tải TXT / CSV
+              <FileSpreadsheet className="w-4 h-4 shrink-0" /> Tải TXT / CSV
             </button>
 
-            <input ref={imageInputRef} type="file" accept="image/*" onChange={handleFileInput} className="hidden" />
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              multiple={mode === "OCR_TABLE"}
+              onChange={handleFileInput}
+              className="hidden"
+            />
             <input
               ref={nativeCameraInputRef}
               type="file"
@@ -628,6 +1026,7 @@ export default function CameraScannerModal({
               ref={pdfInputRef}
               type="file"
               accept="application/pdf,.pdf"
+              multiple={mode === "OCR_TABLE"}
               onChange={handleFileInput}
               className="hidden"
             />
@@ -640,7 +1039,7 @@ export default function CameraScannerModal({
             />
           </div>
           <p className="text-[11px] text-slate-500 -mt-2">
-            Trên máy tính có thể kéo-thả file trực tiếp vào khung camera. Hỗ trợ JPG / PNG / WEBP / PDF / TXT / CSV.
+            Có thể chọn <strong>nhiều hình ảnh cùng lúc</strong> hoặc bấm <strong>“📷 Chụp thêm ảnh”</strong> liên tiếp — các dòng quét được sẽ tự động cộng dồn vào bảng bên dưới.
           </p>
 
           {/* ===== Thông báo ===== */}
@@ -655,8 +1054,20 @@ export default function CameraScannerModal({
             </div>
           )}
           {scanInfo && (
-            <div className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 flex gap-2">
-              <Sparkles className="w-4 h-4 shrink-0" /> {scanInfo}
+            <div className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 shrink-0" />
+                <span>{scanInfo}</span>
+              </div>
+              {mode === "OCR_TABLE" && !scanning && (
+                <button
+                  type="button"
+                  onClick={handleStartCaptureMore}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1 shrink-0"
+                >
+                  <Camera className="w-3.5 h-3.5" /> Chụp thêm ảnh
+                </button>
+              )}
             </div>
           )}
           {rawText && (
@@ -697,22 +1108,44 @@ export default function CameraScannerModal({
                     onClick={() => handleParsePastedText(pasteText)}
                     className="min-h-[40px] px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-semibold self-stretch sm:self-end"
                   >
-                    Tách vào bảng
+                    Cộng vào bảng
                   </button>
                 </div>
               </details>
 
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h4 className="font-bold text-slate-900 text-sm">
-                  Kết quả (sửa trực tiếp từng ô trước khi đưa vào phiếu):
-                </h4>
-                <button
-                  type="button"
-                  onClick={handleAddOcrRow}
-                  className="min-h-[40px] px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold flex items-center gap-1"
-                >
-                  <Plus className="w-4 h-4" /> Thêm dòng
-                </button>
+                <div className="space-y-1">
+                  <h4 className="font-bold text-slate-900 text-sm">
+                    Danh sách hàng đã quét ({validOcrCount} dòng — sửa trực tiếp trước khi đưa vào phiếu):
+                  </h4>
+                  <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={mergeDuplicates}
+                      onChange={(e) => setMergeDuplicates(e.target.checked)}
+                      className="rounded accent-emerald-600"
+                    />
+                    Tự động cộng dồn số lượng khi chụp thêm ảnh có mã hàng trùng
+                  </label>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {scannedPages.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleClearAllScanned}
+                      className="min-h-[38px] px-2.5 py-1.5 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-semibold flex items-center gap-1"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Xóa làm lại
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleAddOcrRow}
+                    className="min-h-[38px] px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold flex items-center gap-1"
+                  >
+                    <Plus className="w-4 h-4" /> Thêm dòng tay
+                  </button>
+                </div>
               </div>
 
               <div className="overflow-x-auto border border-slate-200 rounded-xl max-w-full">
@@ -824,29 +1257,67 @@ export default function CameraScannerModal({
         </div>
 
         {/* Footer */}
-        <div className="bg-slate-100 px-3 sm:px-6 py-3 sm:py-3.5 flex flex-col-reverse sm:flex-row sm:items-center justify-end gap-2 sm:gap-3 border-t border-slate-200">
-          <button
-            type="button"
-            onClick={closeModal}
-            className="min-h-[44px] px-4 py-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm"
-          >
-            Hủy bỏ
-          </button>
-
-          {mode === "OCR_TABLE" ? (
+        <div className="bg-slate-100 px-3 sm:px-6 py-3 sm:py-3.5 flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 border-t border-slate-200">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              disabled={validOcrCount === 0 || scanning}
-              onClick={() => {
-                stopCamera();
-                onConfirmOcrItems?.(ocrItems.filter((i) => i.productName.trim() !== ""));
-                onClose();
-              }}
-              className="min-h-[44px] px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-sm flex items-center justify-center gap-2 shadow"
+              onClick={closeModal}
+              className="min-h-[44px] px-4 py-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm"
             >
-              <Check className="w-4 h-4" />
-              Đưa {validOcrCount} dòng vào phiếu nhập
+              Hủy bỏ
             </button>
+            {mode === "OCR_TABLE" && validOcrCount > 0 && (
+              <button
+                type="button"
+                disabled={scanning}
+                onClick={handleStartCaptureMore}
+                className="min-h-[44px] px-4 py-2.5 rounded-lg border border-emerald-600 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-bold text-sm flex items-center justify-center gap-1.5"
+              >
+                <Camera className="w-4 h-4 text-emerald-700" />
+                Chụp thêm ảnh (+)
+              </button>
+            )}
+          </div>
+
+          {mode === "OCR_TABLE" ? (
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              {existingItemCount > 0 && (
+                <button
+                  type="button"
+                  disabled={validOcrCount === 0 || scanning}
+                  onClick={() => {
+                    stopCamera();
+                    onConfirmOcrItems?.(
+                      ocrItems.filter((i) => i.productName.trim() !== ""),
+                      "replace"
+                    );
+                    onClose();
+                  }}
+                  className="min-h-[44px] px-3.5 py-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-50 text-slate-700 font-semibold text-xs sm:text-sm"
+                  title="Xóa các dòng cũ trên phiếu và thay bằng danh sách vừa quét"
+                >
+                  Thay thế bảng ({validOcrCount} dòng)
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={validOcrCount === 0 || scanning}
+                onClick={() => {
+                  stopCamera();
+                  onConfirmOcrItems?.(
+                    ocrItems.filter((i) => i.productName.trim() !== ""),
+                    existingItemCount > 0 ? "append" : "replace"
+                  );
+                  onClose();
+                }}
+                className="min-h-[44px] px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-sm flex items-center justify-center gap-2 shadow"
+              >
+                <Check className="w-4 h-4" />
+                {existingItemCount > 0
+                  ? `Cộng thêm ${validOcrCount} dòng vào phiếu nhập`
+                  : `Đưa ${validOcrCount} dòng vào phiếu nhập`}
+              </button>
+            </div>
           ) : (
             <button
               type="button"
