@@ -1149,11 +1149,11 @@ export default function CameraScannerModal({
               </div>
 
               <div className="overflow-x-auto border border-slate-200 rounded-xl max-w-full">
-                <table className="w-full min-w-[860px] text-xs text-left">
+                <table className="w-full min-w-[640px] text-xs text-left">
                   <thead className="bg-slate-900 text-white uppercase">
                     <tr>
                       <th className="py-2.5 px-3 w-12 text-center">STT</th>
-                      <th className="py-2.5 px-3 min-w-[200px]">Mã hàng (tự sinh)</th>
+                      <th className="hidden py-2.5 px-3 min-w-[200px]">Mã hàng (tự sinh)</th>
                       <th className="py-2.5 px-3 min-w-[260px]">Tên hàng</th>
                       <th className="py-2.5 px-3 w-24">ĐVT</th>
                       <th className="py-2.5 px-3 w-24 text-right">Số lượng</th>
@@ -1165,7 +1165,7 @@ export default function CameraScannerModal({
                     {ocrItems.map((row, idx) => (
                       <tr key={idx} className="hover:bg-slate-50">
                         <td className="py-2 px-3 text-center font-mono font-bold">{idx + 1}</td>
-                        <td className="py-2 px-3">
+                        <td className="hidden py-2 px-3">
                           <input
                             type="text"
                             value={row.productCode}

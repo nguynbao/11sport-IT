@@ -684,7 +684,7 @@ export default function ImportTab() {
               <thead className="bg-slate-900 text-white uppercase">
                 <tr>
                   <th className="py-3 px-2.5 text-center w-10">STT</th>
-                  <th className="py-3 px-3 min-w-[220px]">MÃ HÀNG (Tự sinh từ `()`)</th>
+                  <th className="hidden py-3 px-3 min-w-[220px]">MÃ HÀNG (Tự sinh từ `()`)</th>
                   <th className="py-3 px-3 min-w-[260px]">TÊN HÀNG</th>
                   <th className="py-3 px-2.5 w-20 text-center">ĐVT</th>
                   <th className="py-3 px-2.5 w-24 text-right">SỐ LƯỢNG</th>
@@ -716,8 +716,8 @@ export default function ImportTab() {
                         {idx + 1}
                       </td>
 
-                      {/* Cột 2: MÃ HÀNG (Read-only, tự sinh từ ngoặc đơn trong Tên hàng) */}
-                      <td className="py-2.5 px-3">
+                      {/* Cột 2: MÃ HÀNG (Read-only, tự sinh từ ngoặc đơn trong Tên hàng - ẩn UI giữ nguyên logic) */}
+                      <td className="hidden py-2.5 px-3">
                         <input
                           type="text"
                           value={row.productCode}
