@@ -7,20 +7,22 @@ import {
   Loader2,
   CheckCircle2,
   AlertTriangle,
-  Pause,
-  Play,
+  XCircle,
   Camera,
   SwitchCamera,
   Search,
-  Info,
+  Undo2,
+  Minus,
+  Plus,
+  HelpCircle,
 } from "lucide-react";
 import { apiRequest, ImportItem, ImportReceipt } from "@/lib/api";
 
 /**
- * Bước 4 — Quét Tag kiểm tra thực tế (LIÊN TỤC)
- * - Camera mở sẵn, tự phát hiện khi đưa tag mới vào khung hình và tự chụp → OCR tag → đối chiếu.
- * - Chỉ đối chiếu với danh sách đã OCR ở bước Kiểm hàng: khớp thì tick xác nhận, KHÔNG thêm dòng mới,
- *   KHÔNG đổi số lượng.
+ * Bước 4 — Chụp tag kiểm tra thực tế (ĐẾM TỪNG CHIẾC)
+ * - Bấm chụp → ảnh được giữ lại + vòng loading trong lúc đọc tag & đối chiếu.
+ * - Khớp: +1 chiếc cho dòng đó; đủ số lượng dự kiến mới tick xác nhận.
+ * - Không khớp / đã đủ / không đọc được: hiện cảnh báo, không thay đổi phiếu.
  */
 interface TagCheckScannerModalProps {
   receiptId: string;
@@ -29,64 +31,51 @@ interface TagCheckScannerModalProps {
   onClose: () => void;
 }
 
-type ResultKind = "match" | "already" | "notfound" | "ambiguous" | "unreadable" | "error";
+type Phase = "live" | "processing" | "result" | "choose";
+type ResultKind = "added" | "full" | "alreadyFull" | "notfound" | "unreadable" | "error" | "undone";
 
-interface ScanLog {
-  id: number;
+interface ScanResult {
   kind: ResultKind;
-  text: string;
-  at: Date;
+  title: string;
+  detail?: string;
+  rowIndex?: number;
 }
 
 interface Candidate {
   index: number;
   productCode: string;
   productName: string;
-  isChecked?: boolean;
+  scannedQuantity?: number;
+  expectedQuantity?: number;
 }
 
-const SAMPLE_W = 32;
-const SAMPLE_H = 24;
-const SAMPLE_INTERVAL_MS = 400;
-const MOTION_THRESHOLD = 6; // khung hình đứng yên
-const NOVELTY_THRESHOLD = 14; // khác đủ nhiều so với lần quét trước => tag mới
-const MIN_CONTRAST = 10; // bỏ qua khung hình trơn (che camera, tường trống)
 const MAX_IMAGE_DIM = 1280;
+const AUTO_RETURN_MS = 1600; // tự quay lại camera sau khi khớp thành công
 
-function frameDiff(a: Uint8ClampedArray, b: Uint8ClampedArray): number {
-  let sum = 0;
-  for (let i = 0; i < a.length; i++) sum += Math.abs(a[i] - b[i]);
-  return sum / a.length;
-}
+const scannedOf = (it: ImportItem) => Number(it.scannedQuantity) || 0;
+const expectedOf = (it: ImportItem) => Math.max(0, Number(it.expectedQuantity) || 0);
+const isFullRow = (it: ImportItem) => scannedOf(it) >= Math.max(1, expectedOf(it));
 
-function frameContrast(a: Uint8ClampedArray): number {
-  let mean = 0;
-  for (let i = 0; i < a.length; i++) mean += a[i];
-  mean /= a.length;
-  let v = 0;
-  for (let i = 0; i < a.length; i++) v += (a[i] - mean) ** 2;
-  return Math.sqrt(v / a.length);
-}
-
-function beep(ok: boolean) {
+function feedback(ok: boolean) {
   try {
     const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
-    if (!Ctx) return;
-    const ctx = new Ctx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.frequency.value = ok ? 880 : 220;
-    gain.gain.value = 0.15;
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + (ok ? 0.12 : 0.3));
-    osc.onended = () => ctx.close();
+    if (Ctx) {
+      const ctx = new Ctx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = ok ? 880 : 220;
+      gain.gain.value = 0.15;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + (ok ? 0.12 : 0.35));
+      osc.onended = () => ctx.close();
+    }
   } catch {
     // ignore
   }
   try {
-    navigator.vibrate?.(ok ? 80 : [60, 60, 60]);
+    navigator.vibrate?.(ok ? 80 : [80, 60, 80]);
   } catch {
     // ignore
   }
@@ -100,28 +89,29 @@ export default function TagCheckScannerModal({
 }: TagCheckScannerModalProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const sampleCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const prevSampleRef = useRef<Uint8ClampedArray | null>(null);
-  const lastScannedRef = useRef<Uint8ClampedArray | null>(null);
-  const stableCountRef = useRef(0);
-  const busyRef = useRef(false);
-  const logIdRef = useRef(0);
+  const returnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState("");
-  const [autoMode, setAutoMode] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [lastResult, setLastResult] = useState<ScanLog | null>(null);
-  const [logs, setLogs] = useState<ScanLog[]>([]);
+
+  const [phase, setPhase] = useState<Phase>("live");
+  const [processingText, setProcessingText] = useState("");
+  const [frozenUrl, setFrozenUrl] = useState<string | null>(null);
+  const [result, setResult] = useState<ScanResult | null>(null);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [highlightIndex, setHighlightIndex] = useState<number | null>(null);
+  const [lastAddedIndex, setLastAddedIndex] = useState<number | null>(null);
   const [manualQuery, setManualQuery] = useState("");
+  const [rowBusy, setRowBusy] = useState(false);
 
-  const total = items.length;
-  const checked = items.filter((i) => i.isChecked && i.isConfirmed).length;
-  const allDone = total > 0 && checked === total;
-  const percent = total ? Math.round((checked / total) * 100) : 0;
+  const totalRows = items.length;
+  const fullRows = items.filter(isFullRow).length;
+  const scannedUnits = items.reduce((s, it) => s + scannedOf(it), 0);
+  const expectedUnits = items.reduce((s, it) => s + expectedOf(it), 0);
+  const percent = expectedUnits ? Math.min(100, Math.round((scannedUnits / expectedUnits) * 100)) : 0;
+  const allDone = totalRows > 0 && fullRows === totalRows;
+  const busy = phase === "processing" || rowBusy;
 
   /* ------------------------------ Camera ------------------------------ */
 
@@ -136,13 +126,13 @@ export default function TagCheckScannerModal({
     setCameraError("");
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
-        throw new Error("Trình duyệt không hỗ trợ Camera (cần HTTPS). Hãy nhập mã thủ công bên dưới.");
+        throw new Error("Trình duyệt không hỗ trợ Camera (cần HTTPS). Hãy dùng nút +/− hoặc nhập mã bên dưới.");
       }
       streamRef.current?.getTracks().forEach((t) => t.stop());
       let stream: MediaStream;
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          video: { facingMode: { ideal: facing }, width: { ideal: 1920 }, height: { ideal: 1080 } },
           audio: false,
         });
       } catch {
@@ -153,23 +143,23 @@ export default function TagCheckScannerModal({
         videoRef.current.srcObject = stream;
         await videoRef.current.play().catch(() => {});
       }
-      prevSampleRef.current = null;
-      lastScannedRef.current = null;
-      stableCountRef.current = 0;
       setCameraActive(true);
     } catch (err: any) {
       setCameraActive(false);
       setCameraError(
         err?.name === "NotAllowedError"
-          ? "Bạn đã chặn quyền Camera. Cho phép Camera trên thanh địa chỉ, hoặc nhập mã thủ công bên dưới."
-          : err?.message || "Không thể mở Camera. Hãy nhập mã thủ công bên dưới."
+          ? "Bạn đã chặn quyền Camera. Cho phép Camera trên thanh địa chỉ, hoặc dùng nút +/− bên cạnh từng dòng."
+          : err?.message || "Không thể mở Camera."
       );
     }
   }, []);
 
   useEffect(() => {
     startCamera("environment");
-    return () => stopCamera();
+    return () => {
+      stopCamera();
+      if (returnTimerRef.current) clearTimeout(returnTimerRef.current);
+    };
   }, [startCamera, stopCamera]);
 
   const handleSwitchCamera = () => {
@@ -178,17 +168,30 @@ export default function TagCheckScannerModal({
     startCamera(next);
   };
 
-  /* --------------------------- Xử lý kết quả --------------------------- */
+  /* --------------------------- Luồng chụp & kiểm --------------------------- */
 
-  const pushResult = (kind: ResultKind, text: string) => {
-    const log: ScanLog = { id: ++logIdRef.current, kind, text, at: new Date() };
-    setLastResult(log);
-    setLogs((prev) => [log, ...prev].slice(0, 8));
-    if (kind === "match") beep(true);
-    else if (kind === "notfound" || kind === "error" || kind === "ambiguous") beep(false);
+  const backToLive = useCallback(() => {
+    if (returnTimerRef.current) clearTimeout(returnTimerRef.current);
+    returnTimerRef.current = null;
+    setPhase("live");
+    setFrozenUrl(null);
+    setResult(null);
+    setCandidates([]);
+  }, []);
+
+  const showResult = (r: ScanResult) => {
+    setResult(r);
+    setPhase("result");
+    const ok = r.kind === "added" || r.kind === "full" || r.kind === "undone";
+    feedback(ok);
+    if (typeof r.rowIndex === "number") setHighlightIndex(r.rowIndex);
+    if (returnTimerRef.current) clearTimeout(returnTimerRef.current);
+    // Thành công: tự quay lại camera để chụp chiếc tiếp theo. Cảnh báo: chờ người dùng xác nhận.
+    if (ok) returnTimerRef.current = setTimeout(backToLive, AUTO_RETURN_MS);
   };
 
-  const callScanCheck = async (body: Record<string, any>) => {
+  /** Gọi API đối chiếu, trả về kết quả hiển thị */
+  const runScanCheck = async (body: Record<string, any>) => {
     const res = await apiRequest<any>(`/imports/${receiptId}/scan-check`, {
       method: "POST",
       body: JSON.stringify(body),
@@ -196,57 +199,47 @@ export default function TagCheckScannerModal({
     const d = res.data || {};
     if (d.receipt) onReceiptUpdate(d.receipt as ImportReceipt);
 
-    if (d.matched) {
-      setCandidates([]);
-      setHighlightIndex(d.matchedIndex ?? null);
-      const name = d.matchedItem?.productName || d.matchedItem?.productCode || "";
-      if (d.alreadyChecked) {
-        pushResult("already", `Dòng #${(d.matchedIndex ?? 0) + 1} đã kiểm trước đó: ${name}`);
-      } else {
-        pushResult("match", `✓ Khớp dòng #${(d.matchedIndex ?? 0) + 1}: ${name} — đã tick xác nhận`);
-      }
-    } else if (d.ambiguous) {
+    if (d.ambiguous) {
       setCandidates(Array.isArray(d.candidates) ? d.candidates : []);
-      pushResult("ambiguous", d.warning || "Tag khớp nhiều dòng, vui lòng chọn đúng dòng.");
+      setPhase("choose");
+      feedback(false);
+      return;
+    }
+
+    const rowNo = typeof d.matchedIndex === "number" ? d.matchedIndex + 1 : null;
+    const name = d.matchedItem?.productName || d.matchedItem?.productCode || "";
+    const qty = `${d.scannedQuantity ?? 0}/${d.expectedQuantity ?? 0}`;
+
+    if (!d.matched) {
+      showResult({
+        kind: "notfound",
+        title: "Không có trong danh sách kiểm hàng",
+        detail: d.warning || "Hàng này không được thêm vào phiếu. Kiểm tra lại với nhà cung cấp.",
+      });
+    } else if (d.alreadyFull) {
+      showResult({
+        kind: "alreadyFull",
+        title: `Đã đủ số lượng ${qty}`,
+        detail: `#${rowNo} ${name} — chiếc này có thể là hàng THỪA, không được cộng thêm.`,
+        rowIndex: d.matchedIndex,
+      });
+    } else if (d.undone) {
+      showResult({
+        kind: "undone",
+        title: `Đã hoàn tác — còn ${qty}`,
+        detail: `#${rowNo} ${name}`,
+        rowIndex: d.matchedIndex,
+      });
     } else {
-      setCandidates([]);
-      pushResult("notfound", d.warning || "Tag không có trong danh sách kiểm hàng.");
+      setLastAddedIndex(d.matchedIndex);
+      showResult({
+        kind: d.isFull ? "full" : "added",
+        title: d.isFull ? `ĐỦ ${qty} — đã tick xác nhận` : `+1 chiếc — ${qty}`,
+        detail: `#${rowNo} ${name}`,
+        rowIndex: d.matchedIndex,
+      });
     }
   };
-
-  const scanImage = useCallback(
-    async (dataUrl: string) => {
-      busyRef.current = true;
-      setBusy(true);
-      try {
-        const ocr = await apiRequest<any>("/imports/ocr-scan", {
-          method: "POST",
-          body: JSON.stringify({
-            mode: "TAG",
-            fileBase64: dataUrl.replace(/^data:[^;]+;base64,/, ""),
-            mimeType: "image/jpeg",
-          }),
-        });
-        const t = ocr.data || {};
-        if (!t.productCode && !t.productName) {
-          pushResult("unreadable", "Chưa đọc được tag — đưa tag gần hơn, đủ sáng, giữ yên 1 giây.");
-          return;
-        }
-        await callScanCheck({
-          productCode: t.productCode,
-          productName: t.productName,
-          rawText: t.rawText,
-        });
-      } catch (err: any) {
-        pushResult("error", err?.message || "Quét thất bại, vui lòng thử lại.");
-      } finally {
-        busyRef.current = false;
-        setBusy(false);
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [receiptId]
-  );
 
   const captureFrame = (): string | null => {
     const video = videoRef.current;
@@ -258,98 +251,79 @@ export default function TagCheckScannerModal({
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL("image/jpeg", 0.85);
+    return canvas.toDataURL("image/jpeg", 0.88);
   };
 
-  const sampleFrame = (): Uint8ClampedArray | null => {
-    const video = videoRef.current;
-    if (!video || !video.videoWidth) return null;
-    if (!sampleCanvasRef.current) {
-      const c = document.createElement("canvas");
-      c.width = SAMPLE_W;
-      c.height = SAMPLE_H;
-      sampleCanvasRef.current = c;
-    }
-    const ctx = sampleCanvasRef.current.getContext("2d", { willReadFrequently: true } as any) as
-      | CanvasRenderingContext2D
-      | null;
-    if (!ctx) return null;
-    ctx.drawImage(video, 0, 0, SAMPLE_W, SAMPLE_H);
-    const rgba = ctx.getImageData(0, 0, SAMPLE_W, SAMPLE_H).data;
-    const gray = new Uint8ClampedArray(SAMPLE_W * SAMPLE_H);
-    for (let i = 0, j = 0; i < rgba.length; i += 4, j++) {
-      gray[j] = (rgba[i] * 299 + rgba[i + 1] * 587 + rgba[i + 2] * 114) / 1000;
-    }
-    return gray;
-  };
-
-  const handleManualCapture = async () => {
-    if (busyRef.current) return;
+  const handleCapture = async () => {
+    if (busy || phase !== "live") return;
     const dataUrl = captureFrame();
     if (!dataUrl) {
-      pushResult("error", "Camera chưa sẵn sàng.");
+      setCameraError("Camera chưa sẵn sàng, vui lòng đợi 1 giây rồi chụp lại.");
       return;
     }
-    lastScannedRef.current = sampleFrame();
-    await scanImage(dataUrl);
-  };
-
-  // Vòng lặp quét liên tục: chờ khung hình đứng yên + khác lần quét trước => tự chụp & kiểm
-  useEffect(() => {
-    if (!cameraActive || !autoMode || allDone || candidates.length > 0) return;
-    const timer = setInterval(() => {
-      if (busyRef.current) return;
-      const cur = sampleFrame();
-      if (!cur) return;
-      const prev = prevSampleRef.current;
-      prevSampleRef.current = cur;
-      if (!prev) return;
-
-      stableCountRef.current = frameDiff(cur, prev) < MOTION_THRESHOLD ? stableCountRef.current + 1 : 0;
-      if (stableCountRef.current < 2) return;
-      if (frameContrast(cur) < MIN_CONTRAST) return;
-      const last = lastScannedRef.current;
-      if (last && frameDiff(cur, last) < NOVELTY_THRESHOLD) return;
-
-      const dataUrl = captureFrame();
-      if (!dataUrl) return;
-      lastScannedRef.current = cur;
-      stableCountRef.current = 0;
-      scanImage(dataUrl);
-    }, SAMPLE_INTERVAL_MS);
-    return () => clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cameraActive, autoMode, allDone, candidates.length, scanImage]);
-
-  const handlePickCandidate = async (index: number) => {
-    if (busyRef.current) return;
-    busyRef.current = true;
-    setBusy(true);
+    setFrozenUrl(dataUrl);
+    setPhase("processing");
+    setProcessingText("Đang đọc tag...");
     try {
-      await callScanCheck({ rowIndex: index });
+      const ocr = await apiRequest<any>("/imports/ocr-scan", {
+        method: "POST",
+        body: JSON.stringify({
+          mode: "TAG",
+          fileBase64: dataUrl.replace(/^data:[^;]+;base64,/, ""),
+          mimeType: "image/jpeg",
+        }),
+      });
+      const t = ocr.data || {};
+      if (!t.productCode && !t.productName) {
+        showResult({
+          kind: "unreadable",
+          title: "Không đọc được tag",
+          detail: "Đưa tag gần hơn, đủ sáng, chụp thẳng và rõ phần mã hàng/size rồi chụp lại.",
+        });
+        return;
+      }
+      setProcessingText(`Đang đối chiếu: ${t.productName || t.productCode}`);
+      await runScanCheck({ productCode: t.productCode, productName: t.productName, rawText: t.rawText });
     } catch (err: any) {
-      pushResult("error", err?.message || "Không chọn được dòng.");
-    } finally {
-      busyRef.current = false;
-      setBusy(false);
+      showResult({ kind: "error", title: "Lỗi khi kiểm tra", detail: err?.message || "Vui lòng chụp lại." });
     }
   };
+
+  // Phím Space / Enter để chụp nhanh (khi không gõ trong ô nhập)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (e.code === "Space" || e.key === "Enter") {
+        e.preventDefault();
+        if (phase === "live") handleCapture();
+        else if (phase === "result") backToLive();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  const runRowAction = async (body: Record<string, any>) => {
+    if (busy) return;
+    setRowBusy(true);
+    try {
+      await runScanCheck(body);
+    } catch (err: any) {
+      showResult({ kind: "error", title: "Lỗi khi cập nhật", detail: err?.message || "Vui lòng thử lại." });
+    } finally {
+      setRowBusy(false);
+    }
+  };
+
+  const handlePickCandidate = (index: number) => runRowAction({ rowIndex: index });
 
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const q = manualQuery.trim();
-    if (!q || busyRef.current) return;
-    busyRef.current = true;
-    setBusy(true);
-    try {
-      await callScanCheck({ query: q, productName: q });
-      setManualQuery("");
-    } catch (err: any) {
-      pushResult("error", err?.message || "Không kiểm được mã này.");
-    } finally {
-      busyRef.current = false;
-      setBusy(false);
-    }
+    if (!q) return;
+    await runRowAction({ query: q, productName: q });
+    setManualQuery("");
   };
 
   const closeModal = () => {
@@ -357,16 +331,17 @@ export default function TagCheckScannerModal({
     onClose();
   };
 
-  const resultStyle: Record<ResultKind, string> = {
-    match: "bg-emerald-600 text-white",
-    already: "bg-sky-600 text-white",
-    notfound: "bg-red-600 text-white",
-    ambiguous: "bg-amber-500 text-slate-950",
-    unreadable: "bg-slate-700 text-white",
-    error: "bg-red-700 text-white",
-  };
-
   /* ------------------------------ Render ------------------------------ */
+
+  const resultStyle: Record<ResultKind, { box: string; icon: React.ReactNode }> = {
+    added: { box: "bg-emerald-600 text-white", icon: <CheckCircle2 className="w-14 h-14" /> },
+    full: { box: "bg-emerald-600 text-white", icon: <CheckCircle2 className="w-14 h-14" /> },
+    undone: { box: "bg-sky-600 text-white", icon: <Undo2 className="w-14 h-14" /> },
+    alreadyFull: { box: "bg-amber-400 text-slate-950", icon: <AlertTriangle className="w-14 h-14" /> },
+    notfound: { box: "bg-red-600 text-white", icon: <XCircle className="w-14 h-14" /> },
+    unreadable: { box: "bg-slate-700 text-white", icon: <HelpCircle className="w-14 h-14" /> },
+    error: { box: "bg-red-700 text-white", icon: <XCircle className="w-14 h-14" /> },
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-2 sm:p-4">
@@ -376,7 +351,7 @@ export default function TagCheckScannerModal({
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <ScanLine className="w-5 h-5 text-amber-400 shrink-0" />
-              <h3 className="font-bold text-base sm:text-lg truncate">Bước 4: Quét Tag kiểm tra thực tế</h3>
+              <h3 className="font-bold text-base sm:text-lg truncate">Bước 4: Chụp tag kiểm tra thực tế</h3>
             </div>
             <button
               type="button"
@@ -389,13 +364,10 @@ export default function TagCheckScannerModal({
           </div>
           <div className="flex items-center gap-3">
             <div className="flex-1 h-2.5 rounded-full bg-slate-700 overflow-hidden">
-              <div
-                className="h-full bg-emerald-500 transition-all duration-300"
-                style={{ width: `${percent}%` }}
-              />
+              <div className="h-full bg-emerald-500 transition-all duration-300" style={{ width: `${percent}%` }} />
             </div>
-            <span className="text-sm font-extrabold font-mono whitespace-nowrap">
-              {checked}/{total} dòng
+            <span className="text-xs sm:text-sm font-extrabold font-mono whitespace-nowrap">
+              {scannedUnits}/{expectedUnits} chiếc · {fullRows}/{totalRows} dòng đủ
             </span>
           </div>
         </div>
@@ -403,7 +375,7 @@ export default function TagCheckScannerModal({
         <div className="flex-1 overflow-y-auto p-3 sm:p-4 grid grid-cols-1 lg:grid-cols-5 gap-4">
           {/* Cột camera */}
           <div className="lg:col-span-3 space-y-3">
-            <div className="relative w-full bg-black rounded-xl overflow-hidden aspect-[4/3] sm:aspect-video max-h-[50vh]">
+            <div className="relative w-full bg-black rounded-xl overflow-hidden aspect-[4/3] sm:aspect-video max-h-[55vh]">
               <video
                 ref={videoRef}
                 playsInline
@@ -411,209 +383,225 @@ export default function TagCheckScannerModal({
                 autoPlay
                 className={`w-full h-full object-cover ${cameraActive ? "" : "hidden"}`}
               />
-              {!cameraActive && (
+              {/* Ảnh vừa chụp được giữ lại trong lúc xử lý / hiển thị kết quả */}
+              {frozenUrl && phase !== "live" && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={frozenUrl} alt="Ảnh tag vừa chụp" className="absolute inset-0 w-full h-full object-cover" />
+              )}
+
+              {!cameraActive && !frozenUrl && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-300 text-sm p-4 text-center gap-2">
                   <Camera className="w-8 h-8" />
                   {cameraError || "Đang mở camera..."}
                 </div>
               )}
 
-              {/* Khung ngắm */}
-              {cameraActive && (
-                <div className="pointer-events-none absolute inset-[12%] border-2 border-dashed border-amber-400/80 rounded-lg" />
-              )}
-
-              {/* Trạng thái */}
-              {cameraActive && (
-                <div className="absolute top-2 left-2 right-2 flex items-center justify-between gap-2">
-                  <span
-                    className={`px-2.5 py-1 rounded-full text-[11px] font-bold flex items-center gap-1 ${
-                      busy
-                        ? "bg-amber-400 text-slate-950"
-                        : autoMode && !allDone
-                        ? "bg-emerald-500 text-slate-950"
-                        : "bg-slate-700 text-white"
-                    }`}
-                  >
-                    {busy ? (
-                      <>
-                        <Loader2 className="w-3 h-3 animate-spin" /> Đang đọc tag...
-                      </>
-                    ) : autoMode && !allDone ? (
-                      "● Đang quét liên tục — đưa tag vào khung"
-                    ) : (
-                      "Tạm dừng"
-                    )}
-                  </span>
+              {/* Khung ngắm + nút chụp */}
+              {cameraActive && phase === "live" && (
+                <>
+                  <div className="pointer-events-none absolute inset-x-[12%] inset-y-[14%] border-2 border-dashed border-amber-400/80 rounded-lg" />
+                  <div className="absolute top-2 left-2 right-2 flex items-center justify-between gap-2">
+                    <span className="px-2.5 py-1 rounded-full bg-black/60 text-white text-[11px] font-bold">
+                      Đưa tag vào khung rồi bấm chụp (Space)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleSwitchCamera}
+                      className="w-9 h-9 rounded-full bg-black/60 text-white flex items-center justify-center"
+                      title="Đổi camera"
+                    >
+                      <SwitchCamera className="w-4 h-4" />
+                    </button>
+                  </div>
                   <button
                     type="button"
-                    onClick={handleSwitchCamera}
-                    className="pointer-events-auto w-9 h-9 rounded-full bg-black/60 text-white flex items-center justify-center"
-                    title="Đổi camera"
-                  >
-                    <SwitchCamera className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
-
-              {/* Kết quả gần nhất */}
-              {lastResult && (
-                <div
-                  key={lastResult.id}
-                  className={`absolute bottom-2 left-2 right-2 px-3 py-2 rounded-lg text-xs sm:text-sm font-bold shadow-lg ${
-                    resultStyle[lastResult.kind]
-                  }`}
-                >
-                  {lastResult.text}
-                </div>
-              )}
-            </div>
-
-            {/* Điều khiển */}
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setAutoMode((v) => !v)}
-                disabled={!cameraActive || allDone}
-                className={`min-h-[44px] rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50 ${
-                  autoMode ? "bg-slate-200 text-slate-900" : "bg-emerald-600 text-white"
-                }`}
-              >
-                {autoMode ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                {autoMode ? "Tạm dừng quét" : "Tiếp tục quét"}
-              </button>
-              <button
-                type="button"
-                onClick={handleManualCapture}
-                disabled={!cameraActive || busy}
-                className="min-h-[44px] rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-sm font-extrabold flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                <Camera className="w-4 h-4" /> Chụp & kiểm ngay
-              </button>
-            </div>
-
-            {/* Nhập tay */}
-            <form onSubmit={handleManualSubmit} className="flex gap-2">
-              <div className="relative flex-1">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                <input
-                  type="text"
-                  value={manualQuery}
-                  onChange={(e) => setManualQuery(e.target.value)}
-                  placeholder="Tag mờ? Nhập mã / tên hàng để kiểm..."
-                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 text-base sm:text-sm focus:border-emerald-600 focus:outline-none"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={busy || !manualQuery.trim()}
-                className="px-4 min-h-[44px] rounded-xl bg-slate-900 text-white text-sm font-bold disabled:opacity-50"
-              >
-                Kiểm
-              </button>
-            </form>
-
-            {/* Chọn dòng khi trùng */}
-            {candidates.length > 0 && (
-              <div className="p-3 rounded-xl border border-amber-300 bg-amber-50 space-y-2">
-                <div className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
-                  <AlertTriangle className="w-4 h-4" /> Tag khớp nhiều dòng — chọn đúng dòng (quét tạm dừng):
-                </div>
-                {candidates.map((c) => (
-                  <button
-                    key={c.index}
-                    type="button"
+                    onClick={handleCapture}
                     disabled={busy}
-                    onClick={() => handlePickCandidate(c.index)}
-                    className="w-full text-left px-3 py-2 min-h-[44px] rounded-lg bg-white border border-amber-200 hover:border-amber-500 text-xs"
+                    className="absolute bottom-3 left-1/2 -translate-x-1/2 w-16 h-16 rounded-full bg-white/90 border-4 border-amber-400 shadow-lg flex items-center justify-center active:scale-95 transition disabled:opacity-50"
+                    title="Chụp & kiểm tra"
                   >
-                    <span className="font-bold">#{c.index + 1}</span> {c.productName}
-                    {c.isChecked && <span className="ml-1 text-emerald-700 font-bold">(đã kiểm)</span>}
+                    <Camera className="w-7 h-7 text-slate-900" />
                   </button>
-                ))}
+                </>
+              )}
+
+              {/* Vòng loading */}
+              {phase === "processing" && (
+                <div className="absolute inset-0 bg-black/55 flex flex-col items-center justify-center gap-3 text-white p-4 text-center">
+                  <div className="w-16 h-16 rounded-full border-4 border-white/25 border-t-amber-400 animate-spin" />
+                  <div className="text-sm font-bold">{processingText}</div>
+                </div>
+              )}
+
+              {/* Kết quả: tick hoặc cảnh báo */}
+              {phase === "result" && result && (
                 <button
                   type="button"
-                  onClick={() => setCandidates([])}
-                  className="text-xs text-slate-600 underline"
+                  onClick={backToLive}
+                  className="absolute inset-0 bg-black/40 flex items-center justify-center p-4"
+                  title="Chụp tiếp"
                 >
-                  Bỏ qua, quét tiếp
-                </button>
-              </div>
-            )}
-
-            {/* Lịch sử quét */}
-            {logs.length > 0 && (
-              <div className="space-y-1">
-                <div className="text-[11px] font-bold uppercase text-slate-500">Lịch sử quét</div>
-                {logs.map((l) => (
-                  <div key={l.id} className="text-[11px] flex gap-2 text-slate-700">
-                    <span className="font-mono text-slate-400 shrink-0">
-                      {l.at.toLocaleTimeString("vi-VN")}
-                    </span>
-                    <span
-                      className={
-                        l.kind === "match"
-                          ? "text-emerald-700"
-                          : l.kind === "notfound" || l.kind === "error"
-                          ? "text-red-600"
-                          : l.kind === "ambiguous"
-                          ? "text-amber-700"
-                          : "text-slate-600"
-                      }
-                    >
-                      {l.text}
-                    </span>
+                  <div
+                    className={`w-full max-w-sm rounded-2xl px-5 py-5 shadow-2xl flex flex-col items-center text-center gap-2 ${
+                      resultStyle[result.kind].box
+                    }`}
+                  >
+                    {resultStyle[result.kind].icon}
+                    <div className="text-lg font-extrabold leading-tight">{result.title}</div>
+                    {result.detail && <div className="text-xs font-semibold opacity-90">{result.detail}</div>}
+                    <div className="mt-1 text-[11px] font-bold underline opacity-90">
+                      {result.kind === "added" || result.kind === "full" || result.kind === "undone"
+                        ? "Tự quay lại camera..."
+                        : "Chạm để chụp lại / chụp tiếp"}
+                    </div>
                   </div>
-                ))}
-              </div>
-            )}
+                </button>
+              )}
+
+              {/* Chọn dòng khi trùng nhiều dòng */}
+              {phase === "choose" && (
+                <div className="absolute inset-0 bg-black/60 flex items-center justify-center p-3">
+                  <div className="w-full max-w-md bg-white rounded-xl p-3 space-y-2 max-h-full overflow-y-auto">
+                    <div className="text-sm font-bold text-amber-800 flex items-center gap-1.5">
+                      <AlertTriangle className="w-4 h-4" /> Tag khớp nhiều dòng — chọn đúng dòng:
+                    </div>
+                    {candidates.map((c) => {
+                      const full =
+                        (Number(c.scannedQuantity) || 0) >= Math.max(1, Number(c.expectedQuantity) || 0);
+                      return (
+                        <button
+                          key={c.index}
+                          type="button"
+                          disabled={busy}
+                          onClick={() => handlePickCandidate(c.index)}
+                          className="w-full text-left px-3 py-2 min-h-[44px] rounded-lg border border-slate-200 hover:border-amber-500 text-xs"
+                        >
+                          <span className="font-bold">#{c.index + 1}</span> {c.productName}
+                          <span className={`ml-1 font-bold ${full ? "text-emerald-700" : "text-amber-700"}`}>
+                            ({c.scannedQuantity ?? 0}/{c.expectedQuantity ?? 0})
+                          </span>
+                        </button>
+                      );
+                    })}
+                    <button type="button" onClick={backToLive} className="text-xs text-slate-600 underline">
+                      Bỏ qua, chụp lại
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Hoàn tác + nhập tay */}
+            <div className="flex flex-col sm:flex-row gap-2">
+              <button
+                type="button"
+                disabled={busy || lastAddedIndex === null}
+                onClick={() => lastAddedIndex !== null && runRowAction({ rowIndex: lastAddedIndex, delta: -1 })}
+                className="min-h-[44px] px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50"
+                title="Bỏ 1 chiếc vừa quét nhầm"
+              >
+                <Undo2 className="w-4 h-4" /> Hoàn tác lần quét
+              </button>
+              <form onSubmit={handleManualSubmit} className="flex gap-2 flex-1">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    value={manualQuery}
+                    onChange={(e) => setManualQuery(e.target.value)}
+                    placeholder="Tag mờ? Nhập mã / tên hàng (+1)..."
+                    className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 text-base sm:text-sm focus:border-emerald-600 focus:outline-none"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={busy || !manualQuery.trim()}
+                  className="px-4 min-h-[44px] rounded-xl bg-slate-900 text-white text-sm font-bold disabled:opacity-50"
+                >
+                  Kiểm
+                </button>
+              </form>
+            </div>
           </div>
 
           {/* Cột danh sách cần kiểm */}
           <div className="lg:col-span-2 space-y-2">
-            {allDone ? (
+            {allDone && (
               <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-sm font-bold flex items-center gap-2">
-                <CheckCircle2 className="w-5 h-5 shrink-0" /> Đã kiểm đủ {total}/{total} dòng! Đóng cửa sổ và bấm
+                <CheckCircle2 className="w-5 h-5 shrink-0" /> Đã kiểm đủ tất cả {totalRows} dòng! Đóng cửa sổ và bấm
                 &quot;Hoàn thành Nhập Kho&quot;.
-              </div>
-            ) : (
-              <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600 flex gap-1.5">
-                <Info className="w-4 h-4 shrink-0 text-slate-500" />
-                Giữ tag trong khung ~1 giây, hệ thống tự chụp & đối chiếu. Hàng không có trong danh sách sẽ chỉ
-                cảnh báo, không được thêm vào phiếu.
               </div>
             )}
             <div className="text-[11px] font-bold uppercase text-slate-500">
-              Danh sách kiểm hàng ({total - checked} dòng chưa kiểm)
+              Danh sách kiểm hàng — còn thiếu {Math.max(0, expectedUnits - scannedUnits)} chiếc
             </div>
-            <div className="space-y-1.5 max-h-[40vh] lg:max-h-[60vh] overflow-y-auto pr-1">
+            <div className="space-y-1.5 max-h-[40vh] lg:max-h-[62vh] overflow-y-auto pr-1">
               {items.map((it, idx) => {
-                const done = it.isChecked && it.isConfirmed;
+                const scanned = scannedOf(it);
+                const expected = expectedOf(it);
+                const full = isFullRow(it);
+                const rowPct = expected ? Math.min(100, Math.round((scanned / expected) * 100)) : full ? 100 : 0;
                 return (
                   <div
                     key={idx}
-                    className={`px-2.5 py-2 rounded-lg border text-xs flex items-start gap-2 transition ${
+                    className={`px-2.5 py-2 rounded-lg border text-xs transition ${
                       highlightIndex === idx
                         ? "border-emerald-500 ring-2 ring-emerald-300 bg-emerald-50"
-                        : done
+                        : full
                         ? "border-emerald-200 bg-emerald-50/50"
+                        : scanned > 0
+                        ? "border-amber-200 bg-amber-50/50"
                         : "border-slate-200 bg-white"
                     }`}
                   >
-                    <span
-                      className={`mt-0.5 w-4 h-4 shrink-0 rounded border flex items-center justify-center ${
-                        done ? "bg-emerald-600 border-emerald-600 text-white" : "border-slate-300"
-                      }`}
-                    >
-                      {done && <CheckCircle2 className="w-3 h-3" />}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className={`font-semibold ${done ? "text-emerald-900" : "text-slate-900"}`}>
-                        #{idx + 1} {it.productName}
+                    <div className="flex items-start gap-2">
+                      <span
+                        className={`mt-0.5 w-4 h-4 shrink-0 rounded border flex items-center justify-center ${
+                          full ? "bg-emerald-600 border-emerald-600 text-white" : "border-slate-300 bg-white"
+                        }`}
+                      >
+                        {full && <CheckCircle2 className="w-3 h-3" />}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className={`font-semibold ${full ? "text-emerald-900" : "text-slate-900"}`}>
+                          #{idx + 1} {it.productName}
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-mono truncate">{it.productCode}</div>
                       </div>
-                      <div className="text-[10px] text-slate-500 font-mono truncate">
-                        {it.productCode} · SL {it.expectedQuantity} {it.unit}
+                      <span
+                        className={`font-mono font-extrabold whitespace-nowrap ${
+                          full ? "text-emerald-700" : scanned > 0 ? "text-amber-700" : "text-slate-500"
+                        }`}
+                      >
+                        {scanned}/{expected}
+                      </span>
+                    </div>
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <div className="flex-1 h-1.5 rounded-full bg-slate-200 overflow-hidden">
+                        <div
+                          className={`h-full ${full ? "bg-emerald-500" : "bg-amber-400"}`}
+                          style={{ width: `${rowPct}%` }}
+                        />
                       </div>
+                      {/* Điều chỉnh tay khi tag hỏng / không đọc được */}
+                      <button
+                        type="button"
+                        disabled={busy || scanned === 0}
+                        onClick={() => runRowAction({ rowIndex: idx, delta: -1 })}
+                        className="w-8 h-8 rounded-md border border-slate-300 bg-white flex items-center justify-center disabled:opacity-40"
+                        title="Bớt 1 chiếc"
+                      >
+                        <Minus className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy || full}
+                        onClick={() => runRowAction({ rowIndex: idx })}
+                        className="w-8 h-8 rounded-md border border-slate-300 bg-white flex items-center justify-center disabled:opacity-40"
+                        title="Thêm 1 chiếc (khi tag không đọc được)"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </div>
                 );

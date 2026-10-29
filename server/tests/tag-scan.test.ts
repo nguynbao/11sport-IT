@@ -39,8 +39,10 @@ describe('matchTagToItems', () => {
   });
 });
 
-describe('POST /imports/:id/scan-check (v1.2)', () => {
+describe('POST /imports/:id/scan-check (v1.3 — đếm từng chiếc)', () => {
   let importId = '';
+  const scan = (body: Record<string, any>) =>
+    request(app).post(`/api/v1/imports/${importId}/scan-check`).send(body);
 
   beforeAll(async () => {
     process.env.FORCE_MEMORY_DB = 'true';
@@ -52,7 +54,8 @@ describe('POST /imports/:id/scan-check (v1.2)', () => {
       .post('/api/v1/imports')
       .send({
         defaultCategoryId: cat.body.data._id,
-        items: NAMES.map((n, i) => ({ productName: n, expectedQuantity: 10 + i })),
+        // dòng 0: SL 2, dòng 1: SL 1, dòng 2: SL 2
+        items: NAMES.map((n, i) => ({ productName: n, expectedQuantity: i === 1 ? 1 : 2 })),
       });
     importId = created.body.data._id;
   });
@@ -62,54 +65,78 @@ describe('POST /imports/:id/scan-check (v1.2)', () => {
   });
 
   it('chặn quét khi phiếu chưa chốt danh sách (DRAFT)', async () => {
-    const r = await request(app).post(`/api/v1/imports/${importId}/scan-check`).send({ query: 'QSCB01' });
+    const r = await scan({ query: 'QSCB01' });
     expect(r.status).toBe(400);
     expect(r.body.code).toBe('IMPORT_NOT_CHECKING');
   });
 
-  it('quét khớp => tick xác nhận, KHÔNG đổi số lượng, KHÔNG thêm dòng', async () => {
+  it('cùng 1 mã SL 2: quét lần 1 = 1/2 (chưa tick), lần 2 = 2/2 (tick), lần 3 = đã đủ (không cộng)', async () => {
     await request(app).post(`/api/v1/imports/${importId}/finish-listing`);
+    const tag = { productCode: 'QSCB01', productName: 'Quần Short QSCB01 Đen M' };
 
-    const r = await request(app)
-      .post(`/api/v1/imports/${importId}/scan-check`)
-      .send({ productCode: 'QSCB01', productName: 'Quần Short QSCB01 Đen M' });
-    expect(r.status).toBe(200);
-    expect(r.body.data.matched).toBe(true);
-    expect(r.body.data.matchedIndex).toBe(2);
-    const row = r.body.data.receipt.items[2];
+    const r1 = await scan(tag);
+    expect(r1.body.data.matched).toBe(true);
+    expect(r1.body.data.matchedIndex).toBe(2);
+    expect(r1.body.data.scannedQuantity).toBe(1);
+    expect(r1.body.data.isFull).toBe(false);
+    expect(r1.body.data.receipt.items[2].isConfirmed).toBe(false);
+    expect(r1.body.data.receipt.items[2].actualQuantity).toBe(1);
+
+    const r2 = await scan(tag);
+    expect(r2.body.data.alreadyFull).toBe(false);
+    expect(r2.body.data.scannedQuantity).toBe(2);
+    expect(r2.body.data.isFull).toBe(true);
+    const row = r2.body.data.receipt.items[2];
     expect(row.isChecked).toBe(true);
     expect(row.isConfirmed).toBe(true);
-    expect(row.actualQuantity).toBe(12);
-    expect(r.body.data.progress).toEqual({ checked: 1, total: 3 });
+    expect(row.actualQuantity).toBe(2);
+    expect(r2.body.data.progress).toMatchObject({ checked: 1, total: 3, scannedUnits: 2, expectedUnits: 5 });
 
-    // Quét lại cùng tag => alreadyChecked
-    const again = await request(app)
-      .post(`/api/v1/imports/${importId}/scan-check`)
-      .send({ productCode: 'QSCB01', productName: 'Quần Short QSCB01 Đen M' });
-    expect(again.body.data.alreadyChecked).toBe(true);
+    const r3 = await scan(tag);
+    expect(r3.body.data.alreadyFull).toBe(true);
+    expect(r3.body.data.warning).toBeTruthy();
+    expect(r3.body.data.receipt.items[2].scannedQuantity).toBe(2);
+  });
+
+  it('hoàn tác 1 lần quét (delta = -1) => bỏ tick khi chưa đủ', async () => {
+    const r = await scan({ rowIndex: 2, delta: -1 });
+    expect(r.body.data.scannedQuantity).toBe(1);
+    expect(r.body.data.receipt.items[2].isConfirmed).toBe(false);
+    // quét lại cho đủ
+    const again = await scan({ rowIndex: 2 });
+    expect(again.body.data.isFull).toBe(true);
   });
 
   it('tag không có trong danh sách => cảnh báo, không thêm dòng', async () => {
-    const r = await request(app)
-      .post(`/api/v1/imports/${importId}/scan-check`)
-      .send({ productCode: 'ZZZ12345', productName: 'Tất ZZZ12345' });
+    const r = await scan({ productCode: 'ZZZ12345', productName: 'Tất ZZZ12345' });
     expect(r.status).toBe(200);
     expect(r.body.data.matched).toBe(false);
     expect(r.body.data.warning).toBeTruthy();
     expect(r.body.data.receipt.items.length).toBe(3);
   });
 
-  it('trùng nhiều dòng => trả candidates, chọn bằng rowIndex', async () => {
-    const r = await request(app)
-      .post(`/api/v1/imports/${importId}/scan-check`)
-      .send({ productCode: 'KMAP262510' });
+  it('SKU trùng 2 dòng: ambiguous; khi 1 dòng đã đủ thì tự chọn dòng còn thiếu', async () => {
+    const r = await scan({ productCode: 'KMAP262510' });
     expect(r.body.data.ambiguous).toBe(true);
     expect(r.body.data.candidates.length).toBe(2);
 
-    const pick = await request(app)
-      .post(`/api/v1/imports/${importId}/scan-check`)
-      .send({ rowIndex: r.body.data.candidates[1].index });
-    expect(pick.body.data.matched).toBe(true);
-    expect(pick.body.data.progress.checked).toBe(2);
+    // dòng 1 (SL 1) -> chọn tay, đủ ngay
+    const pick = await scan({ rowIndex: 1 });
+    expect(pick.body.data.isFull).toBe(true);
+
+    // Quét lại SKU chung => tự rơi vào dòng 0 (chưa đủ)
+    const auto = await scan({ productCode: 'KMAP262510' });
+    expect(auto.body.data.matched).toBe(true);
+    expect(auto.body.data.matchedIndex).toBe(0);
+    expect(auto.body.data.scannedQuantity).toBe(1);
+  });
+
+  it('PUT lưu nháp giữ nguyên scannedQuantity', async () => {
+    const detail = await request(app).get(`/api/v1/imports/${importId}`);
+    const put = await request(app)
+      .put(`/api/v1/imports/${importId}`)
+      .send({ items: detail.body.data.items });
+    expect(put.body.data.items[0].scannedQuantity).toBe(1);
+    expect(put.body.data.items[2].scannedQuantity).toBe(2);
   });
 });

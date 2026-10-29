@@ -57,6 +57,7 @@ function normalizeImportItems(rawItems: any[], defaultCategoryId = ''): IImportR
         expectedQuantity,
         actualQuantity,
         costPrice: parseCostPrice(item.costPrice, Number(item.stt) || idx + 1),
+        scannedQuantity: Math.max(0, Math.round(Number(item.scannedQuantity) || 0)),
         note: item.note ? String(item.note).trim() : '',
         isChecked: Boolean(item.isChecked),
         isConfirmed: Boolean(item.isConfirmed),
@@ -76,6 +77,7 @@ function rowsToImportItems(rows: OcrTableRow[], defaultCatId: string): IImportRe
     expectedQuantity: r.expectedQuantity,
     actualQuantity: r.expectedQuantity,
     costPrice: 0,
+    scannedQuantity: 0,
     note: r.note || '',
     isChecked: false,
     isConfirmed: false,
@@ -299,8 +301,8 @@ importsRouter.post('/imports/:id/finish-listing', async (req, res, next) => {
   }
 });
 
-// POST /api/v1/imports/:id/scan-check (Bước 4: Quét tag liên tục để đối chiếu với danh sách đã OCR)
-// Chỉ đối chiếu + tick xác nhận; KHÔNG thêm dòng mới, KHÔNG đổi số lượng nếu không truyền actualQuantity
+// POST /api/v1/imports/:id/scan-check (Bước 4: Chụp tag kiểm thực tế — ĐẾM TỪNG CHIẾC)
+// Mỗi lần quét khớp = +1 chiếc; đủ số lượng dự kiến mới tick xác nhận. Không thêm dòng mới.
 importsRouter.post('/imports/:id/scan-check', async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -320,18 +322,28 @@ importsRouter.post('/imports/:id/scan-check', async (req, res, next) => {
       );
     }
 
-    const { query, productCode, productName, rawText, rowIndex, actualQuantity, discrepancyNote } =
-      req.body || {};
+    const { query, productCode, productName, rawText, rowIndex } = req.body || {};
+    const delta = Number(req.body?.delta) === -1 ? -1 : 1;
     const hasRowIndex = rowIndex !== undefined && rowIndex !== null && rowIndex !== '';
     const label = String(productName || query || productCode || '').trim();
     if (!hasRowIndex && !label) {
       throw new ApiError(400, 'VALIDATION_ERROR', 'Vui lòng cung cấp mã hoặc tên hàng đọc được từ tag');
     }
+    if (delta === -1 && !hasRowIndex) {
+      throw new ApiError(400, 'VALIDATION_ERROR', 'Hoàn tác lần quét cần chỉ rõ dòng hàng (rowIndex)');
+    }
 
-    const items = [...receipt.items];
+    const items = receipt.items.map((it) => ({
+      ...it,
+      scannedQuantity: Math.max(0, Number(it.scannedQuantity) || 0),
+    }));
+    const isFull = (it: IImportReceiptItem) =>
+      (Number(it.scannedQuantity) || 0) >= Math.max(1, Number(it.expectedQuantity) || 0);
     const progressOf = (list: IImportReceiptItem[]) => ({
-      checked: list.filter((i) => i.isChecked).length,
+      checked: list.filter(isFull).length,
       total: list.length,
+      scannedUnits: list.reduce((s, i) => s + (Number(i.scannedQuantity) || 0), 0),
+      expectedUnits: list.reduce((s, i) => s + (Number(i.expectedQuantity) || 0), 0),
     });
 
     let matchedIndex: number | null = null;
@@ -342,7 +354,11 @@ importsRouter.post('/imports/:id/scan-check', async (req, res, next) => {
       }
       matchedIndex = idx;
     } else {
-      const result = matchTagToItems(items, { query, productCode, productName, rawText });
+      // isChecked dùng để ưu tiên dòng CHƯA ĐỦ số lượng khi trùng nhiều dòng
+      const result = matchTagToItems(
+        items.map((it) => ({ productCode: it.productCode, productName: it.productName, isChecked: isFull(it) })),
+        { query, productCode, productName, rawText }
+      );
       if (result.ambiguous) {
         res.json({
           data: {
@@ -352,7 +368,8 @@ importsRouter.post('/imports/:id/scan-check', async (req, res, next) => {
               index: i,
               productCode: items[i].productCode,
               productName: items[i].productName,
-              isChecked: items[i].isChecked,
+              scannedQuantity: items[i].scannedQuantity,
+              expectedQuantity: items[i].expectedQuantity,
             })),
             warning: `Tag "${label}" khớp nhiều dòng trong danh sách. Vui lòng chọn đúng dòng.`,
             progress: progressOf(items),
@@ -378,33 +395,53 @@ importsRouter.post('/imports/:id/scan-check', async (req, res, next) => {
       return;
     }
 
-    const alreadyChecked = Boolean(items[matchedIndex].isChecked && items[matchedIndex].isConfirmed);
-    const matchedItem = { ...items[matchedIndex] };
-    matchedItem.isChecked = true;
-    matchedItem.isConfirmed = true;
-    if (actualQuantity !== undefined && actualQuantity !== null && actualQuantity !== '') {
-      matchedItem.actualQuantity = Math.max(0, Math.round(Number(actualQuantity)));
-    }
-    const diff = matchedItem.actualQuantity - matchedItem.expectedQuantity;
-    if (discrepancyNote !== undefined) {
-      matchedItem.discrepancyNote = String(discrepancyNote).trim();
-    } else if (diff !== 0) {
-      matchedItem.discrepancyNote =
-        diff > 0 ? `Thừa ${diff} ${matchedItem.unit}` : `Thiếu ${Math.abs(diff)} ${matchedItem.unit}`;
-    } else if (!matchedItem.discrepancyNote) {
-      matchedItem.discrepancyNote = 'Khớp đủ';
+    const current = items[matchedIndex];
+    const expected = Number(current.expectedQuantity) || 0;
+
+    // Đã đủ số lượng mà quét thêm => không cộng, chỉ cảnh báo
+    if (delta === 1 && isFull(current)) {
+      res.json({
+        data: {
+          matched: true,
+          alreadyFull: true,
+          isFull: true,
+          matchedIndex,
+          matchedItem: current,
+          scannedQuantity: current.scannedQuantity,
+          expectedQuantity: expected,
+          warning: `"${current.productName}" đã đủ số lượng (${current.scannedQuantity}/${expected}). Chiếc này có thể là hàng THỪA.`,
+          progress: progressOf(items),
+          receipt,
+        },
+        meta: {},
+      });
+      return;
     }
 
+    const scanned = Math.max(0, current.scannedQuantity + delta);
+    const full = scanned >= Math.max(1, expected);
+    const matchedItem: IImportReceiptItem = {
+      ...current,
+      scannedQuantity: scanned,
+      actualQuantity: scanned,
+      isChecked: scanned > 0,
+      isConfirmed: full,
+      discrepancyNote:
+        scanned === 0 ? '' : full ? (scanned === expected ? 'Khớp đủ' : `Thừa ${scanned - expected} ${current.unit}`) : `Đã quét ${scanned}/${expected} ${current.unit}`,
+    };
     items[matchedIndex] = matchedItem;
     const updatedReceipt = await importReceiptRepo.updateById(id, { items });
 
     res.json({
       data: {
         matched: true,
-        alreadyChecked,
+        alreadyFull: false,
+        isFull: full,
+        undone: delta === -1,
         matchedIndex,
         matchedItem,
-        discrepancy: diff,
+        scannedQuantity: scanned,
+        expectedQuantity: expected,
         progress: progressOf(items),
         receipt: updatedReceipt,
       },

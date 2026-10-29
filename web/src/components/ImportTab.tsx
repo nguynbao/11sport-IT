@@ -97,6 +97,7 @@ export default function ImportTab() {
         expectedQuantity: Number(it.expectedQuantity || 0),
         actualQuantity: Number(it.actualQuantity ?? it.expectedQuantity ?? 0),
         costPrice: Number(it.costPrice || 0),
+        scannedQuantity: Number(it.scannedQuantity || 0),
         note: it.note || "",
         isChecked: Boolean(it.isChecked),
         isConfirmed: Boolean(it.isConfirmed),
@@ -827,7 +828,17 @@ export default function ImportTab() {
                           />
                         </div>
                         <div className="mt-1 flex items-center justify-between text-[10px]">
-                          {row.isChecked ? (
+                          {Number(row.scannedQuantity) > 0 ? (
+                            <span
+                              className={`font-bold ${
+                                Number(row.scannedQuantity) >= row.expectedQuantity
+                                  ? "text-emerald-700"
+                                  : "text-amber-700"
+                              }`}
+                            >
+                              📷 Đã quét {row.scannedQuantity}/{row.expectedQuantity}
+                            </span>
+                          ) : row.isChecked ? (
                             <span className="font-bold text-emerald-700">✓ Đã kiểm</span>
                           ) : (
                             <span className="text-slate-400">Chưa kiểm</span>

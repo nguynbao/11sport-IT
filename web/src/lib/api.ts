@@ -43,6 +43,8 @@ export interface ImportItem {
   actualQuantity: number;
   /** Giá gốc (đơn giá nhập, VND) do thủ kho nhập */
   costPrice?: number;
+  /** Số chiếc đã quét tag ở bước kiểm thực tế */
+  scannedQuantity?: number;
   note: string;
   isChecked: boolean;
   isConfirmed: boolean;

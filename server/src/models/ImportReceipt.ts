@@ -13,6 +13,8 @@ export interface IImportReceiptItem {
   actualQuantity: number;
   /** Giá gốc (đơn giá nhập, VND) do thủ kho nhập */
   costPrice: number;
+  /** Số chiếc đã quét tag ở bước kiểm thực tế */
+  scannedQuantity: number;
   note: string;
   isChecked: boolean;
   isConfirmed: boolean;
@@ -45,6 +47,7 @@ const ImportReceiptItemSchema = new Schema<IImportReceiptItem>(
     expectedQuantity: { type: Number, required: true, default: 0 },
     actualQuantity: { type: Number, required: true, default: 0 },
     costPrice: { type: Number, default: 0, min: 0 },
+    scannedQuantity: { type: Number, default: 0, min: 0 },
     note: { type: String, default: '' },
     isChecked: { type: Boolean, default: false },
     isConfirmed: { type: Boolean, default: false },

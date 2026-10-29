@@ -129,12 +129,17 @@
 - `POST /api/v1/imports/:id/finish-listing`
   - Bước 3 ("Hoàn tất" danh sách dự kiến): chuyển trạng thái từ `DRAFT` sang `CHECKING`.
 - `POST /api/v1/imports/:id/scan-check`
-  - Bước 4 ("Kiểm tra hàng thực tế" bằng quét tag liên tục):
-  - Body: `{ "query"?: "mã hoặc tên hàng", "productCode"?: "...", "productName"?: "...", "rawText"?: "...", "rowIndex"?: 0, "actualQuantity"?: 10 }` (cần ít nhất `query`/`productCode`/`productName` hoặc `rowIndex`)
-  - *(v1.2)* Chỉ **đối chiếu** với danh sách đã OCR ở bước Kiểm hàng, **không thêm dòng mới** và **không đổi `actualQuantity`** nếu không truyền.
-    - Khớp: dòng được đánh dấu `isChecked = true`, `isConfirmed = true` (tick xác nhận nhập kho).
-    - `rowIndex`: chọn trực tiếp dòng khi kết quả quét trùng nhiều dòng (`ambiguous`).
-  - Response: `{ "data": { "matched": boolean, "alreadyChecked"?: boolean, "ambiguous"?: boolean, "candidates"?: [{ "index", "productCode", "productName" }], "matchedIndex"?: number, "matchedItem"?: {...}, "warning"?: "string", "progress": { "checked": 3, "total": 10 }, "receipt": {...} } }`
+  - Bước 4 ("Kiểm tra hàng thực tế" bằng chụp tag):
+  - Body: `{ "query"?: "mã hoặc tên hàng", "productCode"?: "...", "productName"?: "...", "rawText"?: "...", "rowIndex"?: 0, "delta"?: 1 | -1 }` (cần ít nhất `query`/`productCode`/`productName` hoặc `rowIndex`)
+  - *(v1.3)* **Đếm từng chiếc**: mỗi lần quét khớp = +1 vào `scannedQuantity` của dòng (trường mới của dòng phiếu nhập, mặc định `0`).
+    - `actualQuantity = scannedQuantity`, `isChecked = true` (đã bắt đầu kiểm).
+    - `isConfirmed = true` (tick xác nhận nhập kho) khi `scannedQuantity >= expectedQuantity`.
+    - Dòng đã đủ số lượng mà quét tiếp → **không cộng**, trả `alreadyFull = true` kèm cảnh báo.
+    - Có nhiều dòng cùng điểm khớp → ưu tiên dòng **chưa đủ** số lượng; vẫn không phân định được → `ambiguous` + `candidates`, client gửi lại với `rowIndex`.
+    - `delta = -1`: hoàn tác 1 lần quét của dòng (`rowIndex` bắt buộc), không xuống dưới 0.
+    - Không bao giờ thêm dòng mới; tag không có trong danh sách → `matched = false` + `warning`.
+  - Response: `{ "data": { "matched": boolean, "alreadyFull"?: boolean, "isFull"?: boolean, "scannedQuantity"?: 1, "expectedQuantity"?: 2, "ambiguous"?: boolean, "candidates"?: [{ "index", "productCode", "productName", "scannedQuantity", "expectedQuantity" }], "matchedIndex"?: number, "matchedItem"?: {...}, "warning"?: "string", "progress": { "checked": 3, "total": 10, "scannedUnits": 25, "expectedUnits": 40 }, "receipt": {...} } }`
+    - `progress.checked` = số dòng đã đủ số lượng.
   - Chỉ cho phép khi phiếu ở trạng thái `CHECKING` (`400 IMPORT_NOT_CHECKING`); phiếu `COMPLETED` → `400 IMPORT_RECEIPT_LOCKED`.
 - `POST /api/v1/imports/:id/complete`
   - Bước 7 ("Hoàn thành" nhập kho):
