@@ -58,13 +58,14 @@
   - Query: `?categoryId=...&search=...&onlySellable=true|false`
   - Response: `{ "data": [...], "meta": { "totalProducts": 12, "totalStock": 350 } }`
 - `POST /api/v1/products`
-  - Body: `{ "name": "string", "categoryId": "string", "unit": "Cái | Đôi | Bộ", "sellingPrice": 0, "costPrice": 0 }`
-  - Lưu ý: `code` tự sinh từ `()` trong `name` và không được sửa sau khi tạo; `stock` khởi tạo = `0`.
-  - `sellingPrice` > 0 hoặc `costPrice` > 0 chỉ được phép khi người gọi có role `ADMIN` (Quản lý/Admin); role khác gửi `sellingPrice > 0` → `403 SELLING_PRICE_FORBIDDEN`, gửi `costPrice > 0` → `403 COST_PRICE_FORBIDDEN`.
+  - Body: `{ "name": "string", "categoryId": "string", "unit": "Cái | Đôi | Bộ", "quantity"?: 0, "sellingPrice": 0, "costPrice": 0, "upsertIfExists"?: boolean }`
+  - Lưu ý: `code` tự sinh từ `()` trong `name` và không được sửa sau khi tạo; `stock` khởi tạo = `quantity` (mặc định `0`).
+  - *(v1.7)* Khi `ADMIN` truyền `quantity > 0`: tạo sản phẩm với `stock = quantity` và tự động ghi `StockMovement` loại `IMPORT` (`referenceCode: "CMS-NHAP-THANG"`). Nếu `upsertIfExists = true` và mã sản phẩm đã tồn tại, hệ thống cộng dồn `quantity` vào `stock` hiện có (đồng thời cập nhật `costPrice`/`sellingPrice` nếu > 0) và ghi `StockMovement` loại `IMPORT`.
+  - `sellingPrice` > 0, `costPrice` > 0 hoặc `quantity` > 0 chỉ được phép khi người gọi có role `ADMIN` (Quản lý/Admin); role khác gửi `sellingPrice > 0` → `403 SELLING_PRICE_FORBIDDEN`, gửi `costPrice > 0` → `403 COST_PRICE_FORBIDDEN`, gửi `quantity > 0` → `403 DIRECT_STOCK_FORBIDDEN`.
 - `PATCH /api/v1/products/:id`
-  - Body: `{ "name": "string", "categoryId": "string", "unit": "string", "sellingPrice": 250000, "costPrice": 180000 }`
-  - Lưu ý: Không cho phép sửa `code` hoặc `stock` trực tiếp.
-  - *(v1.1)* Chỉ role `ADMIN` được đổi `sellingPrice` / `costPrice`; role khác → `403 SELLING_PRICE_FORBIDDEN` / `403 COST_PRICE_FORBIDDEN`.
+  - Body: `{ "name": "string", "categoryId": "string", "unit": "string", "sellingPrice": 250000, "costPrice": 180000, "stock"?: 20, "allowDirectStock"?: boolean }`
+  - Lưu ý: Không cho phép sửa `code`. Sửa `stock` trực tiếp mặc định bị chặn (`400 STOCK_DIRECT_EDIT_FORBIDDEN`), trừ khi `ADMIN` gửi kèm `allowDirectStock: true` từ CMS (hệ thống sẽ cập nhật `stock` và tự động ghi `StockMovement` loại `IMPORT` nếu tăng hoặc `ADJUSTMENT` nếu giảm để cân bằng Sổ kho).
+  - *(v1.1)* Chỉ role `ADMIN` được đổi `sellingPrice` / `costPrice` / `stock` (`allowDirectStock: true`); role khác → `403 SELLING_PRICE_FORBIDDEN` / `403 COST_PRICE_FORBIDDEN` / `403 DIRECT_STOCK_FORBIDDEN`.
 - *(v1.1 & v1.6)* Trường mới của `Product`: `costPrice` (giá gốc / giá nhập gần nhất, VND, số nguyên ≥ 0, mặc định `0`). Được cập nhật tự động khi hoàn thành phiếu nhập kho hoặc do `ADMIN` cập nhật trên CMS. Response `GET /products`, `GET /inventory/report`, `GET /inventory/movements` **ẩn hoàn toàn** `costPrice` với role `SALES` (Saler chỉ thấy `sellingPrice` và số lượng tồn kho).
 - `GET /api/v1/inventory/movements`
   - Query: `?productId=...&type=IMPORT|SALE|RETURN|EXCHANGE_IN|EXCHANGE_OUT|ADJUSTMENT&from=...&to=...`

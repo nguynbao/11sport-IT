@@ -52,14 +52,16 @@ export default function InventoryModule() {
   const [toDate, setToDate] = useState("");
   const [movementType, setMovementType] = useState("");
 
-  // Giá gốc & Giá bán chỉnh sửa theo productId
+  // Số lượng, Giá gốc & Giá bán chỉnh sửa theo productId
+  const [editingStocks, setEditingStocks] = useState<Record<string, number>>({});
   const [editingCosts, setEditingCosts] = useState<Record<string, number>>({});
   const [editingPrices, setEditingPrices] = useState<Record<string, number>>({});
 
-  // Tạo sản phẩm mới nhanh
+  // Tạo sản phẩm mới / Nhập thẳng vào kho
   const [newProdName, setNewProdName] = useState("");
   const [newProdCatId, setNewProdCatId] = useState("");
   const [newProdUnit, setNewProdUnit] = useState("Cái");
+  const [newProdQty, setNewProdQty] = useState<number>(1);
   const [newProdCost, setNewProdCost] = useState<number>(0);
   const [newProdPrice, setNewProdPrice] = useState<number>(0);
 
@@ -90,12 +92,15 @@ export default function InventoryModule() {
       setProducts(pList);
       setCategories(cList);
 
+      const stockMap: Record<string, number> = {};
       const costMap: Record<string, number> = {};
       const priceMap: Record<string, number> = {};
       pList.forEach((p) => {
+        stockMap[p._id] = Number(p.stock || 0);
         costMap[p._id] = Number(p.costPrice || 0);
         priceMap[p._id] = Number(p.sellingPrice || 0);
       });
+      setEditingStocks(stockMap);
       setEditingCosts(costMap);
       setEditingPrices(priceMap);
 
@@ -169,10 +174,17 @@ export default function InventoryModule() {
 
   const handleUpdateProductPrices = async (prod: Product) => {
     setStatusMsg(null);
+    const newStock = Math.max(
+      0,
+      Math.round(Number(editingStocks[prod._id] ?? prod.stock ?? 0))
+    );
     const newCost = Number(editingCosts[prod._id] ?? prod.costPrice ?? 0);
     const newPrice = Number(editingPrices[prod._id] ?? prod.sellingPrice ?? 0);
-    if (newCost < 0 || newPrice < 0) {
-      setStatusMsg({ type: "error", text: "Giá gốc và giá bán không được âm." });
+    if (newStock < 0 || newCost < 0 || newPrice < 0) {
+      setStatusMsg({
+        type: "error",
+        text: "Số lượng, giá gốc và giá bán không được âm.",
+      });
       return;
     }
     try {
@@ -181,19 +193,23 @@ export default function InventoryModule() {
         body: JSON.stringify({
           name: prod.name,
           unit: prod.unit,
+          stock: newStock,
+          allowDirectStock: true,
           costPrice: newCost,
           sellingPrice: newPrice,
         }),
       });
       setStatusMsg({
         type: "success",
-        text: `Đã lưu giá cho "${prod.name}": Giá gốc ${formatVND(newCost)} · Giá bán ${formatVND(newPrice)}!`,
+        text: `Đã cập nhật "${prod.name}": SL tồn ${newStock} ${prod.unit} · Giá gốc ${formatVND(
+          newCost
+        )} · Giá bán ${formatVND(newPrice)}!`,
       });
       loadProductsAndCats();
     } catch (err: any) {
       setStatusMsg({
         type: "error",
-        text: err?.message || "Lỗi khi cập nhật giá sản phẩm.",
+        text: err?.message || "Lỗi khi cập nhật sản phẩm.",
       });
     }
   };
@@ -202,31 +218,37 @@ export default function InventoryModule() {
     e.preventDefault();
     setStatusMsg(null);
     if (!newProdName.trim()) return;
+    const qty = Math.max(0, Math.round(Number(newProdQty || 0)));
     try {
-      await apiRequest("/products", {
+      const res = await apiRequest<any>("/products", {
         method: "POST",
         body: JSON.stringify({
           name: newProdName.trim(),
           categoryId: newProdCatId,
           unit: newProdUnit,
+          quantity: qty,
           costPrice: Math.max(0, Number(newProdCost || 0)),
           sellingPrice: Math.max(0, Number(newProdPrice || 0)),
+          upsertIfExists: true,
         }),
       });
+      const code = generateProductCode(newProdName);
+      const isUpserted = Boolean(res?.meta?.upserted);
       setStatusMsg({
         type: "success",
-        text: `Đã tạo sản phẩm mới với mã tự sinh "${generateProductCode(
-          newProdName
-        )}" thành công!`,
+        text: isUpserted
+          ? `Mã "${code}" đã có trong kho — Đã cộng thêm +${qty} ${newProdUnit} (Tồn mới: ${res?.data?.stock ?? qty})!`
+          : `Đã nhập thẳng sản phẩm "${code}" vào kho với số lượng ${qty} ${newProdUnit}!`,
       });
       setNewProdName("");
+      setNewProdQty(1);
       setNewProdCost(0);
       setNewProdPrice(0);
       loadProductsAndCats();
     } catch (err: any) {
       setStatusMsg({
         type: "error",
-        text: err?.message || "Không thể tạo sản phẩm mới.",
+        text: err?.message || "Không thể nhập sản phẩm vào kho.",
       });
     }
   };
@@ -424,15 +446,22 @@ export default function InventoryModule() {
             </div>
           </div>
 
-          {/* Form tạo nhanh sản phẩm mới (Mã tự sinh từ ngoặc đơn + Giá gốc + Giá bán) */}
+          {/* Form nhập thẳng sản phẩm vào kho (Số lượng + Giá gốc + Giá bán) */}
           <form
             onSubmit={handleCreateProduct}
             className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4"
           >
-            <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-              <Plus className="w-4 h-4 text-emerald-600" />
-              Thêm Sản phẩm mới (Tự sinh Mã sản phẩm từ `(...)` theo BR-03)
-            </h3>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                <Plus className="w-4 h-4 text-emerald-600" />
+                Nhập thẳng Sản phẩm vào kho (Tự sinh Mã từ `(...)` · Tự động ghi Sổ kho)
+              </h3>
+              {newProdName.trim() && (
+                <span className="text-[11px] font-mono font-bold px-2.5 py-1 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                  Mã tự sinh: {generateProductCode(newProdName)}
+                </span>
+              )}
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
               <div className="md:col-span-4">
                 <label className="block text-xs font-bold text-slate-600 mb-1">
@@ -445,18 +474,6 @@ export default function InventoryModule() {
                   onChange={(e) => setNewProdName(e.target.value)}
                   placeholder="VD: Áo Polo Unisex V1 (Áo Polo Unisex V1 KMAP26 Đỏ size L)"
                   className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs"
-                />
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-xs font-bold text-slate-600 mb-1">
-                  Mã tự sinh
-                </label>
-                <input
-                  type="text"
-                  readOnly
-                  value={generateProductCode(newProdName)}
-                  placeholder="Tự động sinh..."
-                  className="w-full px-3 py-2 rounded-lg border border-emerald-200 bg-emerald-50 font-mono text-[11px] font-bold text-emerald-900"
                 />
               </div>
               <div className="md:col-span-2">
@@ -474,6 +491,34 @@ export default function InventoryModule() {
                     </option>
                   ))}
                 </select>
+              </div>
+              <div className="md:col-span-1">
+                <label className="block text-xs font-bold text-slate-600 mb-1">
+                  ĐVT
+                </label>
+                <input
+                  type="text"
+                  value={newProdUnit}
+                  onChange={(e) => setNewProdUnit(e.target.value)}
+                  placeholder="Cái"
+                  className="w-full px-2 py-2 rounded-lg border border-slate-300 text-xs text-center"
+                />
+              </div>
+              <div className="md:col-span-1">
+                <label className="block text-xs font-bold text-emerald-700 mb-1">
+                  Số lượng *
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  required
+                  value={newProdQty}
+                  onChange={(e) =>
+                    setNewProdQty(Math.max(0, Math.round(Number(e.target.value) || 0)))
+                  }
+                  className="w-full px-2 py-2 rounded-lg border border-emerald-400 bg-emerald-50/50 text-xs font-mono font-extrabold text-emerald-900 text-right"
+                />
               </div>
               <div className="md:col-span-1">
                 <label className="block text-xs font-bold text-slate-600 mb-1">
@@ -506,7 +551,7 @@ export default function InventoryModule() {
                   type="submit"
                   className="w-full py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs"
                 >
-                  + Tạo Sản Phẩm
+                  + Nhập vào kho
                 </button>
               </div>
             </div>
@@ -562,7 +607,7 @@ export default function InventoryModule() {
                     <th className="py-3 px-3">Tên sản phẩm</th>
                     <th className="py-3 px-3">Category</th>
                     <th className="py-3 px-2.5 text-center">ĐVT</th>
-                    <th className="py-3 px-3 text-right whitespace-nowrap">Số lượng tồn</th>
+                    <th className="py-3 px-3 text-right w-36 whitespace-nowrap">Số lượng tồn</th>
                     <th className="py-3 px-3 text-right w-44 whitespace-nowrap">Giá gốc (VND)</th>
                     <th className="py-3 px-3 text-right w-44 whitespace-nowrap">Giá bán lẻ (VND)</th>
                     <th className="py-3 px-3 text-right w-32">Thao tác</th>
@@ -570,7 +615,8 @@ export default function InventoryModule() {
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {products.map((p) => {
-                    const qty = Number(p.stock) || 0;
+                    const qty = Number(editingStocks[p._id] ?? p.stock ?? 0);
+                    const origQty = Number(p.stock) || 0;
                     const costVal = Number(editingCosts[p._id] ?? p.costPrice ?? 0);
                     const sellVal = Number(editingPrices[p._id] ?? p.sellingPrice ?? 0);
                     const margin = sellVal - costVal;
@@ -588,8 +634,29 @@ export default function InventoryModule() {
                             "-"}
                         </td>
                         <td className="py-3 px-2.5 text-center">{p.unit}</td>
-                        <td className="py-3 px-3 text-right font-mono font-extrabold text-emerald-700">
-                          {qty}
+                        <td className="py-3 px-3 text-right">
+                          <input
+                            type="number"
+                            min={0}
+                            step={1}
+                            value={qty}
+                            onChange={(e) =>
+                              setEditingStocks((prev) => ({
+                                ...prev,
+                                [p._id]: Math.max(0, Math.round(Number(e.target.value) || 0)),
+                              }))
+                            }
+                            className={`w-28 px-2.5 py-1.5 rounded border text-right font-mono font-extrabold ${
+                              qty !== origQty
+                                ? "border-emerald-500 bg-emerald-50 text-emerald-900"
+                                : "border-slate-300 bg-white text-emerald-700"
+                            }`}
+                          />
+                          {qty !== origQty && (
+                            <div className="mt-1 text-[10px] font-mono font-bold text-emerald-700">
+                              Hiện tại: {origQty} ({qty > origQty ? `+${qty - origQty}` : qty - origQty})
+                            </div>
+                          )}
                         </td>
                         <td className="py-3 px-3 text-right">
                           <input
@@ -651,7 +718,7 @@ export default function InventoryModule() {
                             onClick={() => handleUpdateProductPrices(p)}
                             className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold inline-flex items-center gap-1"
                           >
-                            <Save className="w-3.5 h-3.5" /> Lưu giá
+                            <Save className="w-3.5 h-3.5" /> Lưu
                           </button>
                         </td>
                       </tr>

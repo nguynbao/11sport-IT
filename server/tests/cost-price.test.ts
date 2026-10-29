@@ -125,4 +125,61 @@ describe('v1.1: Giá gốc khi nhập kho & phân quyền giá bán', () => {
     expect(movSales.costPrice).toBeUndefined();
     expect(movSales.sellingPrice).toBe(299000);
   });
+
+  it('CMS Admin nhập thẳng sản phẩm vào kho (quantity, upsertIfExists) & sửa số lượng tồn (allowDirectStock)', async () => {
+    const directName = 'Áo Ba Lỗ Gym (Áo Ba Lỗ Gym ABL09 Đen size L)';
+    const directCode = 'AO_BA_LO_GYM_ABL09_DEN_SIZE_L';
+
+    // 1. Tạo mới kèm số lượng nhập thẳng = 12
+    const createRes = await request(app)
+      .post('/api/v1/products')
+      .set('x-user-id', 'admin')
+      .send({
+        name: directName,
+        categoryId,
+        unit: 'Cái',
+        quantity: 12,
+        costPrice: 120000,
+        sellingPrice: 220000,
+        upsertIfExists: true,
+      });
+    expect(createRes.status).toBe(201);
+    expect(createRes.body.data.stock).toBe(12);
+    expect(createRes.body.data.costPrice).toBe(120000);
+    expect(createRes.body.data.sellingPrice).toBe(220000);
+
+    // 2. Nhập thẳng thêm 8 cái cho mã đã có (upsertIfExists = true) -> tồn kho = 20
+    const upsertRes = await request(app)
+      .post('/api/v1/products')
+      .set('x-user-id', 'admin')
+      .send({
+        name: directName,
+        categoryId,
+        unit: 'Cái',
+        quantity: 8,
+        costPrice: 125000,
+        sellingPrice: 230000,
+        upsertIfExists: true,
+      });
+    expect(upsertRes.status).toBe(200);
+    expect(upsertRes.body.meta.upserted).toBe(true);
+    expect(upsertRes.body.data.stock).toBe(20);
+    expect(upsertRes.body.data.costPrice).toBe(125000);
+
+    // 3. Admin sửa trực tiếp cột Số lượng tồn trên bảng CMS (allowDirectStock = true) -> tồn kho = 25
+    const patchRes = await request(app)
+      .patch(`/api/v1/products/${createRes.body.data._id}`)
+      .set('x-user-id', 'admin')
+      .send({ stock: 25, allowDirectStock: true, costPrice: 125000, sellingPrice: 235000 });
+    expect(patchRes.status).toBe(200);
+    expect(patchRes.body.data.stock).toBe(25);
+    expect(patchRes.body.data.sellingPrice).toBe(235000);
+
+    // 4. Báo cáo tồn kho kế toán vẫn cân bằng tuyệt đối (closingStock === currentStock === 25)
+    const reportRes = await request(app).get('/api/v1/inventory/report').set('x-user-id', 'admin');
+    const row = reportRes.body.data.find((r: any) => r.productCode === directCode);
+    expect(row.importedQty).toBe(25);
+    expect(row.closingStock).toBe(25);
+    expect(row.currentStock).toBe(25);
+  });
 });

@@ -81,7 +81,7 @@ productsInventoryRouter.get('/products', async (req, res, next) => {
 // POST /api/v1/products
 productsInventoryRouter.post('/products', async (req, res, next) => {
   try {
-    const { name, categoryId, unit, sellingPrice, costPrice } = req.body || {};
+    const { name, categoryId, unit, sellingPrice, costPrice, quantity, upsertIfExists } = req.body || {};
     if (!name || !String(name).trim()) {
       throw new ApiError(400, 'VALIDATION_ERROR', 'Tên sản phẩm là bắt buộc', {
         name: 'Bắt buộc',
@@ -93,8 +93,70 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
       throw new ApiError(400, 'INVALID_PRODUCT_NAME', 'Không thể sinh mã sản phẩm từ tên này');
     }
 
+    const price = sellingPrice !== undefined ? Math.round(Number(sellingPrice)) : 0;
+    if (isNaN(price) || price < 0) {
+      throw new ApiError(400, 'INVALID_PRICE', 'Giá bán phải là số nguyên không âm');
+    }
+    if (price > 0 && !isPriceManager(req.user?.role)) {
+      throw new ApiError(403, 'SELLING_PRICE_FORBIDDEN', 'Chỉ Quản lý/Admin mới được đặt giá bán');
+    }
+
+    const cost = costPrice !== undefined ? Math.round(Number(costPrice)) : 0;
+    if (isNaN(cost) || cost < 0) {
+      throw new ApiError(400, 'INVALID_COST_PRICE', 'Giá gốc phải là số nguyên không âm');
+    }
+    if (cost > 0 && !isPriceManager(req.user?.role)) {
+      throw new ApiError(403, 'COST_PRICE_FORBIDDEN', 'Chỉ Quản lý/Admin mới được đặt giá gốc');
+    }
+
+    const qty = quantity !== undefined ? Math.round(Number(quantity)) : 0;
+    if (isNaN(qty) || qty < 0) {
+      throw new ApiError(400, 'INVALID_QUANTITY', 'Số lượng nhập kho phải là số nguyên không âm');
+    }
+    if (qty > 0 && !isPriceManager(req.user?.role)) {
+      throw new ApiError(
+        403,
+        'DIRECT_STOCK_FORBIDDEN',
+        'Chỉ Quản lý/Admin mới được nhập thẳng số lượng sản phẩm vào kho'
+      );
+    }
+
     const existing = await productRepo.findOne({ code });
     if (existing) {
+      if (upsertIfExists && isPriceManager(req.user?.role) && qty > 0) {
+        const balanceBefore = Number(existing.stock) || 0;
+        const balanceAfter = balanceBefore + qty;
+        const patchFields: Record<string, any> = {
+          stock: balanceAfter,
+        };
+        if (cost > 0) patchFields.costPrice = cost;
+        if (price > 0) patchFields.sellingPrice = price;
+
+        const updated = await productRepo.updateById(existing._id, patchFields);
+        await stockMovementRepo.create({
+          type: 'IMPORT',
+          productId: existing._id,
+          productCode: existing.code,
+          productName: existing.name,
+          categoryId: existing.categoryId,
+          unit: existing.unit,
+          quantityChange: qty,
+          balanceBefore,
+          balanceAfter,
+          referenceType: 'IMPORT_RECEIPT',
+          referenceId: existing._id,
+          referenceCode: 'CMS-NHAP-THANG',
+          performedBy: req.user?.userId || 'ADMIN',
+          performedByName: req.user?.fullName || 'Quản lý kho (CMS)',
+          note: `Admin nhập thêm ${qty} ${existing.unit} thẳng vào kho trên CMS`,
+        });
+
+        return res.status(200).json({
+          data: updated,
+          meta: { upserted: true, addedQuantity: qty },
+        });
+      }
+
       throw new ApiError(
         400,
         'DUPLICATE_PRODUCT_CODE',
@@ -121,23 +183,6 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
       });
     }
 
-    const price = sellingPrice !== undefined ? Math.round(Number(sellingPrice)) : 0;
-    if (isNaN(price) || price < 0) {
-      throw new ApiError(400, 'INVALID_PRICE', 'Giá bán phải là số nguyên không âm');
-    }
-    if (price > 0 && !isPriceManager(req.user?.role)) {
-      throw new ApiError(403, 'SELLING_PRICE_FORBIDDEN', 'Chỉ Quản lý/Admin mới được đặt giá bán');
-    }
-
-    const cost = costPrice !== undefined ? Math.round(Number(costPrice)) : 0;
-    if (isNaN(cost) || cost < 0) {
-      throw new ApiError(400, 'INVALID_COST_PRICE', 'Giá gốc phải là số nguyên không âm');
-    }
-    if (cost > 0 && !isPriceManager(req.user?.role)) {
-      throw new ApiError(403, 'COST_PRICE_FORBIDDEN', 'Chỉ Quản lý/Admin mới được đặt giá gốc');
-    }
-
-    // BR-05: Tồn kho khởi tạo luôn = 0, không cho phép nhập tay trực tiếp khi tạo
     const created = await productRepo.create({
       code,
       name: String(name).trim(),
@@ -147,9 +192,29 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
       unit: unit ? String(unit).trim() : 'Cái',
       sellingPrice: price,
       costPrice: cost,
-      stock: 0,
+      stock: qty,
       status: 'ACTIVE',
     });
+
+    if (qty > 0) {
+      await stockMovementRepo.create({
+        type: 'IMPORT',
+        productId: created._id,
+        productCode: created.code,
+        productName: created.name,
+        categoryId: created.categoryId,
+        unit: created.unit,
+        quantityChange: qty,
+        balanceBefore: 0,
+        balanceAfter: qty,
+        referenceType: 'IMPORT_RECEIPT',
+        referenceId: created._id,
+        referenceCode: 'CMS-NHAP-THANG',
+        performedBy: req.user?.userId || 'ADMIN',
+        performedByName: req.user?.fullName || 'Quản lý kho (CMS)',
+        note: `Admin nhập thẳng sản phẩm mới vào kho trên CMS (${qty} ${created.unit})`,
+      });
+    }
 
     res.status(201).json({
       data: created,
@@ -169,7 +234,8 @@ productsInventoryRouter.patch('/products/:id', async (req, res, next) => {
       throw new ApiError(404, 'PRODUCT_NOT_FOUND', 'Không tìm thấy sản phẩm');
     }
 
-    const { code, stock, name, categoryId, unit, sellingPrice, costPrice, status } = req.body || {};
+    const { code, stock, allowDirectStock, name, categoryId, unit, sellingPrice, costPrice, status } =
+      req.body || {};
 
     // BR-03: Mã sản phẩm không được sửa sau khi tạo
     if (code !== undefined && String(code).toUpperCase() !== product.code) {
@@ -181,17 +247,35 @@ productsInventoryRouter.patch('/products/:id', async (req, res, next) => {
       );
     }
 
-    // BR-05: Không cho phép sửa tay tồn kho trực tiếp
-    if (stock !== undefined && Number(stock) !== product.stock) {
-      throw new ApiError(
-        400,
-        'STOCK_DIRECT_EDIT_FORBIDDEN',
-        'Không được sửa trực tiếp tồn kho; vui lòng dùng Nhập kho hoặc Phiếu điều chỉnh kho',
-        { stock: 'Không được sửa tay tồn kho' }
-      );
+    const updateData: Record<string, any> = {};
+    let stockDelta = 0;
+    const balanceBefore = Number(product.stock) || 0;
+
+    // BR-05: Chỉ cho phép Admin sửa trực tiếp tồn kho từ CMS khi truyền allowDirectStock = true
+    if (stock !== undefined && Number(stock) !== balanceBefore) {
+      if (!allowDirectStock) {
+        throw new ApiError(
+          400,
+          'STOCK_DIRECT_EDIT_FORBIDDEN',
+          'Không được sửa trực tiếp tồn kho; vui lòng dùng Nhập kho hoặc Phiếu điều chỉnh kho',
+          { stock: 'Không được sửa tay tồn kho' }
+        );
+      }
+      if (!isPriceManager(req.user?.role)) {
+        throw new ApiError(
+          403,
+          'DIRECT_STOCK_FORBIDDEN',
+          'Chỉ Quản lý/Admin mới được cập nhật số lượng kho trực tiếp'
+        );
+      }
+      const newStock = Math.round(Number(stock));
+      if (isNaN(newStock) || newStock < 0) {
+        throw new ApiError(400, 'INVALID_QUANTITY', 'Số lượng tồn kho phải là số nguyên không âm');
+      }
+      stockDelta = newStock - balanceBefore;
+      updateData.stock = newStock;
     }
 
-    const updateData: Record<string, any> = {};
     if (name !== undefined && String(name).trim()) {
       updateData.name = String(name).trim();
     }
@@ -232,6 +316,30 @@ productsInventoryRouter.patch('/products/:id', async (req, res, next) => {
     }
 
     const updated = await productRepo.updateById(id, updateData);
+
+    if (stockDelta !== 0 && updated) {
+      const isImport = stockDelta > 0;
+      await stockMovementRepo.create({
+        type: isImport ? 'IMPORT' : 'ADJUSTMENT',
+        productId: updated._id,
+        productCode: updated.code,
+        productName: updated.name,
+        categoryId: updated.categoryId,
+        unit: updated.unit,
+        quantityChange: stockDelta,
+        balanceBefore,
+        balanceAfter: updated.stock,
+        referenceType: isImport ? 'IMPORT_RECEIPT' : 'ADJUSTMENT',
+        referenceId: updated._id,
+        referenceCode: isImport ? 'CMS-NHAP-THANG' : 'CMS-DIEU-CHINH',
+        performedBy: req.user?.userId || 'ADMIN',
+        performedByName: req.user?.fullName || 'Quản lý kho (CMS)',
+        note: isImport
+          ? `Admin nhập thêm ${stockDelta} ${updated.unit} trực tiếp trên CMS`
+          : `Admin điều chỉnh giảm ${Math.abs(stockDelta)} ${updated.unit} trực tiếp trên CMS`,
+      });
+    }
+
     res.json({
       data: updated,
       meta: {},
