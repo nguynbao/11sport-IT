@@ -16,3 +16,5 @@ Trạng thái: `Backlog` | `Đang làm` | `Chờ review` | `Đang test` | `Xong`
 | FE-03 | Responsive Web (`web/`): header/tab, bảng, modal, POS cho mobile/tablet | web | Frontend | Chờ review | FE-02 | Sửa className/bố cục, không đổi logic |
 | BE-03 | Giá gốc (`costPrice`) khi nhập kho + phân quyền giá bán chỉ ADMIN | server / docs | Backend | Chờ review | BE-02 | Cập nhật `docs/api-contract.md` v1.1, test `server/tests/cost-price.test.ts` 3/3 PASS |
 | FE-04 | Ô Giá gốc trong phiếu nhập (web) + hiển thị giá gốc/lãi gộp khi đặt giá bán (cms) | web / cms | Frontend | Chờ review | BE-03 | `ImportTab.tsx`, `InventoryModule.tsx` |
+| BE-04 | Quét Tag kiểm thực tế v1.2: chỉ đối chiếu + tick xác nhận, không thêm dòng/không đổi SL, xử lý trùng nhiều dòng | server / docs | Backend | Chờ review | BE-02 | `server/src/utils/tagMatch.ts`, test `server/tests/tag-scan.test.ts` 8/8 PASS |
+| FE-05 | Màn hình quét Tag liên tục (tự phát hiện tag mới, tự chụp, tiến trình x/y), tự mở sau Hoàn tất kiểm hàng | web | Frontend | Chờ review | BE-04 | `TagCheckScannerModal.tsx`, `ImportTab.tsx` |

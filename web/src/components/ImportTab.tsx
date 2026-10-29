@@ -11,6 +11,7 @@ import {
   formatVND,
 } from "@/lib/api";
 import CameraScannerModal from "./CameraScannerModal";
+import TagCheckScannerModal from "./TagCheckScannerModal";
 import {
   Camera,
   Plus,
@@ -51,7 +52,6 @@ export default function ImportTab() {
 
   // Bước 4: Tìm kiếm nhanh & Quét tag
   const [quickCheckSearch, setQuickCheckSearch] = useState("");
-  const [scanRowIndex, setScanRowIndex] = useState<number | null>(null);
   const [openOcrModal, setOpenOcrModal] = useState(false);
   const [openTagModal, setOpenTagModal] = useState(false);
 
@@ -252,8 +252,9 @@ export default function ImportTab() {
       await loadInitialData();
       setStatusMsg({
         type: "success",
-        text: "Đã chốt danh sách dự kiến (Bước 3). Chuyển sang Bước 4: Kiểm tra hàng thực tế!",
+        text: "Đã chốt danh sách kiểm hàng (Bước 3). Đang mở camera quét Tag kiểm tra thực tế (Bước 4)...",
       });
+      setOpenTagModal(true);
     } catch (err: any) {
       setStatusMsg({
         type: "error",
@@ -264,95 +265,19 @@ export default function ImportTab() {
     }
   };
 
-  // Bước 4: Xử lý đối chiếu khi quét Tag hoặc Tìm kiếm nhanh
-  const handleTagScanMatch = async (query: string, actualQty?: number) => {
-    if (!query) return;
-    const normalizedCode = generateProductCode(query);
-
-    // Nếu đang ở phiếu đã lưu على server, gọi thử endpoint scan-check
-    if (currentReceipt?._id) {
-      try {
-        const res = await apiRequest<any>(
-          `/imports/${currentReceipt._id}/scan-check`,
-          {
-            method: "POST",
-            body: JSON.stringify({
-              query,
-              actualQuantity: actualQty,
-            }),
-          }
-        );
-        if (res.data?.receipt) {
-          handleSelectReceipt(res.data.receipt);
-          setStatusMsg({
-            type: res.data.matched === false ? "warning" : "success",
-            text:
-              res.data.message ||
-              `Đã kiểm tra mã "${query}" và cập nhật trạng thái kiểm thực tế.`,
-          });
-          return;
-        }
-      } catch {
-        // Fallback xử lý trên client và lưu nháp
-      }
-    }
-
-    // Đối chiếu trực tiếp trên danh sách items
-    const matchIdx = items.findIndex(
-      (it, idx) =>
-        (scanRowIndex !== null && idx === scanRowIndex) ||
-        it.productCode.toUpperCase() === query.toUpperCase() ||
-        it.productCode.toUpperCase() === normalizedCode ||
-        it.productName.toLowerCase().includes(query.toLowerCase())
-    );
-
-    if (matchIdx >= 0) {
-      setItems((prev) => {
-        const next = [...prev];
-        const row = { ...next[matchIdx] };
-        row.isChecked = true;
-        row.isConfirmed = true;
-        if (actualQty !== undefined) {
-          row.actualQuantity = actualQty;
-        }
-        const diff = row.actualQuantity - row.expectedQuantity;
-        if (diff !== 0) {
-          row.discrepancyNote =
-            diff > 0 ? `Thừa ${diff} ${row.unit}` : `Thiếu ${Math.abs(diff)} ${row.unit}`;
-        } else {
-          row.discrepancyNote = "Khớp đủ";
-        }
-        next[matchIdx] = row;
-        return next;
-      });
-      setStatusMsg({
-        type: "success",
-        text: `Đã khớp dòng #${matchIdx + 1} (${items[matchIdx].productCode}) — Đánh dấu ĐÃ KIỂM & XÁC NHẬN!`,
-      });
-    } else {
-      // Cảnh báo không khớp và cho phép thêm vào phiếu
-      const newCode = normalizedCode || "MA_MOI";
-      setItems((prev) => [
-        ...prev,
-        {
-          stt: prev.length + 1,
-          productName: query.includes("(") ? query : `${query} (${query})`,
-          productCode: newCode,
-          unit: "Cái",
-          expectedQuantity: 0,
-          actualQuantity: actualQty ?? 1,
-          note: "Phát sinh ngoài danh sách khi quét Tag",
-          isChecked: true,
-          isConfirmed: true,
-          discrepancyNote: "Hàng phát sinh mới khi kiểm thực tế",
-        },
-      ]);
+  // Bước 4: Mở màn hình quét Tag liên tục (chỉ đối chiếu với danh sách đã OCR ở bước Kiểm hàng).
+  // Lưu các chỉnh sửa hiện tại trước để server đối chiếu đúng danh sách.
+  const handleOpenTagScanner = async () => {
+    const saved = await handleSaveDraft();
+    if (!saved?._id) return;
+    if (saved.status !== "CHECKING") {
       setStatusMsg({
         type: "warning",
-        text: `Cảnh báo: Mã "${query}" chưa có trong danh sách dự kiến! Hệ thống đã thêm dòng phát sinh mới và ghi chú chênh lệch.`,
+        text: 'Vui lòng bấm "Hoàn tất kiểm hàng" trước khi quét Tag kiểm tra thực tế.',
       });
+      return;
     }
-    setScanRowIndex(null);
+    setOpenTagModal(true);
   };
 
   // Bước 7: Hoàn thành nhập kho (Chỉ đẩy các dòng isConfirmed = true vào kho và khóa phiếu)
@@ -642,6 +567,7 @@ export default function ImportTab() {
           {/* Các nút thao tác chính của Bước 2, 3, 4 */}
           {!isCompleted && (
             <div className="flex flex-col lg:flex-row lg:flex-wrap lg:items-center justify-between gap-3 pt-2 border-t border-slate-100">
+              {currentStepStatus === "DRAFT" ? (
               <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
                 {/* Bước 2: Nút Kiểm hàng Camera OCR */}
                 <button
@@ -661,6 +587,11 @@ export default function ImportTab() {
                   <Plus className="w-4 h-4" /> Thêm dòng mới
                 </button>
               </div>
+              ) : (
+                <div className="text-xs font-semibold text-slate-600">
+                  Đã chốt danh sách kiểm hàng — quét Tag để tick xác nhận từng dòng.
+                </div>
+              )}
 
               {/* Bước 4: Tìm kiếm nhanh & Quét Tag kiểm tra thực tế */}
               <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
@@ -675,17 +606,17 @@ export default function ImportTab() {
                   />
                 </div>
 
+                {currentStepStatus === "CHECKING" && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setScanRowIndex(null);
-                    setOpenTagModal(true);
-                  }}
+                  disabled={loading}
+                  onClick={handleOpenTagScanner}
                   className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-sm"
                 >
                   <Camera className="w-4 h-4" />
-                  📷 Quét Tag Kiểm Tra Thực Tế
+                  📷 Quét Tag Kiểm Tra Thực Tế (liên tục)
                 </button>
+                )}
               </div>
             </div>
           )}
@@ -894,19 +825,6 @@ export default function ImportTab() {
                             className="w-16 px-2 py-1 rounded border border-amber-300 text-right font-mono font-bold bg-white"
                             title="Số lượng thực nhận"
                           />
-                          {!isCompleted && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setScanRowIndex(idx);
-                                setOpenTagModal(true);
-                              }}
-                              className="px-2 py-1 rounded bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-[11px] flex items-center gap-1 shrink-0"
-                              title="Mở Camera quét Tag kiểm tra mặt hàng này"
-                            >
-                              <Camera className="w-3 h-3" /> Quét
-                            </button>
-                          )}
                         </div>
                         <div className="mt-1 flex items-center justify-between text-[10px]">
                           {row.isChecked ? (
@@ -1004,7 +922,7 @@ export default function ImportTab() {
                     onClick={handleFinishListing}
                     className="px-5 py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs flex items-center justify-center gap-2 shadow"
                   >
-                    ➡️ Hoàn tất DS dự kiến (Sang Bước Kiểm Thực Tế)
+                    ➡️ Hoàn tất kiểm hàng (Mở camera quét Tag)
                     <ArrowRight className="w-4 h-4" />
                   </button>
                 )}
@@ -1046,17 +964,15 @@ export default function ImportTab() {
         />
       )}
 
-      {/* Modal Camera Quét Tag Kiểm thực tế */}
-      {openTagModal && (
-        <CameraScannerModal
-          mode="SCAN_TAG"
-          expectedCodeHint={
-            scanRowIndex !== null ? items[scanRowIndex]?.productCode : undefined
-          }
-          onConfirmTagScan={(query, qty) => handleTagScanMatch(query, qty)}
+      {/* Modal Quét Tag kiểm thực tế — liên tục, chỉ đối chiếu & tick xác nhận */}
+      {openTagModal && currentReceipt?._id && (
+        <TagCheckScannerModal
+          receiptId={currentReceipt._id}
+          items={items}
+          onReceiptUpdate={(rc) => handleSelectReceipt(rc)}
           onClose={() => {
-            setScanRowIndex(null);
             setOpenTagModal(false);
+            loadInitialData();
           }}
         />
       )}

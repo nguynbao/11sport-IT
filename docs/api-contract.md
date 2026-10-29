@@ -129,9 +129,13 @@
 - `POST /api/v1/imports/:id/finish-listing`
   - Bước 3 ("Hoàn tất" danh sách dự kiến): chuyển trạng thái từ `DRAFT` sang `CHECKING`.
 - `POST /api/v1/imports/:id/scan-check`
-  - Bước 4 ("Kiểm tra hàng thực tế" bằng camera/tìm kiếm):
-  - Body: `{ "query": "mã hoặc tên hàng trên tag", "actualQuantity"?: 10 }`
-  - Đối chiếu với các dòng trong phiếu, trả về dòng khớp hoặc cảnh báo không khớp.
+  - Bước 4 ("Kiểm tra hàng thực tế" bằng quét tag liên tục):
+  - Body: `{ "query"?: "mã hoặc tên hàng", "productCode"?: "...", "productName"?: "...", "rawText"?: "...", "rowIndex"?: 0, "actualQuantity"?: 10 }` (cần ít nhất `query`/`productCode`/`productName` hoặc `rowIndex`)
+  - *(v1.2)* Chỉ **đối chiếu** với danh sách đã OCR ở bước Kiểm hàng, **không thêm dòng mới** và **không đổi `actualQuantity`** nếu không truyền.
+    - Khớp: dòng được đánh dấu `isChecked = true`, `isConfirmed = true` (tick xác nhận nhập kho).
+    - `rowIndex`: chọn trực tiếp dòng khi kết quả quét trùng nhiều dòng (`ambiguous`).
+  - Response: `{ "data": { "matched": boolean, "alreadyChecked"?: boolean, "ambiguous"?: boolean, "candidates"?: [{ "index", "productCode", "productName" }], "matchedIndex"?: number, "matchedItem"?: {...}, "warning"?: "string", "progress": { "checked": 3, "total": 10 }, "receipt": {...} } }`
+  - Chỉ cho phép khi phiếu ở trạng thái `CHECKING` (`400 IMPORT_NOT_CHECKING`); phiếu `COMPLETED` → `400 IMPORT_RECEIPT_LOCKED`.
 - `POST /api/v1/imports/:id/complete`
   - Bước 7 ("Hoàn thành" nhập kho):
   - Chỉ các dòng có `isConfirmed === true` mới được cộng `actualQuantity` vào tồn kho (tự tạo sản phẩm mới nếu `productCode` chưa có trong hệ thống), ghi `StockMovement` loại `IMPORT`, và khóa phiếu (`status = "COMPLETED"`).

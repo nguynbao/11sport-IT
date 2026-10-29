@@ -6,6 +6,7 @@ import {
   stockMovementRepo,
 } from '../config/db';
 import { generateProductCode } from '../utils/productCode';
+import { matchTagToItems } from '../utils/tagMatch';
 import { ApiError } from '../utils/errors';
 import { IImportReceiptItem } from '../models/ImportReceipt';
 import {
@@ -298,7 +299,8 @@ importsRouter.post('/imports/:id/finish-listing', async (req, res, next) => {
   }
 });
 
-// POST /api/v1/imports/:id/scan-check (Bước 4: Quét camera tag hoặc tìm kiếm đối chiếu)
+// POST /api/v1/imports/:id/scan-check (Bước 4: Quét tag liên tục để đối chiếu với danh sách đã OCR)
+// Chỉ đối chiếu + tick xác nhận; KHÔNG thêm dòng mới, KHÔNG đổi số lượng nếu không truyền actualQuantity
 importsRouter.post('/imports/:id/scan-check', async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -310,44 +312,65 @@ importsRouter.post('/imports/:id/scan-check', async (req, res, next) => {
     if (receipt.status === 'COMPLETED') {
       throw new ApiError(400, 'IMPORT_RECEIPT_LOCKED', 'Phiếu nhập đã hoàn thành');
     }
-
-    const { query, actualQuantity, discrepancyNote } = req.body || {};
-    if (!query || !String(query).trim()) {
-      throw new ApiError(400, 'VALIDATION_ERROR', 'Vui lòng cung cấp mã hoặc tên hàng từ camera/ô tìm kiếm');
+    if (receipt.status !== 'CHECKING') {
+      throw new ApiError(
+        400,
+        'IMPORT_NOT_CHECKING',
+        'Vui lòng bấm "Hoàn tất" danh sách kiểm hàng trước khi quét tag kiểm tra thực tế'
+      );
     }
 
-    const rawQuery = String(query).trim();
-    const generatedCodeFromQuery = generateProductCode(rawQuery);
-    const qLower = rawQuery.toLowerCase();
+    const { query, productCode, productName, rawText, rowIndex, actualQuantity, discrepancyNote } =
+      req.body || {};
+    const hasRowIndex = rowIndex !== undefined && rowIndex !== null && rowIndex !== '';
+    const label = String(productName || query || productCode || '').trim();
+    if (!hasRowIndex && !label) {
+      throw new ApiError(400, 'VALIDATION_ERROR', 'Vui lòng cung cấp mã hoặc tên hàng đọc được từ tag');
+    }
 
     const items = [...receipt.items];
-    const matchedIndex = items.findIndex(
-      (item) =>
-        item.productCode === generatedCodeFromQuery ||
-        item.productCode.toLowerCase() === qLower ||
-        item.productName.toLowerCase().includes(qLower) ||
-        item.productCode.toLowerCase().includes(qLower)
-    );
+    const progressOf = (list: IImportReceiptItem[]) => ({
+      checked: list.filter((i) => i.isChecked).length,
+      total: list.length,
+    });
 
-    if (matchedIndex === -1) {
+    let matchedIndex: number | null = null;
+    if (hasRowIndex) {
+      const idx = Number(rowIndex);
+      if (!Number.isInteger(idx) || idx < 0 || idx >= items.length) {
+        throw new ApiError(400, 'INVALID_ROW_INDEX', 'Dòng hàng được chọn không hợp lệ');
+      }
+      matchedIndex = idx;
+    } else {
+      const result = matchTagToItems(items, { query, productCode, productName, rawText });
+      if (result.ambiguous) {
+        res.json({
+          data: {
+            matched: false,
+            ambiguous: true,
+            candidates: result.candidates.map((i) => ({
+              index: i,
+              productCode: items[i].productCode,
+              productName: items[i].productName,
+              isChecked: items[i].isChecked,
+            })),
+            warning: `Tag "${label}" khớp nhiều dòng trong danh sách. Vui lòng chọn đúng dòng.`,
+            progress: progressOf(items),
+            receipt,
+          },
+          meta: {},
+        });
+        return;
+      }
+      matchedIndex = result.index;
+    }
+
+    if (matchedIndex === null) {
       res.json({
         data: {
           matched: false,
-          warning: `Mã/tên hàng "${rawQuery}" không khớp với dòng nào trong danh sách dự kiến. Bạn có thể thêm dòng mới hoặc ghi chú chênh lệch.`,
-          suggestedItem: {
-            stt: items.length + 1,
-            productCode: generatedCodeFromQuery,
-            productName: rawQuery,
-            categoryId: receipt.defaultCategoryId,
-            unit: 'Cái',
-            expectedQuantity: 0,
-            actualQuantity: actualQuantity !== undefined ? Number(actualQuantity) : 1,
-            costPrice: 0,
-            note: 'Phát sinh ngoài danh sách dự kiến',
-            isChecked: true,
-            isConfirmed: false,
-            discrepancyNote: 'Hàng ngoài phiếu dự kiến',
-          },
+          warning: `Tag "${label}" KHÔNG có trong danh sách kiểm hàng. Hàng này không được tự thêm vào phiếu.`,
+          progress: progressOf(items),
           receipt,
         },
         meta: {},
@@ -355,31 +378,34 @@ importsRouter.post('/imports/:id/scan-check', async (req, res, next) => {
       return;
     }
 
+    const alreadyChecked = Boolean(items[matchedIndex].isChecked && items[matchedIndex].isConfirmed);
     const matchedItem = { ...items[matchedIndex] };
     matchedItem.isChecked = true;
-    if (actualQuantity !== undefined) {
+    matchedItem.isConfirmed = true;
+    if (actualQuantity !== undefined && actualQuantity !== null && actualQuantity !== '') {
       matchedItem.actualQuantity = Math.max(0, Math.round(Number(actualQuantity)));
     }
+    const diff = matchedItem.actualQuantity - matchedItem.expectedQuantity;
     if (discrepancyNote !== undefined) {
       matchedItem.discrepancyNote = String(discrepancyNote).trim();
-    } else if (matchedItem.actualQuantity !== matchedItem.expectedQuantity) {
-      const diff = matchedItem.actualQuantity - matchedItem.expectedQuantity;
+    } else if (diff !== 0) {
       matchedItem.discrepancyNote =
         diff > 0 ? `Thừa ${diff} ${matchedItem.unit}` : `Thiếu ${Math.abs(diff)} ${matchedItem.unit}`;
+    } else if (!matchedItem.discrepancyNote) {
+      matchedItem.discrepancyNote = 'Khớp đủ';
     }
 
     items[matchedIndex] = matchedItem;
-    const updatedReceipt = await importReceiptRepo.updateById(id, {
-      status: 'CHECKING',
-      items,
-    });
+    const updatedReceipt = await importReceiptRepo.updateById(id, { items });
 
     res.json({
       data: {
         matched: true,
+        alreadyChecked,
         matchedIndex,
         matchedItem,
-        discrepancy: matchedItem.actualQuantity - matchedItem.expectedQuantity,
+        discrepancy: diff,
+        progress: progressOf(items),
         receipt: updatedReceipt,
       },
       meta: {},
