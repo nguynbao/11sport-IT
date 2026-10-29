@@ -2,12 +2,17 @@ import mongoose, { Schema, Document } from 'mongoose';
 
 export type PaymentMethod = 'CASH' | 'BANKING' | 'CARD';
 export type OrderStatus = 'PAID' | 'PARTIALLY_RETURNED' | 'FULLY_RETURNED';
+export type DiscountType = 'NONE' | 'PERCENT' | 'AMOUNT';
 
 export interface IOrderItem {
   productId: string;
   productCode: string;
   productName: string;
   unit: string;
+  originalUnitPrice?: number;
+  discountType?: DiscountType;
+  discountValue?: number;
+  discountAmount?: number;
   unitPrice: number;
   quantity: number;
   returnedQuantity: number;
@@ -20,7 +25,12 @@ export interface IOrder extends Document {
   customerName: string;
   customerPhone: string;
   items: IOrderItem[];
+  rawSubtotal?: number;
+  itemDiscountTotal?: number;
   subtotal: number;
+  billDiscountType?: DiscountType;
+  billDiscountValue?: number;
+  billDiscountAmount?: number;
   paymentMethod: PaymentMethod;
   hasCardFee: boolean;
   cardFeePercent: number;
@@ -40,6 +50,10 @@ const OrderItemSchema = new Schema<IOrderItem>(
     productCode: { type: String, required: true },
     productName: { type: String, required: true },
     unit: { type: String, default: 'Cái' },
+    originalUnitPrice: { type: Number, default: 0 },
+    discountType: { type: String, enum: ['NONE', 'PERCENT', 'AMOUNT'], default: 'NONE' },
+    discountValue: { type: Number, default: 0 },
+    discountAmount: { type: Number, default: 0 },
     unitPrice: { type: Number, required: true },
     quantity: { type: Number, required: true },
     returnedQuantity: { type: Number, default: 0 },
@@ -55,7 +69,12 @@ const OrderSchema = new Schema<IOrder>(
     customerName: { type: String, required: true },
     customerPhone: { type: String, required: true, index: true },
     items: { type: [OrderItemSchema], default: [] },
+    rawSubtotal: { type: Number, default: 0 },
+    itemDiscountTotal: { type: Number, default: 0 },
     subtotal: { type: Number, required: true },
+    billDiscountType: { type: String, enum: ['NONE', 'PERCENT', 'AMOUNT'], default: 'NONE' },
+    billDiscountValue: { type: Number, default: 0 },
+    billDiscountAmount: { type: Number, default: 0 },
     paymentMethod: { type: String, enum: ['CASH', 'BANKING', 'CARD'], required: true },
     hasCardFee: { type: Boolean, default: false },
     cardFeePercent: { type: Number, default: 0 },

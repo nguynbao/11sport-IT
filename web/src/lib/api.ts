@@ -74,11 +74,17 @@ export interface ImportReceipt {
   updatedAt?: string;
 }
 
+export type DiscountType = "NONE" | "PERCENT" | "AMOUNT";
+
 export interface OrderItem {
   productId: string;
   productCode: string;
   productName: string;
   unit: string;
+  originalUnitPrice?: number;
+  discountType?: DiscountType;
+  discountValue?: number;
+  discountAmount?: number;
   unitPrice: number;
   quantity: number;
   returnedQuantity?: number;
@@ -94,7 +100,12 @@ export interface Order {
   customerPhone: string;
   paymentMethod: "CASH" | "BANKING" | "CARD";
   hasCardFee: boolean;
+  rawSubtotal?: number;
+  itemDiscountTotal?: number;
   subtotal: number;
+  billDiscountType?: DiscountType;
+  billDiscountValue?: number;
+  billDiscountAmount?: number;
   cardFee: number;
   totalAmount: number;
   note: string;

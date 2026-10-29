@@ -7,7 +7,7 @@ import {
   stockMovementRepo,
 } from '../config/db';
 import { ApiError } from '../utils/errors';
-import { IOrderItem, PaymentMethod } from '../models/Order';
+import { DiscountType, IOrderItem, PaymentMethod } from '../models/Order';
 import { deductStockForSale, getFloorStocks } from '../utils/warehouseFloor';
 
 export const ordersCustomersRouter = Router();
@@ -156,6 +156,8 @@ ordersCustomersRouter.post('/orders', async (req, res, next) => {
       customerPhone,
       paymentMethod,
       hasCardFee,
+      billDiscountType,
+      billDiscountValue,
       note,
       items,
     } = req.body || {};
@@ -184,7 +186,7 @@ ordersCustomersRouter.post('/orders', async (req, res, next) => {
       ? paymentMethod
       : 'CASH';
 
-    // Kiểm tra từng sản phẩm: tồn tại, sellingPrice > 0, tổng số lượng theo SP <= stock
+    // Kiểm tra từng sản phẩm: tồn tại, sellingPrice > 0, tổng số lượng theo SP <= stockFloor1 (Kho Tầng 1)
     const orderItems: IOrderItem[] = [];
     const productUpdates: { product: any; qty: number }[] = [];
     const requestedQtyByProdId = new Map<string, number>();
@@ -217,23 +219,52 @@ ordersCustomersRouter.post('/orders', async (req, res, next) => {
       const totalRequestedForProduct = (requestedQtyByProdId.get(prodKey) || 0) + qty;
       requestedQtyByProdId.set(prodKey, totalRequestedForProduct);
 
-      // BR-04: Chặn bán vượt tồn kho (tính lũy kế nếu trùng mã trong cùng đơn)
-      if (product.stock < totalRequestedForProduct) {
+      // Chỉ được bán số lượng ở Kho Tầng 1, tuyệt đối không được bán vượt Kho Tầng 1
+      const floors = getFloorStocks(product);
+      if (floors.stockFloor1 < totalRequestedForProduct) {
         throw new ApiError(
           400,
           'INSUFFICIENT_STOCK',
-          `Sản phẩm "${product.name}" không đủ tồn kho (Tồn: ${product.stock}, Yêu cầu: ${totalRequestedForProduct})`,
-          { productId: product._id }
+          `Sản phẩm "${product.name}" không đủ tồn tại Kho Tầng 1 (Tồn Kho Tầng 1: ${floors.stockFloor1}, Yêu cầu: ${totalRequestedForProduct})`,
+          { productId: String(product._id), stockFloor1: String(floors.stockFloor1) }
         );
       }
 
-      const lineTotal = product.sellingPrice * qty;
+      const originalUnitPrice = Math.round(Number(product.sellingPrice) || 0);
+      const rawItemDiscType = String(rawItem.discountType || 'NONE').toUpperCase();
+      const itemDiscType: DiscountType =
+        rawItemDiscType === 'PERCENT' || rawItemDiscType === 'AMOUNT'
+          ? (rawItemDiscType as DiscountType)
+          : 'NONE';
+      const rawItemDiscVal = Math.max(0, Number(rawItem.discountValue) || 0);
+      const itemDiscValue =
+        itemDiscType === 'PERCENT'
+          ? Math.min(100, rawItemDiscVal)
+          : itemDiscType === 'AMOUNT'
+          ? Math.min(originalUnitPrice, Math.round(rawItemDiscVal))
+          : 0;
+
+      const discountPerUnit =
+        itemDiscType === 'PERCENT'
+          ? Math.round((originalUnitPrice * itemDiscValue) / 100)
+          : itemDiscType === 'AMOUNT'
+          ? itemDiscValue
+          : 0;
+
+      const unitPrice = Math.max(0, originalUnitPrice - discountPerUnit);
+      const itemDiscountAmount = discountPerUnit * qty;
+      const lineTotal = unitPrice * qty;
+
       orderItems.push({
         productId: product._id,
         productCode: product.code,
         productName: product.name,
         unit: product.unit,
-        unitPrice: product.sellingPrice,
+        originalUnitPrice,
+        discountType: itemDiscValue > 0 ? itemDiscType : 'NONE',
+        discountValue: itemDiscValue,
+        discountAmount: itemDiscountAmount,
+        unitPrice,
         quantity: qty,
         returnedQuantity: 0,
         lineTotal,
@@ -242,12 +273,42 @@ ordersCustomersRouter.post('/orders', async (req, res, next) => {
       productUpdates.push({ product, qty });
     }
 
-    // BR-12: Tính tiền & Phí quẹt thẻ 3%
+    // Tính tiền hàng, giảm giá sản phẩm, giảm giá Bill & Phí quẹt thẻ 3%
+    const rawSubtotal = orderItems.reduce(
+      (sum, i) => sum + (Number(i.originalUnitPrice ?? i.unitPrice) || 0) * i.quantity,
+      0
+    );
+    const itemDiscountTotal = orderItems.reduce(
+      (sum, i) => sum + (Number(i.discountAmount) || 0),
+      0
+    );
     const subtotal = orderItems.reduce((sum, i) => sum + i.lineTotal, 0);
+
+    const rawBillDiscType = String(billDiscountType || 'NONE').toUpperCase();
+    const cleanBillDiscType: DiscountType =
+      rawBillDiscType === 'PERCENT' || rawBillDiscType === 'AMOUNT'
+        ? (rawBillDiscType as DiscountType)
+        : 'NONE';
+    const rawBillDiscVal = Math.max(0, Number(billDiscountValue) || 0);
+    const cleanBillDiscValue =
+      cleanBillDiscType === 'PERCENT'
+        ? Math.min(100, rawBillDiscVal)
+        : cleanBillDiscType === 'AMOUNT'
+        ? Math.min(subtotal, Math.round(rawBillDiscVal))
+        : 0;
+
+    const billDiscountAmount =
+      cleanBillDiscType === 'PERCENT'
+        ? Math.round((subtotal * cleanBillDiscValue) / 100)
+        : cleanBillDiscType === 'AMOUNT'
+        ? cleanBillDiscValue
+        : 0;
+
+    const afterBillDiscount = Math.max(0, subtotal - billDiscountAmount);
     const applyCardFee = method === 'CARD' && Boolean(hasCardFee);
     const cardFeePercent = applyCardFee ? 3 : 0;
-    const cardFee = applyCardFee ? Math.round(subtotal * 0.03) : 0;
-    const totalAmount = subtotal + cardFee;
+    const cardFee = applyCardFee ? Math.round(afterBillDiscount * 0.03) : 0;
+    const totalAmount = afterBillDiscount + cardFee;
 
     // Tạo hoặc cập nhật hồ sơ khách hàng
     let customer = existingCustomer;
@@ -277,7 +338,12 @@ ordersCustomersRouter.post('/orders', async (req, res, next) => {
       customerName: finalCustomerName,
       customerPhone: cleanPhone,
       items: orderItems,
+      rawSubtotal,
+      itemDiscountTotal,
       subtotal,
+      billDiscountType: cleanBillDiscValue > 0 ? cleanBillDiscType : 'NONE',
+      billDiscountValue: cleanBillDiscValue,
+      billDiscountAmount,
       paymentMethod: method,
       hasCardFee: applyCardFee,
       cardFeePercent,
@@ -289,7 +355,7 @@ ordersCustomersRouter.post('/orders', async (req, res, next) => {
       createdByName: req.user?.fullName || 'Nhân viên bán hàng',
     });
 
-    // Trừ tồn kho và ghi StockMovement loại SALE (ưu tiên trừ Kho Tầng 1 trước, thiếu trừ tiếp Kho Tầng 2)
+    // Trừ tồn kho Kho Tầng 1 và ghi StockMovement loại SALE (warehouseLocation: FLOOR_1)
     for (const { product, qty } of productUpdates) {
       const currentProd = (await productRepo.findById(product._id)) || product;
       const beforeFloors = getFloorStocks(currentProd);
@@ -309,12 +375,13 @@ ordersCustomersRouter.post('/orders', async (req, res, next) => {
         quantityChange: -qty,
         balanceBefore,
         balanceAfter,
+        warehouseLocation: 'FLOOR_1',
         referenceType: 'ORDER',
         referenceId: createdOrder._id,
         referenceCode: createdOrder.orderCode,
         performedBy: req.user?.userId || 'SALES',
         performedByName: req.user?.fullName || 'Nhân viên bán hàng',
-        note: `Bán hàng đơn ${createdOrder.orderCode}`,
+        note: `Bán hàng đơn ${createdOrder.orderCode} (Kho Tầng 1)`,
       });
     }
 

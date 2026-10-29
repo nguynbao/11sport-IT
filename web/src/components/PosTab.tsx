@@ -1,11 +1,15 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Product,
+  Category,
   Order,
+  DiscountType,
   apiRequest,
   formatVND,
+  formatNumberDots,
+  parseNumberDots,
   formatDateTime,
 } from "@/lib/api";
 import {
@@ -22,6 +26,9 @@ import {
   CheckCircle2,
   AlertCircle,
   History,
+  Tag,
+  ArrowUpDown,
+  Layers,
 } from "lucide-react";
 
 interface PosTabProps {
@@ -31,15 +38,26 @@ interface PosTabProps {
 interface CartItem {
   product: Product;
   quantity: number;
+  discountType: DiscountType;
+  discountValue: number;
 }
+
+type SortByOption = "CATEGORY" | "NAME_ASC" | "PRICE_ASC" | "PRICE_DESC" | "STOCK_DESC";
 
 export default function PosTab({ onOpenInvoice }: PosTabProps) {
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
+  const [sortBy, setSortBy] = useState<SortByOption>("CATEGORY");
   const [search, setSearch] = useState("");
   const [loadingProducts, setLoadingProducts] = useState(false);
 
   // Giỏ hàng
   const [cart, setCart] = useState<CartItem[]>([]);
+
+  // Giảm giá Bill
+  const [billDiscountType, setBillDiscountType] = useState<DiscountType>("NONE");
+  const [billDiscountValue, setBillDiscountValue] = useState<number>(0);
 
   // Thông tin khách hàng
   const [customerPhone, setCustomerPhone] = useState("");
@@ -57,6 +75,35 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
+  const getFloor1Stock = (p: Product): number => {
+    return Math.max(0, Number(p.stockFloor1 ?? p.stock) || 0);
+  };
+
+  const getCategoryName = (p: Product): string => {
+    if (p.categoryName) return p.categoryName;
+    if (typeof p.categoryId === "object" && p.categoryId?.name) {
+      return p.categoryId.name;
+    }
+    const found = categories.find((c) => c._id === String(p.categoryId));
+    return found?.name || "Khác";
+  };
+
+  const getCategoryId = (p: Product): string => {
+    if (typeof p.categoryId === "object" && p.categoryId?._id) {
+      return p.categoryId._id;
+    }
+    return String(p.categoryId || "");
+  };
+
+  const fetchCategories = useCallback(async () => {
+    try {
+      const res = await apiRequest<Category[]>("/categories");
+      setCategories(Array.isArray(res.data) ? res.data : []);
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const fetchSellableProducts = useCallback(async () => {
     setLoadingProducts(true);
     try {
@@ -72,8 +119,60 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
   }, [search]);
 
   useEffect(() => {
+    fetchCategories();
+  }, [fetchCategories]);
+
+  useEffect(() => {
     fetchSellableProducts();
   }, [fetchSellableProducts]);
+
+  // Lọc và sắp xếp sản phẩm theo Category
+  const filteredAndSortedProducts = useMemo(() => {
+    const filtered = products.filter((p) => {
+      if (selectedCategoryId && getCategoryId(p) !== selectedCategoryId) {
+        return false;
+      }
+      return true;
+    });
+
+    const sorted = [...filtered];
+    sorted.sort((a, b) => {
+      if (sortBy === "CATEGORY") {
+        const catA = getCategoryName(a);
+        const catB = getCategoryName(b);
+        const cmpCat = catA.localeCompare(catB, "vi");
+        if (cmpCat !== 0) return cmpCat;
+        return a.name.localeCompare(b.name, "vi");
+      }
+      if (sortBy === "NAME_ASC") {
+        return a.name.localeCompare(b.name, "vi");
+      }
+      if (sortBy === "PRICE_ASC") {
+        return (Number(a.sellingPrice) || 0) - (Number(b.sellingPrice) || 0);
+      }
+      if (sortBy === "PRICE_DESC") {
+        return (Number(b.sellingPrice) || 0) - (Number(a.sellingPrice) || 0);
+      }
+      if (sortBy === "STOCK_DESC") {
+        return getFloor1Stock(b) - getFloor1Stock(a);
+      }
+      return 0;
+    });
+
+    return sorted;
+  }, [products, selectedCategoryId, sortBy, categories]);
+
+  // Nhóm sản phẩm theo Category khi chọn chế độ sắp xếp theo Category
+  const groupedByCategory = useMemo(() => {
+    const groups = new Map<string, Product[]>();
+    filteredAndSortedProducts.forEach((p) => {
+      const catName = getCategoryName(p);
+      const list = groups.get(catName) || [];
+      list.push(p);
+      groups.set(catName, list);
+    });
+    return Array.from(groups.entries());
+  }, [filteredAndSortedProducts, categories]);
 
   // Tự động tra cứu khách hàng theo SĐT
   const handleLookupPhone = async (phoneValue: string) => {
@@ -106,23 +205,26 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
 
   const handleAddToCart = (product: Product) => {
     setErrorMsg("");
+    const floor1Stock = getFloor1Stock(product);
     if (product.sellingPrice <= 0) {
       setErrorMsg(
         `Sản phẩm "${product.name}" chưa có giá bán lẻ (> 0). Vui lòng cập nhật giá trên CMS trước khi bán.`
       );
       return;
     }
-    if (product.stock <= 0) {
-      setErrorMsg(`Sản phẩm "${product.name}" đã hết tồn kho.`);
+    if (floor1Stock <= 0) {
+      setErrorMsg(
+        `Sản phẩm "${product.name}" đã hết hàng tại Kho Tầng 1 (Tồn Tầng 1: 0). Nhân viên bán hàng chỉ được phép bán số lượng có tại Kho Tầng 1.`
+      );
       return;
     }
 
     setCart((prev) => {
       const existing = prev.find((c) => c.product._id === product._id);
       if (existing) {
-        if (existing.quantity + 1 > product.stock) {
+        if (existing.quantity + 1 > floor1Stock) {
           setErrorMsg(
-            `Không thể vượt quá tồn kho hiện tại (${product.stock} ${product.unit}) của "${product.name}".`
+            `Không được bán vượt số lượng Kho Tầng 1 (${floor1Stock} ${product.unit}) của "${product.name}".`
           );
           return prev;
         }
@@ -130,7 +232,15 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
           c.product._id === product._id ? { ...c, quantity: c.quantity + 1 } : c
         );
       }
-      return [...prev, { product, quantity: 1 }];
+      return [
+        ...prev,
+        {
+          product,
+          quantity: 1,
+          discountType: "NONE",
+          discountValue: 0,
+        },
+      ];
     });
   };
 
@@ -141,11 +251,12 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
         .map((c) => {
           if (c.product._id !== productId) return c;
           if (newQty <= 0) return null;
-          if (newQty > c.product.stock) {
+          const floor1Stock = getFloor1Stock(c.product);
+          if (newQty > floor1Stock) {
             setErrorMsg(
-              `Số lượng tối đa trong kho của "${c.product.name}" là ${c.product.stock}.`
+              `Không được bán vượt số lượng Kho Tầng 1 của "${c.product.name}" (Tối đa tại Tầng 1: ${floor1Stock} ${c.product.unit}).`
             );
-            return { ...c, quantity: c.product.stock };
+            return { ...c, quantity: floor1Stock };
           }
           return { ...c, quantity: newQty };
         })
@@ -153,13 +264,84 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     );
   };
 
-  const subtotal = cart.reduce(
-    (sum, item) => sum + item.product.sellingPrice * item.quantity,
+  const handleChangeItemDiscount = (
+    productId: string,
+    discountType: DiscountType,
+    rawVal: number
+  ) => {
+    setCart((prev) =>
+      prev.map((c) => {
+        if (c.product._id !== productId) return c;
+        const origPrice = Math.round(Number(c.product.sellingPrice) || 0);
+        let cleanVal = Math.max(0, rawVal);
+        if (discountType === "PERCENT") {
+          cleanVal = Math.min(100, cleanVal);
+        } else if (discountType === "AMOUNT") {
+          cleanVal = Math.min(origPrice, Math.round(cleanVal));
+        } else {
+          cleanVal = 0;
+        }
+        return {
+          ...c,
+          discountType,
+          discountValue: cleanVal,
+        };
+      })
+    );
+  };
+
+  // Tính toán giảm giá từng sản phẩm & giảm giá Bill (hỗ trợ chọn cả 2 cùng lúc)
+  const getItemPricing = (item: CartItem) => {
+    const originalUnitPrice = Math.round(Number(item.product.sellingPrice) || 0);
+    const discountPerUnit =
+      item.discountType === "PERCENT"
+        ? Math.round((originalUnitPrice * item.discountValue) / 100)
+        : item.discountType === "AMOUNT"
+        ? Math.min(originalUnitPrice, Math.round(item.discountValue))
+        : 0;
+    const unitPrice = Math.max(0, originalUnitPrice - discountPerUnit);
+    const discountAmount = discountPerUnit * item.quantity;
+    const lineTotal = unitPrice * item.quantity;
+    return {
+      originalUnitPrice,
+      discountPerUnit,
+      unitPrice,
+      discountAmount,
+      lineTotal,
+    };
+  };
+
+  const rawSubtotal = cart.reduce(
+    (sum, item) => sum + Math.round(Number(item.product.sellingPrice) || 0) * item.quantity,
     0
   );
+  const itemDiscountTotal = cart.reduce(
+    (sum, item) => sum + getItemPricing(item).discountAmount,
+    0
+  );
+  const subtotal = cart.reduce(
+    (sum, item) => sum + getItemPricing(item).lineTotal,
+    0
+  );
+
+  const cleanBillDiscountValue =
+    billDiscountType === "PERCENT"
+      ? Math.min(100, Math.max(0, billDiscountValue))
+      : billDiscountType === "AMOUNT"
+      ? Math.min(subtotal, Math.max(0, Math.round(billDiscountValue)))
+      : 0;
+
+  const billDiscountAmount =
+    billDiscountType === "PERCENT"
+      ? Math.round((subtotal * cleanBillDiscountValue) / 100)
+      : billDiscountType === "AMOUNT"
+      ? cleanBillDiscountValue
+      : 0;
+
+  const afterBillDiscount = Math.max(0, subtotal - billDiscountAmount);
   const cardFee =
-    paymentMethod === "CARD" && hasCardFee ? Math.round(subtotal * 0.03) : 0;
-  const totalAmount = subtotal + cardFee;
+    paymentMethod === "CARD" && hasCardFee ? Math.round(afterBillDiscount * 0.03) : 0;
+  const totalAmount = afterBillDiscount + cardFee;
 
   const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -179,6 +361,17 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       return;
     }
 
+    // Kiểm tra lại tồn kho Tầng 1 trước khi gửi
+    for (const c of cart) {
+      const f1 = getFloor1Stock(c.product);
+      if (c.quantity > f1) {
+        setErrorMsg(
+          `Sản phẩm "${c.product.name}" vượt quá tồn Kho Tầng 1 hiện có (${f1} ${c.product.unit}).`
+        );
+        return;
+      }
+    }
+
     setSubmitting(true);
     try {
       const payload = {
@@ -186,10 +379,14 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
         customerName: customerName.trim(),
         paymentMethod,
         hasCardFee: paymentMethod === "CARD" ? hasCardFee : false,
+        billDiscountType: cleanBillDiscountValue > 0 ? billDiscountType : "NONE",
+        billDiscountValue: cleanBillDiscountValue,
         note: note.trim() || "Giá đã bao gồm thuế",
         items: cart.map((c) => ({
           productId: c.product._id,
           quantity: c.quantity,
+          discountType: c.discountValue > 0 ? c.discountType : "NONE",
+          discountValue: c.discountValue,
         })),
       };
 
@@ -203,6 +400,8 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
         `Tạo đơn hàng ${createdOrder.orderCode || createdOrder.code || ""} thành công!`
       );
       setCart([]);
+      setBillDiscountType("NONE");
+      setBillDiscountValue(0);
       fetchSellableProducts();
       onOpenInvoice(createdOrder);
     } catch (err: any) {
@@ -212,22 +411,98 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     }
   };
 
+  const renderProductCard = (p: Product) => {
+    const floor1Stock = getFloor1Stock(p);
+    const floor2Stock = Math.max(0, Number(p.stockFloor2) || 0);
+    const canSell = p.sellingPrice > 0 && floor1Stock > 0;
+    const catName = getCategoryName(p);
+
+    return (
+      <div
+        key={p._id}
+        onClick={() => canSell && handleAddToCart(p)}
+        className={`p-3.5 rounded-xl border transition flex flex-col justify-between ${
+          canSell
+            ? "border-slate-200 hover:border-emerald-500 hover:shadow-md cursor-pointer bg-white"
+            : "border-slate-200 bg-slate-50 opacity-70 cursor-not-allowed"
+        }`}
+      >
+        <div className="min-w-0">
+          <div className="flex items-start justify-between gap-2 min-w-0">
+            <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 truncate">
+              {catName}
+            </span>
+            <div className="text-right shrink-0">
+              <span
+                className={`text-xs font-extrabold px-2 py-0.5 rounded whitespace-nowrap ${
+                  floor1Stock > 0
+                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                    : "bg-red-50 text-red-600 border border-red-200"
+                }`}
+              >
+                🏢 Kho Tầng 1: {floor1Stock} {p.unit}
+              </span>
+              {floor1Stock === 0 && floor2Stock > 0 && (
+                <div className="text-[10px] font-semibold text-amber-700 mt-0.5">
+                  (Kho Tầng 2 còn: {floor2Stock} — cần chuyển xuống T1)
+                </div>
+              )}
+            </div>
+          </div>
+          <h3 className="font-semibold text-slate-900 text-sm mt-2 break-words">
+            {p.name}
+          </h3>
+          <div className="font-mono text-[10px] text-slate-400 mt-0.5 break-all">
+            Mã: {p.code}
+          </div>
+        </div>
+
+        <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
+          {p.sellingPrice > 0 ? (
+            <span className="font-mono font-extrabold text-emerald-700 text-base">
+              {formatVND(p.sellingPrice)}
+            </span>
+          ) : (
+            <span className="text-xs font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded">
+              Chưa có giá bán (0 VND)
+            </span>
+          )}
+
+          <button
+            type="button"
+            disabled={!canSell}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleAddToCart(p);
+            }}
+            className={`min-h-[38px] px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 shrink-0 ${
+              canSell
+                ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                : "bg-slate-200 text-slate-500"
+            }`}
+          >
+            <Plus className="w-3.5 h-3.5" /> Chọn bán
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6">
-      {/* Cột trái (7 phần): Tìm kiếm & Chọn sản phẩm */}
+      {/* Cột trái (7 phần): Tìm kiếm, Lọc/Sắp xếp theo Category & Chọn sản phẩm */}
       <div className="lg:col-span-7 space-y-4">
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-3 md:p-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-3 md:p-4 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-bold text-slate-900">
-                Danh mục Hàng hóa tại Quầy POS
+                Danh mục Hàng hóa tại Quầy POS (Kho Tầng 1)
               </h2>
               <p className="text-xs text-slate-500">
-                Chỉ cho phép thêm vào giỏ các mặt hàng có <strong>Giá bán &gt; 0</strong> và{" "}
-                <strong>Tồn kho &gt; 0</strong>.
+                Nhân viên bán hàng <strong>chỉ bán số lượng tại Kho Tầng 1</strong> (không vượt tồn Kho Tầng 1).
               </p>
             </div>
-            <div className="relative w-full sm:w-72">
+            <div className="relative w-full sm:w-64">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
               <input
                 type="text"
@@ -239,84 +514,92 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
             </div>
           </div>
 
+          {/* Thanh chọn nhanh Category & Sắp xếp theo Category */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2 border-t border-slate-100">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setSelectedCategoryId("")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${
+                  selectedCategoryId === ""
+                    ? "bg-slate-900 text-white border-slate-900 shadow-sm"
+                    : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200"
+                }`}
+              >
+                Tất cả ({products.length})
+              </button>
+              {categories.map((cat) => {
+                const count = products.filter((p) => getCategoryId(p) === cat._id).length;
+                return (
+                  <button
+                    key={cat._id}
+                    type="button"
+                    onClick={() => setSelectedCategoryId(cat._id)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${
+                      selectedCategoryId === cat._id
+                        ? "bg-emerald-600 text-white border-emerald-700 shadow-sm"
+                        : "bg-white text-slate-700 border-slate-200 hover:bg-emerald-50"
+                    }`}
+                  >
+                    {cat.name} ({count})
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              <ArrowUpDown className="w-3.5 h-3.5 text-slate-500" />
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortByOption)}
+                className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold bg-white text-slate-800 focus:border-emerald-600 focus:outline-none"
+              >
+                <option value="CATEGORY">📂 Xếp theo Category (Danh mục)</option>
+                <option value="NAME_ASC">🔤 Tên sản phẩm (A → Z)</option>
+                <option value="STOCK_DESC">📦 Tồn Kho Tầng 1 (Nhiều → Ít)</option>
+                <option value="PRICE_ASC">💰 Giá bán (Thấp → Cao)</option>
+                <option value="PRICE_DESC">💎 Giá bán (Cao → Thấp)</option>
+              </select>
+            </div>
+          </div>
+
           {loadingProducts ? (
             <div className="py-12 text-center text-sm text-slate-500">
               Đang tải danh sách sản phẩm...
             </div>
-          ) : products.length === 0 ? (
+          ) : filteredAndSortedProducts.length === 0 ? (
             <div className="py-12 text-center text-sm text-slate-500">
               Không tìm thấy sản phẩm phù hợp.
             </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[55vh] lg:max-h-[600px] overflow-y-auto pr-1">
-              {products.map((p) => {
-                const canSell = p.sellingPrice > 0 && p.stock > 0;
-                return (
-                  <div
-                    key={p._id}
-                    onClick={() => canSell && handleAddToCart(p)}
-                    className={`p-3.5 rounded-xl border transition flex flex-col justify-between ${
-                      canSell
-                        ? "border-slate-200 hover:border-emerald-500 hover:shadow-md cursor-pointer bg-white"
-                        : "border-slate-200 bg-slate-50 opacity-70 cursor-not-allowed"
-                    }`}
-                  >
-                    <div className="min-w-0">
-                      <div className="flex items-start justify-between gap-2 min-w-0">
-                        <span className="font-mono text-[11px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700 break-all min-w-0">
-                          {p.code}
-                        </span>
-                        <span
-                          className={`text-xs font-bold px-2 py-0.5 rounded shrink-0 whitespace-nowrap ${
-                            p.stock > 0
-                              ? "bg-emerald-50 text-emerald-700"
-                              : "bg-red-50 text-red-600"
-                          }`}
-                        >
-                          Tồn: {p.stock} {p.unit}
-                        </span>
-                      </div>
-                      <h3 className="font-semibold text-slate-900 text-sm mt-2 break-words line-clamp-2">
-                        {p.name}
-                      </h3>
-                    </div>
-
-                    <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
-                      {p.sellingPrice > 0 ? (
-                        <span className="font-mono font-extrabold text-emerald-700 text-base">
-                          {formatVND(p.sellingPrice)}
-                        </span>
-                      ) : (
-                        <span className="text-xs font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded">
-                          Chưa có giá bán (0 ₫)
-                        </span>
-                      )}
-
-                      <button
-                        type="button"
-                        disabled={!canSell}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleAddToCart(p);
-                        }}
-                        className={`min-h-[40px] px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 shrink-0 ${
-                          canSell
-                            ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                            : "bg-slate-200 text-slate-500"
-                        }`}
-                      >
-                        <Plus className="w-3.5 h-3.5" /> Chọn
-                      </button>
-                    </div>
+          ) : sortBy === "CATEGORY" ? (
+            <div className="space-y-5 max-h-[60vh] lg:max-h-[640px] overflow-y-auto pr-1">
+              {groupedByCategory.map(([catName, catProducts]) => (
+                <div key={catName} className="space-y-2.5">
+                  <div className="sticky top-0 z-10 bg-slate-900 text-white px-3 py-2 rounded-lg flex items-center justify-between shadow-sm">
+                    <span className="text-xs font-extrabold uppercase tracking-wider flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-emerald-400" />
+                      Danh mục: {catName}
+                    </span>
+                    <span className="text-[11px] font-mono bg-white/15 px-2 py-0.5 rounded">
+                      {catProducts.length} mặt hàng · Tồn Tầng 1:{" "}
+                      {catProducts.reduce((s, p) => s + getFloor1Stock(p), 0)}
+                    </span>
                   </div>
-                );
-              })}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {catProducts.map((p) => renderProductCard(p))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[60vh] lg:max-h-[640px] overflow-y-auto pr-1">
+              {filteredAndSortedProducts.map((p) => renderProductCard(p))}
             </div>
           )}
         </div>
       </div>
 
-      {/* Cột phải (5 phần): Thông tin Khách hàng, Giỏ hàng & Thanh toán */}
+      {/* Cột phải (5 phần): Thông tin Khách hàng, Giỏ hàng (Giảm giá SP), Giảm giá Bill & Thanh toán */}
       <div className="lg:col-span-5 space-y-4">
         <form
           onSubmit={handleCreateOrder}
@@ -328,7 +611,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
               <h2 className="text-lg font-bold text-slate-900">Phiếu Bán Hàng POS</h2>
             </div>
             <span className="text-xs font-mono bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full font-semibold">
-              {cart.reduce((s, i) => s + i.quantity, 0)} sản phẩm
+              {cart.reduce((s, i) => s + i.quantity, 0)} sản phẩm (Kho Tầng 1)
             </span>
           </div>
 
@@ -425,87 +708,302 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
             )}
           </div>
 
-          {/* 2. Danh sách Giỏ hàng */}
+          {/* 2. Danh sách Giỏ hàng + Giảm giá từng sản phẩm (% hoặc VND) */}
           <div className="space-y-2">
-            <label className="text-xs font-bold uppercase text-slate-700">
-              2. Giỏ hàng hiện tại
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold uppercase text-slate-700">
+                2. Giỏ hàng & Giảm giá từng Sản phẩm
+              </label>
+              <span className="text-[11px] text-slate-500">
+                Tối đa theo tồn Kho Tầng 1
+              </span>
+            </div>
             {cart.length === 0 ? (
               <div className="py-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl">
                 Chưa có sản phẩm nào trong giỏ hàng
               </div>
             ) : (
-              <div className="divide-y divide-slate-200 border border-slate-200 rounded-xl max-h-64 overflow-y-auto">
-                {cart.map((item) => (
-                  <div
-                    key={item.product._id}
-                    className="p-3 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 text-xs"
-                  >
-                    <div className="min-w-0 basis-full sm:basis-auto sm:flex-1">
-                      <div className="font-semibold text-slate-900 truncate">
-                        {item.product.name}
+              <div className="divide-y divide-slate-200 border border-slate-200 rounded-xl max-h-80 overflow-y-auto">
+                {cart.map((item) => {
+                  const floor1Max = getFloor1Stock(item.product);
+                  const pricing = getItemPricing(item);
+                  return (
+                    <div key={item.product._id} className="p-3 space-y-2 text-xs">
+                      <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2">
+                        <div className="min-w-0 basis-full sm:basis-auto sm:flex-1">
+                          <div className="font-semibold text-slate-900 break-words">
+                            {item.product.name}
+                          </div>
+                          <div className="font-mono text-[11px] text-slate-500 flex flex-wrap items-center gap-1.5 mt-0.5">
+                            {pricing.discountPerUnit > 0 ? (
+                              <>
+                                <span className="line-through text-slate-400">
+                                  {formatVND(pricing.originalUnitPrice)}
+                                </span>
+                                <span className="font-bold text-emerald-700">
+                                  {formatVND(pricing.unitPrice)}
+                                </span>
+                              </>
+                            ) : (
+                              <span>{formatVND(pricing.originalUnitPrice)}</span>
+                            )}
+                            <span>× {item.quantity} {item.product.unit}</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-bold">
+                              Tồn T1: {floor1Max}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleChangeQty(item.product._id, item.quantity - 1)
+                            }
+                            className="w-8 h-8 rounded bg-slate-100 hover:bg-slate-200 flex items-center justify-center"
+                          >
+                            <Minus className="w-3.5 h-3.5" />
+                          </button>
+                          <input
+                            type="number"
+                            min={1}
+                            max={floor1Max}
+                            value={item.quantity}
+                            onChange={(e) =>
+                              handleChangeQty(
+                                item.product._id,
+                                Math.max(1, Number(e.target.value))
+                              )
+                            }
+                            className="w-12 text-center font-mono font-bold border border-slate-300 rounded py-1"
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleChangeQty(item.product._id, item.quantity + 1)
+                            }
+                            className="w-8 h-8 rounded bg-slate-100 hover:bg-slate-200 flex items-center justify-center"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        <div className="ml-auto sm:ml-0 text-right font-mono font-bold text-slate-900 w-24 shrink-0">
+                          {formatVND(pricing.lineTotal)}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleChangeQty(item.product._id, 0)}
+                          className="w-8 h-8 shrink-0 flex items-center justify-center text-red-500 hover:bg-red-50 rounded"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
-                      <div className="font-mono text-[11px] text-slate-500">
-                        {formatVND(item.product.sellingPrice)} × {item.quantity}{" "}
-                        {item.product.unit}
+
+                      {/* Dòng chỉnh giảm giá riêng cho sản phẩm này */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-200/80">
+                        <div className="flex items-center gap-1.5">
+                          <Tag className="w-3.5 h-3.5 text-rose-600" />
+                          <span className="text-[11px] font-bold text-slate-700">
+                            Giảm giá SP:
+                          </span>
+                          <select
+                            value={item.discountType}
+                            onChange={(e) =>
+                              handleChangeItemDiscount(
+                                item.product._id,
+                                e.target.value as DiscountType,
+                                0
+                              )
+                            }
+                            className="px-2 py-1 rounded border border-slate-300 bg-white text-[11px] font-semibold"
+                          >
+                            <option value="NONE">Không giảm</option>
+                            <option value="PERCENT">Giảm theo %</option>
+                            <option value="AMOUNT">Giảm tiền (VND/SP)</option>
+                          </select>
+                        </div>
+
+                        {item.discountType === "PERCENT" && (
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="number"
+                              min={0}
+                              max={100}
+                              value={item.discountValue || ""}
+                              onChange={(e) =>
+                                handleChangeItemDiscount(
+                                  item.product._id,
+                                  "PERCENT",
+                                  Number(e.target.value)
+                                )
+                              }
+                              placeholder="0"
+                              className="w-16 px-2 py-1 rounded border border-rose-300 font-mono font-bold text-right text-xs"
+                            />
+                            <span className="font-bold text-rose-700">%</span>
+                            {pricing.discountAmount > 0 && (
+                              <span className="font-mono text-[11px] font-bold text-rose-600">
+                                (−{formatVND(pricing.discountAmount)})
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {item.discountType === "AMOUNT" && (
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={
+                                item.discountValue > 0
+                                  ? formatNumberDots(item.discountValue)
+                                  : ""
+                              }
+                              onChange={(e) =>
+                                handleChangeItemDiscount(
+                                  item.product._id,
+                                  "AMOUNT",
+                                  parseNumberDots(e.target.value)
+                                )
+                              }
+                              placeholder="0"
+                              className="w-24 px-2 py-1 rounded border border-rose-300 font-mono font-bold text-right text-xs"
+                            />
+                            <span className="font-bold text-rose-700 text-[11px]">
+                              VND/SP
+                            </span>
+                            {pricing.discountAmount > 0 && (
+                              <span className="font-mono text-[11px] font-bold text-rose-600">
+                                (−{formatVND(pricing.discountAmount)})
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleChangeQty(item.product._id, item.quantity - 1)
-                        }
-                        className="w-10 h-10 sm:w-8 sm:h-8 rounded bg-slate-100 hover:bg-slate-200 flex items-center justify-center"
-                      >
-                        <Minus className="w-3.5 h-3.5" />
-                      </button>
-                      <input
-                        type="number"
-                        min={1}
-                        max={item.product.stock}
-                        value={item.quantity}
-                        onChange={(e) =>
-                          handleChangeQty(
-                            item.product._id,
-                            Math.max(1, Number(e.target.value))
-                          )
-                        }
-                        className="w-14 sm:w-12 min-h-[40px] sm:min-h-0 text-center font-mono font-bold border border-slate-300 rounded py-1"
-                      />
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleChangeQty(item.product._id, item.quantity + 1)
-                        }
-                        className="w-10 h-10 sm:w-8 sm:h-8 rounded bg-slate-100 hover:bg-slate-200 flex items-center justify-center"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-
-                    <div className="ml-auto sm:ml-0 text-right font-mono font-bold text-slate-900 w-24 shrink-0">
-                      {formatVND(item.product.sellingPrice * item.quantity)}
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => handleChangeQty(item.product._id, 0)}
-                      className="w-10 h-10 sm:w-8 sm:h-8 shrink-0 flex items-center justify-center text-red-500 hover:bg-red-50 rounded"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
 
-          {/* 3. Phương thức thanh toán & Phí quẹt thẻ 3% */}
+          {/* 3. Giảm giá tổng Bill (Hóa đơn) — Có thể áp dụng cùng lúc với giảm giá SP */}
+          <div className="p-3.5 rounded-xl bg-rose-50/60 border border-rose-200 space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label className="text-xs font-bold uppercase text-rose-900 flex items-center gap-1.5">
+                <Tag className="w-4 h-4 text-rose-600" />
+                3. Giảm giá Tổng Bill (Áp dụng cùng giảm giá SP)
+              </label>
+              {billDiscountAmount > 0 && (
+                <span className="text-xs font-mono font-extrabold text-rose-700 bg-rose-100 px-2 py-0.5 rounded">
+                  −{formatVND(billDiscountAmount)}
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setBillDiscountType("NONE");
+                  setBillDiscountValue(0);
+                }}
+                className={`py-2 px-2 rounded-lg border text-xs font-bold transition ${
+                  billDiscountType === "NONE"
+                    ? "bg-slate-900 text-white border-slate-900"
+                    : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
+                }`}
+              >
+                Không giảm Bill
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setBillDiscountType("PERCENT");
+                  setBillDiscountValue(0);
+                }}
+                className={`py-2 px-2 rounded-lg border text-xs font-bold transition ${
+                  billDiscountType === "PERCENT"
+                    ? "bg-rose-600 text-white border-rose-700"
+                    : "bg-white text-slate-700 border-slate-300 hover:bg-rose-50"
+                }`}
+              >
+                Giảm Bill theo %
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setBillDiscountType("AMOUNT");
+                  setBillDiscountValue(0);
+                }}
+                className={`py-2 px-2 rounded-lg border text-xs font-bold transition ${
+                  billDiscountType === "AMOUNT"
+                    ? "bg-rose-600 text-white border-rose-700"
+                    : "bg-white text-slate-700 border-slate-300 hover:bg-rose-50"
+                }`}
+              >
+                Giảm Bill số tiền
+              </button>
+            </div>
+
+            {billDiscountType === "PERCENT" && (
+              <div className="flex items-center gap-2 pt-1">
+                <span className="text-xs font-semibold text-slate-700">
+                  Mức giảm Bill (%):
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={billDiscountValue || ""}
+                  onChange={(e) =>
+                    setBillDiscountValue(
+                      Math.min(100, Math.max(0, Number(e.target.value)))
+                    )
+                  }
+                  placeholder="VD: 10"
+                  className="w-24 px-3 py-1.5 rounded-lg border border-rose-300 font-mono font-bold text-right text-sm bg-white"
+                />
+                <span className="text-xs font-bold text-rose-700">
+                  % (= −{formatVND(billDiscountAmount)})
+                </span>
+              </div>
+            )}
+
+            {billDiscountType === "AMOUNT" && (
+              <div className="flex items-center gap-2 pt-1">
+                <span className="text-xs font-semibold text-slate-700">
+                  Số tiền giảm Bill:
+                </span>
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={
+                      billDiscountValue > 0
+                        ? formatNumberDots(billDiscountValue)
+                        : ""
+                    }
+                    onChange={(e) =>
+                      setBillDiscountValue(parseNumberDots(e.target.value))
+                    }
+                    placeholder="VD: 50.000"
+                    className="w-full pl-3 pr-12 py-1.5 rounded-lg border border-rose-300 font-mono font-bold text-right text-sm bg-white"
+                  />
+                  <span className="absolute right-3 top-2 text-[11px] font-bold text-slate-500">
+                    VND
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 4. Phương thức thanh toán & Phí quẹt thẻ 3% */}
           <div className="space-y-3">
             <label className="text-xs font-bold uppercase text-slate-700">
-              3. Phương thức thanh toán
+              4. Phương thức thanh toán
             </label>
             <div className="grid grid-cols-3 gap-2">
               <button
@@ -566,7 +1064,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                       checked={hasCardFee}
                       onChange={() => setHasCardFee(true)}
                     />
-                    Có phí 3% (+{formatVND(Math.round(subtotal * 0.03))})
+                    Có phí 3% (+{formatVND(Math.round(afterBillDiscount * 0.03))})
                   </label>
                   <label
                     className={`min-h-[40px] flex items-center gap-2 p-2 rounded-lg border cursor-pointer text-xs font-semibold ${
@@ -580,14 +1078,14 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                       checked={!hasCardFee}
                       onChange={() => setHasCardFee(false)}
                     />
-                    Không phí (0 ₫)
+                    Không phí (0 VND)
                   </label>
                 </div>
               </div>
             )}
           </div>
 
-          {/* 4. Ghi chú & Tổng kết thanh toán */}
+          {/* 5. Ghi chú & Tổng kết thanh toán */}
           <div>
             <label className="block text-xs font-bold uppercase text-slate-700 mb-1">
               Ghi chú hóa đơn
@@ -602,9 +1100,35 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
 
           <div className="bg-slate-900 text-white p-4 rounded-xl space-y-2">
             <div className="flex justify-between gap-2 text-xs text-slate-300">
-              <span>Tổng tiền hàng (Subtotal):</span>
+              <span>Tổng tiền hàng (giá niêm yết):</span>
+              <span className="font-mono font-semibold">{formatVND(rawSubtotal)}</span>
+            </div>
+            {itemDiscountTotal > 0 && (
+              <div className="flex justify-between gap-2 text-xs text-rose-300">
+                <span>Giảm giá trên sản phẩm:</span>
+                <span className="font-mono font-semibold">
+                  −{formatVND(itemDiscountTotal)}
+                </span>
+              </div>
+            )}
+            <div className="flex justify-between gap-2 text-xs text-slate-200">
+              <span>Tạm tính sau giảm SP (Subtotal):</span>
               <span className="font-mono font-semibold">{formatVND(subtotal)}</span>
             </div>
+            {billDiscountAmount > 0 && (
+              <div className="flex justify-between gap-2 text-xs text-rose-300">
+                <span>
+                  Giảm giá Bill (
+                  {billDiscountType === "PERCENT"
+                    ? `${cleanBillDiscountValue}%`
+                    : "Tiền mặt"}
+                  ):
+                </span>
+                <span className="font-mono font-semibold">
+                  −{formatVND(billDiscountAmount)}
+                </span>
+              </div>
+            )}
             {paymentMethod === "CARD" && (
               <div className="flex justify-between gap-2 text-xs text-amber-300">
                 <span>Phí quẹt thẻ ({hasCardFee ? "3%" : "0%"}):</span>

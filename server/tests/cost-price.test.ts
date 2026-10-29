@@ -353,5 +353,57 @@ describe('v1.1: Giá gốc khi nhập kho & phân quyền giá bán', () => {
     expect(repRow.currentStock).toBe(6);
     expect(repRow.stockFloor1).toBe(4);
     expect(repRow.stockFloor2).toBe(2);
+
+    // 6. Đặt giá bán 1.000.000 VND cho đôi giày (đang có Tầng 1 = 4, Tầng 2 = 2, Tổng = 6)
+    await request(app)
+      .patch(`/api/v1/products/${prod._id}`)
+      .set('x-user-id', 'admin')
+      .send({ sellingPrice: 1000000 });
+
+    // 7. Nhân viên bán hàng bán 5 đôi -> Bị chặn vì vượt số lượng Kho Tầng 1 (4 đôi), dù tổng 2 kho là 6
+    const exceedFloor1Res = await request(app)
+      .post('/api/v1/orders')
+      .set('x-user-id', 'sales1')
+      .send({
+        customerName: 'Khách Mua Vượt Tầng 1',
+        customerPhone: '0911222333',
+        paymentMethod: 'CASH',
+        items: [{ productId: prod._id, quantity: 5 }],
+      });
+    expect(exceedFloor1Res.status).toBe(400);
+    expect(exceedFloor1Res.body.code).toBe('INSUFFICIENT_STOCK');
+
+    // 8. Bán 2 đôi (<= 4 ở Tầng 1) kèm CẢ HAI: Giảm giá SP 10% (1.000.000 -> 900.000/đôi, tổng 1.800.000) + Giảm giá Bill 50.000 VND -> Tổng thu = 1.750.000 VND
+    const discountOrderRes = await request(app)
+      .post('/api/v1/orders')
+      .set('x-user-id', 'sales1')
+      .send({
+        customerName: 'Khách Giảm Giá Kép',
+        customerPhone: '0911222444',
+        paymentMethod: 'CASH',
+        billDiscountType: 'AMOUNT',
+        billDiscountValue: 50000,
+        items: [
+          {
+            productId: prod._id,
+            quantity: 2,
+            discountType: 'PERCENT',
+            discountValue: 10,
+          },
+        ],
+      });
+    expect(discountOrderRes.status).toBe(201);
+    expect(discountOrderRes.body.data.rawSubtotal).toBe(2000000);
+    expect(discountOrderRes.body.data.itemDiscountTotal).toBe(200000);
+    expect(discountOrderRes.body.data.subtotal).toBe(1800000);
+    expect(discountOrderRes.body.data.billDiscountAmount).toBe(50000);
+    expect(discountOrderRes.body.data.totalAmount).toBe(1750000);
+
+    // Kiểm tra Kho Tầng 1 giảm từ 4 -> 2, Kho Tầng 2 giữ nguyên = 2
+    const afterFloorSaleRes = await request(app).get('/api/v1/products').set('x-user-id', 'admin');
+    const afterFloorProd = afterFloorSaleRes.body.data.find((p: any) => p._id === prod._id);
+    expect(afterFloorProd.stockFloor1).toBe(2);
+    expect(afterFloorProd.stockFloor2).toBe(2);
+    expect(afterFloorProd.stock).toBe(4);
   });
 });

@@ -116,6 +116,7 @@ export default function OrdersReturnsModule({
                 <th className="py-3 px-3">Thanh toán</th>
                 <th className="py-3 px-3">NV bán</th>
                 <th className="py-3 px-3 text-right">Tiền hàng</th>
+                <th className="py-3 px-3 text-right">Giảm giá</th>
                 <th className="py-3 px-3 text-right">Phí thẻ 3%</th>
                 <th className="py-3 px-3 text-right">Tổng thu</th>
                 <th className="py-3 px-3 text-center">Trạng thái</th>
@@ -123,7 +124,11 @@ export default function OrdersReturnsModule({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {orders.map((ord) => (
+              {orders.map((ord) => {
+                const totalDisc =
+                  (Number(ord.itemDiscountTotal) || 0) +
+                  (Number(ord.billDiscountAmount) || 0);
+                return (
                 <tr key={ord._id} className="hover:bg-slate-50">
                   <td className="py-3 px-3 font-mono font-bold text-slate-900">
                     {ord.orderCode || ord.code}
@@ -147,7 +152,10 @@ export default function OrdersReturnsModule({
                     {ord.createdByName || ord.soldByName || "-"}
                   </td>
                   <td className="py-3 px-3 text-right font-mono">
-                    {formatVND(ord.subtotal)}
+                    {formatVND(ord.rawSubtotal || ord.subtotal)}
+                  </td>
+                  <td className="py-3 px-3 text-right font-mono text-rose-700">
+                    {totalDisc > 0 ? `-${formatVND(totalDisc)}` : "0 VND"}
                   </td>
                   <td className="py-3 px-3 text-right font-mono text-amber-700">
                     {formatVND(ord.cardFee)}
@@ -178,7 +186,8 @@ export default function OrdersReturnsModule({
                     </button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

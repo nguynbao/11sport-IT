@@ -57,7 +57,7 @@ productsInventoryRouter.get('/products', async (req, res, next) => {
       .filter((p) => {
         if (categoryId && String(p.categoryId) !== String(categoryId)) return false;
         if (onlySellable === 'true') {
-          if (!(p.sellingPrice > 0 && p.stock > 0)) return false;
+          if (!(p.sellingPrice > 0 && p.stockFloor1 > 0)) return false;
         }
         if (search) {
           const q = String(search).trim().toLowerCase();

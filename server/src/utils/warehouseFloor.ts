@@ -80,24 +80,15 @@ export function applyFloorDelta(
 
 /**
  * Trừ tồn kho khi bán hàng tại POS hoặc xuất đổi:
- * Ưu tiên trừ tại Kho Tầng 1 trước, nếu thiếu thì trừ tiếp phần còn lại ở Kho Tầng 2.
+ * CHỈ trừ tại Kho Tầng 1 (stockFloor1). Tuyệt đối không tự động lấy sang Kho Tầng 2.
  */
 export function deductStockForSale(
   product: any,
   qty: number
 ): { stockFloor1: number; stockFloor2: number; stock: number } {
   const current = getFloorStocks(product);
-  let f1 = current.stockFloor1;
-  let f2 = current.stockFloor2;
-  let remaining = Math.max(0, qty);
-
-  const fromF1 = Math.min(f1, remaining);
-  f1 -= fromF1;
-  remaining -= fromF1;
-
-  if (remaining > 0) {
-    f2 = Math.max(0, f2 - remaining);
-  }
+  const f1 = Math.max(0, current.stockFloor1 - Math.max(0, qty));
+  const f2 = current.stockFloor2;
 
   return {
     stockFloor1: f1,

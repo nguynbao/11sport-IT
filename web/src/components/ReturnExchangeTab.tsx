@@ -63,7 +63,9 @@ export default function ReturnExchangeTab() {
       ]);
       setRecentOrders(Array.isArray(ordRes.data) ? ordRes.data : []);
       const prods = Array.isArray(prodRes.data)
-        ? prodRes.data.filter((p) => p.sellingPrice > 0 && p.stock > 0)
+        ? prodRes.data.filter(
+            (p) => p.sellingPrice > 0 && (Number(p.stockFloor1 ?? p.stock) || 0) > 0
+          )
         : [];
       setSellableProducts(prods);
       if (prods.length > 0) setSelectedExchangeProductId(prods[0]._id);
@@ -147,11 +149,12 @@ export default function ReturnExchangeTab() {
     if (!selectedExchangeProductId) return;
     const prod = sellableProducts.find((p) => p._id === selectedExchangeProductId);
     if (!prod) return;
+    const floor1Stock = Number(prod.stockFloor1 ?? prod.stock) || 0;
 
     setExchangeRows((prev) => {
       const existing = prev.find((r) => r.product._id === prod._id);
       if (existing) {
-        if (existing.quantity + 1 > prod.stock) return prev;
+        if (existing.quantity + 1 > floor1Stock) return prev;
         return prev.map((r) =>
           r.product._id === prod._id ? { ...r, quantity: r.quantity + 1 } : r
         );

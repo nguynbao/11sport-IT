@@ -113,11 +113,12 @@ async function prepareReturnExchangeCalculation(body: any) {
       const totalExchanging = (cumulativeExchangeByProdId.get(exKey) || 0) + qty;
       cumulativeExchangeByProdId.set(exKey, totalExchanging);
 
-      if (product.stock < totalExchanging) {
+      const exFloors = getFloorStocks(product);
+      if (exFloors.stockFloor1 < totalExchanging) {
         throw new ApiError(
           400,
           'INSUFFICIENT_EXCHANGE_STOCK',
-          `Sản phẩm đổi mới "${product.name}" không đủ tồn kho (Tồn: ${product.stock}, Cần: ${totalExchanging})`
+          `Sản phẩm đổi mới "${product.name}" không đủ tồn tại Kho Tầng 1 (Tồn Tầng 1: ${exFloors.stockFloor1}, Cần: ${totalExchanging})`
         );
       }
 

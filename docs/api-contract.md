@@ -190,7 +190,7 @@
 - `GET /api/v1/customers` — Danh sách khách hàng
 - `GET /api/v1/orders` — Danh sách đơn hàng (lọc theo `search`, `phone`, `status`, `paymentMethod`)
 - `GET /api/v1/orders/:id` — Chi tiết đơn hàng (hoặc tra theo `orderCode` qua `GET /api/v1/orders/by-code/:code`)
-- `POST /api/v1/orders`
+- `POST /api/v1/orders` *(Cập nhật v2.0 — Chỉ bán tồn Kho Tầng 1 + Giảm giá Sản phẩm & Giảm giá Bill)*
   - Body:
     ```json
     {
@@ -198,21 +198,37 @@
       "customerPhone": "0901234567",
       "paymentMethod": "CASH | BANKING | CARD",
       "hasCardFee": true,
+      "billDiscountType": "NONE | PERCENT | AMOUNT",
+      "billDiscountValue": 10,
       "note": "Giá đã bao gồm thuế",
       "items": [
         {
           "productId": "...",
-          "quantity": 2
+          "quantity": 2,
+          "discountType": "NONE | PERCENT | AMOUNT",
+          "discountValue": 50000
         }
       ]
     }
     ```
   - Nghiệp vụ:
-    - Kiểm tra sản phẩm có `sellingPrice > 0` và `stock >= quantity`.
-    - Tính `lineTotal = unitPrice * quantity`, `subtotal = sum(lineTotal)`.
-    - Nếu `paymentMethod === "CARD"` và `hasCardFee === true`: `cardFee = Math.round(subtotal * 0.03)`, ngược lại `cardFee = 0`.
-    - `totalAmount = subtotal + cardFee`.
-    - Trừ `stock` sản phẩm, ghi `StockMovement` loại `SALE`, cập nhật/tạo `Customer` theo SĐT.
+    - **Chỉ bán từ Kho Tầng 1 (`stockFloor1`)**: Kiểm tra sản phẩm có `sellingPrice > 0` và `stockFloor1 >= quantity` (tính lũy kế nếu trùng sản phẩm trong đơn). Nếu vượt quá `stockFloor1` → trả lỗi `400 INSUFFICIENT_STOCK` (không tự động lấy sang Kho Tầng 2 khi chưa làm phiếu xuất kho chuyển tầng).
+    - **Giảm giá từng sản phẩm (`discountType`, `discountValue`)**:
+      - `originalUnitPrice = product.sellingPrice`.
+      - Nếu `discountType === "PERCENT"` (`0..100`): số tiền giảm trên 1 SP = `Math.round(originalUnitPrice * discountValue / 100)`.
+      - Nếu `discountType === "AMOUNT"`: số tiền giảm trên 1 SP = `Math.min(originalUnitPrice, Math.max(0, Math.round(discountValue)))`.
+      - `unitPrice = Math.max(0, originalUnitPrice - discountPerUnit)` (đơn giá sau giảm).
+      - `discountAmount = discountPerUnit * quantity` (tổng giảm của dòng SP).
+      - `lineTotal = unitPrice * quantity`.
+    - **Giảm giá tổng Bill (`billDiscountType`, `billDiscountValue`) — có thể áp dụng đồng thời với giảm giá sản phẩm**:
+      - `subtotal = sum(lineTotal)` (tổng tiền hàng sau giảm giá từng SP).
+      - Nếu `billDiscountType === "PERCENT"` (`0..100`): `billDiscountAmount = Math.round(subtotal * billDiscountValue / 100)`.
+      - Nếu `billDiscountType === "AMOUNT"`: `billDiscountAmount = Math.min(subtotal, Math.max(0, Math.round(billDiscountValue)))`.
+      - Tiền hàng sau giảm giá Bill: `afterBillDiscount = Math.max(0, subtotal - billDiscountAmount)`.
+    - **Phí quẹt thẻ 3% & Tổng thanh toán**:
+      - Nếu `paymentMethod === "CARD"` và `hasCardFee === true`: `cardFee = Math.round(afterBillDiscount * 0.03)`, ngược lại `cardFee = 0`.
+      - `totalAmount = afterBillDiscount + cardFee`.
+    - Trừ trực tiếp `stockFloor1` (và `stock`) của sản phẩm, ghi `StockMovement` loại `SALE` (`warehouseLocation: "FLOOR_1"`), cập nhật/tạo `Customer` theo SĐT.
 
 ### 2.6 Trả / Đổi hàng (`/returns`)
 - `GET /api/v1/returns` — Danh sách phiếu trả/đổi (CMS & POS)

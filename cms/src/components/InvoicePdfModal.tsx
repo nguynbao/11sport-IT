@@ -209,7 +209,14 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
                         {item.productCode} {item.unit ? `(${item.unit})` : ""}
                       </div>
                       <div className="grid grid-cols-12 items-center pt-0.5 font-mono text-[11px]">
-                        <div className="col-span-5 text-slate-500">Đơn giá × SL:</div>
+                        <div className="col-span-5 text-slate-500">
+                          Đơn giá × SL:
+                          {(Number(item.discountAmount) || 0) > 0 && (
+                            <div className="text-[10px] text-rose-600">
+                              (Giảm SP: -{formatVND(item.discountAmount)})
+                            </div>
+                          )}
+                        </div>
                         <div className="col-span-2 text-center font-semibold text-slate-900">
                           {item.quantity}
                         </div>
@@ -246,6 +253,11 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
                         <div className="font-mono text-[11px] text-slate-500 break-all mt-0.5">
                           {item.productCode} {item.unit ? `(${item.unit})` : ""}
                         </div>
+                        {(Number(item.discountAmount) || 0) > 0 && (
+                          <div className="text-[11px] font-mono text-rose-600 mt-0.5">
+                            Giá gốc: {formatVND(item.originalUnitPrice)} · Giảm SP: -{formatVND(item.discountAmount)}
+                          </div>
+                        )}
                       </td>
                       <td className="py-2.5 text-center font-mono">{item.quantity}</td>
                       <td className="py-2.5 text-right font-mono whitespace-nowrap">
@@ -261,12 +273,44 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
             )}
 
             <div className="border-t-2 border-slate-800 pt-3 space-y-1.5">
+              {(Number(order.itemDiscountTotal) || 0) > 0 && (
+                <>
+                  <div className="flex justify-between items-center text-slate-500">
+                    <span>Tổng tiền hàng (giá niêm yết):</span>
+                    <span className="font-mono whitespace-nowrap">
+                      {formatVND(order.rawSubtotal)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-rose-700">
+                    <span>Giảm giá trên sản phẩm:</span>
+                    <span className="font-mono font-semibold whitespace-nowrap">
+                      -{formatVND(order.itemDiscountTotal)}
+                    </span>
+                  </div>
+                </>
+              )}
+
               <div className="flex justify-between items-center">
-                <span className="text-slate-600">Tổng tiền hàng (Subtotal):</span>
+                <span className="text-slate-600">Tạm tính tiền hàng (Subtotal):</span>
                 <span className="font-mono font-semibold whitespace-nowrap">
                   {formatVND(order.subtotal)}
                 </span>
               </div>
+
+              {(Number(order.billDiscountAmount) || 0) > 0 && (
+                <div className="flex justify-between items-center text-rose-700 bg-rose-50 px-2 py-1 rounded">
+                  <span>
+                    Giảm giá Bill{" "}
+                    {order.billDiscountType === "PERCENT"
+                      ? `(${order.billDiscountValue}%)`
+                      : ""}
+                    :
+                  </span>
+                  <span className="font-mono font-semibold whitespace-nowrap">
+                    -{formatVND(order.billDiscountAmount)}
+                  </span>
+                </div>
+              )}
 
               {order.paymentMethod === "CARD" && (
                 <div className="flex justify-between items-center text-amber-800 bg-amber-50 px-2 py-1 rounded">
