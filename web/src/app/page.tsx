@@ -17,6 +17,12 @@ import ImportTab from "@/components/ImportTab";
 import CustomerTab from "@/components/CustomerTab";
 import ReturnExchangeTab from "@/components/ReturnExchangeTab";
 import InvoicePdfModal from "@/components/InvoicePdfModal";
+import AccountProfileTab from "@/components/AccountProfileTab";
+import DrawerMenu, {
+  TabType,
+  TabConfig,
+  DrawerPageType,
+} from "@/components/DrawerMenu";
 import {
   ShoppingCart,
   Package,
@@ -24,24 +30,15 @@ import {
   Users,
   RotateCcw,
   ShieldCheck,
-  ExternalLink,
-  LogOut,
+  Menu,
   Lock,
   LogIn,
   User,
   KeyRound,
   AlertCircle,
+  Clock,
+  ArrowLeft,
 } from "lucide-react";
-
-type TabType = "POS" | "INVENTORY" | "IMPORT" | "CUSTOMER" | "RETURN";
-
-interface TabConfig {
-  id: TabType;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  allowedRoles: UserRole[];
-  roleHint: string;
-}
 
 const TABS_CONFIG: TabConfig[] = [
   {
@@ -94,9 +91,12 @@ function getRoleDisplayName(role?: UserRole): string {
 
 export default function WebPosHomePage() {
   const [activeTab, setActiveTab] = useState<TabType>("POS");
+  const [activeDrawerPage, setActiveDrawerPage] =
+    useState<DrawerPageType>("NONE");
   const [currentUser, setCurrentUser] = useState<StaffUser | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [invoiceOrder, setInvoiceOrder] = useState<Order | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   // State form Login
   const [username, setUsername] = useState("");
@@ -161,6 +161,8 @@ export default function WebPosHomePage() {
   };
 
   const handleLogout = () => {
+    setDrawerOpen(false);
+    setActiveDrawerPage("NONE");
     clearStoredAuth();
     setCurrentUser(null);
     setUsername("");
@@ -310,30 +312,15 @@ export default function WebPosHomePage() {
               </div>
             </div>
 
-            {currentUser.role === "ADMIN" && (
-              <a
-                href={
-                  process.env.NEXT_PUBLIC_CMS_URL ||
-                  "https://11sport-it-m1ei.vercel.app"
-                }
-                target="_blank"
-                rel="noreferrer"
-                title="Mở CMS"
-                className="min-h-[40px] min-w-[40px] px-2.5 md:px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-emerald-400 border border-slate-700 flex items-center justify-center gap-1"
-              >
-                <span className="hidden sm:inline">Mở CMS</span>{" "}
-                <ExternalLink className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
-              </a>
-            )}
-
             <button
               type="button"
-              onClick={handleLogout}
-              title="Đăng xuất"
-              className="min-h-[40px] min-w-[40px] px-2.5 md:px-3 py-2 rounded-xl bg-red-600/90 hover:bg-red-600 text-xs font-bold text-white flex items-center justify-center gap-1.5 transition"
+              onClick={() => setDrawerOpen(true)}
+              title="Mở menu điều hướng"
+              aria-label="Mở menu điều hướng"
+              className="min-h-[40px] min-w-[40px] px-2.5 md:px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white border border-slate-700 flex items-center justify-center gap-1.5 transition"
             >
-              <LogOut className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
-              <span className="hidden sm:inline">Đăng xuất</span>
+              <Menu className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-emerald-400" />
+              <span className="hidden sm:inline">Menu</span>
             </button>
           </div>
         </div>
@@ -344,7 +331,8 @@ export default function WebPosHomePage() {
             {TABS_CONFIG.map((tab) => {
               const Icon = tab.icon;
               const isAllowed = tab.allowedRoles.includes(currentUser.role);
-              const isActive = activeTab === tab.id;
+              const isActive =
+                activeDrawerPage === "NONE" && activeTab === tab.id;
 
               return (
                 <button
@@ -357,7 +345,10 @@ export default function WebPosHomePage() {
                       : `Chức năng này chỉ dành cho: ${tab.roleHint}`
                   }
                   onClick={() => {
-                    if (isAllowed) setActiveTab(tab.id);
+                    if (isAllowed) {
+                      setActiveDrawerPage("NONE");
+                      setActiveTab(tab.id);
+                    }
                   }}
                   className={`min-h-[40px] shrink-0 snap-start px-3 md:px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 md:gap-2 whitespace-nowrap transition ${
                     !isAllowed
@@ -382,7 +373,43 @@ export default function WebPosHomePage() {
 
       {/* Main Content */}
       <main className="flex-1 max-w-7xl w-full min-w-0 mx-auto px-3 py-3 md:px-4 md:py-6 print:p-0">
-        {!isCurrentTabAllowed ? (
+        {activeDrawerPage === "PROFILE" ? (
+          <AccountProfileTab
+            currentUser={currentUser}
+            onUserUpdated={(updated) => setCurrentUser(updated)}
+            onBack={() => setActiveDrawerPage("NONE")}
+            getRoleDisplayName={getRoleDisplayName}
+          />
+        ) : activeDrawerPage === "ATTENDANCE" ? (
+          <div className="max-w-2xl mx-auto bg-white rounded-2xl border border-slate-200 p-8 text-center space-y-4 shadow-sm">
+            <div className="w-14 h-14 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center mx-auto">
+              <Clock className="w-7 h-7 text-amber-500" />
+            </div>
+            <div className="space-y-1.5">
+              <span className="inline-block text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-lg bg-amber-100 text-amber-700">
+                Chưa triển khai (Coming Soon)
+              </span>
+              <h3 className="text-lg font-extrabold text-slate-900">
+                Tính năng Chấm công ca làm việc
+              </h3>
+              <p className="text-xs text-slate-500 max-w-md mx-auto">
+                Chức năng điểm danh, chấm công nhận ca / kết ca dành cho nhân sự{" "}
+                <strong>11Sport</strong> đang trong quá trình phát triển và sẽ sớm
+                được cập nhật.
+              </p>
+            </div>
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setActiveDrawerPage("NONE")}
+                className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow transition"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>Quay lại màn hình làm việc</span>
+              </button>
+            </div>
+          </div>
+        ) : !isCurrentTabAllowed ? (
           <div className="bg-white rounded-xl border border-slate-200 p-8 text-center space-y-2">
             <Lock className="w-10 h-10 text-amber-500 mx-auto" />
             <h3 className="text-base font-bold text-slate-900">
@@ -408,6 +435,22 @@ export default function WebPosHomePage() {
           </>
         )}
       </main>
+
+      {/* Drawer Menu (thay thế vị trí nút Đăng xuất trên Header) */}
+      <DrawerMenu
+        isOpen={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        currentUser={currentUser}
+        activeDrawerPage={activeDrawerPage}
+        onOpenProfile={() => setActiveDrawerPage("PROFILE")}
+        onOpenAttendance={() => setActiveDrawerPage("ATTENDANCE")}
+        onLogout={handleLogout}
+        getRoleDisplayName={getRoleDisplayName}
+        cmsUrl={
+          process.env.NEXT_PUBLIC_CMS_URL ||
+          "https://11sport-it-m1ei.vercel.app"
+        }
+      />
 
       {/* Modal Xuất / In Hóa Đơn PDF (K80 / A4) */}
       <InvoicePdfModal
