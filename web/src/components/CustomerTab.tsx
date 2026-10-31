@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Order,
   ReturnReceipt,
@@ -9,6 +9,8 @@ import {
   formatDateTime,
   formatPhone,
   cleanPhoneDigits,
+  useDebounce,
+  filterAndRankBySearch,
 } from "@/lib/api";
 import { Search, User, Phone, Printer, ShoppingBag, RotateCcw } from "lucide-react";
 
@@ -24,6 +26,8 @@ export default function CustomerTab({ onOpenInvoice }: CustomerTabProps) {
   const [allCustomers, setAllCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const debouncedPhone = useDebounce(phone, 500);
+  const userTypedRef = useRef(false);
 
   useEffect(() => {
     // Tải danh sách khách hàng gần đây để nhân viên bấm tra cứu nhanh
@@ -33,6 +37,25 @@ export default function CustomerTab({ onOpenInvoice }: CustomerTabProps) {
       })
       .catch(() => { });
   }, []);
+
+  // Lọc gợi ý khách hàng thông minh theo SĐT hoặc Tên (bỏ dấu, đa từ)
+  const filteredCustomers = useMemo(() => {
+    if (!debouncedPhone.trim()) return allCustomers.slice(0, 6);
+    return filterAndRankBySearch(allCustomers, debouncedPhone, (c) => [
+      { text: c.phone || c.customerPhone, weight: 1.5 },
+      { text: c.fullName || c.name || c.customerName, weight: 1.3 },
+    ]).slice(0, 8);
+  }, [allCustomers, debouncedPhone]);
+
+  // Tự động tra cứu khi người dùng nhập đủ >= 9 chữ số SĐT và ngừng gõ 350ms (Debounce)
+  useEffect(() => {
+    if (!userTypedRef.current) return;
+    const digits = cleanPhoneDigits(debouncedPhone);
+    if (digits.length >= 9 && /^[\d\s+().-]+$/.test(debouncedPhone.trim())) {
+      handleLookup(digits);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedPhone]);
 
   const handleLookup = async (targetPhone?: string) => {
     const rawTarget = targetPhone ?? phone;
@@ -90,10 +113,19 @@ export default function CustomerTab({ onOpenInvoice }: CustomerTabProps) {
           <div className="relative w-full sm:flex-1 sm:max-w-md">
             <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
             <input
-              type="tel"
+              type="text"
               value={phone}
-              onChange={(e) => setPhone(formatPhone(e.target.value))}
-              placeholder="Nhập SĐT khách hàng (VD: 0945 xxx xxx)..."
+              onChange={(e) => {
+                userTypedRef.current = true;
+                const val = e.target.value;
+                // Nếu chỉ gõ số/khoảng trắng thì tự format SĐT, nếu gõ chữ (tên khách) thì giữ nguyên để lọc gợi ý
+                if (/^[\d\s+().-]*$/.test(val)) {
+                  setPhone(formatPhone(val));
+                } else {
+                  setPhone(val);
+                }
+              }}
+              placeholder="Nhập SĐT hoặc Tên khách hàng (VD: 0945 xxx xxx)..."
               className="w-full min-h-[44px] pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 font-mono text-sm focus:border-emerald-600 focus:outline-none"
             />
           </div>
@@ -109,19 +141,22 @@ export default function CustomerTab({ onOpenInvoice }: CustomerTabProps) {
         </form>
 
         {/* Gợi ý khách hàng đã lưu */}
-        {allCustomers.length > 0 && (
+        {filteredCustomers.length > 0 && (
           <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center gap-2">
             <span className="text-xs font-semibold text-slate-500">
-              Khách hàng gần đây:
+              {phone.trim() ? "Khách hàng khớp tìm kiếm:" : "Khách hàng gần đây:"}
             </span>
-            {allCustomers.slice(0, 6).map((c) => {
+            {filteredCustomers.map((c) => {
               const cPhone = c.phone || c.customerPhone;
               const cName = c.fullName || c.name || c.customerName;
               return (
                 <button
                   key={c._id || cPhone}
                   type="button"
-                  onClick={() => handleLookup(cPhone)}
+                  onClick={() => {
+                    userTypedRef.current = false;
+                    handleLookup(cPhone);
+                  }}
                   className="min-h-[36px] max-w-full truncate px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-xs font-mono font-semibold text-slate-700 transition"
                 >
                   {cName} ({formatPhone(cPhone)})

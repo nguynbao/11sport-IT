@@ -9,6 +9,7 @@ import { ApiError } from '../utils/errors';
 import { IReturnItem, IExchangeItem, ReturnCondition } from '../models/ReturnExchange';
 import { PaymentMethod } from '../models/Order';
 import { applyFloorDelta, deductStockForSale, getFloorStocks } from '../utils/warehouseFloor';
+import { filterAndRankBySearch } from '../utils/search';
 
 export const returnsRouter = Router();
 
@@ -159,22 +160,32 @@ returnsRouter.get('/returns', async (req, res, next) => {
     const { orderId, type, search } = req.query;
     const allReturns = await returnExchangeRepo.find({}, { createdAt: -1 });
 
-    const filtered = allReturns.filter((r) => {
+    const baseFiltered = allReturns.filter((r) => {
       if (orderId && String(r.orderId) !== String(orderId) && r.orderCode !== String(orderId)) {
         return false;
       }
       if (type && r.type !== String(type).toUpperCase()) return false;
-      if (search) {
-        const q = String(search).toLowerCase();
-        const match =
-          r.code.toLowerCase().includes(q) ||
-          r.orderCode.toLowerCase().includes(q) ||
-          r.customerName.toLowerCase().includes(q) ||
-          r.customerPhone.toLowerCase().includes(q);
-        if (!match) return false;
-      }
       return true;
     });
+
+    const filtered = search
+      ? filterAndRankBySearch(baseFiltered, String(search), (r) => [
+          { text: r.code, weight: 1.6 },
+          { text: r.orderCode, weight: 1.5 },
+          { text: r.customerPhone, weight: 1.5 },
+          { text: r.customerName, weight: 1.3 },
+          { text: r.performedByName, weight: 0.9 },
+          { text: r.note, weight: 0.8 },
+          ...(r.returnItems || []).flatMap((i) => [
+            { text: i.productCode, weight: 1.2 },
+            { text: i.productName, weight: 1.1 },
+          ]),
+          ...(r.exchangeItems || []).flatMap((i) => [
+            { text: i.productCode, weight: 1.2 },
+            { text: i.productName, weight: 1.1 },
+          ]),
+        ])
+      : baseFiltered;
 
     res.json({
       data: filtered,

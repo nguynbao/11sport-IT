@@ -3,6 +3,7 @@ import { categoryRepo, productRepo, stockMovementRepo } from '../config/db';
 import { generateProductCode } from '../utils/productCode';
 import { ApiError } from '../utils/errors';
 import { normalizeFloor, floorLabel, getFloorStocks, applyFloorDelta } from '../utils/warehouseFloor';
+import { filterAndRankBySearch } from '../utils/search';
 
 export const productsInventoryRouter = Router();
 
@@ -43,7 +44,7 @@ productsInventoryRouter.get('/products', async (req, res, next) => {
     // Ẩn giá gốc và chỉ hiển thị sản phẩm Kho Tầng 1 đối với nhân viên bán hàng (SALES)
     const isSalesRole = req.user?.role === 'SALES';
     const hideCost = isSalesRole;
-    const filtered = allProducts
+    const baseFiltered = allProducts
       .map((p) => {
         const cat =
           catMap.get(String(p.categoryId)) ||
@@ -69,14 +70,19 @@ productsInventoryRouter.get('/products', async (req, res, next) => {
         if (onlySellable === 'true') {
           if (!(p.sellingPrice > 0 && p.stockFloor1 > 0)) return false;
         }
-        if (search) {
-          const q = String(search).trim().toLowerCase();
-          const matchCode = p.code.toLowerCase().includes(q);
-          const matchName = p.name.toLowerCase().includes(q);
-          if (!matchCode && !matchName) return false;
-        }
         return true;
       });
+
+    const filtered = search
+      ? filterAndRankBySearch(baseFiltered, String(search), (p) => [
+          { text: p.code, weight: 1.5 },
+          { text: (p as any).barcode, weight: 1.5 },
+          { text: p.name, weight: 1.3 },
+          { text: p.categoryName, weight: 0.9 },
+          { text: p.categoryCode, weight: 0.9 },
+          { text: p.unit, weight: 0.6 },
+        ])
+      : baseFiltered;
 
     const totalProducts = filtered.length;
     const totalStock = filtered.reduce((sum, p) => sum + (Number(p.stock) || 0), 0);
@@ -505,22 +511,13 @@ productsInventoryRouter.get('/inventory/movements', async (req, res, next) => {
     const toDate = to ? new Date(String(to)) : null;
     if (toDate) toDate.setHours(23, 59, 59, 999);
 
-    const filtered = movements
+    const baseMovements = movements
       .filter((m) => {
         if (productId && String(m.productId) !== String(productId)) return false;
         if (type && m.type !== String(type).toUpperCase()) return false;
         const mTime = new Date(m.createdAt).getTime();
         if (fromDate && mTime < fromDate.getTime()) return false;
         if (toDate && mTime > toDate.getTime()) return false;
-        if (search) {
-          const q = String(search).toLowerCase();
-          const match =
-            m.productCode.toLowerCase().includes(q) ||
-            m.productName.toLowerCase().includes(q) ||
-            m.referenceCode.toLowerCase().includes(q) ||
-            (m.note || '').toLowerCase().includes(q);
-          if (!match) return false;
-        }
         return true;
       })
       .map((m) => {
@@ -532,6 +529,17 @@ productsInventoryRouter.get('/inventory/movements', async (req, res, next) => {
           ...(hideCost ? {} : { costPrice: Number(prod?.costPrice || 0) }),
         };
       });
+
+    const filtered = search
+      ? filterAndRankBySearch(baseMovements, String(search), (m) => [
+          { text: m.productCode, weight: 1.5 },
+          { text: m.referenceCode, weight: 1.4 },
+          { text: m.productName, weight: 1.3 },
+          { text: m.performedByName, weight: 0.9 },
+          { text: m.type, weight: 0.8 },
+          { text: m.note, weight: 0.8 },
+        ])
+      : baseMovements;
 
     res.json({
       data: filtered,
@@ -558,17 +566,21 @@ productsInventoryRouter.get('/inventory/report', async (req, res, next) => {
     const allProducts = await productRepo.find({}, { createdAt: 1 });
     const allMovements = await stockMovementRepo.find({}, { createdAt: 1 });
 
-    const reportRows = allProducts
-      .filter((p) => {
-        if (categoryId && String(p.categoryId) !== String(categoryId)) return false;
-        if (search) {
-          const q = String(search).toLowerCase();
-          if (!p.code.toLowerCase().includes(q) && !p.name.toLowerCase().includes(q)) {
-            return false;
-          }
-        }
-        return true;
-      })
+    const baseProducts = allProducts.filter((p) => {
+      if (categoryId && String(p.categoryId) !== String(categoryId)) return false;
+      return true;
+    });
+
+    const searchedProducts = search
+      ? filterAndRankBySearch(baseProducts, String(search), (p) => [
+          { text: p.code, weight: 1.5 },
+          { text: p.name, weight: 1.3 },
+          { text: p.categoryName, weight: 0.9 },
+          { text: p.categoryCode, weight: 0.9 },
+        ])
+      : baseProducts;
+
+    const reportRows = searchedProducts
       .map((product) => {
         const pMovements = allMovements.filter(
           (m) => String(m.productId) === String(product._id)

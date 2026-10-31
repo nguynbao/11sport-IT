@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Order,
   Product,
@@ -9,6 +9,8 @@ import {
   formatVND,
   formatDateTime,
   formatPhone,
+  useDebounce,
+  filterAndRankBySearch,
 } from "@/lib/api";
 import {
   Search,
@@ -54,6 +56,22 @@ export default function ReturnExchangeTab() {
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+
+  // Debounce từ khóa tìm kiếm đơn hàng gốc (350ms) để gợi ý thông minh theo mã đơn / SĐT / tên khách
+  const debouncedOrderQuery = useDebounce(orderCodeInput, 350);
+
+  const matchingRecentOrders = useMemo(() => {
+    if (!debouncedOrderQuery.trim()) return recentOrders.slice(0, 6);
+    return filterAndRankBySearch(recentOrders, debouncedOrderQuery, (o) => [
+      { text: o.orderCode || o.code, weight: 1.6 },
+      { text: o.customerPhone, weight: 1.5 },
+      { text: o.customerName, weight: 1.3 },
+      ...(o.items || []).flatMap((it) => [
+        { text: it.productCode, weight: 1.1 },
+        { text: it.productName, weight: 1.0 },
+      ]),
+    ]).slice(0, 8);
+  }, [recentOrders, debouncedOrderQuery]);
 
   const loadInitialLists = async () => {
     try {
@@ -128,14 +146,15 @@ export default function ReturnExchangeTab() {
         `/orders?search=${encodeURIComponent(code)}`
       );
       const list = Array.isArray(listRes.data) ? listRes.data : [];
-      const found = list.find(
-        (o) =>
-          (o.orderCode || o.code || "").toUpperCase() === code.toUpperCase() ||
-          o._id === code
-      );
+      const found =
+        list.find(
+          (o) =>
+            (o.orderCode || o.code || "").toUpperCase() === code.toUpperCase() ||
+            o._id === code
+        ) || list[0];
       if (!found) {
         setSelectedOrder(null);
-        setErrorMsg(`Không tìm thấy đơn hàng với mã "${code}".`);
+        setErrorMsg(`Không tìm thấy đơn hàng với mã hoặc từ khóa "${code}".`);
       } else {
         prepareOrderForReturn(found);
       }
@@ -273,13 +292,13 @@ export default function ReturnExchangeTab() {
           </button>
         </form>
 
-        {/* Chọn nhanh từ các đơn gần đây */}
-        {recentOrders.length > 0 && (
+        {/* Chọn nhanh từ các đơn gần đây (hoặc khớp từ khóa đang gõ) */}
+        {matchingRecentOrders.length > 0 && (
           <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center gap-2">
             <span className="text-xs font-semibold text-slate-500">
-              Chọn nhanh đơn hàng gần đây:
+              {orderCodeInput.trim() ? "Đơn hàng khớp tìm kiếm:" : "Chọn nhanh đơn hàng gần đây:"}
             </span>
-            {recentOrders.slice(0, 6).map((o) => {
+            {matchingRecentOrders.map((o) => {
               const code = o.orderCode || o.code || o._id;
               return (
                 <button

@@ -12,6 +12,8 @@ import {
   Product,
   apiRequest,
   formatVND,
+  useDebounce,
+  filterAndRankBySearch,
 } from "@/lib/api";
 import {
   TrendingUp,
@@ -891,53 +893,59 @@ export default function RevenueDashboardModule({ onNavigateToInventory }: Props)
     loadDashboard();
   }, [loadDashboard]);
 
+  // Debounce từ khóa tìm kiếm bảng Top Bán chạy và bảng Cần đẩy bán (350ms)
+  const debouncedTopSearch = useDebounce(topSearch, 350);
+  const debouncedPushSearch = useDebounce(pushSearch, 350);
+
   // Reset trang khi lọc
   useEffect(() => {
     setTopPage(1);
-  }, [topSortBy, topSearch, fromDate, toDate, categoryId, paymentMethod, topPageSize]);
+  }, [topSortBy, debouncedTopSearch, fromDate, toDate, categoryId, paymentMethod, topPageSize]);
 
   useEffect(() => {
     setPushPage(1);
-  }, [pushFilter, pushSearch, fromDate, toDate, categoryId, paymentMethod, pushPageSize]);
+  }, [pushFilter, debouncedPushSearch, fromDate, toDate, categoryId, paymentMethod, pushPageSize]);
 
   const sortedTopProducts = useMemo(() => {
     if (!data?.topSellingProducts) return [];
-    const q = topSearch.trim().toLowerCase();
-    return data.topSellingProducts
-      .filter((p) => {
-        if (!q) return true;
-        return (
-          p.productName.toLowerCase().includes(q) ||
-          p.productCode.toLowerCase().includes(q) ||
-          p.categoryName.toLowerCase().includes(q)
-        );
-      })
-      .sort((a, b) => {
+    const q = debouncedTopSearch.trim();
+    const base = q
+      ? filterAndRankBySearch(data.topSellingProducts, q, (p) => [
+          { text: p.productCode, weight: 1.5 },
+          { text: p.productName, weight: 1.3 },
+          { text: p.categoryName, weight: 0.9 },
+        ])
+      : [...data.topSellingProducts];
+
+    // Nếu người dùng không tìm kiếm, hoặc chọn tiêu chí sắp xếp cụ thể thì sắp xếp theo tiêu chí đó
+    if (!q) {
+      base.sort((a, b) => {
         if (topSortBy === "REVENUE") return b.revenue - a.revenue;
         if (topSortBy === "PROFIT") return b.grossProfit - a.grossProfit;
         if (b.netSoldQty !== a.netSoldQty) return b.netSoldQty - a.netSoldQty;
         return b.revenue - a.revenue;
       });
-  }, [data?.topSellingProducts, topSearch, topSortBy]);
+    }
+    return base;
+  }, [data?.topSellingProducts, debouncedTopSearch, topSortBy]);
 
   const filteredPushProducts = useMemo(() => {
     if (!data?.needsPushProducts) return [];
-    const q = pushSearch.trim().toLowerCase();
-    return data.needsPushProducts.filter((p) => {
-      if (q) {
-        const match =
-          p.productName.toLowerCase().includes(q) ||
-          p.productCode.toLowerCase().includes(q) ||
-          p.categoryName.toLowerCase().includes(q);
-        if (!match) return false;
-      }
+    const byType = data.needsPushProducts.filter((p) => {
       if (pushFilter === "ZERO_SALES") return p.netSoldQty === 0;
       if (pushFilter === "HIGH_CAPITAL") return p.inventoryCostValue >= 2000000;
       if (pushFilter === "FLOOR2_ONLY") return p.stockFloor1 === 0 && p.stockFloor2 > 0;
       if (pushFilter === "NO_PRICE") return p.sellingPrice <= 0;
       return true;
     });
-  }, [data?.needsPushProducts, pushSearch, pushFilter]);
+    const q = debouncedPushSearch.trim();
+    if (!q) return byType;
+    return filterAndRankBySearch(byType, q, (p) => [
+      { text: p.productCode, weight: 1.5 },
+      { text: p.productName, weight: 1.3 },
+      { text: p.categoryName, weight: 0.9 },
+    ]);
+  }, [data?.needsPushProducts, debouncedPushSearch, pushFilter]);
 
   const topTotalPages = Math.max(1, Math.ceil(sortedTopProducts.length / topPageSize));
   const pagedTopProducts = sortedTopProducts.slice(

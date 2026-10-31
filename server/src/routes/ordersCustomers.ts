@@ -9,22 +9,41 @@ import {
 import { ApiError } from '../utils/errors';
 import { DiscountType, IOrderItem, PaymentMethod } from '../models/Order';
 import { deductStockForSale, getFloorStocks } from '../utils/warehouseFloor';
+import { filterAndRankBySearch, normalizePhoneDigits } from '../utils/search';
 
 export const ordersCustomersRouter = Router();
 
 // GET /api/v1/customers/lookup?phone=...
 ordersCustomersRouter.get('/customers/lookup', async (req, res, next) => {
   try {
-    const phone = String(req.query.phone || '').replace(/\s+/g, '').trim();
-    if (!phone) {
+    const rawPhone = String(req.query.phone || '').replace(/\s+/g, '').trim();
+    const normPhone = normalizePhoneDigits(rawPhone);
+    if (!rawPhone) {
       throw new ApiError(400, 'PHONE_REQUIRED', 'Vui lòng nhập số điện thoại để tra cứu', {
         phone: 'Bắt buộc',
       });
     }
 
-    const customer = await customerRepo.findOne({ phone });
-    const orders = await orderRepo.find({ customerPhone: phone }, { createdAt: -1 });
-    const returns = await returnExchangeRepo.find({ customerPhone: phone }, { createdAt: -1 });
+    const allCustomers = await customerRepo.find({});
+    const customer =
+      (await customerRepo.findOne({ phone: rawPhone })) ||
+      (normPhone
+        ? allCustomers.find((c) => normalizePhoneDigits(c.phone) === normPhone) || null
+        : null);
+
+    const targetPhone = customer?.phone || normPhone || rawPhone;
+    const allOrders = await orderRepo.find({}, { createdAt: -1 });
+    const orders = allOrders.filter(
+      (o) =>
+        o.customerPhone === targetPhone ||
+        (normPhone && normalizePhoneDigits(o.customerPhone) === normPhone)
+    );
+    const allReturns = await returnExchangeRepo.find({}, { createdAt: -1 });
+    const returns = allReturns.filter(
+      (r) =>
+        r.customerPhone === targetPhone ||
+        (normPhone && normalizePhoneDigits(r.customerPhone) === normPhone)
+    );
 
     res.json({
       data: {
@@ -49,15 +68,12 @@ ordersCustomersRouter.get('/customers', async (req, res, next) => {
     const { search } = req.query;
     const allCustomers = await customerRepo.find({}, { lastOrderAt: -1 });
 
-    const filtered = allCustomers.filter((c) => {
-      if (!search) return true;
-      const q = String(search).toLowerCase();
-      const qNoSpace = q.replace(/\s+/g, '');
-      return (
-        c.phone.toLowerCase().includes(qNoSpace) ||
-        c.name.toLowerCase().includes(q)
-      );
-    });
+    const filtered = search
+      ? filterAndRankBySearch(allCustomers, String(search), (c) => [
+          { text: c.phone, weight: 1.5 },
+          { text: c.name, weight: 1.3 },
+        ])
+      : allCustomers;
 
     res.json({
       data: filtered,
@@ -73,32 +89,35 @@ ordersCustomersRouter.get('/orders', async (req, res, next) => {
   try {
     const { search, phone, status, paymentMethod } = req.query;
     const allOrders = await orderRepo.find({}, { createdAt: -1 });
+    const normFilterPhone = phone ? normalizePhoneDigits(String(phone)) : '';
 
-    const filtered = allOrders.filter((o) => {
-      if (
-        phone &&
-        o.customerPhone.replace(/\s+/g, '') !== String(phone).replace(/\s+/g, '').trim()
-      ) {
-        return false;
+    const baseFiltered = allOrders.filter((o) => {
+      if (phone) {
+        const oPhoneNorm = normalizePhoneDigits(o.customerPhone);
+        const rawMatch =
+          o.customerPhone.replace(/\s+/g, '') === String(phone).replace(/\s+/g, '').trim();
+        if (!rawMatch && (!normFilterPhone || oPhoneNorm !== normFilterPhone)) {
+          return false;
+        }
       }
       if (status && o.status !== String(status).toUpperCase()) return false;
       if (paymentMethod && o.paymentMethod !== String(paymentMethod).toUpperCase()) return false;
-      if (search) {
-        const q = String(search).toLowerCase();
-        const qNoSpace = q.replace(/\s+/g, '');
-        const match =
-          o.orderCode.toLowerCase().includes(q) ||
-          o.customerName.toLowerCase().includes(q) ||
-          o.customerPhone.toLowerCase().includes(qNoSpace) ||
-          o.items.some(
-            (i) =>
-              i.productCode.toLowerCase().includes(q) ||
-              i.productName.toLowerCase().includes(q)
-          );
-        if (!match) return false;
-      }
       return true;
     });
+
+    const filtered = search
+      ? filterAndRankBySearch(baseFiltered, String(search), (o) => [
+          { text: o.orderCode, weight: 1.6 },
+          { text: o.customerPhone, weight: 1.5 },
+          { text: o.customerName, weight: 1.3 },
+          { text: o.createdByName, weight: 0.9 },
+          { text: o.note, weight: 0.7 },
+          ...o.items.flatMap((i) => [
+            { text: i.productCode, weight: 1.2 },
+            { text: i.productName, weight: 1.1 },
+          ]),
+        ])
+      : baseFiltered;
 
     res.json({
       data: filtered,

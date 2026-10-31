@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import ExportExcelButton from "./ExportExcelButton";
 import {
   exportProducts,
@@ -20,6 +20,8 @@ import {
   parseNumberDots,
   formatDateTime,
   generateProductCode,
+  useDebounce,
+  filterAndRankBySearch,
 } from "@/lib/api";
 import {
   Package,
@@ -116,24 +118,39 @@ export default function InventoryModule() {
   } | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Debounce từ khóa tìm kiếm sản phẩm (400ms) và tìm kiếm chuyển tầng (300ms) để tối ưu số lượng request API
+  const debouncedSearch = useDebounce(search, 400);
+  const debouncedTransferSearch = useDebounce(transferSearch, 300);
+
+  // Tách tải danh mục & phiếu nhập ra riêng để không gọi lại mỗi khi gõ tìm kiếm sản phẩm
+  const loadCategoriesAndImports = useCallback(async () => {
+    try {
+      const [catRes, impRes] = await Promise.all([
+        apiRequest<Category[]>("/categories"),
+        apiRequest<any[]>("/imports"),
+      ]);
+      const cList = Array.isArray(catRes.data) ? catRes.data : [];
+      const iList = Array.isArray(impRes.data) ? impRes.data : [];
+      setCategories(cList);
+      setImportsList(iList);
+      if (cList.length > 0) {
+        setNewProdCatId((prev) => prev || cList[0]._id);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const loadProductsAndCats = useCallback(async () => {
     setLoading(true);
     try {
       const q = new URLSearchParams();
       if (categoryId) q.set("categoryId", categoryId);
-      if (search.trim()) q.set("search", search.trim());
+      if (debouncedSearch.trim()) q.set("search", debouncedSearch.trim());
 
-      const [prodRes, catRes, impRes] = await Promise.all([
-        apiRequest<Product[]>(`/products?${q.toString()}`),
-        apiRequest<Category[]>("/categories"),
-        apiRequest<any[]>("/imports"),
-      ]);
+      const prodRes = await apiRequest<Product[]>(`/products?${q.toString()}`);
       const pList = Array.isArray(prodRes.data) ? prodRes.data : [];
-      const cList = Array.isArray(catRes.data) ? catRes.data : [];
-      const iList = Array.isArray(impRes.data) ? impRes.data : [];
       setProducts(pList);
-      setCategories(cList);
-      setImportsList(iList);
 
       const nameMap: Record<string, string> = {};
       const catMap: Record<string, string> = {};
@@ -160,15 +177,16 @@ export default function InventoryModule() {
       setEditingCosts(costMap);
       setEditingPrices(priceMap);
 
-      if (cList.length > 0 && !newProdCatId) setNewProdCatId(cList[0]._id);
-      if (pList.length > 0 && !adjProductId) setAdjProductId(pList[0]._id);
-      if (pList.length > 0 && !transferProductId) setTransferProductId(pList[0]._id);
+      if (pList.length > 0) {
+        setAdjProductId((prev) => prev || pList[0]._id);
+        setTransferProductId((prev) => prev || pList[0]._id);
+      }
     } catch {
       // ignore
     } finally {
       setLoading(false);
     }
-  }, [categoryId, search, newProdCatId, adjProductId, transferProductId]);
+  }, [categoryId, debouncedSearch]);
 
   const loadReport = useCallback(async () => {
     setLoading(true);
@@ -230,6 +248,10 @@ export default function InventoryModule() {
       setLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    loadCategoriesAndImports();
+  }, [loadCategoriesAndImports]);
 
   useEffect(() => {
     loadProductsAndCats();
@@ -436,20 +458,21 @@ export default function InventoryModule() {
     }
   };
 
-  // Sản phẩm có tồn > 0 tại kho đầu dời (theo hướng dời đang chọn)
-  const sourceFloorProducts = products.filter((p) => {
-    const f1 = Number(p.stockFloor1 ?? p.stock) || 0;
-    const f2 = Number(p.stockFloor2) || 0;
-    const sourceStock = transferDirection === "F1_TO_F2" ? f1 : f2;
-    if (sourceStock <= 0) return false;
-    if (transferSearch.trim()) {
-      const q = transferSearch.trim().toLowerCase();
-      return (
-        p.name.toLowerCase().includes(q) || p.code.toLowerCase().includes(q)
-      );
-    }
-    return true;
-  });
+  // Sản phẩm có tồn > 0 tại kho đầu dời (theo hướng dời đang chọn) + Smart Search
+  const sourceFloorProducts = useMemo(() => {
+    const avail = products.filter((p) => {
+      const f1 = Number(p.stockFloor1 ?? p.stock) || 0;
+      const f2 = Number(p.stockFloor2) || 0;
+      const sourceStock = transferDirection === "F1_TO_F2" ? f1 : f2;
+      return sourceStock > 0;
+    });
+    if (!debouncedTransferSearch.trim()) return avail;
+    return filterAndRankBySearch(avail, debouncedTransferSearch, (p) => [
+      { text: p.code, weight: 1.5 },
+      { text: p.name, weight: 1.3 },
+      { text: p.categoryName, weight: 0.9 },
+    ]);
+  }, [products, transferDirection, debouncedTransferSearch]);
 
   const getSourceFloorStock = (p?: Product): number => {
     if (!p) return 0;
@@ -600,20 +623,29 @@ export default function InventoryModule() {
     });
   });
 
-  // Lọc sản phẩm theo Kho đang chọn (Kho Tầng 1 / Kho Tầng 2 / Xem gộp cả 2 Kho)
-  const displayedProducts = products.filter((p) => {
-    const f1 = Number(p.stockFloor1 ?? p.stock ?? 0);
-    const f2 = Number(p.stockFloor2 ?? 0);
-    if (activeWarehouse === "FLOOR_1") {
-      if (showZeroFloorItems) return true;
-      return f1 > 0 || floor1ImportedCodes.has(p.code) || !floor2ImportedCodes.has(p.code);
-    }
-    if (activeWarehouse === "FLOOR_2") {
-      if (showZeroFloorItems) return true;
-      return f2 > 0 || floor2ImportedCodes.has(p.code);
-    }
-    return true;
-  });
+  // Lọc sản phẩm theo Kho đang chọn (Kho Tầng 1 / Kho Tầng 2 / Xem gộp cả 2 Kho) + Smart Search tức thì
+  const displayedProducts = useMemo(() => {
+    const byFloor = products.filter((p) => {
+      const f1 = Number(p.stockFloor1 ?? p.stock ?? 0);
+      const f2 = Number(p.stockFloor2 ?? 0);
+      if (activeWarehouse === "FLOOR_1") {
+        if (showZeroFloorItems) return true;
+        return f1 > 0 || floor1ImportedCodes.has(p.code) || !floor2ImportedCodes.has(p.code);
+      }
+      if (activeWarehouse === "FLOOR_2") {
+        if (showZeroFloorItems) return true;
+        return f2 > 0 || floor2ImportedCodes.has(p.code);
+      }
+      return true;
+    });
+    if (!search.trim()) return byFloor;
+    return filterAndRankBySearch(byFloor, search, (p) => [
+      { text: p.code, weight: 1.5 },
+      { text: p.name, weight: 1.3 },
+      { text: p.categoryName, weight: 0.9 },
+      { text: p.unit, weight: 0.6 },
+    ]);
+  }, [products, activeWarehouse, showZeroFloorItems, importsList, search]);
 
   // Thống kê tổng hợp riêng cho Kho Tầng 1, Kho Tầng 2 và Kho đang chọn
   const totalFloor1Qty = products.reduce(

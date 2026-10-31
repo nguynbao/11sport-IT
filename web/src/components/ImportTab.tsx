@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   ImportReceipt,
   ImportItem,
@@ -12,6 +12,8 @@ import {
   formatVND,
   formatNumberDots,
   parseNumberDots,
+  useDebounce,
+  filterAndRankBySearch,
 } from "@/lib/api";
 import CameraScannerModal, { mergeOcrItemsList } from "./CameraScannerModal";
 import TagCheckScannerModal from "./TagCheckScannerModal";
@@ -419,22 +421,33 @@ export default function ImportTab() {
     (i) => i.productName.trim() !== "" && !(Number(i.sellingPrice) > 0)
   ).length;
 
-  const filteredItems = items.map((item, idx) => ({ item, idx })).filter(({ item }) => {
-    if (!quickCheckSearch.trim()) return true;
-    const q = quickCheckSearch.toLowerCase();
-    return (
-      item.productCode.toLowerCase().includes(q) ||
-      item.productName.toLowerCase().includes(q)
-    );
-  });
+  // Debounce tìm kiếm nhanh trong bảng kiểm hàng và tìm phiếu nhập kho (300ms)
+  const debouncedQuickCheckSearch = useDebounce(quickCheckSearch, 300);
+  const debouncedReceiptSearch = useDebounce(receiptSearch, 300);
 
-  const filteredReceipts = receipts.filter((rc) => {
-    if (!receiptSearch.trim()) return true;
-    const q = receiptSearch.toLowerCase();
-    const code = (rc.code || rc.receiptCode || rc._id || "").toLowerCase();
-    const rcNote = (rc.note || "").toLowerCase();
-    return code.includes(q) || rcNote.includes(q);
-  });
+  const filteredItems = useMemo(() => {
+    const indexed = items.map((item, idx) => ({ item, idx }));
+    if (!debouncedQuickCheckSearch.trim()) return indexed;
+    return filterAndRankBySearch(indexed, debouncedQuickCheckSearch, ({ item }) => [
+      { text: item.productCode, weight: 1.5 },
+      { text: item.barcode, weight: 1.5 },
+      { text: item.productName, weight: 1.3 },
+      { text: item.note, weight: 0.8 },
+    ]);
+  }, [items, debouncedQuickCheckSearch]);
+
+  const filteredReceipts = useMemo(() => {
+    if (!debouncedReceiptSearch.trim()) return receipts;
+    return filterAndRankBySearch(receipts, debouncedReceiptSearch, (rc) => [
+      { text: rc.code || rc.receiptCode || rc._id, weight: 1.6 },
+      { text: rc.note, weight: 1.1 },
+      { text: rc.createdByName, weight: 0.9 },
+      ...(rc.items || []).flatMap((it) => [
+        { text: it.productCode, weight: 1.2 },
+        { text: it.productName, weight: 1.1 },
+      ]),
+    ]);
+  }, [receipts, debouncedReceiptSearch]);
 
   const currentReceiptCode = currentReceipt
     ? currentReceipt.code || currentReceipt.receiptCode || currentReceipt._id.slice(-6)

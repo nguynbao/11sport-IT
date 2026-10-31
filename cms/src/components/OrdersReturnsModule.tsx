@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Order,
   ReturnReceipt,
@@ -8,6 +8,8 @@ import {
   formatVND,
   formatDateTime,
   formatPhone,
+  useDebounce,
+  filterAndRankBySearch,
 } from "@/lib/api";
 import { Search, Printer, ShoppingBag, RotateCcw } from "lucide-react";
 import ExportExcelButton from "./ExportExcelButton";
@@ -26,27 +28,62 @@ export default function OrdersReturnsModule({
   const [statusFilter, setStatusFilter] = useState("");
   const [paymentFilter, setPaymentFilter] = useState("");
 
+  // Debounce từ khóa tìm kiếm (400ms) để tránh gọi API liên tục trên từng phím gõ
+  const debouncedSearch = useDebounce(search, 400);
+
   const loadData = useCallback(async () => {
     try {
       const q = new URLSearchParams();
-      if (search.trim()) q.set("search", search.trim());
+      if (debouncedSearch.trim()) q.set("search", debouncedSearch.trim());
       if (statusFilter) q.set("status", statusFilter);
       if (paymentFilter) q.set("paymentMethod", paymentFilter);
 
+      const retQ = new URLSearchParams();
+      if (debouncedSearch.trim()) retQ.set("search", debouncedSearch.trim());
+
       const [ordRes, retRes] = await Promise.all([
         apiRequest<Order[]>(`/orders?${q.toString()}`),
-        apiRequest<ReturnReceipt[]>("/returns"),
+        apiRequest<ReturnReceipt[]>(
+          `/returns${retQ.toString() ? `?${retQ.toString()}` : ""}`
+        ),
       ]);
       setOrders(Array.isArray(ordRes.data) ? ordRes.data : []);
       setReturns(Array.isArray(retRes.data) ? retRes.data : []);
     } catch {
       // ignore
     }
-  }, [search, statusFilter, paymentFilter]);
+  }, [debouncedSearch, statusFilter, paymentFilter]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Lọc tức thì trên client trong lúc chờ Debounce API
+  const displayedOrders = useMemo(() => {
+    if (!search.trim()) return orders;
+    return filterAndRankBySearch(orders, search, (o) => [
+      { text: o.orderCode || o.code, weight: 1.6 },
+      { text: o.customerPhone, weight: 1.5 },
+      { text: o.customerName, weight: 1.3 },
+      { text: o.createdByName || o.soldByName, weight: 0.9 },
+      ...(o.items || []).flatMap((i) => [
+        { text: i.productCode, weight: 1.2 },
+        { text: i.productName, weight: 1.1 },
+      ]),
+    ]);
+  }, [orders, search]);
+
+  const displayedReturns = useMemo(() => {
+    if (!search.trim()) return returns;
+    return filterAndRankBySearch(returns, search, (r) => [
+      { text: r.code || r.returnCode, weight: 1.6 },
+      { text: r.orderCode, weight: 1.5 },
+      { text: r.customerPhone, weight: 1.5 },
+      { text: r.customerName, weight: 1.3 },
+      { text: r.performedByName, weight: 0.9 },
+      { text: r.note, weight: 0.8 },
+    ]);
+  }, [returns, search]);
 
   return (
     <div className="space-y-6">
@@ -66,8 +103,8 @@ export default function OrdersReturnsModule({
           <div className="flex flex-wrap items-center gap-2">
             <ExportExcelButton
               label="Xuất Excel (kèm chi tiết)"
-              onExport={() => exportOrders(orders)}
-              disabled={orders.length === 0}
+              onExport={() => exportOrders(displayedOrders)}
+              disabled={displayedOrders.length === 0}
             />
             <div className="relative w-full sm:w-64">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
@@ -126,7 +163,7 @@ export default function OrdersReturnsModule({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {orders.map((ord) => {
+              {displayedOrders.map((ord) => {
                 const totalDisc =
                   (Number(ord.itemDiscountTotal) || 0) +
                   (Number(ord.billDiscountAmount) || 0);
@@ -217,9 +254,9 @@ export default function OrdersReturnsModule({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
             <RotateCcw className="w-5 h-5 text-amber-600" />
-            Danh sách Phiếu Trả / Đổi Hàng ({returns.length})
+            Danh sách Phiếu Trả / Đổi Hàng ({displayedReturns.length})
           </h3>
-          <ExportExcelButton onExport={() => exportReturns(returns)} disabled={returns.length === 0} />
+          <ExportExcelButton onExport={() => exportReturns(displayedReturns)} disabled={displayedReturns.length === 0} />
         </div>
         <div className="overflow-x-auto border border-slate-200 rounded-xl">
           <table className="w-full text-xs text-left">
@@ -237,7 +274,7 @@ export default function OrdersReturnsModule({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {returns.map((r) => (
+              {displayedReturns.map((r) => (
                 <tr key={r._id} className="hover:bg-slate-50">
                   <td className="py-3 px-3 font-mono font-bold">
                     {r.returnCode || r.code}

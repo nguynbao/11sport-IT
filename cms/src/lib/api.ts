@@ -440,3 +440,14 @@ export async function apiRequest<T = any>(
   }
   return json;
 }
+
+export {
+  useDebounce,
+  normalizeVietnamese,
+  compactAlphaNum,
+  normalizePhoneDigits,
+  scoreSearchMatch,
+  filterAndRankBySearch,
+  type SearchField,
+} from "./search";
+

@@ -61,6 +61,7 @@
   - Response: `{ "data": { "code": "AO_POLO_THE_THAO_UNISEX_V1_KMAP262510_DO_SIZE_L" } }`
 - `GET /api/v1/products`
   - Query: `?categoryId=...&search=...&onlySellable=true|false`
+  - *(v2.5 — Smart Search & Relevance Ranking)* Tham số `search` hỗ trợ tìm kiếm thông minh tiếng Việt không dấu/có dấu, tách đa từ khóa không liền kề (multi-token), khớp mã SKU/barcode/category/đơn vị, chữ cái đầu (acronym) và chịu lỗi chính tả nhẹ (fuzzy/typo-tolerant), đồng thời sắp xếp kết quả theo điểm độ liên quan giảm dần.
   - Response: `{ "data": [...], "meta": { "totalProducts": 12, "totalStock": 350 } }`
 - `POST /api/v1/products`
   - Body: `{ "name": "string", "categoryId": "string", "unit": "Cái | Đôi | Bộ", "quantity"?: 0, "targetWarehouse"?: "FLOOR_1 | FLOOR_2", "sellingPrice": 0, "costPrice": 0, "upsertIfExists"?: boolean }`
@@ -202,9 +203,9 @@
 
 ### 2.5 Bán hàng POS & Khách hàng (`/orders`, `/customers`)
 - `GET /api/v1/customers/lookup?phone=...`
-  - Tra cứu khách hàng theo SĐT, trả về thông tin khách hàng và lịch sử đơn hàng + phiếu trả/đổi.
-- `GET /api/v1/customers` — Danh sách khách hàng
-- `GET /api/v1/orders` — Danh sách đơn hàng (lọc theo `search`, `phone`, `status`, `paymentMethod`)
+  - Tra cứu khách hàng theo SĐT (tự động chuẩn hóa khoảng trắng, dấu chấm/gạch và đầu số `+84`/`84` về `0`), trả về thông tin khách hàng và lịch sử đơn hàng + phiếu trả/đổi.
+- `GET /api/v1/customers` — Danh sách khách hàng (hỗ trợ `?search=...` tìm thông minh theo SĐT chuẩn hóa hoặc tên tiếng Việt không dấu/đa từ khóa, sắp xếp theo độ liên quan).
+- `GET /api/v1/orders` — Danh sách đơn hàng (lọc theo `search`, `phone`, `status`, `paymentMethod`; `search` hỗ trợ tìm không dấu/đa từ khóa trên mã đơn, tên/SĐT khách, mã/tên sản phẩm trong đơn, nhân viên bán, ghi chú).
 - `GET /api/v1/orders/:id` — Chi tiết đơn hàng (hoặc tra theo `orderCode` qua `GET /api/v1/orders/by-code/:code`)
 - `POST /api/v1/orders` *(Cập nhật v2.2 — Chỉ bán tồn Kho Tầng 1 + Giảm giá Sản phẩm, Tặng hàng 0đ & Giảm giá Bill)*
   - Body:

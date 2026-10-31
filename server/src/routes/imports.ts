@@ -10,6 +10,7 @@ import { matchTagToItems } from '../utils/tagMatch';
 import { ApiError } from '../utils/errors';
 import { IImportReceiptItem } from '../models/ImportReceipt';
 import { normalizeFloor, floorLabel, applyFloorDelta, getFloorStocks } from '../utils/warehouseFloor';
+import { filterAndRankBySearch } from '../utils/search';
 import {
   OcrTableRow,
   parseTextToRows,
@@ -307,21 +308,24 @@ importsRouter.get('/imports', async (req, res, next) => {
     const { status, search } = req.query;
     const allReceipts = await importReceiptRepo.find({}, { createdAt: -1 });
 
-    const filtered = allReceipts.filter((r) => {
+    const baseFiltered = allReceipts.filter((r) => {
       if (status && r.status !== String(status).toUpperCase()) return false;
-      if (search) {
-        const q = String(search).toLowerCase();
-        const matchCode = r.code.toLowerCase().includes(q);
-        const matchNote = (r.note || '').toLowerCase().includes(q);
-        const matchItem = r.items.some(
-          (i) =>
-            i.productCode.toLowerCase().includes(q) ||
-            i.productName.toLowerCase().includes(q)
-        );
-        if (!matchCode && !matchNote && !matchItem) return false;
-      }
       return true;
     });
+
+    const filtered = search
+      ? filterAndRankBySearch(baseFiltered, String(search), (r) => [
+          { text: r.code, weight: 1.6 },
+          { text: r.note, weight: 1.0 },
+          { text: r.createdByName, weight: 0.9 },
+          { text: r.completedByName, weight: 0.9 },
+          ...r.items.flatMap((i) => [
+            { text: i.productCode, weight: 1.3 },
+            { text: i.productName, weight: 1.2 },
+            { text: (i as any).barcode, weight: 1.2 },
+          ]),
+        ])
+      : baseFiltered;
 
     res.json({
       data: filtered,

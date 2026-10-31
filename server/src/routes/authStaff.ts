@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { staffRepo } from '../config/db';
 import { hashPassword, verifyPassword, signToken } from '../utils/auth';
 import { ApiError } from '../utils/errors';
+import { filterAndRankBySearch } from '../utils/search';
 
 export const authStaffRouter = Router();
 
@@ -131,22 +132,23 @@ authStaffRouter.get('/staff', async (req, res, next) => {
     const { role, status, search } = req.query;
     const allStaff = await staffRepo.find({}, { createdAt: 1 });
 
-    const filtered = allStaff
+    const baseFiltered = allStaff
       .filter((s) => {
         if (role && s.role !== role) return false;
         if (status && s.status !== status) return false;
-        if (search) {
-          const q = String(search).toLowerCase();
-          const match =
-            s.username.toLowerCase().includes(q) ||
-            s.fullName.toLowerCase().includes(q) ||
-            s.code.toLowerCase().includes(q) ||
-            (s.phone || '').toLowerCase().includes(q);
-          if (!match) return false;
-        }
         return true;
       })
       .map(({ passwordHash, ...rest }) => rest);
+
+    const filtered = search
+      ? filterAndRankBySearch(baseFiltered, String(search), (s) => [
+          { text: s.code, weight: 1.5 },
+          { text: s.username, weight: 1.4 },
+          { text: s.fullName, weight: 1.3 },
+          { text: s.phone, weight: 1.3 },
+          { text: s.role, weight: 0.8 },
+        ])
+      : baseFiltered;
 
     res.json({
       data: filtered,
