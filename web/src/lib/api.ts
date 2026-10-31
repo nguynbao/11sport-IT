@@ -258,10 +258,17 @@ export function clearStoredAuth() {
   if (typeof window === "undefined") return;
   localStorage.removeItem("11sport_token");
   localStorage.removeItem("11sport_user");
+  // Xóa các đơn nháp POS (nhiều đơn song song) của phiên đăng nhập hiện tại
+  try {
+    sessionStorage.removeItem("11sport_pos_drafts_v1");
+  } catch {
+    // ignore
+  }
 }
 
 export async function apiRequest<T = any>(
   endpoint: string,
+  
   options: RequestInit = {}
 ): Promise<{ data: T; meta?: any }> {
   const token = getStoredToken();
