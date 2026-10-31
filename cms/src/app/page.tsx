@@ -16,6 +16,7 @@ import CategoryModule from "@/components/CategoryModule";
 import OrdersReturnsModule from "@/components/OrdersReturnsModule";
 import StaffModule from "@/components/StaffModule";
 import StaffActivityModule from "@/components/StaffActivityModule";
+import PromotionModule from "@/components/PromotionModule";
 import InvoicePdfModal from "@/components/InvoicePdfModal";
 import {
   Boxes,
@@ -32,6 +33,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Activity,
+  Gift,
   X,
 } from "lucide-react";
 
@@ -41,7 +43,8 @@ type CmsModuleType =
   | "CATEGORIES"
   | "ORDERS"
   | "STAFF"
-  | "ACTIVITY";
+  | "ACTIVITY"
+  | "PROMOTIONS";
 
 export default function CmsDashboardPage() {
   const [activeModule, setActiveModule] = useState<CmsModuleType>("REVENUE");
@@ -453,6 +456,19 @@ export default function CmsDashboardPage() {
               <Activity className="w-4 h-4" />
               6. Hoạt động NV (Bán hàng / Kiểm kho)
             </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveModule("PROMOTIONS")}
+              className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 whitespace-nowrap transition ${
+                activeModule === "PROMOTIONS"
+                  ? "bg-emerald-600 text-white shadow"
+                  : "text-slate-300 hover:bg-slate-700/60 hover:text-white"
+              }`}
+            >
+              <Gift className="w-4 h-4" />
+              7. Chương trình Khuyến mãi
+            </button>
           </div>
         </div>
       </header>
@@ -471,6 +487,7 @@ export default function CmsDashboardPage() {
         )}
         {activeModule === "STAFF" && <StaffModule />}
         {activeModule === "ACTIVITY" && <StaffActivityModule />}
+        {activeModule === "PROMOTIONS" && <PromotionModule />}
       </main>
 
       {/* Modal Đổi mật khẩu Quản trị viên (Header CMS) */}

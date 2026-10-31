@@ -385,3 +385,48 @@
       "note": "Báo giá chuyển tiền Wise tại quầy"
     }
     ```
+
+
+### 2.10 Chương trình Khuyến mãi (`/promotions`) *(v2.7)*
+- `GET /api/v1/promotions`
+  - Query: `?activeOnly=true|false&search=...`
+  - Trả về danh sách chương trình khuyến mãi kèm trạng thái hiệu lực thực tế (`isCurrentlyActive: boolean`, `effectiveStatus: "RUNNING_PERMANENT" | "RUNNING" | "UPCOMING" | "EXPIRED" | "PAUSED"`). Khi `activeOnly=true`, chỉ trả về các chương trình đang bật (`status === "ACTIVE"`) và đang trong thời gian hiệu lực (hoặc `isPermanent === true`).
+- `POST /api/v1/promotions`
+  - Chỉ role `ADMIN` được phép tạo (`403 FORBIDDEN` nếu role khác).
+  - Body:
+    ```json
+    {
+      "name": "Mua Vợt Pickleball tặng kèm Quấn cán & Dán viền",
+      "description": "Áp dụng tự động khi thêm vợt vào giỏ hàng POS",
+      "status": "ACTIVE",
+      "isPermanent": true,
+      "startDate": null,
+      "endDate": null,
+      "conditionType": "BUY_PRODUCTS | BUY_CATEGORY | ALL_PRODUCTS",
+      "conditionProductIds": ["..."],
+      "conditionCategoryIds": ["..."],
+      "minQuantity": 1,
+      "minOrderAmount": 0,
+      "giftItems": [
+        { "productId": "...", "quantity": 1 }
+      ],
+      "multiplyGiftByConditionQty": true,
+      "itemDiscountType": "NONE | PERCENT | AMOUNT",
+      "itemDiscountValue": 0,
+      "billDiscountType": "NONE | PERCENT | AMOUNT",
+      "billDiscountValue": 0
+    }
+    ```
+  - Quy tắc:
+    - `name` bắt buộc (`400 VALIDATION_ERROR`).
+    - Phải có ít nhất 1 ưu đãi: `giftItems.length > 0` hoặc `itemDiscountType !== "NONE"` (`itemDiscountValue > 0`) hoặc `billDiscountType !== "NONE"` (`billDiscountValue > 0`).
+    - Nếu `isPermanent === false`: kiểm tra `startDate` / `endDate` hợp lệ (nếu có cả 2 thì `endDate >= startDate`).
+- `PATCH /api/v1/promotions/:id`
+  - Chỉ role `ADMIN` được phép cập nhật thông tin chương trình, thời gian, điều kiện, quà tặng/giảm giá hoặc bật/tắt (`status: "ACTIVE" | "PAUSED"`).
+- `DELETE /api/v1/promotions/:id`
+  - Chỉ role `ADMIN` được phép xóa chương trình khuyến mãi.
+- `POST /api/v1/promotions/evaluate`
+  - Kiểm tra giỏ hàng POS hiện tại khớp với các chương trình khuyến mãi đang hiệu lực và trả về:
+    - Danh sách chương trình được kích hoạt (`appliedPromotions`).
+    - Danh sách sản phẩm/phụ kiện tặng kèm tự động (`autoGiftItems`).
+    - Mức giảm giá tự động cho từng dòng sản phẩm (`itemDiscounts`) và giảm giá tổng Bill (`billDiscount`).

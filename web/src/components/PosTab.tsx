@@ -5,6 +5,7 @@ import {
   Product,
   Category,
   Order,
+  Promotion,
   DiscountType,
   apiRequest,
   formatVND,
@@ -37,6 +38,7 @@ import {
   X,
   ArrowUpDown,
   Layers,
+  Sparkles,
 } from "lucide-react";
 
 const PINNED_GIFTS_STORAGE_KEY = "11sport_pos_pinned_gift_ids";
@@ -44,6 +46,8 @@ const PINNED_GIFTS_STORAGE_KEY = "11sport_pos_pinned_gift_ids";
 interface GiftCartItem {
   product: Product;
   quantity: number;
+  isAutoPromo?: boolean;
+  promoName?: string;
 }
 
 interface PosTabProps {
@@ -55,6 +59,8 @@ interface CartItem {
   quantity: number;
   discountType: DiscountType;
   discountValue: number;
+  isManualDiscount?: boolean;
+  autoPromoName?: string;
 }
 
 type SortByOption = "CATEGORY" | "NAME_ASC" | "PRICE_ASC" | "PRICE_DESC" | "STOCK_DESC";
@@ -135,6 +141,12 @@ const INITIAL_DRAFT_ID = "draft_initial";
 export default function PosTab({ onOpenInvoice }: PosTabProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [activePromotions, setActivePromotions] = useState<Promotion[]>([]);
+  const [appliedPromosSummary, setAppliedPromosSummary] = useState<
+    { _id: string; code: string; name: string; multiplier: number; details: string[] }[]
+  >([]);
+  const [autoBillPromoName, setAutoBillPromoName] = useState<string>("");
+  const [isManualBillDiscount, setIsManualBillDiscount] = useState<boolean>(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
   const [sortBy, setSortBy] = useState<SortByOption>("CATEGORY");
   const [search, setSearch] = useState("");
@@ -225,20 +237,20 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       drafts.map((d) =>
         d.id === activeDraftId
           ? {
-              ...d,
-              cart,
-              giftCart,
-              billDiscountType,
-              billDiscountValue,
-              customerPhone,
-              customerName,
-              isExistingCustomer,
-              customerOrders,
-              paymentMethod,
-              splitPayments,
-              hasCardFee,
-              note,
-            }
+            ...d,
+            cart,
+            giftCart,
+            billDiscountType,
+            billDiscountValue,
+            customerPhone,
+            customerName,
+            isExistingCustomer,
+            customerOrders,
+            paymentMethod,
+            splitPayments,
+            hasCardFee,
+            note,
+          }
           : d
       ),
     [
@@ -488,6 +500,15 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     }
   }, []);
 
+  const fetchActivePromotions = useCallback(async () => {
+    try {
+      const res = await apiRequest<Promotion[]>("/promotions?activeOnly=true");
+      setActivePromotions(Array.isArray(res.data) ? res.data : []);
+    } catch {
+      // ignore
+    }
+  }, []);
+
   // Debounce từ khóa tìm kiếm sản phẩm (400ms), quà tặng (300ms) và SĐT khách hàng (500ms) để tối ưu số lượng request API
   const debouncedSearch = useDebounce(search, 400);
   const debouncedGiftSearch = useDebounce(giftSearch, 300);
@@ -510,7 +531,8 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
 
   useEffect(() => {
     fetchCategories();
-  }, [fetchCategories]);
+    fetchActivePromotions();
+  }, [fetchCategories, fetchActivePromotions]);
 
   useEffect(() => {
     fetchSellableProducts();
@@ -564,13 +586,13 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     const hasSearch = search.trim().length > 0;
     const searched = hasSearch
       ? filterAndRankBySearch(categoryFiltered, search, (p) => [
-          { text: p.code, weight: 1.5 },
-          { text: p.barcode, weight: 1.5 },
-          { text: p.name, weight: 1.3 },
-          { text: getCategoryName(p), weight: 0.9 },
-          { text: p.categoryCode, weight: 0.9 },
-          { text: p.unit, weight: 0.6 },
-        ])
+        { text: p.code, weight: 1.5 },
+        { text: p.barcode, weight: 1.5 },
+        { text: p.name, weight: 1.3 },
+        { text: getCategoryName(p), weight: 0.9 },
+        { text: p.categoryCode, weight: 0.9 },
+        { text: p.unit, weight: 0.6 },
+      ])
       : categoryFiltered;
 
     // Khi đang tìm kiếm và ở chế độ mặc định (CATEGORY), giữ thứ tự độ khớp (relevance) trong từng nhóm Category
@@ -670,6 +692,291 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     return giftCart.find((g) => g.product._id === productId)?.quantity || 0;
   };
 
+  // Kiểm tra chương trình khuyến mãi đang áp dụng cho 1 sản phẩm trên thẻ POS
+  const getProductPromotions = useCallback(
+    (p: Product): Promotion[] => {
+      const catId = getCategoryId(p);
+      return activePromotions.filter((promo) => {
+        if (!promo.isCurrentlyActive) return false;
+        if (promo.conditionType === "BUY_PRODUCTS") {
+          return (promo.conditionProductIds || []).includes(p._id);
+        }
+        if (promo.conditionType === "BUY_CATEGORY") {
+          return (promo.conditionCategoryIds || []).includes(catId);
+        }
+        return promo.conditionType === "ALL_PRODUCTS";
+      });
+    },
+    [activePromotions, categories]
+  );
+
+  // Tự động kiểm tra giỏ hàng theo các chương trình khuyến mãi đang chạy & cập nhật quà tặng / giảm giá
+  const applyPromotionsForCart = useCallback(
+    (
+      rawNextCart: CartItem[],
+      currentGiftCart: GiftCartItem[],
+      promos: Promotion[] = activePromotions
+    ) => {
+      const rawCartAmount = rawNextCart.reduce(
+        (s, ci) => s + (Number(ci.product.sellingPrice) || 0) * ci.quantity,
+        0
+      );
+
+      const nextAppliedSummary: {
+        _id: string;
+        code: string;
+        name: string;
+        multiplier: number;
+        details: string[];
+      }[] = [];
+
+      const autoGiftMap = new Map<
+        string,
+        {
+          giftInfo: any;
+          requestedQty: number;
+          promoNames: string[];
+        }
+      >();
+
+      const itemDiscMap = new Map<
+        string,
+        {
+          discountType: DiscountType;
+          discountValue: number;
+          discountPerUnit: number;
+          promoName: string;
+        }
+      >();
+
+      let bestBillDisc: {
+        discountType: DiscountType;
+        discountValue: number;
+        estAmount: number;
+        promoName: string;
+      } | null = null;
+
+      for (const promo of promos) {
+        if (!promo.isCurrentlyActive) continue;
+
+        let matchingItems: CartItem[] = [];
+        if (promo.conditionType === "BUY_PRODUCTS") {
+          const setIds = new Set((promo.conditionProductIds || []).map(String));
+          matchingItems = rawNextCart.filter((ci) =>
+            setIds.has(String(ci.product._id))
+          );
+        } else if (promo.conditionType === "BUY_CATEGORY") {
+          const setCatIds = new Set(
+            (promo.conditionCategoryIds || []).map(String)
+          );
+          matchingItems = rawNextCart.filter((ci) =>
+            setCatIds.has(getCategoryId(ci.product))
+          );
+        } else {
+          matchingItems = [...rawNextCart];
+        }
+
+        const matchedQty = matchingItems.reduce((s, ci) => s + ci.quantity, 0);
+        const minQty = Math.max(1, Number(promo.minQuantity) || 1);
+        const minOrderAmt = Math.max(0, Number(promo.minOrderAmount) || 0);
+
+        if (
+          matchingItems.length === 0 ||
+          matchedQty < minQty ||
+          rawCartAmount < minOrderAmt
+        ) {
+          continue;
+        }
+
+        const multiplier =
+          promo.multiplyGiftByConditionQty !== false
+            ? Math.max(1, Math.floor(matchedQty / minQty))
+            : 1;
+
+        const details: string[] = [];
+
+        // 1. Tặng kèm phụ kiện / sản phẩm
+        for (const g of promo.giftItems || []) {
+          const gid = String(g.productId);
+          const addQty = Math.max(1, Number(g.quantity) || 1) * multiplier;
+          const prev = autoGiftMap.get(gid);
+          if (prev) {
+            prev.requestedQty += addQty;
+            if (!prev.promoNames.includes(promo.name)) {
+              prev.promoNames.push(promo.name);
+            }
+          } else {
+            autoGiftMap.set(gid, {
+              giftInfo: g,
+              requestedQty: addQty,
+              promoNames: [promo.name],
+            });
+          }
+          details.push(`🎁 Tặng ${addQty} ${g.unit || "Cái"} ${g.productName}`);
+        }
+
+        // 2. Giảm giá từng sản phẩm mua
+        if (
+          promo.itemDiscountType &&
+          promo.itemDiscountType !== "NONE" &&
+          promo.itemDiscountValue > 0
+        ) {
+          for (const ci of matchingItems) {
+            const pid = ci.product._id;
+            const origPrice = Math.round(Number(ci.product.sellingPrice) || 0);
+            const discPerUnit =
+              promo.itemDiscountType === "PERCENT"
+                ? Math.round((origPrice * promo.itemDiscountValue) / 100)
+                : Math.min(origPrice, Math.round(promo.itemDiscountValue));
+
+            const prev = itemDiscMap.get(pid);
+            if (!prev || discPerUnit > prev.discountPerUnit) {
+              itemDiscMap.set(pid, {
+                discountType: promo.itemDiscountType as DiscountType,
+                discountValue: promo.itemDiscountValue,
+                discountPerUnit: discPerUnit,
+                promoName: promo.name,
+              });
+            }
+          }
+          details.push(
+            `🏷️ Giảm ${promo.itemDiscountType === "PERCENT"
+              ? `${promo.itemDiscountValue}%`
+              : `${formatVND(promo.itemDiscountValue)}/SP`
+            }`
+          );
+        }
+
+        // 3. Giảm giá tổng Bill
+        if (
+          promo.billDiscountType &&
+          promo.billDiscountType !== "NONE" &&
+          promo.billDiscountValue > 0
+        ) {
+          const estAmt =
+            promo.billDiscountType === "PERCENT"
+              ? Math.round((rawCartAmount * promo.billDiscountValue) / 100)
+              : Math.min(rawCartAmount, Math.round(promo.billDiscountValue));
+          if (!bestBillDisc || estAmt > bestBillDisc.estAmount) {
+            bestBillDisc = {
+              discountType: promo.billDiscountType as DiscountType,
+              discountValue: promo.billDiscountValue,
+              estAmount: estAmt,
+              promoName: promo.name,
+            };
+          }
+          details.push(
+            `🧾 Giảm Bill ${promo.billDiscountType === "PERCENT"
+              ? `${promo.billDiscountValue}%`
+              : formatVND(promo.billDiscountValue)
+            }`
+          );
+        }
+
+        nextAppliedSummary.push({
+          _id: promo._id,
+          code: promo.code,
+          name: promo.name,
+          multiplier,
+          details,
+        });
+      }
+
+      // Cập nhật giảm giá tự động cho từng dòng sản phẩm trong giỏ
+      const nextCartWithDiscounts: CartItem[] = rawNextCart.map((c) => {
+        if (c.isManualDiscount) return c;
+        const autoDisc = itemDiscMap.get(c.product._id);
+        if (autoDisc) {
+          return {
+            ...c,
+            discountType: autoDisc.discountType,
+            discountValue: autoDisc.discountValue,
+            autoPromoName: autoDisc.promoName,
+          };
+        }
+        if (c.autoPromoName) {
+          return {
+            ...c,
+            discountType: "NONE",
+            discountValue: 0,
+            autoPromoName: undefined,
+          };
+        }
+        return c;
+      });
+
+      // Cập nhật giỏ quà tặng tự động (giữ nguyên các món tặng chọn tay !g.isAutoPromo)
+      const manualGifts = currentGiftCart
+        .filter((g) => !g.isAutoPromo)
+        .map((g) => {
+          const inSale =
+            nextCartWithDiscounts.find((c) => c.product._id === g.product._id)
+              ?.quantity || 0;
+          const maxGift = Math.max(0, getFloor1Stock(g.product) - inSale);
+          return maxGift > 0
+            ? { ...g, quantity: Math.min(g.quantity, maxGift) }
+            : null;
+        })
+        .filter(Boolean) as GiftCartItem[];
+
+      const autoGifts: GiftCartItem[] = [];
+      for (const [gid, entry] of Array.from(autoGiftMap.entries())) {
+        const foundProd =
+          products.find((p) => p._id === gid) ||
+          ({
+            _id: gid,
+            code: entry.giftInfo.productCode || "",
+            name: entry.giftInfo.productName || "Sản phẩm tặng kèm",
+            categoryId: "",
+            unit: entry.giftInfo.unit || "Cái",
+            sellingPrice: Number(entry.giftInfo.sellingPrice) || 0,
+            stockFloor1: Number(entry.giftInfo.stockFloor1) || 0,
+            stock: Number(entry.giftInfo.stockFloor1) || 0,
+          } as Product);
+
+        const floor1Stock = getFloor1Stock(foundProd);
+        const inSale =
+          nextCartWithDiscounts.find((c) => c.product._id === gid)?.quantity || 0;
+        const inManual =
+          manualGifts.find((m) => m.product._id === gid)?.quantity || 0;
+        const available = Math.max(0, floor1Stock - inSale - inManual);
+        const finalQty = Math.min(entry.requestedQty, available);
+
+        if (finalQty > 0) {
+          autoGifts.push({
+            product: foundProd,
+            quantity: finalQty,
+            isAutoPromo: true,
+            promoName: entry.promoNames.join(", "),
+          });
+        }
+      }
+
+      setCart(nextCartWithDiscounts);
+      setGiftCart([...autoGifts, ...manualGifts]);
+      setAppliedPromosSummary(nextAppliedSummary);
+
+      if (!isManualBillDiscount) {
+        if (bestBillDisc) {
+          setBillDiscountType(bestBillDisc.discountType);
+          setBillDiscountValue(bestBillDisc.discountValue);
+          setAutoBillPromoName(bestBillDisc.promoName);
+        } else if (autoBillPromoName) {
+          setBillDiscountType("NONE");
+          setBillDiscountValue(0);
+          setAutoBillPromoName("");
+        }
+      }
+    },
+    [
+      activePromotions,
+      products,
+      categories,
+      isManualBillDiscount,
+      autoBillPromoName,
+    ]
+  );
+
   const handleAddToCart = (product: Product) => {
     setErrorMsg("");
     const floor1Stock = getFloor1Stock(product);
@@ -686,24 +993,25 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       return;
     }
 
-    const giftedQty = getGiftQty(product._id);
+    const manualGiftedQty =
+      giftCart.find((g) => !g.isAutoPromo && g.product._id === product._id)
+        ?.quantity || 0;
+    const existing = cart.find((c) => c.product._id === product._id);
+    const currentSaleQty = existing ? existing.quantity : 0;
 
-    setCart((prev) => {
-      const existing = prev.find((c) => c.product._id === product._id);
-      const currentSaleQty = existing ? existing.quantity : 0;
-      if (currentSaleQty + giftedQty + 1 > floor1Stock) {
-        setErrorMsg(
-          `Không được vượt số lượng Kho Tầng 1 (${floor1Stock} ${product.unit}) của "${product.name}" (đang bán ${currentSaleQty}, tặng ${giftedQty}).`
-        );
-        return prev;
-      }
-      if (existing) {
-        return prev.map((c) =>
-          c.product._id === product._id ? { ...c, quantity: c.quantity + 1 } : c
-        );
-      }
-      return [
-        ...prev,
+    if (currentSaleQty + manualGiftedQty + 1 > floor1Stock) {
+      setErrorMsg(
+        `Không được vượt số lượng Kho Tầng 1 (${floor1Stock} ${product.unit}) của "${product.name}" (đang bán ${currentSaleQty}, tặng ${manualGiftedQty}).`
+      );
+      return;
+    }
+
+    const nextCart: CartItem[] = existing
+      ? cart.map((c) =>
+        c.product._id === product._id ? { ...c, quantity: c.quantity + 1 } : c
+      )
+      : [
+        ...cart,
         {
           product,
           quantity: 1,
@@ -711,29 +1019,35 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
           discountValue: 0,
         },
       ];
-    });
+
+    applyPromotionsForCart(nextCart, giftCart);
   };
 
   const handleChangeQty = (productId: string, newQty: number) => {
     setErrorMsg("");
-    const giftedQty = getGiftQty(productId);
-    setCart((prev) =>
-      prev
-        .map((c) => {
-          if (c.product._id !== productId) return c;
-          if (newQty <= 0) return null;
-          const floor1Stock = getFloor1Stock(c.product);
-          const maxAllowedForSale = Math.max(0, floor1Stock - giftedQty);
-          if (newQty > maxAllowedForSale) {
-            setErrorMsg(
-              `Không được vượt số lượng Kho Tầng 1 của "${c.product.name}" (Tồn T1: ${floor1Stock}, đang tặng: ${giftedQty}).`
-            );
-            return maxAllowedForSale > 0 ? { ...c, quantity: maxAllowedForSale } : null;
-          }
-          return { ...c, quantity: newQty };
-        })
-        .filter(Boolean) as CartItem[]
-    );
+    const manualGiftedQty =
+      giftCart.find((g) => !g.isAutoPromo && g.product._id === productId)
+        ?.quantity || 0;
+
+    const nextCart = cart
+      .map((c) => {
+        if (c.product._id !== productId) return c;
+        if (newQty <= 0) return null;
+        const floor1Stock = getFloor1Stock(c.product);
+        const maxAllowedForSale = Math.max(0, floor1Stock - manualGiftedQty);
+        if (newQty > maxAllowedForSale) {
+          setErrorMsg(
+            `Không được vượt số lượng Kho Tầng 1 của "${c.product.name}" (Tồn T1: ${floor1Stock}, đang tặng: ${manualGiftedQty}).`
+          );
+          return maxAllowedForSale > 0
+            ? { ...c, quantity: maxAllowedForSale }
+            : null;
+        }
+        return { ...c, quantity: newQty };
+      })
+      .filter(Boolean) as CartItem[];
+
+    applyPromotionsForCart(nextCart, giftCart);
   };
 
   // Thêm / chỉnh số lượng sản phẩm tặng (0 VND - trừ Kho Tầng 1)
@@ -858,6 +1172,8 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
           ...c,
           discountType,
           discountValue: cleanVal,
+          isManualDiscount: true,
+          autoPromoName: undefined,
         };
       })
     );
@@ -965,13 +1281,13 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     const formattedSplitDetail =
       paymentMethod === "OTHER"
         ? splitPayments
-            .map((sp) => {
-              const label =
-                SPLIT_METHOD_OPTIONS.find((o) => o.value === sp.method)?.label ||
-                sp.method;
-              return `${label}: ${formatNumberDots(sp.amount || 0)}`;
-            })
-            .join(" + ")
+          .map((sp) => {
+            const label =
+              SPLIT_METHOD_OPTIONS.find((o) => o.value === sp.method)?.label ||
+              sp.method;
+            return `${label}: ${formatNumberDots(sp.amount || 0)}`;
+          })
+          .join(" + ")
         : "";
 
     setSubmitting(true);
@@ -1019,6 +1335,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
           : createdMsg
       );
       fetchSellableProducts();
+      fetchActivePromotions();
       onOpenInvoice(createdOrder);
     } catch (err: any) {
       setErrorMsg(err?.message || "Lỗi khi tạo đơn bán hàng");
@@ -1031,6 +1348,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     const floor1Stock = getFloor1Stock(p);
     const canSell = p.sellingPrice > 0 && floor1Stock > 0;
     const catName = getCategoryName(p);
+    const matchedPromos = getProductPromotions(p);
 
     return (
       <div
@@ -1063,6 +1381,19 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
           <div className="font-mono text-[10px] text-slate-400 mt-0.5 break-all">
             Mã: {p.code}
           </div>
+          {matchedPromos.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {matchedPromos.map((mp) => (
+                <span
+                  key={mp._id}
+                  className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300"
+                >
+                  <Sparkles className="w-3 h-3 text-amber-600 shrink-0" />
+                  <span>KM: {mp.name}</span>
+                </span>
+              ))}
+            </div>
+          )}
           {(reservedInOtherDrafts.get(p._id) || 0) > 0 && (
             <div className="mt-1 inline-block text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
               ⏳ Đơn khác đang giữ: {reservedInOtherDrafts.get(p._id)} {p.unit}
@@ -1123,26 +1454,23 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                 aria-selected={isActive}
                 onClick={() => handleSwitchDraft(d.id)}
                 title={submitting ? "Đang tạo đơn, vui lòng chờ..." : `Chuyển sang Đơn ${d.seq}`}
-                className={`group flex items-center gap-2 pl-3 pr-1.5 py-1.5 rounded-lg border text-xs shrink-0 transition select-none ${
-                  isActive
-                    ? "bg-emerald-600 border-emerald-700 text-white shadow-sm"
-                    : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-emerald-50 hover:border-emerald-300"
-                } ${submitting && !isActive ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                className={`group flex items-center gap-2 pl-3 pr-1.5 py-1.5 rounded-lg border text-xs shrink-0 transition select-none ${isActive
+                  ? "bg-emerald-600 border-emerald-700 text-white shadow-sm"
+                  : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-emerald-50 hover:border-emerald-300"
+                  } ${submitting && !isActive ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
               >
                 <div className="flex flex-col leading-tight min-w-0">
                   <span className="font-extrabold">Đơn {d.seq}</span>
                   <span
-                    className={`text-[10px] truncate max-w-[120px] ${
-                      isActive ? "text-emerald-50" : "text-slate-500"
-                    }`}
+                    className={`text-[10px] truncate max-w-[120px] ${isActive ? "text-emerald-50" : "text-slate-500"
+                      }`}
                   >
                     {customerLabel}
                   </span>
                 </div>
                 <span
-                  className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                    isActive ? "bg-white/20 text-white" : "bg-emerald-100 text-emerald-800"
-                  }`}
+                  className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isActive ? "bg-white/20 text-white" : "bg-emerald-100 text-emerald-800"
+                    }`}
                 >
                   {qty} SP
                 </span>
@@ -1155,9 +1483,8 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                   }}
                   title={`Hủy Đơn ${d.seq}`}
                   aria-label={`Hủy Đơn ${d.seq}`}
-                  className={`p-1 rounded-md transition disabled:cursor-not-allowed ${
-                    isActive ? "hover:bg-white/20 text-white" : "hover:bg-red-100 text-slate-400 hover:text-red-600"
-                  }`}
+                  className={`p-1 rounded-md transition disabled:cursor-not-allowed ${isActive ? "hover:bg-white/20 text-white" : "hover:bg-red-100 text-slate-400 hover:text-red-600"
+                    }`}
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -1408,6 +1735,40 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                 Tối đa theo tồn Kho Tầng 1
               </span>
             </div>
+
+            {/* Hộp thông báo Chương trình Khuyến mãi đang được kích hoạt tự động */}
+            {appliedPromosSummary.length > 0 && (
+              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 space-y-1.5">
+                <div className="text-xs font-extrabold text-emerald-900 flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>
+                    🎉 Chương trình Khuyến mãi tự động áp dụng (
+                    {appliedPromosSummary.length}):
+                  </span>
+                </div>
+                <div className="space-y-1">
+                  {appliedPromosSummary.map((ap) => (
+                    <div
+                      key={ap._id}
+                      className="text-[11px] bg-white px-2.5 py-1.5 rounded-lg border border-emerald-200 flex flex-wrap items-center justify-between gap-1"
+                    >
+                      <span className="font-bold text-slate-900">
+                        {ap.name}{" "}
+                        {ap.multiplier > 1 && (
+                          <span className="font-mono text-emerald-700">
+                            (×{ap.multiplier} suất)
+                          </span>
+                        )}
+                      </span>
+                      <span className="font-semibold text-emerald-700">
+                        {ap.details.join(" · ")}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {cart.length === 0 ? (
               <div className="py-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl">
                 Chưa có sản phẩm nào trong giỏ hàng
@@ -1421,8 +1782,13 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                     <div key={item.product._id} className="p-3 space-y-2 text-xs">
                       <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2">
                         <div className="min-w-0 basis-full sm:basis-auto sm:flex-1">
-                          <div className="font-semibold text-slate-900 break-words">
-                            {item.product.name}
+                          <div className="font-semibold text-slate-900 break-words flex items-center gap-1.5 flex-wrap">
+                            <span>{item.product.name}</span>
+                            {item.autoPromoName && (
+                              <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                🎉 KM: {item.autoPromoName}
+                              </span>
+                            )}
                           </div>
                           <div className="font-mono text-[11px] text-slate-500 flex flex-wrap items-center gap-1.5 mt-0.5">
                             {pricing.discountPerUnit > 0 ? (
@@ -1631,7 +1997,9 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                         <div className="font-semibold text-slate-900 flex items-center gap-1.5 flex-wrap">
                           <span>{gItem.product.name}</span>
                           <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
-                            🎁 Hàng tặng (0đ)
+                            {gItem.isAutoPromo
+                              ? `🎁 ${gItem.promoName || "CTKM"}`
+                              : "🎁 Hàng tặng (0đ)"}
                           </span>
                         </div>
                         <div className="font-mono text-[11px] text-slate-500 flex items-center gap-1.5 mt-0.5">
