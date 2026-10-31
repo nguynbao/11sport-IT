@@ -70,7 +70,7 @@
   - `sellingPrice` > 0, `costPrice` > 0 hoặc `quantity` > 0 chỉ được phép khi người gọi có role `ADMIN` (Quản lý/Admin); role khác gửi `sellingPrice > 0` → `403 SELLING_PRICE_FORBIDDEN`, gửi `costPrice > 0` → `403 COST_PRICE_FORBIDDEN`, gửi `quantity > 0` → `403 DIRECT_STOCK_FORBIDDEN`.
 - `PATCH /api/v1/products/:id`
   - Body: `{ "name": "string", "categoryId": "string", "unit": "string", "sellingPrice": 250000, "costPrice": 180000, "stock"?: 20, "stockFloor1"?: 12, "stockFloor2"?: 8, "allowDirectStock"?: boolean }`
-  - Lưu ý: Không cho phép sửa `code`. Sửa `stock` / `stockFloor1` / `stockFloor2` trực tiếp mặc định bị chặn (`400 STOCK_DIRECT_EDIT_FORBIDDEN`), trừ khi `ADMIN` gửi kèm `allowDirectStock: true` từ CMS (hệ thống sẽ cập nhật tồn kho tầng + tổng tồn kho và tự động ghi `StockMovement` loại `IMPORT` nếu tăng hoặc `ADJUSTMENT` nếu giảm để cân bằng Sổ kho).
+  - Lưu ý: Không cho phép sửa `code`. Sửa `stock` / `stockFloor1` / `stockFloor2` trực tiếp mặc định bị chặn (`400 STOCK_DIRECT_EDIT_FORBIDDEN`), trừ khi `ADMIN` gửi kèm `allowDirectStock: true` từ CMS (hệ thống sẽ cập nhật tồn kho tầng + tổng tồn kho và tự động ghi `StockMovement` loại `IMPORT` nếu tăng hoặc `ADJUSTMENT` nếu giảm cho từng kho tầng `FLOOR_1` / `FLOOR_2` tương ứng, kèm `performedBy`, `performedByName`, `performedByRole` để cân bằng Sổ kho).
   - *(v1.1 & v2.4)* Role `ADMIN` và `WAREHOUSE` được phép cập nhật `sellingPrice`; chỉ role `ADMIN` được đổi `costPrice` / `stock` (`allowDirectStock: true`); role khác → `403 SELLING_PRICE_FORBIDDEN` / `403 COST_PRICE_FORBIDDEN` / `403 DIRECT_STOCK_FORBIDDEN`.
 - `DELETE /api/v1/products/:id` *(v1.8)*
   - Chỉ role `ADMIN` được xóa sản phẩm (`403 PRODUCT_DELETE_FORBIDDEN` nếu role khác).
@@ -83,7 +83,7 @@
   - `stock`: tổng tồn kho toàn cửa hàng (`stock = stockFloor1 + stockFloor2`).
 - `GET /api/v1/inventory/movements`
   - Query: `?productId=...&type=IMPORT|SALE|RETURN|EXCHANGE_IN|EXCHANGE_OUT|ADJUSTMENT|TRANSFER&from=...&to=...`
-  - Response: Lịch sử sổ kho (`StockMovement`) kèm `sellingPrice`, `stock` hiện tại và `costPrice` (ẩn `costPrice` nếu role `SALES`).
+  - Response: Lịch sử sổ kho (`StockMovement`) kèm `sellingPrice`, `stock` hiện tại, `costPrice` (ẩn `costPrice` nếu role `SALES`) và thông tin người thực hiện (`performedBy`, `performedByName`, `performedByRole`: `"ADMIN" | "WAREHOUSE" | "SALES"`).
 - `GET /api/v1/inventory/report`
   - Query: `?from=YYYY-MM-DD&to=YYYY-MM-DD&categoryId=...`
   - Response: Báo cáo kế toán kho theo công thức:
@@ -113,8 +113,8 @@
     - Ghi nhận vào **Báo cáo hoạt động nhân viên** (`GET /api/v1/reports/staff-activity`) với loại hoạt động kho `EXPORT_TRANSFER`.
 
 ### 2.4 Nhập kho (`/imports`)
-- `GET /api/v1/imports` — Danh sách phiếu nhập kho (`DRAFT`, `CHECKING`, `COMPLETED`)
-- `GET /api/v1/imports/:id` — Chi tiết phiếu nhập kho
+- `GET /api/v1/imports` — Danh sách phiếu nhập kho (`DRAFT`, `CHECKING`, `COMPLETED`), kèm thông tin người lập (`createdBy`, `createdByName`, `createdByRole`: `"ADMIN" | "WAREHOUSE"`), người hoàn thành (`completedBy`, `completedByName`, `completedByRole`: `"ADMIN" | "WAREHOUSE"`), và trên từng dòng hàng có người kiểm (`checkedBy`, `checkedByName`, `checkedByRole`, `scanCounts: [{ "userId", "name", "role", "quantity" }]`).
+- `GET /api/v1/imports/:id` — Chi tiết phiếu nhập kho (bao gồm toàn bộ thông tin người lập, người kiểm, người hoàn thành kèm vai trò `ADMIN` hoặc `WAREHOUSE`).
 - `POST /api/v1/imports/ocr-preview`
   - Body: `{ "imageText": "string" }` (mỗi dòng: `Tên hàng | ĐVT | Số lượng | Ghi chú`)
   - Tách văn bản thành danh sách 6 cột (`stt`, `productCode`, `productName`, `unit`, `expectedQuantity`, `note`) để người dùng xem lại và chỉnh sửa. Không còn trả dữ liệu mẫu.

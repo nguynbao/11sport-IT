@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { categoryRepo, productRepo, stockMovementRepo } from '../config/db';
+import { categoryRepo, productRepo, stockMovementRepo, staffRepo } from '../config/db';
 import { generateProductCode } from '../utils/productCode';
 import { ApiError } from '../utils/errors';
 import { normalizeFloor, floorLabel, getFloorStocks, applyFloorDelta } from '../utils/warehouseFloor';
@@ -10,6 +10,45 @@ export const productsInventoryRouter = Router();
 // Quản lý/Admin (role ADMIN) quản lý toàn bộ giá & tồn; Thủ kho (role WAREHOUSE) cũng được phép nhập/cập nhật giá bán
 const isPriceManager = (role?: string) => role === 'ADMIN';
 const canEditSellingPrice = (role?: string) => role === 'ADMIN' || role === 'WAREHOUSE';
+
+function inferActorRole(
+  explicitRole?: string,
+  userId?: string,
+  userName?: string,
+  staffRoleMap?: Map<string, string>,
+  fallback = 'ADMIN'
+): string {
+  const cleanRole = String(explicitRole || '').trim().toUpperCase();
+  if (cleanRole === 'ADMIN' || cleanRole === 'WAREHOUSE' || cleanRole === 'SALES') {
+    return cleanRole;
+  }
+  const uid = String(userId || '').trim();
+  if (uid && staffRoleMap?.has(uid)) {
+    return staffRoleMap.get(uid)!;
+  }
+  const upperId = uid.toUpperCase();
+  if (upperId === 'ADMIN') return 'ADMIN';
+  if (upperId === 'WAREHOUSE') return 'WAREHOUSE';
+  if (upperId === 'SALES') return 'SALES';
+  const nameLower = String(userName || '').toLowerCase();
+  if (nameLower.includes('admin') || nameLower.includes('quản trị') || nameLower.includes('quản lý')) {
+    return 'ADMIN';
+  }
+  if (nameLower.includes('thủ kho') || nameLower.includes('kho')) {
+    return 'WAREHOUSE';
+  }
+  return fallback;
+}
+
+async function buildStaffRoleMap(): Promise<Map<string, string>> {
+  const staffs = await staffRepo.find({});
+  const map = new Map<string, string>();
+  for (const s of staffs) {
+    if (s._id && s.role) map.set(String(s._id), String(s.role).toUpperCase());
+    if (s.username && s.role) map.set(String(s.username), String(s.role).toUpperCase());
+  }
+  return map;
+}
 
 // POST /api/v1/products/generate-code
 productsInventoryRouter.post('/products/generate-code', async (req, res, next) => {
@@ -174,6 +213,9 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
 
         const updated = await productRepo.updateById(existing._id, patchFields);
         if (qty > 0) {
+          const actorId = req.user?.userId || 'ADMIN';
+          const actorName = req.user?.fullName || 'Quản lý kho (CMS)';
+          const actorRole = inferActorRole(req.user?.role, actorId, actorName);
           await stockMovementRepo.create({
             type: 'IMPORT',
             productId: existing._id,
@@ -188,9 +230,10 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
             referenceType: 'IMPORT_RECEIPT',
             referenceId: existing._id,
             referenceCode: 'CMS-NHAP-THANG',
-            performedBy: req.user?.userId || 'ADMIN',
-            performedByName: req.user?.fullName || 'Quản lý kho (CMS)',
-            note: `Admin nhập thêm ${qty} ${existing.unit} thẳng vào ${floorLabel(targetFloor)} trên CMS`,
+            performedBy: actorId,
+            performedByName: actorName,
+            performedByRole: actorRole,
+            note: `${actorRole === 'ADMIN' ? 'Admin' : 'Thủ kho'} nhập thêm ${qty} ${existing.unit} thẳng vào ${floorLabel(targetFloor)} trên CMS`,
           });
         }
 
@@ -242,6 +285,9 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
     });
 
     if (qty > 0) {
+      const actorId = req.user?.userId || 'ADMIN';
+      const actorName = req.user?.fullName || 'Quản lý kho (CMS)';
+      const actorRole = inferActorRole(req.user?.role, actorId, actorName);
       await stockMovementRepo.create({
         type: 'IMPORT',
         productId: created._id,
@@ -256,9 +302,10 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
         referenceType: 'IMPORT_RECEIPT',
         referenceId: created._id,
         referenceCode: 'CMS-NHAP-THANG',
-        performedBy: req.user?.userId || 'ADMIN',
-        performedByName: req.user?.fullName || 'Quản lý kho (CMS)',
-        note: `Admin nhập thẳng sản phẩm mới vào ${floorLabel(targetFloor)} trên CMS (${qty} ${created.unit})`,
+        performedBy: actorId,
+        performedByName: actorName,
+        performedByRole: actorRole,
+        note: `${actorRole === 'ADMIN' ? 'Admin' : 'Thủ kho'} nhập thẳng sản phẩm mới vào ${floorLabel(targetFloor)} trên CMS (${qty} ${created.unit})`,
       });
     }
 
@@ -306,6 +353,8 @@ productsInventoryRouter.patch('/products/:id', async (req, res, next) => {
 
     const updateData: Record<string, any> = {};
     let stockDelta = 0;
+    let deltaFloor1 = 0;
+    let deltaFloor2 = 0;
     const currentFloors = getFloorStocks(product);
     const balanceBefore = currentFloors.stock;
 
@@ -338,6 +387,8 @@ productsInventoryRouter.patch('/products/:id', async (req, res, next) => {
           throw new ApiError(400, 'INVALID_QUANTITY', 'Số lượng tồn kho từng tầng phải là số nguyên không âm');
         }
         const newStock = nextF1 + nextF2;
+        deltaFloor1 = nextF1 - currentFloors.stockFloor1;
+        deltaFloor2 = nextF2 - currentFloors.stockFloor2;
         stockDelta = newStock - balanceBefore;
         updateData.stockFloor1 = nextF1;
         updateData.stockFloor2 = nextF2;
@@ -355,6 +406,8 @@ productsInventoryRouter.patch('/products/:id', async (req, res, next) => {
           nextF2 = Math.max(0, nextF2 + nextF1);
           nextF1 = 0;
         }
+        deltaFloor1 = nextF1 - currentFloors.stockFloor1;
+        deltaFloor2 = nextF2 - currentFloors.stockFloor2;
         updateData.stockFloor1 = nextF1;
         updateData.stockFloor2 = nextF2;
         updateData.stock = newStock;
@@ -419,27 +472,42 @@ productsInventoryRouter.patch('/products/:id', async (req, res, next) => {
       }
     }
 
-    if (stockDelta !== 0 && updated) {
-      const isImport = stockDelta > 0;
-      await stockMovementRepo.create({
-        type: isImport ? 'IMPORT' : 'ADJUSTMENT',
-        productId: updated._id,
-        productCode: updated.code,
-        productName: updated.name,
-        categoryId: updated.categoryId,
-        unit: updated.unit,
-        quantityChange: stockDelta,
-        balanceBefore,
-        balanceAfter: updated.stock,
-        referenceType: isImport ? 'IMPORT_RECEIPT' : 'ADJUSTMENT',
-        referenceId: updated._id,
-        referenceCode: isImport ? 'CMS-NHAP-THANG' : 'CMS-DIEU-CHINH',
-        performedBy: req.user?.userId || 'ADMIN',
-        performedByName: req.user?.fullName || 'Quản lý kho (CMS)',
-        note: isImport
-          ? `Admin nhập thêm ${stockDelta} ${updated.unit} trực tiếp trên CMS`
-          : `Admin điều chỉnh giảm ${Math.abs(stockDelta)} ${updated.unit} trực tiếp trên CMS`,
-      });
+    if ((deltaFloor1 !== 0 || deltaFloor2 !== 0) && updated) {
+      const actorId = req.user?.userId || 'ADMIN';
+      const actorName = req.user?.fullName || 'Quản lý kho (CMS)';
+      const actorRole = inferActorRole(req.user?.role, actorId, actorName);
+      let runningBalance = balanceBefore;
+
+      const floorChanges: { floor: 'FLOOR_1' | 'FLOOR_2'; delta: number }[] = [];
+      if (deltaFloor1 !== 0) floorChanges.push({ floor: 'FLOOR_1', delta: deltaFloor1 });
+      if (deltaFloor2 !== 0) floorChanges.push({ floor: 'FLOOR_2', delta: deltaFloor2 });
+
+      for (const fc of floorChanges) {
+        const isImport = fc.delta > 0;
+        const nextBalance = runningBalance + fc.delta;
+        await stockMovementRepo.create({
+          type: isImport ? 'IMPORT' : 'ADJUSTMENT',
+          productId: updated._id,
+          productCode: updated.code,
+          productName: updated.name,
+          categoryId: updated.categoryId,
+          unit: updated.unit,
+          quantityChange: fc.delta,
+          balanceBefore: runningBalance,
+          balanceAfter: nextBalance,
+          warehouseLocation: fc.floor,
+          referenceType: isImport ? 'IMPORT_RECEIPT' : 'ADJUSTMENT',
+          referenceId: updated._id,
+          referenceCode: isImport ? 'CMS-NHAP-THANG' : 'CMS-DIEU-CHINH',
+          performedBy: actorId,
+          performedByName: actorName,
+          performedByRole: actorRole,
+          note: isImport
+            ? `[${floorLabel(fc.floor)}] ${actorRole === 'ADMIN' ? 'Admin' : 'Thủ kho'} nhập thêm ${fc.delta} ${updated.unit} trực tiếp trên CMS`
+            : `[${floorLabel(fc.floor)}] ${actorRole === 'ADMIN' ? 'Admin' : 'Thủ kho'} điều chỉnh giảm ${Math.abs(fc.delta)} ${updated.unit} trực tiếp trên CMS`,
+        });
+        runningBalance = nextBalance;
+      }
     }
 
     const updatedFloors = getFloorStocks(updated);
@@ -496,9 +564,10 @@ productsInventoryRouter.delete('/products/:id', async (req, res, next) => {
 productsInventoryRouter.get('/inventory/movements', async (req, res, next) => {
   try {
     const { productId, type, from, to, search } = req.query;
-    const [movements, allProducts] = await Promise.all([
+    const [movements, allProducts, staffRoleMap] = await Promise.all([
       stockMovementRepo.find({}, { createdAt: -1 }),
       productRepo.find({}),
+      buildStaffRoleMap(),
     ]);
 
     const hideCost = req.user?.role === 'SALES';
@@ -522,8 +591,22 @@ productsInventoryRouter.get('/inventory/movements', async (req, res, next) => {
       })
       .map((m) => {
         const prod = prodById.get(String(m.productId)) || prodByCode.get(String(m.productCode));
+        const defaultFallbackRole =
+          m.type === 'SALE' || m.type === 'RETURN' || m.type === 'EXCHANGE_IN' || m.type === 'EXCHANGE_OUT'
+            ? 'SALES'
+            : String(m.referenceCode || '').startsWith('PN-')
+            ? 'WAREHOUSE'
+            : 'ADMIN';
+        const performedByRole = inferActorRole(
+          (m as any).performedByRole,
+          m.performedBy,
+          m.performedByName,
+          staffRoleMap,
+          defaultFallbackRole
+        );
         return {
           ...(m as any),
+          performedByRole,
           sellingPrice: Number(prod?.sellingPrice || 0),
           currentStock: Number(prod?.stock ?? m.balanceAfter ?? 0),
           ...(hideCost ? {} : { costPrice: Number(prod?.costPrice || 0) }),
@@ -724,6 +807,9 @@ productsInventoryRouter.post('/inventory/adjustments', async (req, res, next) =>
 
     const adjCount = await stockMovementRepo.countDocuments({ type: 'ADJUSTMENT' });
     const referenceCode = `DC-${String(adjCount + 1).padStart(4, '0')}`;
+    const adjActorId = req.user?.userId || 'ADMIN';
+    const adjActorName = req.user?.fullName || 'Quản lý kho';
+    const adjActorRole = inferActorRole(req.user?.role, adjActorId, adjActorName);
 
     const movement = await stockMovementRepo.create({
       type: 'ADJUSTMENT',
@@ -739,8 +825,9 @@ productsInventoryRouter.post('/inventory/adjustments', async (req, res, next) =>
       referenceType: 'ADJUSTMENT',
       referenceId: product._id,
       referenceCode,
-      performedBy: req.user?.userId || 'ADMIN',
-      performedByName: req.user?.fullName || 'Quản lý kho',
+      performedBy: adjActorId,
+      performedByName: adjActorName,
+      performedByRole: adjActorRole,
       note: `[${floorLabel(targetFloor)}] ${String(reason).trim()}`,
     });
 
@@ -889,6 +976,10 @@ productsInventoryRouter.post('/inventory/transfers', async (req, res, next) => {
           ? String(note).trim()
           : `Xuất kho chuyển ${qty} ${product.unit} từ ${floorLabel(fromFloor)} sang ${floorLabel(toFloor)}`;
 
+      const tfActorId = req.user?.userId || 'ADMIN';
+      const tfActorName = req.user?.fullName || 'Quản trị viên';
+      const tfActorRole = inferActorRole(req.user?.role, tfActorId, tfActorName);
+
       const movement = await stockMovementRepo.create({
         type: 'TRANSFER',
         productId: product._id,
@@ -905,8 +996,9 @@ productsInventoryRouter.post('/inventory/transfers', async (req, res, next) => {
         referenceType: 'TRANSFER',
         referenceId: product._id,
         referenceCode,
-        performedBy: req.user?.userId || 'ADMIN',
-        performedByName: req.user?.fullName || 'Quản trị viên',
+        performedBy: tfActorId,
+        performedByName: tfActorName,
+        performedByRole: tfActorRole,
         note: noteText,
       });
       createdMovements.push(movement);

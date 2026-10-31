@@ -26,7 +26,7 @@ export default function InventoryTab() {
   const [floor1Codes, setFloor1Codes] = useState<Set<string>>(new Set());
   const [floor2Codes, setFloor2Codes] = useState<Set<string>>(new Set());
   const [priceEdits, setPriceEdits] = useState<Record<string, number>>({});
-  const [savingPriceId, setSavingPriceId] = useState<string | null>(null);
+  const [savingBatch, setSavingBatch] = useState(false);
   const [priceStatusMsg, setPriceStatusMsg] = useState<string | null>(null);
 
   // Saler (role SALES) chỉ được thấy Giá bán & Số lượng ở Kho Tầng 1, KHÔNG được thấy Giá gốc hay Kho Tầng 2
@@ -97,30 +97,41 @@ export default function InventoryTab() {
     loadInventory();
   }, [loadInventory]);
 
-  const handleSaveSellingPrice = async (p: Product) => {
-    const nextPrice = priceEdits[p._id] !== undefined ? priceEdits[p._id] : Number(p.sellingPrice || 0);
-    setSavingPriceId(p._id);
+  const changedPriceProducts = useMemo(() => {
+    return products.filter(
+      (p) => priceEdits[p._id] !== undefined && priceEdits[p._id] !== Number(p.sellingPrice || 0)
+    );
+  }, [products, priceEdits]);
+
+  const handleSaveAllPriceChanges = async () => {
+    if (changedPriceProducts.length === 0 || savingBatch) return;
+    setSavingBatch(true);
     setPriceStatusMsg(null);
     try {
-      const res = await apiRequest<Product>(`/products/${p._id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ sellingPrice: nextPrice }),
-      });
+      const updatedMap: Record<string, number> = {};
+      for (const p of changedPriceProducts) {
+        const nextPrice = priceEdits[p._id];
+        const res = await apiRequest<Product>(`/products/${p._id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ sellingPrice: nextPrice }),
+        });
+        updatedMap[p._id] = res.data?.sellingPrice ?? nextPrice;
+      }
       setProducts((prev) =>
         prev.map((item) =>
-          item._id === p._id ? { ...item, sellingPrice: res.data?.sellingPrice ?? nextPrice } : item
+          updatedMap[item._id] !== undefined ? { ...item, sellingPrice: updatedMap[item._id] } : item
         )
       );
       setPriceEdits((prev) => {
         const copy = { ...prev };
-        delete copy[p._id];
+        changedPriceProducts.forEach((p) => delete copy[p._id]);
         return copy;
       });
-      setPriceStatusMsg(`Đã cập nhật giá bán "${p.name}" = ${formatVND(nextPrice)}`);
+      setPriceStatusMsg(`Đã lưu thành công giá bán của ${changedPriceProducts.length} mặt hàng.`);
     } catch (err: any) {
       alert(err?.message || "Không thể cập nhật giá bán");
     } finally {
-      setSavingPriceId(null);
+      setSavingBatch(false);
     }
   };
 
@@ -335,13 +346,51 @@ export default function InventoryTab() {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={loadInventory}
-            className="min-h-[40px] px-3.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center justify-center gap-1.5 self-stretch sm:self-start md:self-auto"
-          >
-            <RefreshCw className="w-4 h-4" /> Làm mới dữ liệu
-          </button>
+          <div className="flex flex-wrap items-center gap-2 self-stretch sm:self-start md:self-auto">
+            {canSeeCostPrice && (
+              <>
+                {changedPriceProducts.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setPriceEdits({})}
+                    disabled={savingBatch}
+                    className="min-h-[40px] px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold transition"
+                  >
+                    Hoàn tác ({changedPriceProducts.length})
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={changedPriceProducts.length === 0 || savingBatch}
+                  onClick={handleSaveAllPriceChanges}
+                  className={`min-h-[40px] px-4 py-2 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1.5 transition shadow-sm ${
+                    changedPriceProducts.length > 0
+                      ? "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                      : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                  }`}
+                  title={
+                    changedPriceProducts.length > 0
+                      ? `Lưu thay đổi giá của ${changedPriceProducts.length} mặt hàng`
+                      : "Chưa có thay đổi nào để lưu"
+                  }
+                >
+                  <Save className="w-4 h-4" />
+                  {savingBatch
+                    ? "Đang lưu..."
+                    : changedPriceProducts.length > 0
+                    ? `Lưu thay đổi (${changedPriceProducts.length})`
+                    : "Lưu thay đổi"}
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={loadInventory}
+              className="min-h-[40px] px-3.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center justify-center gap-1.5"
+            >
+              <RefreshCw className="w-4 h-4" /> Làm mới dữ liệu
+            </button>
+          </div>
         </div>
 
         {priceStatusMsg && (
@@ -455,7 +504,7 @@ export default function InventoryTab() {
                       <td className="py-3 px-4 text-right font-mono whitespace-nowrap">
                         {canSeeCostPrice ? (
                           <div className="flex items-center justify-end gap-1.5">
-                            <div className="relative w-36">
+                            <div className="relative w-40">
                               <input
                                 type="text"
                                 inputMode="numeric"
@@ -479,12 +528,15 @@ export default function InventoryTab() {
                                 onKeyDown={(e) => {
                                   if (e.key === "Enter") {
                                     e.preventDefault();
-                                    handleSaveSellingPrice(p);
+                                    handleSaveAllPriceChanges();
                                   }
                                 }}
                                 placeholder="Nhập giá bán..."
                                 className={`w-full pl-2 pr-9 py-1.5 rounded-lg border text-right text-xs font-mono font-bold focus:border-emerald-600 focus:outline-none ${
-                                  (priceEdits[p._id] ?? p.sellingPrice) > 0
+                                  priceEdits[p._id] !== undefined &&
+                                  priceEdits[p._id] !== Number(p.sellingPrice || 0)
+                                    ? "border-emerald-500 bg-emerald-50/70 text-emerald-950 ring-1 ring-emerald-400"
+                                    : (priceEdits[p._id] ?? p.sellingPrice) > 0
                                     ? "border-slate-300 bg-white text-slate-900"
                                     : "border-amber-300 bg-amber-50 text-amber-900"
                                 }`}
@@ -493,19 +545,6 @@ export default function InventoryTab() {
                                 VND
                               </span>
                             </div>
-                            {priceEdits[p._id] !== undefined &&
-                              priceEdits[p._id] !== Number(p.sellingPrice || 0) && (
-                                <button
-                                  type="button"
-                                  disabled={savingPriceId === p._id}
-                                  onClick={() => handleSaveSellingPrice(p)}
-                                  className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 shadow-sm"
-                                  title="Lưu giá bán"
-                                >
-                                  <Save className="w-3.5 h-3.5" />
-                                  Lưu
-                                </button>
-                              )}
                           </div>
                         ) : p.sellingPrice > 0 ? (
                           <span className="font-bold text-slate-900">

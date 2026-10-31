@@ -4,6 +4,7 @@ import {
   productRepo,
   categoryRepo,
   stockMovementRepo,
+  staffRepo,
 } from '../config/db';
 import { generateProductCode } from '../utils/productCode';
 import { matchTagToItems } from '../utils/tagMatch';
@@ -21,6 +22,89 @@ import {
 } from '../utils/ocr';
 
 export const importsRouter = Router();
+
+function inferRole(
+  explicitRole?: string,
+  userId?: string,
+  userName?: string,
+  staffRoleMap?: Map<string, string>
+): string {
+  const cleanRole = String(explicitRole || '').trim().toUpperCase();
+  if (cleanRole === 'ADMIN' || cleanRole === 'WAREHOUSE' || cleanRole === 'SALES') {
+    return cleanRole;
+  }
+  const uid = String(userId || '').trim();
+  if (uid && staffRoleMap?.has(uid)) {
+    return staffRoleMap.get(uid)!;
+  }
+  const upperId = uid.toUpperCase();
+  if (upperId === 'ADMIN') return 'ADMIN';
+  if (upperId === 'WAREHOUSE') return 'WAREHOUSE';
+  const nameLower = String(userName || '').toLowerCase();
+  if (nameLower.includes('admin') || nameLower.includes('quản trị') || nameLower.includes('quản lý')) {
+    return 'ADMIN';
+  }
+  return 'WAREHOUSE';
+}
+
+async function buildStaffRoleMap(): Promise<Map<string, string>> {
+  const staffs = await staffRepo.find({});
+  const map = new Map<string, string>();
+  for (const s of staffs) {
+    if (s._id && s.role) map.set(String(s._id), String(s.role).toUpperCase());
+    if (s.username && s.role) map.set(String(s.username), String(s.role).toUpperCase());
+  }
+  return map;
+}
+
+function enrichReceiptRoles(receipt: any, staffRoleMap: Map<string, string>) {
+  if (!receipt) return receipt;
+  const createdByRole = inferReceiptActorRole(
+    receipt.createdByRole,
+    receipt.createdBy,
+    receipt.createdByName,
+    staffRoleMap
+  );
+  const completedByRole =
+    receipt.completedBy || receipt.completedByName
+      ? inferReceiptActorRole(
+          receipt.completedByRole,
+          receipt.completedBy,
+          receipt.completedByName,
+          staffRoleMap
+        )
+      : '';
+  const items = Array.isArray(receipt.items)
+    ? receipt.items.map((it: any) => ({
+        ...it,
+        checkedByRole:
+          it.checkedBy || it.checkedByName
+            ? inferReceiptActorRole(it.checkedByRole, it.checkedBy, it.checkedByName, staffRoleMap)
+            : '',
+        scanCounts: Array.isArray(it.scanCounts)
+          ? it.scanCounts.map((sc: any) => ({
+              ...sc,
+              role: inferReceiptActorRole(sc.role, sc.userId, sc.name, staffRoleMap),
+            }))
+          : [],
+      }))
+    : [];
+  return {
+    ...receipt,
+    createdByRole,
+    completedByRole,
+    items,
+  };
+}
+
+function inferReceiptActorRole(
+  explicitRole?: string,
+  userId?: string,
+  userName?: string,
+  staffRoleMap?: Map<string, string>
+): string {
+  return inferRole(explicitRole, userId, userName, staffRoleMap);
+}
 
 // Giá gốc (đơn giá nhập) do thủ kho nhập — số nguyên VND >= 0
 function parseCostPrice(raw: any, stt: number): number {
@@ -93,7 +177,15 @@ function keepCheckerFields(newItems: IImportReceiptItem[], oldItems: IImportRece
     let oi = oldItems[idx] && oldItems[idx].productCode === item.productCode && !used.has(idx) ? idx : -1;
     if (oi < 0) oi = oldItems.findIndex((o, j) => !used.has(j) && o.productCode === item.productCode);
     if (oi < 0) {
-      return { ...item, checkedBy: '', checkedByName: '', checkedAt: undefined, scanCounts: [], barcode: item.barcode || '' };
+      return {
+        ...item,
+        checkedBy: '',
+        checkedByName: '',
+        checkedByRole: '',
+        checkedAt: undefined,
+        scanCounts: [],
+        barcode: item.barcode || '',
+      };
     }
     used.add(oi);
     const old = oldItems[oi];
@@ -102,6 +194,7 @@ function keepCheckerFields(newItems: IImportReceiptItem[], oldItems: IImportRece
       barcode: old.barcode || item.barcode || '',
       checkedBy: old.checkedBy || '',
       checkedByName: old.checkedByName || '',
+      checkedByRole: old.checkedByRole || '',
       checkedAt: old.checkedAt,
       scanCounts: Array.isArray(old.scanCounts) ? old.scanCounts.map((s) => ({ ...s })) : [],
     };
@@ -145,7 +238,7 @@ async function applyMatchedScan(params: {
   items: IImportReceiptItem[];
   matchedIndex: number;
   delta: 1 | -1;
-  user?: { userId?: string; fullName?: string };
+  user?: { userId?: string; fullName?: string; role?: string };
   learnedBarcode?: string;
 }) {
   const { id, receipt, items, matchedIndex, delta, user, learnedBarcode } = params;
@@ -177,9 +270,10 @@ async function applyMatchedScan(params: {
   const scanned = Math.max(0, current.scannedQuantity + delta);
   const full = scanned >= Math.max(1, expected);
 
-  // Ghi nhận nhân viên quét kiểm (theo user đăng nhập)
+  // Ghi nhận nhân viên quét kiểm (theo user đăng nhập + role)
   const userId = String(user?.userId || '');
   const userName = user?.fullName || 'Không xác định';
+  const userRole = inferRole(user?.role, userId, userName);
   const scanCounts = (Array.isArray(current.scanCounts) ? current.scanCounts : []).map((s) => ({ ...s }));
   if (scanned !== current.scannedQuantity) {
     if (delta === 1) {
@@ -187,8 +281,9 @@ async function applyMatchedScan(params: {
       if (mine) {
         mine.quantity += 1;
         mine.name = userName;
+        mine.role = userRole;
       } else {
-        scanCounts.push({ userId, name: userName, quantity: 1 });
+        scanCounts.push({ userId, name: userName, role: userRole, quantity: 1 });
       }
     } else {
       const target =
@@ -203,7 +298,7 @@ async function applyMatchedScan(params: {
     barcode: cleanBarcode || current.barcode || '',
     scanCounts: scanCounts.filter((s) => s.quantity > 0),
     ...(delta === 1
-      ? { checkedBy: userId, checkedByName: userName, checkedAt: new Date() }
+      ? { checkedBy: userId, checkedByName: userName, checkedByRole: userRole, checkedAt: new Date() }
       : {}),
     scannedQuantity: scanned,
     actualQuantity: scanned,
@@ -306,9 +401,14 @@ importsRouter.post('/imports/ocr-scan', async (req, res, next) => {
 importsRouter.get('/imports', async (req, res, next) => {
   try {
     const { status, search } = req.query;
-    const allReceipts = await importReceiptRepo.find({}, { createdAt: -1 });
+    const [allReceipts, staffRoleMap] = await Promise.all([
+      importReceiptRepo.find({}, { createdAt: -1 }),
+      buildStaffRoleMap(),
+    ]);
 
-    const baseFiltered = allReceipts.filter((r) => {
+    const enrichedReceipts = allReceipts.map((r) => enrichReceiptRoles(r, staffRoleMap));
+
+    const baseFiltered = enrichedReceipts.filter((r) => {
       if (status && r.status !== String(status).toUpperCase()) return false;
       return true;
     });
@@ -319,7 +419,7 @@ importsRouter.get('/imports', async (req, res, next) => {
           { text: r.note, weight: 1.0 },
           { text: r.createdByName, weight: 0.9 },
           { text: r.completedByName, weight: 0.9 },
-          ...r.items.flatMap((i) => [
+          ...r.items.flatMap((i: any) => [
             { text: i.productCode, weight: 1.3 },
             { text: i.productName, weight: 1.2 },
             { text: (i as any).barcode, weight: 1.2 },
@@ -346,12 +446,15 @@ importsRouter.get('/imports/:id', async (req, res, next) => {
       throw new ApiError(404, 'IMPORT_RECEIPT_NOT_FOUND', 'Không tìm thấy phiếu nhập kho');
     }
 
-    const totalLines = receipt.items.length;
-    const checkedLines = receipt.items.filter((i) => i.isChecked).length;
-    const confirmedLines = receipt.items.filter((i) => i.isConfirmed).length;
+    const staffRoleMap = await buildStaffRoleMap();
+    const enriched = enrichReceiptRoles(receipt, staffRoleMap);
+
+    const totalLines = enriched.items.length;
+    const checkedLines = enriched.items.filter((i: any) => i.isChecked).length;
+    const confirmedLines = enriched.items.filter((i: any) => i.isConfirmed).length;
 
     res.json({
-      data: receipt,
+      data: enriched,
       meta: {
         totalLines,
         checkedLines,
@@ -377,6 +480,9 @@ importsRouter.post('/imports', async (req, res, next) => {
 
     const initialStatus = status === 'CHECKING' ? 'CHECKING' : 'DRAFT';
     const warehouseFloor = normalizeFloor(targetWarehouse);
+    const createdBy = req.user?.userId || 'WAREHOUSE';
+    const createdByName = req.user?.fullName || 'Thủ kho';
+    const createdByRole = inferRole(req.user?.role, createdBy, createdByName);
 
     const created = await importReceiptRepo.create({
       code,
@@ -385,8 +491,9 @@ importsRouter.post('/imports', async (req, res, next) => {
       defaultCategoryId: fallbackCatId,
       note: note ? String(note).trim() : '',
       items: normalizedItems,
-      createdBy: req.user?.userId || 'WAREHOUSE',
-      createdByName: req.user?.fullName || 'Thủ kho',
+      createdBy,
+      createdByName,
+      createdByRole,
     });
 
     res.status(201).json({
@@ -957,6 +1064,10 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
       if (itemBarcode && !product.barcode) productUpdate.barcode = itemBarcode;
       await productRepo.updateById(product._id, productUpdate);
 
+      const actorId = req.user?.userId || receipt.createdBy || 'WAREHOUSE';
+      const actorName = req.user?.fullName || receipt.createdByName || 'Thủ kho';
+      const actorRole = inferRole(req.user?.role || receipt.createdByRole, actorId, actorName);
+
       const movement = await stockMovementRepo.create({
         type: 'IMPORT',
         productId: product._id,
@@ -971,8 +1082,9 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
         referenceType: 'IMPORT_RECEIPT',
         referenceId: receipt._id,
         referenceCode: receipt.code,
-        performedBy: req.user?.userId || receipt.createdBy || 'WAREHOUSE',
-        performedByName: req.user?.fullName || receipt.createdByName || 'Thủ kho',
+        performedBy: actorId,
+        performedByName: actorName,
+        performedByRole: actorRole,
         note: `${item.discrepancyNote || item.note || `Nhập kho theo phiếu ${receipt.code}`} (${floorLabel(targetFloor)})`,
       });
 
@@ -984,12 +1096,17 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
       });
     }
 
+    const completedBy = req.user?.userId || 'WAREHOUSE';
+    const completedByName = req.user?.fullName || 'Thủ kho';
+    const completedByRole = inferRole(req.user?.role, completedBy, completedByName);
+
     const completedReceipt = await importReceiptRepo.updateById(id, {
       status: 'COMPLETED',
       targetWarehouse: targetFloor,
       items: updatedItems,
-      completedBy: req.user?.userId || 'WAREHOUSE',
-      completedByName: req.user?.fullName || 'Thủ kho',
+      completedBy,
+      completedByName,
+      completedByRole,
       completedAt: new Date(),
     });
 

@@ -30,6 +30,7 @@ export interface IStockMovement extends Document {
   referenceCode: string;
   performedBy: string;
   performedByName: string;
+  performedByRole?: string;
   note: string;
   createdAt: Date;
   updatedAt: Date;
@@ -63,6 +64,7 @@ const StockMovementSchema = new Schema<IStockMovement>(
     referenceCode: { type: String, required: true },
     performedBy: { type: String, default: 'SYSTEM' },
     performedByName: { type: String, default: 'Hệ thống' },
+    performedByRole: { type: String, default: '' },
     note: { type: String, default: '' },
   },
   { timestamps: true }

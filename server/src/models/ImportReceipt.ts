@@ -6,6 +6,7 @@ export type WarehouseFloor = 'FLOOR_1' | 'FLOOR_2';
 export interface IScanCount {
   userId: string;
   name: string;
+  role?: string;
   quantity: number;
 }
 
@@ -27,6 +28,7 @@ export interface IImportReceiptItem {
   /** Người quét kiểm gần nhất (do server ghi, không nhận từ client) */
   checkedBy?: string;
   checkedByName?: string;
+  checkedByRole?: string;
   checkedAt?: Date;
   /** Số chiếc từng nhân viên đã quét kiểm */
   scanCounts?: IScanCount[];
@@ -48,8 +50,10 @@ export interface IImportReceipt extends Document {
   items: IImportReceiptItem[];
   createdBy: string;
   createdByName: string;
+  createdByRole?: string;
   completedBy?: string;
   completedByName?: string;
+  completedByRole?: string;
   completedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -70,12 +74,14 @@ const ImportReceiptItemSchema = new Schema<IImportReceiptItem>(
     scannedQuantity: { type: Number, default: 0, min: 0 },
     checkedBy: { type: String, default: '' },
     checkedByName: { type: String, default: '' },
+    checkedByRole: { type: String, default: '' },
     checkedAt: { type: Date },
     scanCounts: {
       type: [
         {
           userId: { type: String, default: '' },
           name: { type: String, default: '' },
+          role: { type: String, default: '' },
           quantity: { type: Number, default: 0 },
           _id: false,
         },
@@ -101,8 +107,10 @@ const ImportReceiptSchema = new Schema<IImportReceipt>(
     items: { type: [ImportReceiptItemSchema], default: [] },
     createdBy: { type: String, default: '' },
     createdByName: { type: String, default: '' },
+    createdByRole: { type: String, default: '' },
     completedBy: { type: String, default: '' },
     completedByName: { type: String, default: '' },
+    completedByRole: { type: String, default: '' },
     completedAt: { type: Date },
   },
   { timestamps: true }

@@ -12,6 +12,7 @@ import {
   formatVND,
   formatNumberDots,
   parseNumberDots,
+  getStoredUser,
   useDebounce,
   filterAndRankBySearch,
 } from "@/lib/api";
@@ -32,7 +33,38 @@ import {
   ListChecks,
   ChevronDown,
   FileText,
+  Eye,
+  UserCheck,
+  X,
+  History,
 } from "lucide-react";
+
+function normalizeActorRole(role?: string, name?: string, userId?: any): "ADMIN" | "WAREHOUSE" {
+  const r = String(role || "").toUpperCase();
+  if (r === "ADMIN") return "ADMIN";
+  if (r === "WAREHOUSE") return "WAREHOUSE";
+  const uid = typeof userId === "string" ? userId.toUpperCase() : "";
+  if (uid === "ADMIN") return "ADMIN";
+  const n = String(name || "").toLowerCase();
+  if (n.includes("admin") || n.includes("quản trị") || n.includes("quản lý")) return "ADMIN";
+  return "WAREHOUSE";
+}
+
+function RoleBadge({ role, name, userId }: { role?: string; name?: string; userId?: any }) {
+  const resolved = normalizeActorRole(role, name, userId);
+  if (resolved === "ADMIN") {
+    return (
+      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-purple-100 text-purple-800 border border-purple-200 whitespace-nowrap">
+        ADMIN (Quản lý)
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-teal-100 text-teal-800 border border-teal-200 whitespace-nowrap">
+      WAREHOUSE (Thủ kho)
+    </span>
+  );
+}
 
 export default function ImportTab() {
   const [receipts, setReceipts] = useState<ImportReceipt[]>([]);
@@ -69,6 +101,14 @@ export default function ImportTab() {
   const [quickCheckSearch, setQuickCheckSearch] = useState("");
   const [openOcrModal, setOpenOcrModal] = useState(false);
   const [openTagModal, setOpenTagModal] = useState(false);
+
+  // Modal & mục xem lại chi tiết khi nhập hàng vào kho
+  const [detailModalReceipt, setDetailModalReceipt] = useState<ImportReceipt | null>(null);
+  const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
+  const [historyStatusFilter, setHistoryStatusFilter] = useState<"ALL" | "COMPLETED" | "CHECKING" | "DRAFT">("ALL");
+  const [historyRoleFilter, setHistoryRoleFilter] = useState<"ALL" | "ADMIN" | "WAREHOUSE">("ALL");
+
+  const currentUser = getStoredUser();
 
   const [loading, setLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState<{
@@ -129,6 +169,12 @@ export default function ImportTab() {
         costPrice: Number(it.costPrice || 0),
         sellingPrice: Number(it.sellingPrice || 0),
         scannedQuantity: Number(it.scannedQuantity || 0),
+        checkedBy: it.checkedBy,
+        checkedByName: it.checkedByName,
+        checkedByRole: it.checkedByRole,
+        checkedAt: it.checkedAt,
+        scanCounts: it.scanCounts,
+        barcode: it.barcode,
         note: it.note || "",
         isChecked: Boolean(it.isChecked),
         isConfirmed: Boolean(it.isConfirmed),
@@ -151,6 +197,8 @@ export default function ImportTab() {
         unit: "Cái",
         expectedQuantity: 1,
         actualQuantity: 1,
+        costPrice: 0,
+        sellingPrice: 0,
         note: "",
         isChecked: false,
         isConfirmed: false,
@@ -164,7 +212,7 @@ export default function ImportTab() {
   const isCompleted = currentReceipt?.status === "COMPLETED";
   const currentStepStatus = currentReceipt?.status || "DRAFT";
 
-  // Cập nhật từng ô trong bảng 6 cột (Tự sinh MÃ HÀNG từ () trong TÊN HÀNG)
+  // Cập nhật từng ô trong bảng 6 cột (Tự sinh MÃ HÀNG từ () trong TÊN HÀNG + đồng bộ số lượng khi chỉnh)
   const handleUpdateRow = (index: number, field: keyof ImportItem, value: any) => {
     if (isCompleted) return;
     setItems((prev) => {
@@ -173,13 +221,82 @@ export default function ImportTab() {
       if (field === "productName") {
         item.productCode = generateProductCode(String(value));
       }
-      if (field === "expectedQuantity" && currentStepStatus === "DRAFT") {
-        item.actualQuantity = Number(value) || 0;
+      if (field === "expectedQuantity") {
+        const exp = Math.max(0, Math.round(Number(value) || 0));
+        item.expectedQuantity = exp;
+        if (currentStepStatus === "DRAFT" || !item.isChecked) {
+          item.actualQuantity = exp;
+        } else {
+          const diff = Number(item.actualQuantity || 0) - exp;
+          item.discrepancyNote =
+            diff === 0
+              ? "Khớp đủ"
+              : diff > 0
+              ? `Thừa ${diff} ${item.unit || "Cái"}`
+              : `Thiếu ${Math.abs(diff)} ${item.unit || "Cái"}`;
+        }
+      }
+      if (field === "actualQuantity") {
+        const actual = Math.max(0, Math.round(Number(value) || 0));
+        const exp = Math.max(0, Math.round(Number(item.expectedQuantity) || 0));
+        item.actualQuantity = actual;
+        item.isChecked = true;
+        if (actual >= Math.max(1, exp)) {
+          item.isConfirmed = true;
+        }
+        const diff = actual - exp;
+        item.discrepancyNote =
+          diff === 0
+            ? "Khớp đủ"
+            : diff > 0
+            ? `Thừa ${diff} ${item.unit || "Cái"}`
+            : `Thiếu ${Math.abs(diff)} ${item.unit || "Cái"}`;
       }
       next[index] = item;
       return next;
     });
   };
+
+  const validItemCount = useMemo(
+    () => items.filter((i) => i.productName.trim() !== "").length,
+    [items]
+  );
+
+  // Kiểm tra có thay đổi thực sự so với dữ liệu gốc hay không để kích hoạt nút Lưu
+  const hasReceiptChanges = useMemo(() => {
+    if (isCompleted) return false;
+    if (!currentReceipt) {
+      return validItemCount > 0 || note.trim() !== "";
+    }
+    const origWarehouse = currentReceipt.targetWarehouse === "FLOOR_2" ? "FLOOR_2" : "FLOOR_1";
+    if ((note || "").trim() !== (currentReceipt.note || "").trim()) return true;
+    if (targetWarehouse !== origWarehouse) return true;
+    if (
+      defaultCategoryId &&
+      currentReceipt.defaultCategoryId &&
+      String(defaultCategoryId) !== String(currentReceipt.defaultCategoryId)
+    ) {
+      return true;
+    }
+    const origItems = currentReceipt.items || [];
+    const currentValid = items.filter((i) => i.productName.trim() !== "");
+    if (currentValid.length !== origItems.length) return true;
+    for (let i = 0; i < currentValid.length; i++) {
+      const cur = currentValid[i];
+      const orig = origItems[i];
+      if (!orig) return true;
+      if ((cur.productName || "").trim() !== (orig.productName || "").trim()) return true;
+      if ((cur.unit || "Cái").trim() !== (orig.unit || "Cái").trim()) return true;
+      if (Number(cur.expectedQuantity || 0) !== Number(orig.expectedQuantity || 0)) return true;
+      if (Number(cur.actualQuantity || 0) !== Number(orig.actualQuantity ?? orig.expectedQuantity ?? 0)) return true;
+      if (Number(cur.costPrice || 0) !== Number(orig.costPrice || 0)) return true;
+      if (Number(cur.sellingPrice || 0) !== Number(orig.sellingPrice || 0)) return true;
+      if ((cur.note || "").trim() !== (orig.note || "").trim()) return true;
+      if (Boolean(cur.isChecked) !== Boolean(orig.isChecked)) return true;
+      if (Boolean(cur.isConfirmed) !== Boolean(orig.isConfirmed)) return true;
+    }
+    return false;
+  }, [isCompleted, currentReceipt, validItemCount, note, targetWarehouse, defaultCategoryId, items]);
 
   const handleAddRow = () => {
     if (isCompleted) return;
@@ -485,6 +602,62 @@ export default function ImportTab() {
                   : "SOẠN DỰ KIẾN (DRAFT)"}
               </span>
             </div>
+            <div className="flex flex-wrap items-center gap-2 mt-1.5 text-xs text-slate-300">
+              <span className="inline-flex items-center gap-1.5 bg-slate-800/90 border border-slate-700 px-2.5 py-1 rounded-lg">
+                <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Người nhập:</span>
+                <strong className="text-white">
+                  {currentReceipt
+                    ? currentReceipt.createdByName || "Thủ kho"
+                    : currentUser?.fullName || "Thủ kho"}
+                </strong>
+                <RoleBadge
+                  role={
+                    currentReceipt
+                      ? currentReceipt.createdByRole
+                      : currentUser?.role || "WAREHOUSE"
+                  }
+                  name={
+                    currentReceipt
+                      ? currentReceipt.createdByName
+                      : currentUser?.fullName
+                  }
+                  userId={currentReceipt?.createdBy}
+                />
+              </span>
+              {currentReceipt?.status === "COMPLETED" && (
+                <span className="inline-flex items-center gap-1.5 bg-emerald-950/80 border border-emerald-700 px-2.5 py-1 rounded-lg">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Hoàn thành bởi:</span>
+                  <strong className="text-emerald-200">
+                    {currentReceipt.completedByName ||
+                      currentReceipt.createdByName ||
+                      "Thủ kho"}
+                  </strong>
+                  <RoleBadge
+                    role={
+                      currentReceipt.completedByRole ||
+                      currentReceipt.createdByRole
+                    }
+                    name={
+                      currentReceipt.completedByName ||
+                      currentReceipt.createdByName
+                    }
+                    userId={currentReceipt.completedBy || currentReceipt.createdBy}
+                  />
+                </span>
+              )}
+              {currentReceipt && (
+                <button
+                  type="button"
+                  onClick={() => setDetailModalReceipt(currentReceipt)}
+                  className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-1 rounded-lg transition shadow-sm"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  Xem lại chi tiết phiếu
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Khu vực Dropdown Danh sách Phiếu Nhập + Nút Tạo mới */}
@@ -608,6 +781,18 @@ export default function ImportTab() {
                                 <span className="text-[11px] font-semibold text-slate-500">
                                   {rc.items?.length || 0} mặt hàng
                                 </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setDetailModalReceipt(rc);
+                                    setReceiptDropdownOpen(false);
+                                  }}
+                                  className="px-2 py-0.5 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 text-[10px] font-bold flex items-center gap-1"
+                                  title="Xem lại chi tiết phiếu nhập"
+                                >
+                                  <Eye className="w-3 h-3" /> Chi tiết
+                                </button>
                                 {rc.status !== "COMPLETED" && (
                                   <button
                                     type="button"
@@ -625,13 +810,26 @@ export default function ImportTab() {
                               {rc.note || "Phiếu nhập kho"}
                             </div>
 
-                            <div className="text-[11px] text-slate-400 mt-1 flex items-center justify-between">
-                              <span>Ngày tạo: {formatDateTime(rc.createdAt)}</span>
-                              {isSelected && (
-                                <span className="text-emerald-700 font-bold">
-                                  Đang mở
-                                </span>
-                              )}
+                            <div className="text-[11px] text-slate-500 mt-1.5 flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span>Người nhập:</span>
+                                <strong className="text-slate-800">
+                                  {rc.createdByName || "Thủ kho"}
+                                </strong>
+                                <RoleBadge
+                                  role={rc.createdByRole}
+                                  name={rc.createdByName}
+                                  userId={rc.createdBy}
+                                />
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span>{formatDateTime(rc.createdAt)}</span>
+                                {isSelected && (
+                                  <span className="text-emerald-700 font-bold">
+                                    Đang mở
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
                         );
@@ -1127,7 +1325,6 @@ export default function ImportTab() {
                           onChange={(e) => {
                             const val = Math.max(0, Number(e.target.value));
                             handleUpdateRow(idx, "actualQuantity", val);
-                            handleUpdateRow(idx, "isChecked", true);
                           }}
                           className="w-20 px-2 py-1.5 rounded border border-amber-400 text-right font-mono font-bold bg-white"
                           title="Số lượng thực nhận"
@@ -1150,7 +1347,7 @@ export default function ImportTab() {
                           </span>
                         )}
                       </div>
-                      <div className="mt-1.5 text-[11px]">
+                      <div className="mt-1.5 text-[11px] space-y-0.5">
                         {Number(row.scannedQuantity) > 0 ? (
                           <span
                             className={`font-bold inline-block ${
@@ -1169,6 +1366,16 @@ export default function ImportTab() {
                           </span>
                         ) : (
                           <span className="text-slate-400">Chưa kiểm</span>
+                        )}
+                        {row.checkedByName && (
+                          <div className="text-[10px] text-slate-600 flex flex-wrap items-center gap-1">
+                            <span>Kiểm: {row.checkedByName}</span>
+                            <RoleBadge
+                              role={row.checkedByRole}
+                              name={row.checkedByName}
+                              userId={row.checkedBy}
+                            />
+                          </div>
                         )}
                       </div>
                     </td>
@@ -1222,24 +1429,44 @@ export default function ImportTab() {
 
         {/* Thanh hành động cuối phiếu: Lưu nháp (Bước 6), Hoàn tất DS (Bước 3), Hoàn thành nhập kho (Bước 7) */}
         {isCompleted ? (
-          <div className="p-4 rounded-xl bg-slate-100 border border-slate-300 flex items-center justify-between text-xs text-slate-700">
+          <div className="p-4 rounded-xl bg-slate-100 border border-slate-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-700">
             <div className="flex items-start sm:items-center gap-2 font-bold">
               <Lock className="w-4 h-4 text-slate-600 shrink-0" />
               Phiếu nhập này đã HOÀN THÀNH và bị khóa vĩnh viễn (BR-10). Nếu phát hiện sai lệch, vui lòng lập Phiếu Điều Chỉnh Kho trên CMS.
             </div>
+            {currentReceipt && (
+              <button
+                type="button"
+                onClick={() => setDetailModalReceipt(currentReceipt)}
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs flex items-center gap-1.5 shrink-0 shadow-sm"
+              >
+                <Eye className="w-4 h-4" /> Xem lại chi tiết phiếu nhập
+              </button>
+            )}
           </div>
         ) : (
           <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center justify-between gap-3 pt-3 border-t border-slate-200">
-            {/* Bước 6: Nút Lưu nháp & Xóa phiếu */}
+            {/* Bước 6: Nút Lưu nháp duy nhất (chỉ active khi có thay đổi thực tế) & Xóa phiếu */}
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                disabled={loading}
+                disabled={loading || !hasReceiptChanges || validItemCount === 0}
                 onClick={handleSaveDraft}
-                className="px-5 py-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs flex items-center justify-center gap-2 shadow-sm"
+                className={`px-5 py-3 rounded-xl font-extrabold text-xs flex items-center justify-center gap-2 shadow-sm transition ${
+                  hasReceiptChanges && validItemCount > 0 && !loading
+                    ? "border-2 border-blue-600 bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
+                    : "border border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed"
+                }`}
+                title={
+                  hasReceiptChanges && validItemCount > 0
+                    ? "Lưu các thay đổi của phiếu nhập"
+                    : "Chưa có thay đổi nào để lưu"
+                }
               >
-                <Save className="w-4 h-4 text-blue-600" />
-                💾 Lưu nháp (Bước 6)
+                <Save className="w-4 h-4" />
+                {hasReceiptChanges && validItemCount > 0
+                  ? "💾 Lưu thay đổi (Bước 6)"
+                  : "💾 Đã lưu (Chưa có thay đổi)"}
               </button>
               {currentReceipt?._id && (
                 <button
@@ -1282,6 +1509,583 @@ export default function ImportTab() {
           </div>
         )}
       </div>
+
+      {/* MỤC XEM LẠI CHI TIẾT KHI NHẬP HÀNG VÀO KHO (Lịch sử & Tra cứu chi tiết phiếu nhập + Người nhập ADMIN / WAREHOUSE) */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <History className="w-5 h-5 text-blue-600" />
+              <h3 className="text-sm sm:text-base font-extrabold text-slate-900">
+                Xem Lại Chi Tiết Khi Nhập Hàng Vào Kho ({receipts.length} phiếu)
+              </h3>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Lưu đầy đủ thông tin người nhập (Admin hay Warehouse), số lượng dự kiến / thực nhận, giá nhập / giá bán và chi tiết từng dòng hàng.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={historyStatusFilter}
+              onChange={(e) => setHistoryStatusFilter(e.target.value as any)}
+              className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-bold bg-white"
+            >
+              <option value="ALL">Tất cả trạng thái</option>
+              <option value="COMPLETED">Đã hoàn thành</option>
+              <option value="CHECKING">Đang kiểm thực tế</option>
+              <option value="DRAFT">Phiếu nháp</option>
+            </select>
+
+            <select
+              value={historyRoleFilter}
+              onChange={(e) => setHistoryRoleFilter(e.target.value as any)}
+              className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-bold bg-white"
+            >
+              <option value="ALL">Tất cả người nhập (Admin + Warehouse)</option>
+              <option value="ADMIN">Người nhập: ADMIN (Quản lý)</option>
+              <option value="WAREHOUSE">Người nhập: WAREHOUSE (Thủ kho)</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto border border-slate-200 rounded-xl">
+          <table className="w-full text-xs text-left">
+            <thead className="bg-slate-900 text-white uppercase">
+              <tr>
+                <th className="py-2.5 px-3">Mã phiếu</th>
+                <th className="py-2.5 px-3">Kho nhận</th>
+                <th className="py-2.5 px-3">Người nhập (Vai trò)</th>
+                <th className="py-2.5 px-3">Người hoàn thành</th>
+                <th className="py-2.5 px-3">Trạng thái</th>
+                <th className="py-2.5 px-3 text-right">Số dòng / Tổng SL thực nhận</th>
+                <th className="py-2.5 px-3 text-right">Tổng trị giá nhập</th>
+                <th className="py-2.5 px-3">Thời gian</th>
+                <th className="py-2.5 px-3 text-right">Thao tác</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {receipts
+                .filter((rc) => {
+                  if (historyStatusFilter !== "ALL" && rc.status !== historyStatusFilter) {
+                    return false;
+                  }
+                  if (historyRoleFilter !== "ALL") {
+                    const creatorRole = normalizeActorRole(
+                      rc.createdByRole,
+                      rc.createdByName,
+                      rc.createdBy
+                    );
+                    const completerRole = rc.completedByName
+                      ? normalizeActorRole(
+                          rc.completedByRole,
+                          rc.completedByName,
+                          rc.completedBy
+                        )
+                      : creatorRole;
+                    if (creatorRole !== historyRoleFilter && completerRole !== historyRoleFilter) {
+                      return false;
+                    }
+                  }
+                  return true;
+                })
+                .map((rc) => {
+                  const code = rc.code || rc.receiptCode || rc._id.slice(-6);
+                  const isExpanded = expandedHistoryId === rc._id;
+                  const rcItems = rc.items || [];
+                  const totalExp = rcItems.reduce(
+                    (s, i) => s + Number(i.expectedQuantity || 0),
+                    0
+                  );
+                  const totalAct = rcItems.reduce(
+                    (s, i) => s + Number(i.actualQuantity || 0),
+                    0
+                  );
+                  const totalCost = rcItems.reduce(
+                    (s, i) =>
+                      s + Number(i.costPrice || 0) * Number(i.actualQuantity || 0),
+                    0
+                  );
+                  return (
+                    <React.Fragment key={rc._id}>
+                      <tr className="hover:bg-slate-50">
+                        <td className="py-2.5 px-3 font-mono font-extrabold text-slate-900">
+                          {code}
+                          {rc.note && (
+                            <div className="font-sans font-normal text-[11px] text-slate-500 truncate max-w-[180px]">
+                              {rc.note}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              rc.targetWarehouse === "FLOOR_2"
+                                ? "bg-purple-100 text-purple-800"
+                                : "bg-indigo-100 text-indigo-800"
+                            }`}
+                          >
+                            {rc.targetWarehouse === "FLOOR_2"
+                              ? "🏬 Kho Tầng 2"
+                              : "🏢 Kho Tầng 1"}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <div className="font-bold text-slate-900">
+                            {rc.createdByName || "Thủ kho"}
+                          </div>
+                          <div className="mt-0.5">
+                            <RoleBadge
+                              role={rc.createdByRole}
+                              name={rc.createdByName}
+                              userId={rc.createdBy}
+                            />
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          {rc.status === "COMPLETED" ? (
+                            <div>
+                              <div className="font-bold text-emerald-900">
+                                {rc.completedByName || rc.createdByName || "Thủ kho"}
+                              </div>
+                              <div className="mt-0.5">
+                                <RoleBadge
+                                  role={rc.completedByRole || rc.createdByRole}
+                                  name={rc.completedByName || rc.createdByName}
+                                  userId={rc.completedBy || rc.createdBy}
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 italic">Chưa hoàn thành</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              rc.status === "COMPLETED"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : rc.status === "CHECKING"
+                                ? "bg-amber-100 text-amber-800"
+                                : "bg-blue-100 text-blue-800"
+                            }`}
+                          >
+                            {rc.status === "COMPLETED"
+                              ? "HOÀN THÀNH"
+                              : rc.status === "CHECKING"
+                              ? "ĐANG KIỂM"
+                              : "NHÁP"}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono">
+                          <span className="font-bold text-slate-900">
+                            {rcItems.length} SP
+                          </span>{" "}
+                          •{" "}
+                          <span className="font-extrabold text-emerald-700">
+                            {totalAct}/{totalExp}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
+                          {formatVND(totalCost)}
+                        </td>
+                        <td className="py-2.5 px-3 text-[11px] text-slate-600">
+                          <div>Tạo: {formatDateTime(rc.createdAt)}</div>
+                          {rc.completedAt && (
+                            <div className="text-emerald-700 font-semibold">
+                              Xong: {formatDateTime(rc.completedAt)}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedHistoryId(isExpanded ? null : rc._id)
+                              }
+                              className="px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 font-bold text-[11px]"
+                            >
+                              {isExpanded ? "Thu gọn" : "Xem nhanh"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDetailModalReceipt(rc)}
+                              className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] flex items-center gap-1"
+                            >
+                              <Eye className="w-3.5 h-3.5" /> Xem chi tiết
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr className="bg-slate-50">
+                          <td colSpan={9} className="p-3">
+                            <div className="bg-white rounded-lg border border-slate-200 p-3 space-y-2">
+                              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                                <div className="font-extrabold text-slate-800">
+                                  Chi tiết các mặt hàng trong phiếu {code} ({rcItems.length} dòng)
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSelectReceipt(rc)}
+                                  className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px]"
+                                >
+                                  Mở lên bảng chính
+                                </button>
+                              </div>
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-[11px] text-left border border-slate-200">
+                                  <thead className="bg-slate-100 text-slate-700 uppercase">
+                                    <tr>
+                                      <th className="py-1.5 px-2">STT</th>
+                                      <th className="py-1.5 px-2">Mã SP</th>
+                                      <th className="py-1.5 px-2">Tên sản phẩm</th>
+                                      <th className="py-1.5 px-2 text-center">ĐVT</th>
+                                      <th className="py-1.5 px-2 text-right">SL Dự kiến</th>
+                                      <th className="py-1.5 px-2 text-right">SL Thực nhận</th>
+                                      <th className="py-1.5 px-2 text-right">Giá gốc</th>
+                                      <th className="py-1.5 px-2 text-right">Giá bán</th>
+                                      <th className="py-1.5 px-2">Người kiểm / Ghi chú</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100">
+                                    {rcItems.map((it, i) => (
+                                      <tr key={i}>
+                                        <td className="py-1.5 px-2 font-mono">{i + 1}</td>
+                                        <td className="py-1.5 px-2 font-mono font-bold text-slate-700">
+                                          {it.productCode}
+                                        </td>
+                                        <td className="py-1.5 px-2 font-semibold text-slate-900">
+                                          {it.productName}
+                                        </td>
+                                        <td className="py-1.5 px-2 text-center">{it.unit}</td>
+                                        <td className="py-1.5 px-2 text-right font-mono">
+                                          {it.expectedQuantity}
+                                        </td>
+                                        <td className="py-1.5 px-2 text-right font-mono font-bold text-emerald-700">
+                                          {it.actualQuantity}
+                                        </td>
+                                        <td className="py-1.5 px-2 text-right font-mono">
+                                          {formatVND(it.costPrice || 0)}
+                                        </td>
+                                        <td className="py-1.5 px-2 text-right font-mono text-emerald-700 font-semibold">
+                                          {formatVND(it.sellingPrice || 0)}
+                                        </td>
+                                        <td className="py-1.5 px-2 text-slate-600">
+                                          {it.checkedByName && (
+                                            <div className="flex flex-wrap items-center gap-1">
+                                              <span className="font-semibold text-slate-800">
+                                                {it.checkedByName}
+                                              </span>
+                                              <RoleBadge
+                                                role={it.checkedByRole}
+                                                name={it.checkedByName}
+                                                userId={it.checkedBy}
+                                              />
+                                            </div>
+                                          )}
+                                          {it.discrepancyNote || it.note || "-"}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* MODAL XEM LẠI CHI TIẾT PHIẾU NHẬP KHO */}
+      {detailModalReceipt && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-400">
+                  Chi tiết Phiếu Nhập Hàng Vào Kho
+                </div>
+                <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                  <h3 className="text-base sm:text-lg font-extrabold font-mono">
+                    {detailModalReceipt.code ||
+                      detailModalReceipt.receiptCode ||
+                      detailModalReceipt._id}
+                  </h3>
+                  <span
+                    className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                      detailModalReceipt.status === "COMPLETED"
+                        ? "bg-emerald-500 text-slate-950"
+                        : detailModalReceipt.status === "CHECKING"
+                        ? "bg-amber-400 text-slate-950"
+                        : "bg-blue-500 text-white"
+                    }`}
+                  >
+                    {detailModalReceipt.status === "COMPLETED"
+                      ? "ĐÃ HOÀN THÀNH"
+                      : detailModalReceipt.status === "CHECKING"
+                      ? "ĐANG KIỂM THỰC TẾ"
+                      : "NHÁP (DRAFT)"}
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded bg-slate-800 text-emerald-300 text-xs font-bold">
+                    {detailModalReceipt.targetWarehouse === "FLOOR_2"
+                      ? "🏬 Kho Tầng 2"
+                      : "🏢 Kho Tầng 1"}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDetailModalReceipt(null)}
+                className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 sm:p-5 overflow-y-auto space-y-4">
+              {/* Thông tin người nhập (Admin / Warehouse) & Thời gian */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs">
+                <div>
+                  <div className="text-slate-500 font-semibold">Người lập phiếu nhập</div>
+                  <div className="font-extrabold text-slate-900 mt-1 flex flex-wrap items-center gap-1.5">
+                    <span>{detailModalReceipt.createdByName || "Thủ kho"}</span>
+                    <RoleBadge
+                      role={detailModalReceipt.createdByRole}
+                      name={detailModalReceipt.createdByName}
+                      userId={detailModalReceipt.createdBy}
+                    />
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">
+                    Lúc: {formatDateTime(detailModalReceipt.createdAt)}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-slate-500 font-semibold">Người hoàn thành nhập kho</div>
+                  {detailModalReceipt.status === "COMPLETED" ? (
+                    <>
+                      <div className="font-extrabold text-emerald-900 mt-1 flex flex-wrap items-center gap-1.5">
+                        <span>
+                          {detailModalReceipt.completedByName ||
+                            detailModalReceipt.createdByName ||
+                            "Thủ kho"}
+                        </span>
+                        <RoleBadge
+                          role={
+                            detailModalReceipt.completedByRole ||
+                            detailModalReceipt.createdByRole
+                          }
+                          name={
+                            detailModalReceipt.completedByName ||
+                            detailModalReceipt.createdByName
+                          }
+                          userId={
+                            detailModalReceipt.completedBy ||
+                            detailModalReceipt.createdBy
+                          }
+                        />
+                      </div>
+                      {detailModalReceipt.completedAt && (
+                        <div className="text-[11px] text-emerald-700 mt-0.5">
+                          Lúc: {formatDateTime(detailModalReceipt.completedAt)}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="text-slate-400 italic mt-1">
+                      Phiếu chưa hoàn thành
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <div className="text-slate-500 font-semibold">Tổng số lượng nhập</div>
+                  <div className="font-mono font-extrabold text-sm text-slate-900 mt-1">
+                    {(detailModalReceipt.items || []).reduce(
+                      (s, i) => s + Number(i.actualQuantity || 0),
+                      0
+                    )}{" "}
+                    /{" "}
+                    {(detailModalReceipt.items || []).reduce(
+                      (s, i) => s + Number(i.expectedQuantity || 0),
+                      0
+                    )}{" "}
+                    SP ({(detailModalReceipt.items || []).length} dòng)
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">
+                    Đã xác nhận:{" "}
+                    {(detailModalReceipt.items || []).filter((i) => i.isConfirmed).length}/
+                    {(detailModalReceipt.items || []).length} dòng
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-slate-500 font-semibold">Tổng giá trị lô nhập</div>
+                  <div className="font-mono font-extrabold text-sm text-amber-800 mt-1">
+                    Vốn:{" "}
+                    {formatVND(
+                      (detailModalReceipt.items || []).reduce(
+                        (s, i) =>
+                          s + Number(i.costPrice || 0) * Number(i.actualQuantity || 0),
+                        0
+                      )
+                    )}
+                  </div>
+                  <div className="font-mono font-bold text-[11px] text-emerald-700 mt-0.5">
+                    Giá bán:{" "}
+                    {formatVND(
+                      (detailModalReceipt.items || []).reduce(
+                        (s, i) =>
+                          s +
+                          Number(i.sellingPrice || 0) * Number(i.actualQuantity || 0),
+                        0
+                      )
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {detailModalReceipt.note && (
+                <div className="text-xs bg-amber-50/70 border border-amber-200 rounded-lg px-3.5 py-2 text-slate-800">
+                  <strong>Ghi chú phiếu:</strong> {detailModalReceipt.note}
+                </div>
+              )}
+
+              {/* Bảng chi tiết từng dòng hàng đã nhập */}
+              <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-900 text-white uppercase">
+                    <tr>
+                      <th className="py-2.5 px-2.5 text-center">STT</th>
+                      <th className="py-2.5 px-3">Mã hàng</th>
+                      <th className="py-2.5 px-3">Tên sản phẩm</th>
+                      <th className="py-2.5 px-2 text-center">ĐVT</th>
+                      <th className="py-2.5 px-2.5 text-right">SL Dự kiến</th>
+                      <th className="py-2.5 px-2.5 text-right">SL Thực nhận</th>
+                      <th className="py-2.5 px-2.5 text-right">Giá gốc</th>
+                      <th className="py-2.5 px-2.5 text-right">Thành tiền vốn</th>
+                      <th className="py-2.5 px-2.5 text-right">Giá bán</th>
+                      <th className="py-2.5 px-3">Người kiểm & Đối chiếu</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {(detailModalReceipt.items || []).map((it, idx) => {
+                      const diff =
+                        Number(it.actualQuantity || 0) -
+                        Number(it.expectedQuantity || 0);
+                      return (
+                        <tr key={idx} className="hover:bg-slate-50">
+                          <td className="py-2.5 px-2.5 text-center font-mono">
+                            {idx + 1}
+                          </td>
+                          <td className="py-2.5 px-3 font-mono font-bold text-slate-800">
+                            {it.productCode}
+                          </td>
+                          <td className="py-2.5 px-3 font-semibold text-slate-900">
+                            {it.productName}
+                            {it.note && (
+                              <div className="text-[11px] font-normal text-slate-500 mt-0.5">
+                                Ghi chú: {it.note}
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-2 text-center">{it.unit}</td>
+                          <td className="py-2.5 px-2.5 text-right font-mono">
+                            {it.expectedQuantity}
+                          </td>
+                          <td className="py-2.5 px-2.5 text-right font-mono font-extrabold text-emerald-700">
+                            {it.actualQuantity}
+                            {it.isChecked && (
+                              <span
+                                className={`ml-1.5 px-1.5 py-0.5 rounded text-[10px] ${
+                                  diff === 0
+                                    ? "bg-emerald-100 text-emerald-800"
+                                    : diff > 0
+                                    ? "bg-amber-100 text-amber-800"
+                                    : "bg-red-100 text-red-700"
+                                }`}
+                              >
+                                {diff === 0
+                                  ? "Khớp"
+                                  : diff > 0
+                                  ? `+${diff}`
+                                  : `${diff}`}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-2.5 text-right font-mono">
+                            {formatVND(it.costPrice || 0)}
+                          </td>
+                          <td className="py-2.5 px-2.5 text-right font-mono font-bold text-amber-900">
+                            {formatVND(
+                              Number(it.costPrice || 0) *
+                                Number(it.actualQuantity || 0)
+                            )}
+                          </td>
+                          <td className="py-2.5 px-2.5 text-right font-mono font-semibold text-emerald-700">
+                            {formatVND(it.sellingPrice || 0)}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            {it.checkedByName ? (
+                              <div className="flex flex-wrap items-center gap-1">
+                                <span className="font-bold text-slate-800">
+                                  {it.checkedByName}
+                                </span>
+                                <RoleBadge
+                                  role={it.checkedByRole}
+                                  name={it.checkedByName}
+                                  userId={it.checkedBy}
+                                />
+                              </div>
+                            ) : (
+                              <span className="text-slate-400">
+                                {it.isConfirmed ? "Đã xác nhận" : "Chưa kiểm"}
+                              </span>
+                            )}
+                            {it.discrepancyNote && (
+                              <div className="text-[11px] text-slate-600 mt-0.5">
+                                {it.discrepancyNote}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  handleSelectReceipt(detailModalReceipt);
+                  setDetailModalReceipt(null);
+                }}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold"
+              >
+                Mở phiếu này trên bảng làm việc
+              </button>
+              <button
+                type="button"
+                onClick={() => setDetailModalReceipt(null)}
+                className="px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal Camera OCR Bảng 6 cột (hỗ trợ chụp/tải nhiều ảnh và cộng thêm vào phiếu) */}
       {openOcrModal && (
