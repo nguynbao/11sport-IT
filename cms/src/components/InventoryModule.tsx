@@ -124,6 +124,9 @@ export default function InventoryModule() {
   const [newProdWarehouse, setNewProdWarehouse] = useState<WarehouseFloor>("FLOOR_1");
   const [newProdCost, setNewProdCost] = useState<number>(0);
   const [newProdPrice, setNewProdPrice] = useState<number>(0);
+  const [allCatalogProducts, setAllCatalogProducts] = useState<Product[]>([]);
+  const [showNewProdSuggestions, setShowNewProdSuggestions] = useState(false);
+  const [newProdHighlightIdx, setNewProdHighlightIdx] = useState<number>(0);
 
   // Lập phiếu điều chỉnh kho
   const [adjProductId, setAdjProductId] = useState("");
@@ -162,16 +165,19 @@ export default function InventoryModule() {
   // Tách tải danh mục & phiếu nhập ra riêng để không gọi lại mỗi khi gõ tìm kiếm sản phẩm
   const loadCategoriesAndImports = useCallback(async () => {
     try {
-      const [catRes, impRes, movRes] = await Promise.all([
+      const [catRes, impRes, movRes, allProdRes] = await Promise.all([
         apiRequest<Category[]>("/categories"),
         apiRequest<any[]>("/imports"),
         apiRequest<StockMovement[]>("/inventory/movements?type=IMPORT"),
+        apiRequest<Product[]>("/products"),
       ]);
       const cList = Array.isArray(catRes.data) ? catRes.data : [];
       const iList = Array.isArray(impRes.data) ? impRes.data : [];
       const mList = Array.isArray(movRes.data) ? movRes.data : [];
+      const pList = Array.isArray(allProdRes.data) ? allProdRes.data : [];
       setCategories(cList);
       setImportsList(iList);
+      setAllCatalogProducts(pList);
       setMovements((prev) => (prev.length > 0 ? prev : mList));
       if (cList.length > 0) {
         setNewProdCatId((prev) => prev || cList[0]._id);
@@ -514,6 +520,31 @@ export default function InventoryModule() {
         text: err?.message || "Không thể xóa phiếu nhập.",
       });
     }
+  };
+
+  // Gợi ý các sản phẩm đã có trong kho khi gõ tên hàng ở mục Nhập thẳng sản phẩm vào kho (CMS)
+  const newProdSuggestions = useMemo(() => {
+    const sourceList = allCatalogProducts.length > 0 ? allCatalogProducts : products;
+    const q = newProdName.trim();
+    if (!q) return sourceList.slice(0, 8);
+    return filterAndRankBySearch(sourceList, q, (p) => [
+      p.name,
+      p.code,
+      p.categoryName,
+    ]).slice(0, 8);
+  }, [allCatalogProducts, products, newProdName]);
+
+  const handleSelectNewProdSuggestion = (prod: Product) => {
+    setNewProdName(prod.name);
+    const catId =
+      typeof prod.categoryId === "object"
+        ? prod.categoryId?._id || ""
+        : String(prod.categoryId || "");
+    if (catId) setNewProdCatId(catId);
+    if (prod.unit) setNewProdUnit(prod.unit);
+    if (Number(prod.costPrice) > 0) setNewProdCost(Number(prod.costPrice));
+    if (Number(prod.sellingPrice) > 0) setNewProdPrice(Number(prod.sellingPrice));
+    setShowNewProdSuggestions(false);
   };
 
   const handleCreateProduct = async (e: React.FormEvent) => {
@@ -1289,24 +1320,131 @@ export default function InventoryModule() {
                 Nhập thẳng Sản phẩm vào kho (Tự sinh Mã từ `(...)` · Tự động ghi Sổ kho)
               </h3>
               {newProdName.trim() && (
-                <span className="text-[11px] font-mono font-bold px-2.5 py-1 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
-                  Mã tự sinh: {generateProductCode(newProdName)}
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] font-mono font-bold px-2.5 py-1 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                    Mã tự sinh: {generateProductCode(newProdName)}
+                  </span>
+                  {(() => {
+                    const code = generateProductCode(newProdName);
+                    const matched = (allCatalogProducts.length > 0 ? allCatalogProducts : products).find(
+                      (p) => p.code === code
+                    );
+                    if (!matched) return null;
+                    return (
+                      <span className="text-[11px] font-bold px-2.5 py-1 rounded bg-indigo-50 text-indigo-800 border border-indigo-200">
+                        ✓ Đã có trong kho (Tồn: {matched.stock} {matched.unit || "Cái"} — sẽ cộng thêm SL)
+                      </span>
+                    );
+                  })()}
+                </div>
               )}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-              <div className="md:col-span-3">
+              <div className="md:col-span-3 relative">
                 <label className="block text-xs font-bold text-slate-600 mb-1">
-                  Tên hàng hóa (Có chứa ngoặc đơn) *
+                  Tên hàng hóa (Gõ để gợi ý SP có trong kho) *
                 </label>
                 <input
                   type="text"
                   required
                   value={newProdName}
-                  onChange={(e) => setNewProdName(e.target.value)}
-                  placeholder="VD: Áo Polo Unisex V1 (Áo Polo Unisex V1 KMAP26 Đỏ size L)"
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs"
+                  onFocus={() => {
+                    setShowNewProdSuggestions(true);
+                    setNewProdHighlightIdx(0);
+                  }}
+                  onBlur={() => {
+                    setTimeout(() => setShowNewProdSuggestions(false), 180);
+                  }}
+                  onChange={(e) => {
+                    setNewProdName(e.target.value);
+                    setShowNewProdSuggestions(true);
+                    setNewProdHighlightIdx(0);
+                  }}
+                  onKeyDown={(e) => {
+                    if (!showNewProdSuggestions || newProdSuggestions.length === 0) return;
+                    if (e.key === "ArrowDown") {
+                      e.preventDefault();
+                      setNewProdHighlightIdx((prev) => (prev + 1) % newProdSuggestions.length);
+                    } else if (e.key === "ArrowUp") {
+                      e.preventDefault();
+                      setNewProdHighlightIdx(
+                        (prev) => (prev - 1 + newProdSuggestions.length) % newProdSuggestions.length
+                      );
+                    } else if (e.key === "Enter") {
+                      const picked =
+                        newProdSuggestions[newProdHighlightIdx] || newProdSuggestions[0];
+                      if (picked && picked.name !== newProdName) {
+                        e.preventDefault();
+                        handleSelectNewProdSuggestion(picked);
+                      }
+                    } else if (e.key === "Escape") {
+                      setShowNewProdSuggestions(false);
+                    }
+                  }}
+                  placeholder="Gõ tên hoặc mã SP để chọn gợi ý hoặc tạo mới..."
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-emerald-600 focus:outline-none text-xs font-medium text-slate-900"
                 />
+
+                {showNewProdSuggestions && newProdSuggestions.length > 0 && (
+                  <div className="absolute left-0 top-full mt-1 z-40 w-full sm:w-[440px] bg-white rounded-xl border-2 border-emerald-500 shadow-2xl overflow-hidden">
+                    <div className="px-3 py-1.5 bg-slate-900 text-white text-[10px] font-bold flex items-center justify-between gap-2">
+                      <span>
+                        📦 Gợi ý sản phẩm có sẵn trong kho ({newProdSuggestions.length} SP)
+                      </span>
+                      <span className="text-emerald-300 font-normal">
+                        Bấm chọn hoặc nhấn ↑↓ + Enter
+                      </span>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto divide-y divide-slate-100">
+                      {newProdSuggestions.map((p, sIdx) => {
+                        const f1 = Number(p.stockFloor1 ?? p.stock ?? 0);
+                        const f2 = Number(p.stockFloor2 ?? 0);
+                        const isHighlighted = sIdx === newProdHighlightIdx;
+                        return (
+                          <button
+                            key={p._id}
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              handleSelectNewProdSuggestion(p);
+                            }}
+                            onMouseEnter={() => setNewProdHighlightIdx(sIdx)}
+                            className={`w-full text-left px-3 py-2 transition flex flex-col gap-0.5 ${
+                              isHighlighted ? "bg-emerald-50/90" : "hover:bg-slate-50"
+                            }`}
+                          >
+                            <div className="font-bold text-xs text-slate-900 leading-snug break-words">
+                              {p.name}
+                            </div>
+                            <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-500">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="font-mono font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">
+                                  {p.code}
+                                </span>
+                                <span>ĐVT: {p.unit || "Cái"}</span>
+                                <span className="text-emerald-700 font-bold">
+                                  Tồn: {p.stock} (T1: {f1} · T2: {f2})
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 font-mono">
+                                {Number(p.costPrice) > 0 && (
+                                  <span className="text-amber-700 font-semibold">
+                                    Gốc: {formatVND(Number(p.costPrice))}
+                                  </span>
+                                )}
+                                {Number(p.sellingPrice) > 0 && (
+                                  <span className="text-emerald-700 font-bold">
+                                    Bán: {formatVND(Number(p.sellingPrice))}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="md:col-span-1">
                 <label className="block text-xs font-bold text-slate-600 mb-1">

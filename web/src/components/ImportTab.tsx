@@ -5,6 +5,7 @@ import {
   ImportReceipt,
   ImportItem,
   Category,
+  Product,
   WarehouseFloor,
   apiRequest,
   generateProductCode,
@@ -69,7 +70,12 @@ function RoleBadge({ role, name, userId }: { role?: string; name?: string; userI
 export default function ImportTab() {
   const [receipts, setReceipts] = useState<ImportReceipt[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [catalogProducts, setCatalogProducts] = useState<Product[]>([]);
   const [currentReceipt, setCurrentReceipt] = useState<ImportReceipt | null>(null);
+
+  // Gợi ý tên sản phẩm có trong kho khi gõ ở từng dòng
+  const [activeSuggestRowIdx, setActiveSuggestRowIdx] = useState<number | null>(null);
+  const [suggestHighlightIdx, setSuggestHighlightIdx] = useState<number>(0);
 
   // Dropdown chọn phiếu nhập
   const [receiptDropdownOpen, setReceiptDropdownOpen] = useState(false);
@@ -118,14 +124,17 @@ export default function ImportTab() {
 
   const loadInitialData = useCallback(async () => {
     try {
-      const [impRes, catRes] = await Promise.all([
+      const [impRes, catRes, prodRes] = await Promise.all([
         apiRequest<ImportReceipt[]>("/imports"),
         apiRequest<Category[]>("/categories"),
+        apiRequest<Product[]>("/products"),
       ]);
       const impList = Array.isArray(impRes.data) ? impRes.data : [];
       const catList = Array.isArray(catRes.data) ? catRes.data : [];
+      const prodList = Array.isArray(prodRes.data) ? prodRes.data : [];
       setReceipts(impList);
       setCategories(catList);
+      setCatalogProducts(prodList);
       if (catList.length > 0 && !defaultCategoryId) {
         setDefaultCategoryId(catList[0]._id);
       }
@@ -255,6 +264,59 @@ export default function ImportTab() {
       next[index] = item;
       return next;
     });
+  };
+
+  // Map tra cứu nhanh sản phẩm có sẵn trong kho theo mã code
+  const catalogByCode = useMemo(() => {
+    const map = new Map<string, Product>();
+    catalogProducts.forEach((p) => {
+      if (p.code) map.set(p.code, p);
+    });
+    return map;
+  }, [catalogProducts]);
+
+  // Lấy danh sách gợi ý sản phẩm có trong kho khi gõ tên hàng
+  const getRowProductSuggestions = useCallback(
+    (query: string): Product[] => {
+      const q = (query || "").trim();
+      if (!q) {
+        return catalogProducts.slice(0, 8);
+      }
+      const matched = filterAndRankBySearch(catalogProducts, q, (p) => [
+        p.name,
+        p.code,
+        p.categoryName,
+      ]);
+      // Nếu tên đang gõ đã khớp y hệt 1 sản phẩm duy nhất và không còn gợi ý khác thì vẫn hiển thị để dễ đối chiếu hoặc chọn lại
+      return matched.slice(0, 8);
+    },
+    [catalogProducts]
+  );
+
+  // Chọn 1 sản phẩm gợi ý từ kho để điền tự động vào dòng phiếu nhập
+  const handleSelectSuggestedProduct = (rowIdx: number, prod: Product) => {
+    if (isCompleted) return;
+    setItems((prev) => {
+      const next = [...prev];
+      const cur = next[rowIdx];
+      if (!cur) return prev;
+      const catId =
+        typeof prod.categoryId === "object"
+          ? prod.categoryId?._id || defaultCategoryId
+          : String(prod.categoryId || defaultCategoryId);
+      next[rowIdx] = {
+        ...cur,
+        productName: prod.name,
+        productCode: prod.code || generateProductCode(prod.name),
+        categoryId: catId,
+        unit: prod.unit || cur.unit || "Cái",
+        costPrice: Number(cur.costPrice) > 0 ? Number(cur.costPrice) : Number(prod.costPrice || 0),
+        sellingPrice:
+          Number(cur.sellingPrice) > 0 ? Number(cur.sellingPrice) : Number(prod.sellingPrice || 0),
+      };
+      return next;
+    });
+    setActiveSuggestRowIdx(null);
   };
 
   const validItemCount = useMemo(
@@ -1093,7 +1155,11 @@ export default function ImportTab() {
         </div>
 
         {/* BẢNG 6 CỘT CHUẨN + CỘT KIỂM THỰC TẾ & TICK XÁC NHẬN (Hiển thị đầy đủ thông tin) */}
-        <div className="overflow-x-auto border border-slate-200 rounded-xl">
+        <div
+          className={`overflow-x-auto border border-slate-200 rounded-xl transition-all ${
+            activeSuggestRowIdx !== null ? "pb-64" : ""
+          }`}
+        >
           <table className="w-full text-xs text-left">
             <thead className="bg-slate-900 text-white uppercase">
               <tr>
@@ -1156,27 +1222,145 @@ export default function ImportTab() {
                       />
                     </td>
 
-                    {/* Cột 3: TÊN HÀNG (Hiển thị đầy đủ, tự động xuống dòng + hiển thị mã hàng tự sinh bên dưới) */}
+                    {/* Cột 3: TÊN HÀNG (Hiển thị đầy đủ, tự động xuống dòng + gợi ý sản phẩm có trong kho) */}
                     <td className="py-2.5 px-2.5 align-top">
-                      <textarea
-                        disabled={isCompleted}
-                        rows={Math.max(
-                          2,
-                          Math.ceil((row.productName?.length || 0) / 42)
-                        )}
-                        value={row.productName}
-                        onChange={(e) =>
-                          handleUpdateRow(idx, "productName", e.target.value)
-                        }
-                        placeholder="Nhập tên hàng kèm (chi tiết mã trong ngoặc đơn)..."
-                        className="w-full px-2.5 py-1.5 rounded border border-slate-300 focus:border-emerald-600 focus:outline-none disabled:bg-slate-100 whitespace-pre-wrap break-words leading-snug resize-y font-medium text-slate-900"
-                      />
+                      <div className="relative">
+                        <textarea
+                          disabled={isCompleted}
+                          rows={Math.max(
+                            2,
+                            Math.ceil((row.productName?.length || 0) / 42)
+                          )}
+                          value={row.productName}
+                          onFocus={() => {
+                            if (!isCompleted) {
+                              setActiveSuggestRowIdx(idx);
+                              setSuggestHighlightIdx(0);
+                            }
+                          }}
+                          onBlur={() => {
+                            setTimeout(() => {
+                              setActiveSuggestRowIdx((prev) => (prev === idx ? null : prev));
+                            }, 180);
+                          }}
+                          onChange={(e) => {
+                            handleUpdateRow(idx, "productName", e.target.value);
+                            setActiveSuggestRowIdx(idx);
+                            setSuggestHighlightIdx(0);
+                          }}
+                          onKeyDown={(e) => {
+                            if (activeSuggestRowIdx !== idx) return;
+                            const suggestions = getRowProductSuggestions(row.productName);
+                            if (suggestions.length === 0) return;
+                            if (e.key === "ArrowDown") {
+                              e.preventDefault();
+                              setSuggestHighlightIdx((prev) =>
+                                (prev + 1) % suggestions.length
+                              );
+                            } else if (e.key === "ArrowUp") {
+                              e.preventDefault();
+                              setSuggestHighlightIdx((prev) =>
+                                (prev - 1 + suggestions.length) % suggestions.length
+                              );
+                            } else if (e.key === "Enter" && !e.shiftKey) {
+                              const picked = suggestions[suggestHighlightIdx] || suggestions[0];
+                              if (picked && picked.name !== row.productName) {
+                                e.preventDefault();
+                                handleSelectSuggestedProduct(idx, picked);
+                              }
+                            } else if (e.key === "Escape") {
+                              setActiveSuggestRowIdx(null);
+                            }
+                          }}
+                          placeholder="Gõ tên hoặc mã hàng để tìm gợi ý SP trong kho..."
+                          className="w-full px-2.5 py-1.5 rounded border border-slate-300 focus:border-emerald-600 focus:outline-none disabled:bg-slate-100 whitespace-pre-wrap break-words leading-snug resize-y font-medium text-slate-900"
+                        />
+
+                        {/* Dropdown gợi ý sản phẩm có sẵn trong kho */}
+                        {!isCompleted &&
+                          activeSuggestRowIdx === idx &&
+                          (() => {
+                            const suggestions = getRowProductSuggestions(row.productName);
+                            if (suggestions.length === 0) return null;
+                            return (
+                              <div className="absolute left-0 right-0 top-full mt-1 z-40 bg-white rounded-xl border-2 border-emerald-500 shadow-2xl overflow-hidden min-w-[320px] sm:min-w-[420px]">
+                                <div className="px-3 py-1.5 bg-slate-900 text-white text-[10px] font-bold flex items-center justify-between gap-2">
+                                  <span>
+                                    📦 Gợi ý sản phẩm trong kho ({suggestions.length} SP phù hợp)
+                                  </span>
+                                  <span className="text-emerald-300 font-normal">
+                                    Bấm chọn hoặc nhấn ↑↓ + Enter
+                                  </span>
+                                </div>
+                                <div className="max-h-60 overflow-y-auto divide-y divide-slate-100">
+                                  {suggestions.map((p, sIdx) => {
+                                    const f1 = Number(p.stockFloor1 ?? p.stock ?? 0);
+                                    const f2 = Number(p.stockFloor2 ?? 0);
+                                    const isHighlighted = sIdx === suggestHighlightIdx;
+                                    return (
+                                      <button
+                                        key={p._id}
+                                        type="button"
+                                        onMouseDown={(e) => {
+                                          e.preventDefault();
+                                          handleSelectSuggestedProduct(idx, p);
+                                        }}
+                                        onMouseEnter={() => setSuggestHighlightIdx(sIdx)}
+                                        className={`w-full text-left px-3 py-2 transition flex flex-col gap-0.5 ${
+                                          isHighlighted
+                                            ? "bg-emerald-50/90"
+                                            : "hover:bg-slate-50"
+                                        }`}
+                                      >
+                                        <div className="font-bold text-xs text-slate-900 leading-snug break-words">
+                                          {p.name}
+                                        </div>
+                                        <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-500">
+                                          <div className="flex flex-wrap items-center gap-1.5">
+                                            <span className="font-mono font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">
+                                              {p.code}
+                                            </span>
+                                            <span>ĐVT: {p.unit || "Cái"}</span>
+                                            <span className="text-emerald-700 font-bold">
+                                              Tồn: {p.stock} (T1: {f1} · T2: {f2})
+                                            </span>
+                                          </div>
+                                          <div className="flex items-center gap-2 font-mono">
+                                            {Number(p.costPrice) > 0 && (
+                                              <span className="text-amber-700 font-semibold">
+                                                Gốc: {formatVND(Number(p.costPrice))}
+                                              </span>
+                                            )}
+                                            {Number(p.sellingPrice) > 0 && (
+                                              <span className="text-emerald-700 font-bold">
+                                                Bán: {formatVND(Number(p.sellingPrice))}
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })()}
+                      </div>
                       {row.productCode && (
-                        <div className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-500">
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
                           <span>Mã SP:</span>
                           <span className="font-mono font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
                             {row.productCode}
                           </span>
+                          {(() => {
+                            const existingProd = catalogByCode.get(row.productCode);
+                            if (!existingProd) return null;
+                            return (
+                              <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-[10px]">
+                                ✓ Đã có trong kho (Tồn: {existingProd.stock} {existingProd.unit || "Cái"})
+                              </span>
+                            );
+                          })()}
                         </div>
                       )}
                     </td>
@@ -2092,6 +2276,7 @@ export default function ImportTab() {
         <CameraScannerModal
           mode="OCR_TABLE"
           existingItemCount={items.filter((i) => i.productName.trim() !== "").length}
+          catalogProducts={catalogProducts}
           onConfirmOcrItems={(scannedItems, modeAction) => {
             const hasExisting = items.some((i) => i.productName.trim() !== "");
             if (modeAction === "append" && hasExisting) {
