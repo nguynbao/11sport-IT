@@ -7,6 +7,7 @@ import { ImportReceiptModel, IImportReceipt } from '../models/ImportReceipt';
 import { CustomerModel, ICustomer } from '../models/Customer';
 import { OrderModel, IOrder } from '../models/Order';
 import { ReturnExchangeModel, IReturnExchange } from '../models/ReturnExchange';
+import { PromotionModel, IPromotion } from '../models/Promotion';
 import { Repository, memoryStore } from './repository';
 
 export const staffRepo = new Repository<IStaff>(StaffModel, 'staffs');
@@ -17,6 +18,7 @@ export const importReceiptRepo = new Repository<IImportReceipt>(ImportReceiptMod
 export const customerRepo = new Repository<ICustomer>(CustomerModel, 'customers');
 export const orderRepo = new Repository<IOrder>(OrderModel, 'orders');
 export const returnExchangeRepo = new Repository<IReturnExchange>(ReturnExchangeModel, 'return_exchanges');
+export const promotionRepo = new Repository<IPromotion>(PromotionModel, 'promotions');
 
 let dbMode: 'mongodb' | 'memory' = 'memory';
 let mongoMemoryServerInstance: any = null;
