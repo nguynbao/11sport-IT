@@ -8,6 +8,7 @@ import {
   apiRequest,
   formatVND,
   formatDateTime,
+  formatPhone,
 } from "@/lib/api";
 import {
   Search,
@@ -323,7 +324,7 @@ export default function ReturnExchangeTab() {
               </div>
               <div className="text-base sm:text-lg font-mono font-extrabold text-slate-900 break-words">
                 {selectedOrder.orderCode || selectedOrder.code} — {selectedOrder.customerName} (
-                {selectedOrder.customerPhone})
+                {formatPhone(selectedOrder.customerPhone)})
               </div>
               <div className="text-xs text-slate-500 mt-0.5">
                 Ngày mua: {formatDateTime(selectedOrder.createdAt)} · Tiền hàng:{" "}

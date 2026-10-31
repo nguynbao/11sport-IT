@@ -405,5 +405,37 @@ describe('v1.1: Giá gốc khi nhập kho & phân quyền giá bán', () => {
     expect(afterFloorProd.stockFloor1).toBe(2);
     expect(afterFloorProd.stockFloor2).toBe(2);
     expect(afterFloorProd.stock).toBe(4);
+
+    // 9. Tặng hàng (discountType = 'GIFT'): không tính tiền (0đ), hiện trên bill (isGift = true) và trừ tồn Kho Tầng 1 từ 2 -> 1
+    const giftOrderRes = await request(app)
+      .post('/api/v1/orders')
+      .set('x-user-id', 'sales1')
+      .send({
+        customerName: 'Khách Nhận Hàng Tặng',
+        customerPhone: '0911222555',
+        paymentMethod: 'CASH',
+        items: [
+          {
+            productId: prod._id,
+            quantity: 1,
+            discountType: 'GIFT',
+            isGift: true,
+          },
+        ],
+      });
+    expect(giftOrderRes.status).toBe(201);
+    expect(giftOrderRes.body.data.rawSubtotal).toBe(0);
+    expect(giftOrderRes.body.data.subtotal).toBe(0);
+    expect(giftOrderRes.body.data.totalAmount).toBe(0);
+    expect(giftOrderRes.body.data.items[0].isGift).toBe(true);
+    expect(giftOrderRes.body.data.items[0].discountType).toBe('GIFT');
+    expect(giftOrderRes.body.data.items[0].unitPrice).toBe(0);
+    expect(giftOrderRes.body.data.items[0].lineTotal).toBe(0);
+
+    const afterGiftRes = await request(app).get('/api/v1/products').set('x-user-id', 'admin');
+    const afterGiftProd = afterGiftRes.body.data.find((p: any) => p._id === prod._id);
+    expect(afterGiftProd.stockFloor1).toBe(1);
+    expect(afterGiftProd.stockFloor2).toBe(2);
+    expect(afterGiftProd.stock).toBe(3);
   });
 });

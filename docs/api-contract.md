@@ -201,13 +201,14 @@
 - `GET /api/v1/customers` — Danh sách khách hàng
 - `GET /api/v1/orders` — Danh sách đơn hàng (lọc theo `search`, `phone`, `status`, `paymentMethod`)
 - `GET /api/v1/orders/:id` — Chi tiết đơn hàng (hoặc tra theo `orderCode` qua `GET /api/v1/orders/by-code/:code`)
-- `POST /api/v1/orders` *(Cập nhật v2.0 — Chỉ bán tồn Kho Tầng 1 + Giảm giá Sản phẩm & Giảm giá Bill)*
+- `POST /api/v1/orders` *(Cập nhật v2.2 — Chỉ bán tồn Kho Tầng 1 + Giảm giá Sản phẩm, Tặng hàng 0đ & Giảm giá Bill)*
   - Body:
     ```json
     {
       "customerName": "Trần Minh Khách",
       "customerPhone": "0901234567",
-      "paymentMethod": "CASH | BANKING | CARD",
+      "paymentMethod": "CASH | BANKING | CARD | OTHER",
+      "paymentMethodDetail": "Tiền mặt + Chuyển khoản",
       "hasCardFee": true,
       "billDiscountType": "NONE | PERCENT | AMOUNT",
       "billDiscountValue": 10,
@@ -216,22 +217,29 @@
         {
           "productId": "...",
           "quantity": 2,
-          "discountType": "NONE | PERCENT | AMOUNT",
-          "discountValue": 50000
+          "discountType": "NONE | PERCENT | AMOUNT | GIFT",
+          "discountValue": 50000,
+          "isGift": false
         }
       ]
     }
     ```
   - Nghiệp vụ:
-    - **Chỉ bán từ Kho Tầng 1 (`stockFloor1`)**: Kiểm tra sản phẩm có `sellingPrice > 0` và `stockFloor1 >= quantity` (tính lũy kế nếu trùng sản phẩm trong đơn). Nếu vượt quá `stockFloor1` → trả lỗi `400 INSUFFICIENT_STOCK` (không tự động lấy sang Kho Tầng 2 khi chưa làm phiếu xuất kho chuyển tầng).
-    - **Giảm giá từng sản phẩm (`discountType`, `discountValue`)**:
+    - **Chỉ bán/xuất tặng từ Kho Tầng 1 (`stockFloor1`)**: Kiểm tra sản phẩm có `sellingPrice > 0` và `stockFloor1 >= quantity` (tính lũy kế nếu trùng sản phẩm trong đơn). Nếu vượt quá `stockFloor1` → trả lỗi `400 INSUFFICIENT_STOCK` (không tự động lấy sang Kho Tầng 2 khi chưa làm phiếu xuất kho chuyển tầng).
+    - **Giảm giá từng sản phẩm & Tặng hàng (`discountType`, `discountValue`, `isGift`)**:
       - `originalUnitPrice = product.sellingPrice`.
+      - Nếu `discountType === "GIFT"` (hoặc `isGift === true`):
+        - Mặt hàng được đánh dấu là **Hàng tặng (`isGift = true`, `discountType = "GIFT"`)**.
+        - Không tính tiền: `unitPrice = 0`, `lineTotal = 0`, `discountAmount = 0`, không cộng vào `rawSubtotal`.
+        - Hiển thị rõ trên hóa đơn (Bill K80/A4) kèm nhãn hàng tặng và vẫn trừ trực tiếp số lượng vào **Kho Tầng 1 (`stockFloor1`)**.
       - Nếu `discountType === "PERCENT"` (`0..100`): số tiền giảm trên 1 SP = `Math.round(originalUnitPrice * discountValue / 100)`.
       - Nếu `discountType === "AMOUNT"`: số tiền giảm trên 1 SP = `Math.min(originalUnitPrice, Math.max(0, Math.round(discountValue)))`.
-      - `unitPrice = Math.max(0, originalUnitPrice - discountPerUnit)` (đơn giá sau giảm).
-      - `discountAmount = discountPerUnit * quantity` (tổng giảm của dòng SP).
-      - `lineTotal = unitPrice * quantity`.
+      - Với hàng bán thường (`discountType !== "GIFT"`):
+        - `unitPrice = Math.max(0, originalUnitPrice - discountPerUnit)` (đơn giá sau giảm).
+        - `discountAmount = discountPerUnit * quantity` (tổng giảm của dòng SP).
+        - `lineTotal = unitPrice * quantity`.
     - **Giảm giá tổng Bill (`billDiscountType`, `billDiscountValue`) — có thể áp dụng đồng thời với giảm giá sản phẩm**:
+      - `rawSubtotal = sum(originalUnitPrice * quantity)` (chỉ tính các dòng hàng bán không phải `GIFT`).
       - `subtotal = sum(lineTotal)` (tổng tiền hàng sau giảm giá từng SP).
       - Nếu `billDiscountType === "PERCENT"` (`0..100`): `billDiscountAmount = Math.round(subtotal * billDiscountValue / 100)`.
       - Nếu `billDiscountType === "AMOUNT"`: `billDiscountAmount = Math.min(subtotal, Math.max(0, Math.round(billDiscountValue)))`.

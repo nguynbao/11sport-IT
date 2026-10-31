@@ -1,7 +1,15 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Order, ReturnReceipt, apiRequest, formatVND, formatDateTime } from "@/lib/api";
+import {
+  Order,
+  ReturnReceipt,
+  apiRequest,
+  formatVND,
+  formatDateTime,
+  formatPhone,
+  cleanPhoneDigits,
+} from "@/lib/api";
 import { Search, User, Phone, Printer, ShoppingBag, RotateCcw } from "lucide-react";
 
 interface CustomerTabProps {
@@ -23,13 +31,14 @@ export default function CustomerTab({ onOpenInvoice }: CustomerTabProps) {
       .then((res) => {
         setAllCustomers(Array.isArray(res.data) ? res.data : []);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const handleLookup = async (targetPhone?: string) => {
-    const qPhone = (targetPhone ?? phone).trim();
+    const rawTarget = targetPhone ?? phone;
+    const qPhone = cleanPhoneDigits(rawTarget);
     if (!qPhone) return;
-    setPhone(qPhone);
+    setPhone(formatPhone(qPhone));
     setLoading(true);
     setErrorMsg("");
     try {
@@ -44,7 +53,7 @@ export default function CustomerTab({ onOpenInvoice }: CustomerTabProps) {
         setCustomerInfo(null);
         setOrders([]);
         setReturns([]);
-        setErrorMsg(`Không tìm thấy hồ sơ khách hàng hoặc đơn hàng với SĐT "${qPhone}".`);
+        setErrorMsg(`Không tìm thấy hồ sơ khách hàng hoặc đơn hàng với SĐT "${formatPhone(qPhone)}".`);
       } else {
         setCustomerInfo(cust);
         setOrders(Array.isArray(ordList) ? ordList : []);
@@ -83,8 +92,8 @@ export default function CustomerTab({ onOpenInvoice }: CustomerTabProps) {
             <input
               type="tel"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="Nhập SĐT khách hàng (VD: 0901234567)..."
+              onChange={(e) => setPhone(formatPhone(e.target.value))}
+              placeholder="Nhập SĐT khách hàng (VD: 0945 xxx xxx)..."
               className="w-full min-h-[44px] pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 font-mono text-sm focus:border-emerald-600 focus:outline-none"
             />
           </div>
@@ -115,7 +124,7 @@ export default function CustomerTab({ onOpenInvoice }: CustomerTabProps) {
                   onClick={() => handleLookup(cPhone)}
                   className="min-h-[36px] max-w-full truncate px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-xs font-mono font-semibold text-slate-700 transition"
                 >
-                  {cName} ({cPhone})
+                  {cName} ({formatPhone(cPhone)})
                 </button>
               );
             })}
@@ -145,7 +154,7 @@ export default function CustomerTab({ onOpenInvoice }: CustomerTabProps) {
                   {customerInfo.fullName || customerInfo.name || customerInfo.customerName}
                 </div>
                 <div className="font-mono text-sm text-slate-300">
-                  SĐT: {customerInfo.phone || customerInfo.customerPhone || phone}
+                  SĐT: {formatPhone(customerInfo.phone || customerInfo.customerPhone || phone)}
                 </div>
               </div>
             </div>
@@ -221,19 +230,18 @@ export default function CustomerTab({ onOpenInvoice }: CustomerTabProps) {
                         </td>
                         <td className="py-3 px-4 text-center">
                           <span
-                            className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full whitespace-nowrap ${
-                              ord.status === "PAID"
+                            className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full whitespace-nowrap ${ord.status === "PAID"
                                 ? "bg-emerald-100 text-emerald-800"
                                 : ord.status === "PARTIALLY_RETURNED"
-                                ? "bg-amber-100 text-amber-800"
-                                : "bg-red-100 text-red-700"
-                            }`}
+                                  ? "bg-amber-100 text-amber-800"
+                                  : "bg-red-100 text-red-700"
+                              }`}
                           >
                             {ord.status === "PAID"
                               ? "Đã thanh toán"
                               : ord.status === "PARTIALLY_RETURNED"
-                              ? "Đã trả 1 phần"
-                              : "Đã trả toàn bộ"}
+                                ? "Đã trả 1 phần"
+                                : "Đã trả toàn bộ"}
                           </span>
                         </td>
                         <td className="py-3 px-4 text-right">

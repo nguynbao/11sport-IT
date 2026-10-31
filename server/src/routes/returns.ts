@@ -227,7 +227,7 @@ returnsRouter.post('/returns', async (req, res, next) => {
       req.body?.type === 'EXCHANGE' || preparedExchangeItems.length > 0;
     const recordType = isExchange ? 'EXCHANGE' : 'RETURN';
 
-    const validMethods: PaymentMethod[] = ['CASH', 'BANKING', 'CARD'];
+    const validMethods: PaymentMethod[] = ['CASH', 'BANKING', 'CARD', 'OTHER'];
     const refundMethod: PaymentMethod = validMethods.includes(req.body?.refundMethod)
       ? req.body.refundMethod
       : 'CASH';

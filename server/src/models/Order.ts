@@ -1,8 +1,8 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
-export type PaymentMethod = 'CASH' | 'BANKING' | 'CARD';
+export type PaymentMethod = 'CASH' | 'BANKING' | 'CARD' | 'OTHER';
 export type OrderStatus = 'PAID' | 'PARTIALLY_RETURNED' | 'FULLY_RETURNED';
-export type DiscountType = 'NONE' | 'PERCENT' | 'AMOUNT';
+export type DiscountType = 'NONE' | 'PERCENT' | 'AMOUNT' | 'GIFT';
 
 export interface IOrderItem {
   productId: string;
@@ -10,6 +10,7 @@ export interface IOrderItem {
   productName: string;
   unit: string;
   originalUnitPrice?: number;
+  isGift?: boolean;
   discountType?: DiscountType;
   discountValue?: number;
   discountAmount?: number;
@@ -32,6 +33,7 @@ export interface IOrder extends Document {
   billDiscountValue?: number;
   billDiscountAmount?: number;
   paymentMethod: PaymentMethod;
+  paymentMethodDetail?: string;
   hasCardFee: boolean;
   cardFeePercent: number;
   cardFee: number;
@@ -51,7 +53,8 @@ const OrderItemSchema = new Schema<IOrderItem>(
     productName: { type: String, required: true },
     unit: { type: String, default: 'Cái' },
     originalUnitPrice: { type: Number, default: 0 },
-    discountType: { type: String, enum: ['NONE', 'PERCENT', 'AMOUNT'], default: 'NONE' },
+    isGift: { type: Boolean, default: false },
+    discountType: { type: String, enum: ['NONE', 'PERCENT', 'AMOUNT', 'GIFT'], default: 'NONE' },
     discountValue: { type: Number, default: 0 },
     discountAmount: { type: Number, default: 0 },
     unitPrice: { type: Number, required: true },
@@ -75,7 +78,8 @@ const OrderSchema = new Schema<IOrder>(
     billDiscountType: { type: String, enum: ['NONE', 'PERCENT', 'AMOUNT'], default: 'NONE' },
     billDiscountValue: { type: Number, default: 0 },
     billDiscountAmount: { type: Number, default: 0 },
-    paymentMethod: { type: String, enum: ['CASH', 'BANKING', 'CARD'], required: true },
+    paymentMethod: { type: String, enum: ['CASH', 'BANKING', 'CARD', 'OTHER'], required: true },
+    paymentMethodDetail: { type: String, default: '' },
     hasCardFee: { type: Boolean, default: false },
     cardFeePercent: { type: Number, default: 0 },
     cardFee: { type: Number, default: 0 },
