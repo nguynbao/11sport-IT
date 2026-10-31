@@ -37,6 +37,7 @@ const PAYMENT: Record<string, string> = {
   CASH: "Tiền mặt",
   BANKING: "Chuyển khoản",
   CARD: "Thẻ",
+  OTHER: "Khác",
 };
 const ROLE: Record<string, string> = {
   SALES: "Nhân viên bán hàng",
@@ -238,7 +239,13 @@ export function exportOrders(orders: Order[]) {
     { header: "Ngày bán", value: (o) => toDate(o.createdAt), format: "datetime", width: 17 },
     { header: "Khách hàng", value: (o) => o.customerName },
     { header: "SĐT", value: (o) => o.customerPhone },
-    { header: "Thanh toán", value: (o) => PAYMENT[o.paymentMethod] || o.paymentMethod },
+    {
+      header: "Thanh toán",
+      value: (o) =>
+        o.paymentMethod === "OTHER" && o.paymentMethodDetail
+          ? `Khác (${o.paymentMethodDetail})`
+          : PAYMENT[o.paymentMethod] || o.paymentMethod,
+    },
     {
       header: "Số SP",
       value: (o) => (o.items || []).reduce((s, it) => s + (Number(it.quantity) || 0), 0),
@@ -262,7 +269,14 @@ export function exportOrders(orders: Order[]) {
     { header: "Ngày bán", value: (l) => toDate(l.order.createdAt), format: "datetime", width: 17 },
     { header: "Khách hàng", value: (l) => l.order.customerName },
     { header: "Mã hàng", value: (l) => l.item.productCode },
-    { header: "Tên sản phẩm", value: (l) => l.item.productName, width: 45 },
+    {
+      header: "Tên sản phẩm",
+      value: (l) =>
+        l.item.isGift || l.item.discountType === "GIFT"
+          ? `${l.item.productName} (Hàng tặng)`
+          : l.item.productName,
+      width: 45,
+    },
     { header: "ĐVT", value: (l) => l.item.unit, width: 8 },
     { header: "Đơn giá", value: (l) => Number(l.item.unitPrice) || 0, format: "money" },
     { header: "Số lượng", value: (l) => Number(l.item.quantity) || 0, format: "int", total: true },

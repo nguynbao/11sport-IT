@@ -15,7 +15,7 @@ export const ordersCustomersRouter = Router();
 // GET /api/v1/customers/lookup?phone=...
 ordersCustomersRouter.get('/customers/lookup', async (req, res, next) => {
   try {
-    const phone = String(req.query.phone || '').trim();
+    const phone = String(req.query.phone || '').replace(/\s+/g, '').trim();
     if (!phone) {
       throw new ApiError(400, 'PHONE_REQUIRED', 'Vui lòng nhập số điện thoại để tra cứu', {
         phone: 'Bắt buộc',
@@ -52,7 +52,11 @@ ordersCustomersRouter.get('/customers', async (req, res, next) => {
     const filtered = allCustomers.filter((c) => {
       if (!search) return true;
       const q = String(search).toLowerCase();
-      return c.phone.toLowerCase().includes(q) || c.name.toLowerCase().includes(q);
+      const qNoSpace = q.replace(/\s+/g, '');
+      return (
+        c.phone.toLowerCase().includes(qNoSpace) ||
+        c.name.toLowerCase().includes(q)
+      );
     });
 
     res.json({
@@ -71,15 +75,21 @@ ordersCustomersRouter.get('/orders', async (req, res, next) => {
     const allOrders = await orderRepo.find({}, { createdAt: -1 });
 
     const filtered = allOrders.filter((o) => {
-      if (phone && o.customerPhone !== String(phone).trim()) return false;
+      if (
+        phone &&
+        o.customerPhone.replace(/\s+/g, '') !== String(phone).replace(/\s+/g, '').trim()
+      ) {
+        return false;
+      }
       if (status && o.status !== String(status).toUpperCase()) return false;
       if (paymentMethod && o.paymentMethod !== String(paymentMethod).toUpperCase()) return false;
       if (search) {
         const q = String(search).toLowerCase();
+        const qNoSpace = q.replace(/\s+/g, '');
         const match =
           o.orderCode.toLowerCase().includes(q) ||
           o.customerName.toLowerCase().includes(q) ||
-          o.customerPhone.toLowerCase().includes(q) ||
+          o.customerPhone.toLowerCase().includes(qNoSpace) ||
           o.items.some(
             (i) =>
               i.productCode.toLowerCase().includes(q) ||
@@ -155,6 +165,7 @@ ordersCustomersRouter.post('/orders', async (req, res, next) => {
       customerName,
       customerPhone,
       paymentMethod,
+      paymentMethodDetail,
       hasCardFee,
       billDiscountType,
       billDiscountValue,
@@ -162,7 +173,7 @@ ordersCustomersRouter.post('/orders', async (req, res, next) => {
       items,
     } = req.body || {};
 
-    const cleanPhone = String(customerPhone || '').trim();
+    const cleanPhone = String(customerPhone || '').replace(/\s+/g, '').trim();
     if (!cleanPhone) {
       throw new ApiError(400, 'VALIDATION_ERROR', 'Số điện thoại khách hàng là bắt buộc', {
         customerPhone: 'Bắt buộc',
@@ -181,14 +192,18 @@ ordersCustomersRouter.post('/orders', async (req, res, next) => {
       });
     }
 
-    const validPaymentMethods: PaymentMethod[] = ['CASH', 'BANKING', 'CARD'];
+    const validPaymentMethods: PaymentMethod[] = ['CASH', 'BANKING', 'CARD', 'OTHER'];
     const method: PaymentMethod = validPaymentMethods.includes(paymentMethod)
       ? paymentMethod
       : 'CASH';
+    const cleanPaymentDetail =
+      method === 'OTHER'
+        ? String(paymentMethodDetail || 'Hình thức khác').trim() || 'Hình thức khác'
+        : '';
 
     // Kiểm tra từng sản phẩm: tồn tại, sellingPrice > 0, tổng số lượng theo SP <= stockFloor1 (Kho Tầng 1)
     const orderItems: IOrderItem[] = [];
-    const productUpdates: { product: any; qty: number }[] = [];
+    const productUpdates: { product: any; qty: number; isGift: boolean }[] = [];
     const requestedQtyByProdId = new Map<string, number>();
 
     for (const rawItem of items) {
@@ -205,8 +220,11 @@ ordersCustomersRouter.post('/orders', async (req, res, next) => {
         throw new ApiError(404, 'PRODUCT_NOT_FOUND', `Không tìm thấy sản phẩm ID: ${rawItem.productId}`);
       }
 
-      // BR-04: Chặn bán sản phẩm có sellingPrice <= 0
-      if (!product.sellingPrice || product.sellingPrice <= 0) {
+      const rawItemDiscType = String(rawItem.discountType || 'NONE').toUpperCase();
+      const isGift = Boolean(rawItem.isGift) || rawItemDiscType === 'GIFT';
+
+      // BR-04: Chặn bán sản phẩm có sellingPrice <= 0 (trừ khi chọn làm hàng tặng)
+      if (!isGift && (!product.sellingPrice || product.sellingPrice <= 0)) {
         throw new ApiError(
           400,
           'PRODUCT_PRICE_NOT_SET',
@@ -219,7 +237,7 @@ ordersCustomersRouter.post('/orders', async (req, res, next) => {
       const totalRequestedForProduct = (requestedQtyByProdId.get(prodKey) || 0) + qty;
       requestedQtyByProdId.set(prodKey, totalRequestedForProduct);
 
-      // Chỉ được bán số lượng ở Kho Tầng 1, tuyệt đối không được bán vượt Kho Tầng 1
+      // Chỉ được bán/xuất tặng số lượng ở Kho Tầng 1, tuyệt đối không được vượt Kho Tầng 1
       const floors = getFloorStocks(product);
       if (floors.stockFloor1 < totalRequestedForProduct) {
         throw new ApiError(
@@ -231,51 +249,73 @@ ordersCustomersRouter.post('/orders', async (req, res, next) => {
       }
 
       const originalUnitPrice = Math.round(Number(product.sellingPrice) || 0);
-      const rawItemDiscType = String(rawItem.discountType || 'NONE').toUpperCase();
-      const itemDiscType: DiscountType =
-        rawItemDiscType === 'PERCENT' || rawItemDiscType === 'AMOUNT'
-          ? (rawItemDiscType as DiscountType)
-          : 'NONE';
-      const rawItemDiscVal = Math.max(0, Number(rawItem.discountValue) || 0);
-      const itemDiscValue =
-        itemDiscType === 'PERCENT'
-          ? Math.min(100, rawItemDiscVal)
-          : itemDiscType === 'AMOUNT'
-          ? Math.min(originalUnitPrice, Math.round(rawItemDiscVal))
-          : 0;
 
-      const discountPerUnit =
-        itemDiscType === 'PERCENT'
-          ? Math.round((originalUnitPrice * itemDiscValue) / 100)
-          : itemDiscType === 'AMOUNT'
-          ? itemDiscValue
-          : 0;
+      if (isGift) {
+        orderItems.push({
+          productId: product._id,
+          productCode: product.code,
+          productName: product.name,
+          unit: product.unit,
+          originalUnitPrice,
+          isGift: true,
+          discountType: 'GIFT',
+          discountValue: 100,
+          discountAmount: 0,
+          unitPrice: 0,
+          quantity: qty,
+          returnedQuantity: 0,
+          lineTotal: 0,
+        });
+      } else {
+        const itemDiscType: DiscountType =
+          rawItemDiscType === 'PERCENT' || rawItemDiscType === 'AMOUNT'
+            ? (rawItemDiscType as DiscountType)
+            : 'NONE';
+        const rawItemDiscVal = Math.max(0, Number(rawItem.discountValue) || 0);
+        const itemDiscValue =
+          itemDiscType === 'PERCENT'
+            ? Math.min(100, rawItemDiscVal)
+            : itemDiscType === 'AMOUNT'
+            ? Math.min(originalUnitPrice, Math.round(rawItemDiscVal))
+            : 0;
 
-      const unitPrice = Math.max(0, originalUnitPrice - discountPerUnit);
-      const itemDiscountAmount = discountPerUnit * qty;
-      const lineTotal = unitPrice * qty;
+        const discountPerUnit =
+          itemDiscType === 'PERCENT'
+            ? Math.round((originalUnitPrice * itemDiscValue) / 100)
+            : itemDiscType === 'AMOUNT'
+            ? itemDiscValue
+            : 0;
 
-      orderItems.push({
-        productId: product._id,
-        productCode: product.code,
-        productName: product.name,
-        unit: product.unit,
-        originalUnitPrice,
-        discountType: itemDiscValue > 0 ? itemDiscType : 'NONE',
-        discountValue: itemDiscValue,
-        discountAmount: itemDiscountAmount,
-        unitPrice,
-        quantity: qty,
-        returnedQuantity: 0,
-        lineTotal,
-      });
+        const unitPrice = Math.max(0, originalUnitPrice - discountPerUnit);
+        const itemDiscountAmount = discountPerUnit * qty;
+        const lineTotal = unitPrice * qty;
 
-      productUpdates.push({ product, qty });
+        orderItems.push({
+          productId: product._id,
+          productCode: product.code,
+          productName: product.name,
+          unit: product.unit,
+          originalUnitPrice,
+          isGift: false,
+          discountType: itemDiscValue > 0 ? itemDiscType : 'NONE',
+          discountValue: itemDiscValue,
+          discountAmount: itemDiscountAmount,
+          unitPrice,
+          quantity: qty,
+          returnedQuantity: 0,
+          lineTotal,
+        });
+      }
+
+      productUpdates.push({ product, qty, isGift });
     }
 
-    // Tính tiền hàng, giảm giá sản phẩm, giảm giá Bill & Phí quẹt thẻ 3%
+    // Tính tiền hàng (không tính tiền hàng tặng), giảm giá sản phẩm, giảm giá Bill & Phí quẹt thẻ 3%
     const rawSubtotal = orderItems.reduce(
-      (sum, i) => sum + (Number(i.originalUnitPrice ?? i.unitPrice) || 0) * i.quantity,
+      (sum, i) =>
+        i.isGift || i.discountType === 'GIFT'
+          ? sum
+          : sum + (Number(i.originalUnitPrice ?? i.unitPrice) || 0) * i.quantity,
       0
     );
     const itemDiscountTotal = orderItems.reduce(
@@ -345,6 +385,7 @@ ordersCustomersRouter.post('/orders', async (req, res, next) => {
       billDiscountValue: cleanBillDiscValue,
       billDiscountAmount,
       paymentMethod: method,
+      paymentMethodDetail: cleanPaymentDetail,
       hasCardFee: applyCardFee,
       cardFeePercent,
       cardFee,
@@ -356,7 +397,7 @@ ordersCustomersRouter.post('/orders', async (req, res, next) => {
     });
 
     // Trừ tồn kho Kho Tầng 1 và ghi StockMovement loại SALE (warehouseLocation: FLOOR_1)
-    for (const { product, qty } of productUpdates) {
+    for (const { product, qty, isGift } of productUpdates) {
       const currentProd = (await productRepo.findById(product._id)) || product;
       const beforeFloors = getFloorStocks(currentProd);
       const balanceBefore = beforeFloors.stock;
@@ -381,7 +422,9 @@ ordersCustomersRouter.post('/orders', async (req, res, next) => {
         referenceCode: createdOrder.orderCode,
         performedBy: req.user?.userId || 'SALES',
         performedByName: req.user?.fullName || 'Nhân viên bán hàng',
-        note: `Bán hàng đơn ${createdOrder.orderCode} (Kho Tầng 1)`,
+        note: isGift
+          ? `Xuất hàng tặng đơn ${createdOrder.orderCode} (Kho Tầng 1)`
+          : `Bán hàng đơn ${createdOrder.orderCode} (Kho Tầng 1)`,
       });
     }
 

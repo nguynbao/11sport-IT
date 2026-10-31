@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef } from "react";
-import { Order, formatVND, formatDateTime } from "@/lib/api";
+import { Order, formatVND, formatDateTime, formatPhone } from "@/lib/api";
 import { Printer, X, FileText, Receipt, Download } from "lucide-react";
 
 interface InvoicePdfModalProps {
@@ -26,6 +26,8 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
       ? "Tiền mặt (CASH)"
       : order.paymentMethod === "BANKING"
       ? "Chuyển khoản (BANKING)"
+      : order.paymentMethod === "OTHER"
+      ? `Khác (${order.paymentMethodDetail || "Tùy chọn"})`
       : `Thẻ (CARD)${order.hasCardFee ? " - Có phí 3%" : " - Không phí"}`;
 
   const handlePrint = () => {
@@ -210,7 +212,7 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
               </div>
               <div className="font-mono">
                 <span className="font-semibold font-sans">SĐT: </span>
-                <span className="font-bold">{order.customerPhone}</span>
+                <span className="font-bold">{formatPhone(order.customerPhone)}</span>
               </div>
               <div>
                 <span className="font-semibold">Thu ngân / Người bán: </span>
@@ -242,29 +244,38 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-black text-[11px]">
-                  {order.items?.map((item, idx) => (
-                    <tr key={idx} className="align-top">
-                      <td className="border-r border-black py-1.5 px-1.5 font-semibold leading-snug break-words">
-                        <div>
-                          {idx + 1}. {item.productName}
-                        </div>
-                        {(Number(item.discountAmount) || 0) > 0 && (
-                          <div className="text-[10px] font-bold text-black mt-0.5">
-                            (Giảm SP: -{formatVND(item.discountAmount)})
+                  {order.items?.map((item, idx) => {
+                    const isGift = Boolean(item.isGift) || item.discountType === "GIFT";
+                    return (
+                      <tr key={idx} className="align-top">
+                        <td className="border-r border-black py-1.5 px-1.5 font-semibold leading-snug break-words">
+                          <div>
+                            {idx + 1}. {item.productName}
                           </div>
-                        )}
-                      </td>
-                      <td className="border-r border-black py-1.5 px-1 text-center font-mono font-bold">
-                        {item.quantity}
-                      </td>
-                      <td className="border-r border-black py-1.5 px-1.5 text-right font-mono font-semibold whitespace-nowrap">
-                        {formatVND(item.unitPrice)}
-                      </td>
-                      <td className="py-1.5 px-1.5 text-right font-mono font-extrabold whitespace-nowrap">
-                        {formatVND(item.lineTotal)}
-                      </td>
-                    </tr>
-                  ))}
+                          {isGift ? (
+                            <div className="text-[10px] font-bold text-black mt-0.5">
+                              (🎁 Hàng tặng - Không tính tiền)
+                            </div>
+                          ) : (
+                            (Number(item.discountAmount) || 0) > 0 && (
+                              <div className="text-[10px] font-bold text-black mt-0.5">
+                                (Giảm SP: -{formatVND(item.discountAmount)})
+                              </div>
+                            )
+                          )}
+                        </td>
+                        <td className="border-r border-black py-1.5 px-1 text-center font-mono font-bold">
+                          {item.quantity}
+                        </td>
+                        <td className="border-r border-black py-1.5 px-1.5 text-right font-mono font-semibold whitespace-nowrap">
+                          {isGift ? "0 VND" : formatVND(item.unitPrice)}
+                        </td>
+                        <td className="py-1.5 px-1.5 text-right font-mono font-extrabold whitespace-nowrap">
+                          {isGift ? "0 VND" : formatVND(item.lineTotal)}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

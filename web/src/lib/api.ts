@@ -74,7 +74,7 @@ export interface ImportReceipt {
   updatedAt?: string;
 }
 
-export type DiscountType = "NONE" | "PERCENT" | "AMOUNT";
+export type DiscountType = "NONE" | "PERCENT" | "AMOUNT" | "GIFT";
 
 export interface OrderItem {
   productId: string;
@@ -82,6 +82,7 @@ export interface OrderItem {
   productName: string;
   unit: string;
   originalUnitPrice?: number;
+  isGift?: boolean;
   discountType?: DiscountType;
   discountValue?: number;
   discountAmount?: number;
@@ -98,7 +99,8 @@ export interface Order {
   customerId?: string;
   customerName: string;
   customerPhone: string;
-  paymentMethod: "CASH" | "BANKING" | "CARD";
+  paymentMethod: "CASH" | "BANKING" | "CARD" | "OTHER";
+  paymentMethodDetail?: string;
   hasCardFee: boolean;
   rawSubtotal?: number;
   itemDiscountTotal?: number;
@@ -192,6 +194,18 @@ export function formatNumberDots(amount: number | undefined | null): string {
 export function parseNumberDots(raw: string): number {
   const digits = String(raw || "").replace(/[^\d]/g, "");
   return digits ? Math.max(0, Math.round(Number(digits) || 0)) : 0;
+}
+
+export function cleanPhoneDigits(raw: string | undefined | null): string {
+  return String(raw || "").replace(/\D/g, "").slice(0, 11);
+}
+
+export function formatPhone(raw: string | undefined | null): string {
+  const digits = cleanPhoneDigits(raw);
+  if (!digits) return "";
+  if (digits.length <= 4) return digits;
+  if (digits.length <= 7) return `${digits.slice(0, 4)} ${digits.slice(4)}`;
+  return `${digits.slice(0, 4)} ${digits.slice(4, 7)} ${digits.slice(7)}`;
 }
 
 export function formatVND(amount: number | undefined | null): string {

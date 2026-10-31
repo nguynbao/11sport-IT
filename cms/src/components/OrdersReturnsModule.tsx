@@ -7,6 +7,7 @@ import {
   apiRequest,
   formatVND,
   formatDateTime,
+  formatPhone,
 } from "@/lib/api";
 import { Search, Printer, ShoppingBag, RotateCcw } from "lucide-react";
 import ExportExcelButton from "./ExportExcelButton";
@@ -101,6 +102,7 @@ export default function OrdersReturnsModule({
               <option value="CASH">Tiền mặt (CASH)</option>
               <option value="BANKING">Chuyển khoản (BANKING)</option>
               <option value="CARD">Thẻ (CARD)</option>
+              <option value="OTHER">Khác (OTHER)</option>
             </select>
           </div>
         </div>
@@ -138,16 +140,33 @@ export default function OrdersReturnsModule({
                   </td>
                   <td className="py-3 px-3">
                     <div className="font-bold text-slate-900">{ord.customerName}</div>
-                    <div className="font-mono text-slate-500">{ord.customerPhone}</div>
+                    <div className="font-mono text-slate-500">{formatPhone(ord.customerPhone)}</div>
                   </td>
                   <td className="py-3 px-3">
-                    {ord.items?.map((it, idx) => (
-                      <div key={idx} className="text-slate-700">
-                        • {it.productName} (×{it.quantity})
-                      </div>
-                    ))}
+                    {ord.items?.map((it, idx) => {
+                      const isGift = Boolean(it.isGift) || it.discountType === "GIFT";
+                      return (
+                        <div key={idx} className="text-slate-700 flex items-center gap-1 flex-wrap">
+                          <span>
+                            • {it.productName} (×{it.quantity})
+                          </span>
+                          {isGift && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                              🎁 Hàng tặng
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
                   </td>
-                  <td className="py-3 px-3 font-semibold">{ord.paymentMethod}</td>
+                  <td className="py-3 px-3 font-semibold">
+                    <div>{ord.paymentMethod}</div>
+                    {ord.paymentMethod === "OTHER" && ord.paymentMethodDetail && (
+                      <div className="text-[10px] font-normal text-indigo-700">
+                        ({ord.paymentMethodDetail})
+                      </div>
+                    )}
+                  </td>
                   <td className="py-3 px-3 font-semibold text-slate-800 whitespace-nowrap">
                     {ord.createdByName || ord.soldByName || "-"}
                   </td>

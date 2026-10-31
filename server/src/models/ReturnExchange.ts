@@ -91,7 +91,7 @@ const ReturnExchangeSchema = new Schema<IReturnExchange>(
     netDifference: { type: Number, required: true },
     refundAmount: { type: Number, required: true },
     additionalCharge: { type: Number, required: true },
-    refundMethod: { type: String, enum: ['CASH', 'BANKING', 'CARD'], default: 'CASH' },
+    refundMethod: { type: String, enum: ['CASH', 'BANKING', 'CARD', 'OTHER'], default: 'CASH' },
     note: { type: String, default: '' },
     performedBy: { type: String, default: '' },
     performedByName: { type: String, default: '' },
