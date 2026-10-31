@@ -37,17 +37,23 @@ productsInventoryRouter.get('/products', async (req, res, next) => {
     const allProducts = await productRepo.find({}, { createdAt: -1 });
     const categories = await categoryRepo.find({});
     const catMap = new Map(categories.map((c) => [String(c._id), c]));
+    const catByCode = new Map(categories.map((c) => [String(c.code || '').toUpperCase(), c]));
+    const catByName = new Map(categories.map((c) => [String(c.name || '').trim().toLowerCase(), c]));
 
     // Ẩn giá gốc và chỉ hiển thị sản phẩm Kho Tầng 1 đối với nhân viên bán hàng (SALES)
     const isSalesRole = req.user?.role === 'SALES';
     const hideCost = isSalesRole;
     const filtered = allProducts
       .map((p) => {
-        const cat = catMap.get(String(p.categoryId));
+        const cat =
+          catMap.get(String(p.categoryId)) ||
+          (p.categoryCode ? catByCode.get(String(p.categoryCode).toUpperCase()) : undefined) ||
+          (p.categoryName ? catByName.get(String(p.categoryName).trim().toLowerCase()) : undefined);
         const { costPrice, ...rest } = p as any;
         const floors = getFloorStocks(p);
         return {
           ...rest,
+          categoryId: cat?._id ? String(cat._id) : p.categoryId,
           stockFloor1: floors.stockFloor1,
           stockFloor2: isSalesRole ? 0 : floors.stockFloor2,
           stock: isSalesRole ? floors.stockFloor1 : floors.stock,
@@ -430,8 +436,14 @@ productsInventoryRouter.patch('/products/:id', async (req, res, next) => {
       });
     }
 
+    const updatedFloors = getFloorStocks(updated);
     res.json({
-      data: updated,
+      data: {
+        ...updated,
+        stockFloor1: updatedFloors.stockFloor1,
+        stockFloor2: updatedFloors.stockFloor2,
+        stock: updatedFloors.stock,
+      },
       meta: {},
     });
   } catch (err) {

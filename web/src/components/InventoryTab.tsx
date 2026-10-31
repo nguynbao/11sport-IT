@@ -113,13 +113,26 @@ export default function InventoryTab() {
     }
   };
 
-  const totalStockFloor1 = products.reduce((s, p) => s + (Number(p.stockFloor1 ?? p.stock) || 0), 0);
+  const getFloor1Stock = (p: Product): number => {
+    const f1 = Number(p.stockFloor1);
+    const f2 = Number(p.stockFloor2 || 0);
+    const legacyStock = Number(p.stock || 0);
+    if (p.stockFloor1 === undefined || p.stockFloor1 === null || Number.isNaN(f1)) {
+      return Math.max(0, legacyStock - f2);
+    }
+    if (f1 === 0 && f2 === 0 && legacyStock > 0) {
+      return legacyStock;
+    }
+    return f1;
+  };
+
+  const totalStockFloor1 = products.reduce((s, p) => s + getFloor1Stock(p), 0);
   const totalStockFloor2 = products.reduce((s, p) => s + (Number(p.stockFloor2) || 0), 0);
 
   const effectiveWarehouse = isSales ? "FLOOR_1" : activeWarehouse;
 
   const displayedProducts = products.filter((p) => {
-    const f1 = Number(p.stockFloor1 ?? p.stock) || 0;
+    const f1 = getFloor1Stock(p);
     const f2 = Number(p.stockFloor2) || 0;
     if (isSales) {
       // Saler chỉ hiển thị sản phẩm có ở Kho Tầng 1, không hiển thị sản phẩm của Kho Tầng 2
@@ -359,7 +372,7 @@ export default function InventoryTab() {
                     p.categoryName ||
                     (typeof p.categoryId === "object" && p.categoryId?.name) ||
                     "Mặc định";
-                  const f1 = Number(p.stockFloor1 ?? p.stock) || 0;
+                  const f1 = getFloor1Stock(p);
                   const f2 = Number(p.stockFloor2) || 0;
                   return (
                     <tr key={p._id} className="hover:bg-slate-50">

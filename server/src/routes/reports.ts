@@ -9,7 +9,7 @@ import {
   categoryRepo,
 } from '../config/db';
 import { ApiError } from '../utils/errors';
-import { floorLabel } from '../utils/warehouseFloor';
+import { floorLabel, getFloorStocks } from '../utils/warehouseFloor';
 
 export const reportsRouter = Router();
 
@@ -815,9 +815,10 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
     // Xếp hạng sản phẩm bán chạy (Best Sellers) & Sản phẩm cần đẩy mạnh (Needs Push)
     const allProductRows = Array.from(prodStats.values()).map((st) => {
       const prod = prodById.get(st.productId) || prodByCode.get(st.productCode);
-      const stockFloor1 = Number(prod?.stockFloor1 ?? prod?.stock ?? 0);
-      const stockFloor2 = Number(prod?.stockFloor2 ?? 0);
-      const stock = stockFloor1 + stockFloor2;
+      const floors = prod ? getFloorStocks(prod) : { stockFloor1: 0, stockFloor2: 0, stock: 0 };
+      const stockFloor1 = floors.stockFloor1;
+      const stockFloor2 = floors.stockFloor2;
+      const stock = floors.stock;
       const sellingPrice = Number(prod?.sellingPrice ?? 0);
       const costPrice = Number(prod?.costPrice ?? 0);
       const netSoldQty = Math.max(0, st.soldQty + st.exchangeOutQty - st.returnedQty);

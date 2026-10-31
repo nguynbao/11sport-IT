@@ -390,10 +390,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     const map = new Map<string, number>();
     drafts.forEach((d) => {
       if (d.id === activeDraftId) return;
-      d.cart.forEach((c) =>
+      (d.cart || []).forEach((c) =>
         map.set(c.product._id, (map.get(c.product._id) || 0) + c.quantity)
       );
-      d.giftCart.forEach((g) =>
+      (d.giftCart || []).forEach((g) =>
         map.set(g.product._id, (map.get(g.product._id) || 0) + g.quantity)
       );
     });
@@ -405,6 +405,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     if (products.length === 0) return;
     const byId = new Map(products.map((p) => [p._id, p]));
     const refresh = <T extends { product: Product }>(items: T[]): T[] => {
+      if (!Array.isArray(items)) return [];
       let changed = false;
       const next = items.map((it) => {
         const fresh = byId.get(it.product._id);
@@ -420,15 +421,27 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     setGiftCart((prev) => refresh(prev));
     setDrafts((prev) =>
       prev.map((d) => {
-        const c = refresh(d.cart);
-        const g = refresh(d.giftCart);
+        const c = refresh(d.cart || []);
+        const g = refresh(d.giftCart || []);
         return c === d.cart && g === d.giftCart ? d : { ...d, cart: c, giftCart: g };
       })
     );
   }, [products]);
 
   const getFloor1Stock = (p: Product): number => {
-    return Math.max(0, Number(p.stockFloor1 ?? p.stock) || 0);
+    const f1 = Number(p.stockFloor1);
+    const f2 = Number(p.stockFloor2);
+    const total = Math.max(0, Number(p.stock) || 0);
+    // Tương thích ngược với data cũ chưa có field stockFloor1/stockFloor2
+    // (hoặc Mongoose trả default stockFloor1 = 0, stockFloor2 = 0 trong khi stock > 0)
+    if (
+      p.stockFloor1 === undefined ||
+      p.stockFloor1 === null ||
+      ((isNaN(f1) || f1 === 0) && (isNaN(f2) || f2 === 0) && total > 0)
+    ) {
+      return total;
+    }
+    return Math.max(0, f1 || 0);
   };
 
   const getCategoryName = (p: Product): string => {
@@ -436,7 +449,13 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     if (typeof p.categoryId === "object" && p.categoryId?.name) {
       return p.categoryId.name;
     }
-    const found = categories.find((c) => c._id === String(p.categoryId));
+    const rawId = String(p.categoryId || "").trim();
+    const found = categories.find(
+      (c) =>
+        c._id === rawId ||
+        (p.categoryCode && c.code?.toLowerCase() === p.categoryCode.toLowerCase()) ||
+        (rawId && (c.code?.toLowerCase() === rawId.toLowerCase() || c.name?.toLowerCase() === rawId.toLowerCase()))
+    );
     return found?.name || "Khác";
   };
 
@@ -444,7 +463,18 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     if (typeof p.categoryId === "object" && p.categoryId?._id) {
       return p.categoryId._id;
     }
-    return String(p.categoryId || "");
+    const rawId = String(p.categoryId || "").trim();
+    if (rawId && categories.some((c) => c._id === rawId)) {
+      return rawId;
+    }
+    // Tương thích data cũ nếu chưa có categoryId chuẩn mà chỉ có categoryCode / categoryName
+    const byCodeOrName = categories.find(
+      (c) =>
+        (p.categoryCode && c.code?.toLowerCase() === p.categoryCode.toLowerCase()) ||
+        (p.categoryName && c.name?.toLowerCase() === p.categoryName.toLowerCase()) ||
+        (rawId && (c.code?.toLowerCase() === rawId.toLowerCase() || c.name?.toLowerCase() === rawId.toLowerCase()))
+    );
+    return byCodeOrName?._id || rawId;
   };
 
   const fetchCategories = useCallback(async () => {
@@ -721,28 +751,33 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
   };
 
   // Danh sách sản phẩm trong Popup Tặng hàng:
-  // - Ban đầu (khi chưa tìm kiếm & chưa chọn Category): CHỈ hiển thị các sản phẩm ĐÃ GHIM (nếu chưa ghim thì trang trống).
-  // - Khi gõ tìm kiếm hoặc chọn Category: hiển thị kết quả để người dùng bấm Ghim / Chọn tặng.
+  // - Mặc định hiển thị toàn bộ sản phẩm có tồn Kho Tầng 1 (bao gồm cả data cũ chưa được ghim),
+  //   ưu tiên đẩy các sản phẩm ĐÃ GHIM lên đầu danh sách.
+  // - Hỗ trợ lọc riêng "Chỉ sản phẩm đã ghim" (PINNED) hoặc lọc theo từng Category / tìm kiếm.
   const isSearchingOrFilteringGift =
     giftSearch.trim().length > 0 || giftCategoryId !== "";
+
+  const pinnedFloor1Count = useMemo(
+    () => floor1Products.filter((p) => pinnedGiftIds.includes(p._id)).length,
+    [floor1Products, pinnedGiftIds]
+  );
 
   const popupGiftProducts = useMemo(() => {
     const q = giftSearch.trim().toLowerCase();
 
-    if (!q && !giftCategoryId) {
-      // Ban đầu chỉ hiện các sản phẩm đã ghim
-      return floor1Products
-        .filter((p) => pinnedGiftIds.includes(p._id))
-        .sort((a, b) => pinnedGiftIds.indexOf(a._id) - pinnedGiftIds.indexOf(b._id));
-    }
-
     const filtered = floor1Products.filter((p) => {
-      if (giftCategoryId && giftCategoryId !== "ALL" && getCategoryId(p) !== giftCategoryId) {
+      if (giftCategoryId === "PINNED") {
+        if (!pinnedGiftIds.includes(p._id)) return false;
+      } else if (
+        giftCategoryId &&
+        giftCategoryId !== "ALL" &&
+        getCategoryId(p) !== giftCategoryId
+      ) {
         return false;
       }
       if (q) {
-        const matchName = p.name.toLowerCase().includes(q);
-        const matchCode = p.code.toLowerCase().includes(q);
+        const matchName = (p.name || "").toLowerCase().includes(q);
+        const matchCode = (p.code || "").toLowerCase().includes(q);
         const matchBarcode = (p.barcode || "").toLowerCase().includes(q);
         if (!matchName && !matchCode && !matchBarcode) return false;
       }
@@ -757,9 +792,9 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       if (aPinned && bPinned) {
         return pinnedGiftIds.indexOf(a._id) - pinnedGiftIds.indexOf(b._id);
       }
-      return a.name.localeCompare(b.name, "vi");
+      return (a.name || "").localeCompare(b.name || "", "vi");
     });
-  }, [floor1Products, giftCategoryId, giftSearch, pinnedGiftIds]);
+  }, [floor1Products, giftCategoryId, giftSearch, pinnedGiftIds, categories]);
 
   const handleChangeItemDiscount = (
     productId: string,
@@ -2061,10 +2096,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                   className="w-full min-h-[40px] px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm font-semibold text-slate-800 focus:border-amber-600 focus:outline-none"
                 >
                   <option value="">
-                    📌 Sản phẩm đã ghim ({pinnedGiftIds.length})
+                    📂 Tất cả sản phẩm · Ưu tiên đã ghim ({floor1Products.length})
                   </option>
-                  <option value="ALL">
-                    📂 Xem tất cả Category ({floor1Products.length})
+                  <option value="PINNED">
+                    📌 Chỉ sản phẩm đã ghim ({pinnedFloor1Count})
                   </option>
                   {categories.map((cat) => {
                     const count = floor1Products.filter(
@@ -2080,19 +2115,19 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
               </div>
             </div>
 
-            {/* Danh sách sản phẩm trong Popup (Ban đầu trống, chỉ hiện sản phẩm đã ghim) */}
+            {/* Danh sách sản phẩm trong Popup (Hiển thị đầy đủ cả data cũ, ưu tiên sản phẩm đã ghim lên đầu) */}
             <div className="flex-1 overflow-y-auto p-3.5 sm:p-4 space-y-2.5">
               {popupGiftProducts.length === 0 ? (
                 <div className="py-14 px-4 text-center space-y-2">
                   <Pin className="w-8 h-8 text-amber-400 mx-auto" />
                   <div className="text-sm font-bold text-slate-700">
-                    {!isSearchingOrFilteringGift
+                    {giftCategoryId === "PINNED" && !giftSearch.trim()
                       ? "Chưa có sản phẩm tặng nào được ghim"
                       : "Không tìm thấy sản phẩm phù hợp trong Kho Tầng 1"}
                   </div>
                   <p className="text-xs text-slate-500 max-w-md mx-auto">
-                    {!isSearchingOrFilteringGift
-                      ? "Hãy gõ vào ô tìm kiếm hoặc chọn Category ở trên để tìm sản phẩm và bấm nút 📌 Ghim. Các sản phẩm đã ghim sẽ hiển thị cố định tại đây."
+                    {giftCategoryId === "PINNED" && !giftSearch.trim()
+                      ? "Hãy chọn 'Tất cả sản phẩm' hoặc chọn Category ở trên để tìm sản phẩm và bấm nút 📌 Ghim."
                       : "Vui lòng thử từ khóa khác hoặc chọn danh mục khác."}
                   </p>
                 </div>
