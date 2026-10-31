@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Product,
   Category,
@@ -13,6 +13,7 @@ import {
   formatPhone,
   cleanPhoneDigits,
   formatDateTime,
+  getStoredUser,
 } from "@/lib/api";
 import {
   Search,
@@ -68,6 +69,67 @@ const SPLIT_METHOD_OPTIONS: { value: SplitMethodType; label: string }[] = [
   { value: "CARD", label: "Card" },
 ];
 
+// ===== Nhiều đơn hàng song song (đơn nháp) =====
+// Nhiều khách tới mua cùng lúc: Sales mở nhiều tab đơn, chuyển qua lại, mỗi tab giữ giỏ hàng/khách/thanh toán riêng.
+// Lưu sessionStorage để không mất khi chuyển tab Kho/Khách hàng hoặc reload; xóa khi đăng xuất / đóng trình duyệt.
+const POS_DRAFTS_STORAGE_KEY = "11sport_pos_drafts_v1";
+const MAX_DRAFTS = 10;
+const DEFAULT_NOTE = "Giá đã bao gồm thuế";
+
+type PaymentMethodType = "CASH" | "BANKING" | "CARD" | "OTHER";
+
+interface DraftOrderData {
+  cart: CartItem[];
+  giftCart: GiftCartItem[];
+  billDiscountType: DiscountType;
+  billDiscountValue: number;
+  customerPhone: string;
+  customerName: string;
+  isExistingCustomer: boolean;
+  customerOrders: Order[];
+  paymentMethod: PaymentMethodType;
+  splitPayments: SplitPaymentItem[];
+  hasCardFee: boolean;
+  note: string;
+}
+
+interface DraftOrder extends DraftOrderData {
+  id: string;
+  seq: number;
+}
+
+const createEmptyDraftData = (): DraftOrderData => ({
+  cart: [],
+  giftCart: [],
+  billDiscountType: "NONE",
+  billDiscountValue: 0,
+  customerPhone: "",
+  customerName: "",
+  isExistingCustomer: false,
+  customerOrders: [],
+  paymentMethod: "CASH",
+  splitPayments: [],
+  hasCardFee: true,
+  note: DEFAULT_NOTE,
+});
+
+const generateDraftId = () =>
+  `draft_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+const createDraft = (seq: number): DraftOrder => ({
+  id: generateDraftId(),
+  seq,
+  ...createEmptyDraftData(),
+});
+
+const isDraftEmpty = (d: DraftOrderData) =>
+  d.cart.length === 0 &&
+  d.giftCart.length === 0 &&
+  !d.customerPhone.trim() &&
+  !d.customerName.trim();
+
+const INITIAL_DRAFT_ID = "draft_initial";
+
 export default function PosTab({ onOpenInvoice }: PosTabProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -98,15 +160,272 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
   const [lookingUp, setLookingUp] = useState(false);
 
   // Thanh toán
-  const [paymentMethod, setPaymentMethod] = useState<"CASH" | "BANKING" | "CARD" | "OTHER">("CASH");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>("CASH");
   const [splitPayments, setSplitPayments] = useState<SplitPaymentItem[]>([]);
   const [showSplitDropdown, setShowSplitDropdown] = useState<boolean>(false);
   const [hasCardFee, setHasCardFee] = useState<boolean>(true);
-  const [note, setNote] = useState("Giá đã bao gồm thuế");
+  const [note, setNote] = useState(DEFAULT_NOTE);
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+
+  // Danh sách đơn nháp (nhiều khách cùng lúc). State bên trên luôn là dữ liệu của đơn đang mở (activeDraftId);
+  // các đơn khác được lưu trong `drafts` và nạp lại khi chuyển tab.
+  const [drafts, setDrafts] = useState<DraftOrder[]>(() => [
+    { id: INITIAL_DRAFT_ID, seq: 1, ...createEmptyDraftData() },
+  ]);
+  const [activeDraftId, setActiveDraftId] = useState<string>(INITIAL_DRAFT_ID);
+  const activeDraftIdRef = useRef<string>(INITIAL_DRAFT_ID);
+  const [draftsHydrated, setDraftsHydrated] = useState(false);
+
+  useEffect(() => {
+    activeDraftIdRef.current = activeDraftId;
+  }, [activeDraftId]);
+
+  const getCurrentDraftData = (): DraftOrderData => ({
+    cart,
+    giftCart,
+    billDiscountType,
+    billDiscountValue,
+    customerPhone,
+    customerName,
+    isExistingCustomer,
+    customerOrders,
+    paymentMethod,
+    splitPayments,
+    hasCardFee,
+    note,
+  });
+
+  const applyDraftData = (d: DraftOrderData) => {
+    setCart(d.cart || []);
+    setGiftCart(d.giftCart || []);
+    setBillDiscountType(d.billDiscountType || "NONE");
+    setBillDiscountValue(Number(d.billDiscountValue) || 0);
+    setCustomerPhone(d.customerPhone || "");
+    setCustomerName(d.customerName || "");
+    setIsExistingCustomer(!!d.isExistingCustomer);
+    setCustomerOrders(Array.isArray(d.customerOrders) ? d.customerOrders : []);
+    setPaymentMethod(d.paymentMethod || "CASH");
+    setSplitPayments(Array.isArray(d.splitPayments) ? d.splitPayments : []);
+    setHasCardFee(d.hasCardFee !== false);
+    setNote(typeof d.note === "string" ? d.note : DEFAULT_NOTE);
+    setShowSplitDropdown(false);
+    setLookingUp(false);
+    setErrorMsg("");
+    setSuccessMsg("");
+  };
+
+  // Danh sách đơn với dữ liệu mới nhất của đơn đang mở (dùng để hiển thị tab & lưu sessionStorage)
+  const liveDrafts = useMemo<DraftOrder[]>(
+    () =>
+      drafts.map((d) =>
+        d.id === activeDraftId
+          ? {
+              ...d,
+              cart,
+              giftCart,
+              billDiscountType,
+              billDiscountValue,
+              customerPhone,
+              customerName,
+              isExistingCustomer,
+              customerOrders,
+              paymentMethod,
+              splitPayments,
+              hasCardFee,
+              note,
+            }
+          : d
+      ),
+    [
+      drafts,
+      activeDraftId,
+      cart,
+      giftCart,
+      billDiscountType,
+      billDiscountValue,
+      customerPhone,
+      customerName,
+      isExistingCustomer,
+      customerOrders,
+      paymentMethod,
+      splitPayments,
+      hasCardFee,
+      note,
+    ]
+  );
+
+  // Nạp lại đơn nháp từ sessionStorage (chỉ của đúng nhân viên đang đăng nhập)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = sessionStorage.getItem(POS_DRAFTS_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const userId = getStoredUser()?._id || "";
+        if (
+          parsed &&
+          parsed.userId === userId &&
+          Array.isArray(parsed.drafts) &&
+          parsed.drafts.length > 0
+        ) {
+          const loaded: DraftOrder[] = parsed.drafts
+            .filter((d: any) => d && typeof d.id === "string")
+            .slice(0, MAX_DRAFTS)
+            .map((d: any, idx: number) => ({
+              ...createEmptyDraftData(),
+              ...d,
+              seq: Number(d.seq) || idx + 1,
+            }));
+          if (loaded.length > 0) {
+            const active =
+              loaded.find((d) => d.id === parsed.activeDraftId) || loaded[0];
+            setDrafts(loaded);
+            setActiveDraftId(active.id);
+            activeDraftIdRef.current = active.id;
+            applyDraftData(active);
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+    setDraftsHydrated(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Lưu đơn nháp vào sessionStorage mỗi khi thay đổi
+  useEffect(() => {
+    if (!draftsHydrated || typeof window === "undefined") return;
+    try {
+      sessionStorage.setItem(
+        POS_DRAFTS_STORAGE_KEY,
+        JSON.stringify({
+          userId: getStoredUser()?._id || "",
+          activeDraftId,
+          drafts: liveDrafts,
+        })
+      );
+    } catch {
+      // ignore (quota...)
+    }
+  }, [draftsHydrated, liveDrafts, activeDraftId]);
+
+  const handleSwitchDraft = (targetId: string) => {
+    if (submitting || targetId === activeDraftId) return;
+    const target = drafts.find((d) => d.id === targetId);
+    if (!target) return;
+    const current = getCurrentDraftData();
+    setDrafts((prev) =>
+      prev.map((d) => (d.id === activeDraftId ? { ...d, ...current } : d))
+    );
+    applyDraftData(target);
+    setActiveDraftId(targetId);
+    activeDraftIdRef.current = targetId;
+  };
+
+  const handleAddDraft = () => {
+    if (submitting) return;
+    if (drafts.length >= MAX_DRAFTS) {
+      setErrorMsg(
+        `Chỉ mở tối đa ${MAX_DRAFTS} đơn cùng lúc. Vui lòng hoàn tất hoặc đóng bớt đơn.`
+      );
+      return;
+    }
+    const nextSeq = drafts.reduce((m, d) => Math.max(m, d.seq), 0) + 1;
+    const newDraft = createDraft(nextSeq);
+    const current = getCurrentDraftData();
+    setDrafts((prev) => [
+      ...prev.map((d) => (d.id === activeDraftId ? { ...d, ...current } : d)),
+      newDraft,
+    ]);
+    applyDraftData(newDraft);
+    setActiveDraftId(newDraft.id);
+    activeDraftIdRef.current = newDraft.id;
+  };
+
+  // Xóa 1 đơn khỏi danh sách; nếu là đơn đang mở thì chuyển sang đơn kế bên (hoặc tạo đơn trống mới)
+  const removeDraft = (draftId: string) => {
+    const idx = liveDrafts.findIndex((d) => d.id === draftId);
+    const remaining = liveDrafts.filter((d) => d.id !== draftId);
+
+    if (remaining.length === 0) {
+      const fresh = createDraft(1);
+      setDrafts([fresh]);
+      applyDraftData(fresh);
+      setActiveDraftId(fresh.id);
+      activeDraftIdRef.current = fresh.id;
+      return;
+    }
+
+    setDrafts(remaining);
+    if (draftId === activeDraftId) {
+      const next = remaining[Math.min(Math.max(idx, 0), remaining.length - 1)];
+      applyDraftData(next);
+      setActiveDraftId(next.id);
+      activeDraftIdRef.current = next.id;
+    }
+  };
+
+  const handleCloseDraft = (draftId: string) => {
+    if (submitting) return;
+    const d = liveDrafts.find((x) => x.id === draftId);
+    if (!d) return;
+    if (
+      !isDraftEmpty(d) &&
+      typeof window !== "undefined" &&
+      !window.confirm(
+        `Hủy "Đơn ${d.seq}"${d.customerName ? ` (${d.customerName})` : ""}? Giỏ hàng của đơn này sẽ bị xóa.`
+      )
+    ) {
+      return;
+    }
+    removeDraft(draftId);
+  };
+
+  // Số lượng sản phẩm đang được giữ ở các đơn nháp KHÁC (để Sales biết, tránh bán trùng hàng cuối)
+  const reservedInOtherDrafts = useMemo(() => {
+    const map = new Map<string, number>();
+    drafts.forEach((d) => {
+      if (d.id === activeDraftId) return;
+      d.cart.forEach((c) =>
+        map.set(c.product._id, (map.get(c.product._id) || 0) + c.quantity)
+      );
+      d.giftCart.forEach((g) =>
+        map.set(g.product._id, (map.get(g.product._id) || 0) + g.quantity)
+      );
+    });
+    return map;
+  }, [drafts, activeDraftId]);
+
+  // Khi danh sách sản phẩm tải lại (VD: sau khi chốt 1 đơn), cập nhật tồn kho mới nhất vào giỏ của mọi đơn nháp
+  useEffect(() => {
+    if (products.length === 0) return;
+    const byId = new Map(products.map((p) => [p._id, p]));
+    const refresh = <T extends { product: Product }>(items: T[]): T[] => {
+      let changed = false;
+      const next = items.map((it) => {
+        const fresh = byId.get(it.product._id);
+        if (fresh && fresh !== it.product) {
+          changed = true;
+          return { ...it, product: fresh };
+        }
+        return it;
+      });
+      return changed ? next : items;
+    };
+    setCart((prev) => refresh(prev));
+    setGiftCart((prev) => refresh(prev));
+    setDrafts((prev) =>
+      prev.map((d) => {
+        const c = refresh(d.cart);
+        const g = refresh(d.giftCart);
+        return c === d.cart && g === d.giftCart ? d : { ...d, cart: c, giftCart: g };
+      })
+    );
+  }, [products]);
 
   const getFloor1Stock = (p: Product): number => {
     return Math.max(0, Number(p.stockFloor1 ?? p.stock) || 0);
@@ -252,8 +571,11 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       return;
     }
     setLookingUp(true);
+    // Ghi nhớ đơn đang tra cứu: nếu Sales chuyển sang đơn khác trong lúc chờ thì bỏ qua kết quả
+    const draftIdAtStart = activeDraftIdRef.current;
     try {
       const res = await apiRequest<any>(`/customers/lookup?phone=${encodeURIComponent(clean)}`);
+      if (activeDraftIdRef.current !== draftIdAtStart) return;
       const customer = res.data?.customer || res.data;
       const orders = res.data?.orders || [];
       if (customer && (customer.fullName || customer.name || customer.customerName)) {
@@ -611,19 +933,15 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       });
 
       const createdOrder = res.data;
+      const createdMsg = `Tạo đơn hàng ${createdOrder.orderCode || createdOrder.code || ""} thành công!`;
+      // Đóng đơn vừa thanh toán xong; nếu còn đơn khác đang chờ thì tự chuyển sang đơn đó
+      const hasOtherDrafts = drafts.length > 1;
+      removeDraft(activeDraftId);
       setSuccessMsg(
-        `Tạo đơn hàng ${createdOrder.orderCode || createdOrder.code || ""} thành công!`
+        hasOtherDrafts
+          ? `${createdMsg} Đã chuyển sang đơn đang chờ tiếp theo.`
+          : createdMsg
       );
-      setCustomerPhone("");
-      setCustomerName("");
-      setIsExistingCustomer(false);
-      setCustomerOrders([]);
-      setCart([]);
-      setGiftCart([]);
-      setSplitPayments([]);
-      setShowSplitDropdown(false);
-      setBillDiscountType("NONE");
-      setBillDiscountValue(0);
       fetchSellableProducts();
       onOpenInvoice(createdOrder);
     } catch (err: any) {
@@ -669,6 +987,11 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
           <div className="font-mono text-[10px] text-slate-400 mt-0.5 break-all">
             Mã: {p.code}
           </div>
+          {(reservedInOtherDrafts.get(p._id) || 0) > 0 && (
+            <div className="mt-1 inline-block text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
+              ⏳ Đơn khác đang giữ: {reservedInOtherDrafts.get(p._id)} {p.unit}
+            </div>
+          )}
         </div>
 
         <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
@@ -703,6 +1026,78 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6">
+      {/* Thanh tab: Nhiều đơn hàng song song (nhiều khách mua cùng lúc) */}
+      <div className="lg:col-span-12 bg-white rounded-xl shadow-sm border border-slate-200 p-2.5 md:p-3">
+        <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
+          <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-extrabold uppercase text-slate-500 shrink-0 pr-1">
+            <ShoppingCart className="w-3.5 h-3.5 text-emerald-600" />
+            Đơn đang mở ({liveDrafts.length}/{MAX_DRAFTS})
+          </span>
+          {liveDrafts.map((d) => {
+            const isActive = d.id === activeDraftId;
+            const qty =
+              d.cart.reduce((s, i) => s + i.quantity, 0) +
+              d.giftCart.reduce((s, g) => s + g.quantity, 0);
+            const customerLabel =
+              d.customerName.trim() || (d.customerPhone.trim() ? d.customerPhone : "Khách mới");
+            return (
+              <div
+                key={d.id}
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => handleSwitchDraft(d.id)}
+                title={submitting ? "Đang tạo đơn, vui lòng chờ..." : `Chuyển sang Đơn ${d.seq}`}
+                className={`group flex items-center gap-2 pl-3 pr-1.5 py-1.5 rounded-lg border text-xs shrink-0 transition select-none ${
+                  isActive
+                    ? "bg-emerald-600 border-emerald-700 text-white shadow-sm"
+                    : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-emerald-50 hover:border-emerald-300"
+                } ${submitting && !isActive ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+              >
+                <div className="flex flex-col leading-tight min-w-0">
+                  <span className="font-extrabold">Đơn {d.seq}</span>
+                  <span
+                    className={`text-[10px] truncate max-w-[120px] ${
+                      isActive ? "text-emerald-50" : "text-slate-500"
+                    }`}
+                  >
+                    {customerLabel}
+                  </span>
+                </div>
+                <span
+                  className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                    isActive ? "bg-white/20 text-white" : "bg-emerald-100 text-emerald-800"
+                  }`}
+                >
+                  {qty} SP
+                </span>
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCloseDraft(d.id);
+                  }}
+                  title={`Hủy Đơn ${d.seq}`}
+                  aria-label={`Hủy Đơn ${d.seq}`}
+                  className={`p-1 rounded-md transition disabled:cursor-not-allowed ${
+                    isActive ? "hover:bg-white/20 text-white" : "hover:bg-red-100 text-slate-400 hover:text-red-600"
+                  }`}
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            );
+          })}
+          <button
+            type="button"
+            onClick={handleAddDraft}
+            disabled={submitting || liveDrafts.length >= MAX_DRAFTS}
+            className="flex items-center gap-1 min-h-[40px] px-3 py-1.5 rounded-lg border border-dashed border-emerald-400 text-emerald-700 text-xs font-extrabold hover:bg-emerald-50 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Plus className="w-3.5 h-3.5" /> Thêm đơn mới
+          </button>
+        </div>
+      </div>
       {/* Cột trái (7 phần): Tìm kiếm, Lọc/Sắp xếp theo Category & Chọn sản phẩm */}
       <div className="lg:col-span-7 space-y-4">
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-3 md:p-4 space-y-3">
@@ -819,7 +1214,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
             <div className="flex items-center gap-2">
               <ShoppingCart className="w-5 h-5 text-emerald-600" />
-              <h2 className="text-lg font-bold text-slate-900">Phiếu Bán Hàng POS</h2>
+              <h2 className="text-lg font-bold text-slate-900">
+                Phiếu Bán Hàng POS · Đơn{" "}
+                {liveDrafts.find((d) => d.id === activeDraftId)?.seq ?? 1}
+              </h2>
             </div>
             <span className="text-xs font-mono bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full font-semibold">
               {cart.reduce((s, i) => s + i.quantity, 0)} sản phẩm (Kho Tầng 1)
