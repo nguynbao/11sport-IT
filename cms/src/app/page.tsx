@@ -240,9 +240,11 @@ export default function CmsDashboardPage() {
       <div className="min-h-screen flex items-center justify-center bg-slate-900 px-4 py-8">
         <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-800">
           <div className="bg-slate-950 text-white px-6 py-6 text-center border-b border-slate-800">
-            <div className="w-14 h-14 rounded-2xl bg-emerald-600 flex items-center justify-center font-black text-xl mx-auto mb-3 shadow-lg">
-              CMS
-            </div>
+            <img
+              src="/logo-11sport-white.svg"
+              alt="11Sport Logo"
+              className="h-16 w-auto object-contain mx-auto mb-3"
+            />
             <h1 className="text-xl font-extrabold tracking-tight">
               ĐĂNG NHẬP QUẢN TRỊ 11SPORT (CMS)
             </h1>
@@ -313,9 +315,11 @@ export default function CmsDashboardPage() {
       <header className="bg-slate-900 text-white shadow-lg print:hidden">
         <div className="max-w-[98vw] 2xl:max-w-[1880px] mx-auto px-3 sm:px-5 py-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center font-black text-lg">
-              CMS
-            </div>
+            <img
+              src="/logo-11sport-white.svg"
+              alt="11Sport Logo"
+              className="h-10 md:h-11 w-auto object-contain shrink-0"
+            />
             <div>
               <div className="font-extrabold text-base flex items-center gap-2">
                 11SPORT ADMIN CMS
