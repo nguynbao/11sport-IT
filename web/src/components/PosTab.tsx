@@ -14,6 +14,8 @@ import {
   cleanPhoneDigits,
   formatDateTime,
   getStoredUser,
+  useDebounce,
+  filterAndRankBySearch,
 } from "@/lib/api";
 import {
   Search,
@@ -486,11 +488,17 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     }
   }, []);
 
+  // Debounce từ khóa tìm kiếm sản phẩm (400ms), quà tặng (300ms) và SĐT khách hàng (500ms) để tối ưu số lượng request API
+  const debouncedSearch = useDebounce(search, 400);
+  const debouncedGiftSearch = useDebounce(giftSearch, 300);
+  const debouncedCustomerPhone = useDebounce(customerPhone, 500);
+  const phoneTypedByUserRef = useRef(false);
+
   const fetchSellableProducts = useCallback(async () => {
     setLoadingProducts(true);
     try {
       const q = new URLSearchParams();
-      if (search.trim()) q.set("search", search.trim());
+      if (debouncedSearch.trim()) q.set("search", debouncedSearch.trim());
       const res = await apiRequest<Product[]>(`/products?${q.toString()}`);
       setProducts(Array.isArray(res.data) ? res.data : []);
     } catch (err: any) {
@@ -498,7 +506,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     } finally {
       setLoadingProducts(false);
     }
-  }, [search]);
+  }, [debouncedSearch]);
 
   useEffect(() => {
     fetchCategories();
@@ -544,16 +552,33 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     return products.filter((p) => getFloor1Stock(p) > 0);
   }, [products]);
 
-  // Lọc và sắp xếp sản phẩm theo Category
+  // Lọc và sắp xếp sản phẩm theo Category + Smart Search tức thì trên client
   const filteredAndSortedProducts = useMemo(() => {
-    const filtered = floor1Products.filter((p) => {
+    const categoryFiltered = floor1Products.filter((p) => {
       if (selectedCategoryId && getCategoryId(p) !== selectedCategoryId) {
         return false;
       }
       return true;
     });
 
-    const sorted = [...filtered];
+    const hasSearch = search.trim().length > 0;
+    const searched = hasSearch
+      ? filterAndRankBySearch(categoryFiltered, search, (p) => [
+          { text: p.code, weight: 1.5 },
+          { text: p.barcode, weight: 1.5 },
+          { text: p.name, weight: 1.3 },
+          { text: getCategoryName(p), weight: 0.9 },
+          { text: p.categoryCode, weight: 0.9 },
+          { text: p.unit, weight: 0.6 },
+        ])
+      : categoryFiltered;
+
+    // Khi đang tìm kiếm và ở chế độ mặc định (CATEGORY), giữ thứ tự độ khớp (relevance) trong từng nhóm Category
+    if (hasSearch && sortBy === "CATEGORY") {
+      return searched;
+    }
+
+    const sorted = [...searched];
     sorted.sort((a, b) => {
       if (sortBy === "CATEGORY") {
         const catA = getCategoryName(a);
@@ -578,7 +603,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     });
 
     return sorted;
-  }, [floor1Products, selectedCategoryId, sortBy, categories]);
+  }, [floor1Products, selectedCategoryId, search, sortBy, categories]);
 
   // Nhóm sản phẩm theo Category khi chọn chế độ sắp xếp theo Category
   const groupedByCategory = useMemo(() => {
@@ -623,6 +648,19 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       setLookingUp(false);
     }
   };
+
+  // Tự động tra cứu SĐT khách hàng sau khi ngừng gõ 350ms (Debounce tối ưu request)
+  useEffect(() => {
+    if (!phoneTypedByUserRef.current) return;
+    const clean = cleanPhoneDigits(debouncedCustomerPhone);
+    if (clean.length < 9) {
+      setIsExistingCustomer(false);
+      setCustomerOrders([]);
+      return;
+    }
+    handleLookupPhone(debouncedCustomerPhone);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedCustomerPhone]);
 
   const getCartQty = (productId: string): number => {
     return cart.find((c) => c.product._id === productId)?.quantity || 0;
@@ -763,9 +801,9 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
   );
 
   const popupGiftProducts = useMemo(() => {
-    const q = giftSearch.trim().toLowerCase();
+    const q = debouncedGiftSearch.trim();
 
-    const filtered = floor1Products.filter((p) => {
+    const categoryFiltered = floor1Products.filter((p) => {
       if (giftCategoryId === "PINNED") {
         if (!pinnedGiftIds.includes(p._id)) return false;
       } else if (
@@ -775,16 +813,19 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       ) {
         return false;
       }
-      if (q) {
-        const matchName = (p.name || "").toLowerCase().includes(q);
-        const matchCode = (p.code || "").toLowerCase().includes(q);
-        const matchBarcode = (p.barcode || "").toLowerCase().includes(q);
-        if (!matchName && !matchCode && !matchBarcode) return false;
-      }
       return true;
     });
 
-    return [...filtered].sort((a, b) => {
+    if (q) {
+      return filterAndRankBySearch(categoryFiltered, q, (p) => [
+        { text: p.code, weight: 1.5 },
+        { text: p.barcode, weight: 1.5 },
+        { text: p.name, weight: 1.3 },
+        { text: getCategoryName(p), weight: 0.9 },
+      ]);
+    }
+
+    return [...categoryFiltered].sort((a, b) => {
       const aPinned = pinnedGiftIds.includes(a._id);
       const bPinned = pinnedGiftIds.includes(b._id);
       if (aPinned && !bPinned) return -1;
@@ -794,7 +835,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       }
       return (a.name || "").localeCompare(b.name || "", "vi");
     });
-  }, [floor1Products, giftCategoryId, giftSearch, pinnedGiftIds, categories]);
+  }, [floor1Products, giftCategoryId, debouncedGiftSearch, pinnedGiftIds, categories]);
 
   const handleChangeItemDiscount = (
     productId: string,
@@ -1296,9 +1337,13 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                   required
                   value={customerPhone}
                   onChange={(e) => {
+                    phoneTypedByUserRef.current = true;
                     const formatted = formatPhone(e.target.value);
                     setCustomerPhone(formatted);
-                    handleLookupPhone(formatted);
+                    if (cleanPhoneDigits(formatted).length < 9) {
+                      setIsExistingCustomer(false);
+                      setCustomerOrders([]);
+                    }
                   }}
                   placeholder="VD: 0945 xxx xxx"
                   className="w-full min-h-[40px] px-3 py-2 rounded-lg border border-slate-300 font-mono text-sm focus:border-emerald-600 focus:outline-none bg-white"

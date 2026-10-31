@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Product,
   Category,
@@ -9,6 +9,8 @@ import {
   formatNumberDots,
   parseNumberDots,
   getStoredUser,
+  useDebounce,
+  filterAndRankBySearch,
 } from "@/lib/api";
 import { Package, Layers, Search, Filter, RefreshCw, Save, CheckCircle2 } from "lucide-react";
 
@@ -33,6 +35,9 @@ export default function InventoryTab() {
   const canSeeCostPrice =
     currentUser?.role === "ADMIN" || currentUser?.role === "WAREHOUSE";
 
+  // Debounce từ khóa tìm kiếm (400ms) để tối ưu số lượng request API
+  const debouncedSearch = useDebounce(search, 400);
+
   const loadCategories = async () => {
     try {
       const res = await apiRequest<Category[]>("/categories");
@@ -42,23 +47,10 @@ export default function InventoryTab() {
     }
   };
 
-  const loadInventory = useCallback(async () => {
-    setLoading(true);
+  // Tách tải danh sách phiếu nhập (/imports) ra riêng để không gọi lại mỗi khi gõ tìm kiếm
+  const loadImportFloorCodes = useCallback(async () => {
     try {
-      const q = new URLSearchParams();
-      if (selectedCategory) q.set("categoryId", selectedCategory);
-      if (search.trim()) q.set("search", search.trim());
-      const [res, impRes] = await Promise.all([
-        apiRequest<Product[]>(`/products?${q.toString()}`),
-        apiRequest<any[]>("/imports").catch(() => ({ data: [] as any[] })),
-      ]);
-      const list = Array.isArray(res.data) ? res.data : [];
-      setProducts(list);
-      setTotalProducts(res.meta?.totalProducts ?? list.length);
-      setTotalStock(
-        res.meta?.totalStock ?? list.reduce((sum, p) => sum + Number(p.stock || 0), 0)
-      );
-
+      const impRes = await apiRequest<any[]>("/imports").catch(() => ({ data: [] as any[] }));
       const f1 = new Set<string>();
       const f2 = new Set<string>();
       (Array.isArray(impRes.data) ? impRes.data : []).forEach((imp: any) => {
@@ -72,15 +64,34 @@ export default function InventoryTab() {
       setFloor1Codes(f1);
       setFloor2Codes(f2);
     } catch {
+      // ignore
+    }
+  }, []);
+
+  const loadInventory = useCallback(async () => {
+    setLoading(true);
+    try {
+      const q = new URLSearchParams();
+      if (selectedCategory) q.set("categoryId", selectedCategory);
+      if (debouncedSearch.trim()) q.set("search", debouncedSearch.trim());
+      const res = await apiRequest<Product[]>(`/products?${q.toString()}`);
+      const list = Array.isArray(res.data) ? res.data : [];
+      setProducts(list);
+      setTotalProducts(res.meta?.totalProducts ?? list.length);
+      setTotalStock(
+        res.meta?.totalStock ?? list.reduce((sum, p) => sum + Number(p.stock || 0), 0)
+      );
+    } catch {
       setProducts([]);
     } finally {
       setLoading(false);
     }
-  }, [selectedCategory, search]);
+  }, [selectedCategory, debouncedSearch]);
 
   useEffect(() => {
     loadCategories();
-  }, []);
+    loadImportFloorCodes();
+  }, [loadImportFloorCodes]);
 
   useEffect(() => {
     loadInventory();
@@ -131,21 +142,33 @@ export default function InventoryTab() {
 
   const effectiveWarehouse = isSales ? "FLOOR_1" : activeWarehouse;
 
-  const displayedProducts = products.filter((p) => {
-    const f1 = getFloor1Stock(p);
-    const f2 = Number(p.stockFloor2) || 0;
-    if (isSales) {
-      // Saler chỉ hiển thị sản phẩm có ở Kho Tầng 1, không hiển thị sản phẩm của Kho Tầng 2
-      return f1 > 0;
-    }
-    if (effectiveWarehouse === "FLOOR_1") {
-      return f1 > 0 || floor1Codes.has(p.code) || !floor2Codes.has(p.code);
-    }
-    if (effectiveWarehouse === "FLOOR_2") {
-      return f2 > 0 || floor2Codes.has(p.code);
-    }
-    return true;
-  });
+  const displayedProducts = useMemo(() => {
+    const byFloor = products.filter((p) => {
+      const f1 = getFloor1Stock(p);
+      const f2 = Number(p.stockFloor2) || 0;
+      if (isSales) {
+        // Saler chỉ hiển thị sản phẩm có ở Kho Tầng 1, không hiển thị sản phẩm của Kho Tầng 2
+        return f1 > 0;
+      }
+      if (effectiveWarehouse === "FLOOR_1") {
+        return f1 > 0 || floor1Codes.has(p.code) || !floor2Codes.has(p.code);
+      }
+      if (effectiveWarehouse === "FLOOR_2") {
+        return f2 > 0 || floor2Codes.has(p.code);
+      }
+      return true;
+    });
+
+    if (!search.trim()) return byFloor;
+    return filterAndRankBySearch(byFloor, search, (p) => [
+      { text: p.code, weight: 1.5 },
+      { text: p.barcode, weight: 1.5 },
+      { text: p.name, weight: 1.3 },
+      { text: p.categoryName, weight: 0.9 },
+      { text: p.categoryCode, weight: 0.9 },
+      { text: p.unit, weight: 0.6 },
+    ]);
+  }, [products, isSales, effectiveWarehouse, floor1Codes, floor2Codes, search]);
 
   const colCount = (canSeeCostPrice ? 8 : 7) + (effectiveWarehouse === "ALL" ? 2 : 0);
 

@@ -310,3 +310,14 @@ export const KEEP_ALIVE_INTERVAL_MS = 8 * 60 * 1000;
 export function pingServerHealth(): void {
   fetch(`${API_BASE_URL}/health`, { method: "GET", cache: "no-store" }).catch(() => {});
 }
+
+export {
+  useDebounce,
+  normalizeVietnamese,
+  compactAlphaNum,
+  normalizePhoneDigits,
+  scoreSearchMatch,
+  filterAndRankBySearch,
+  type SearchField,
+} from "./search";
+
