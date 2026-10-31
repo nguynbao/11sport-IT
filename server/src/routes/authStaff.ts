@@ -53,6 +53,78 @@ authStaffRouter.post('/auth/login', async (req, res, next) => {
   }
 });
 
+// POST /api/v1/auth/change-password
+authStaffRouter.post('/auth/change-password', async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword, username } = req.body || {};
+    if (!currentPassword || !newPassword) {
+      throw new ApiError(
+        400,
+        'VALIDATION_ERROR',
+        'Vui lòng nhập đầy đủ mật khẩu hiện tại và mật khẩu mới',
+        {
+          currentPassword: !currentPassword ? 'Bắt buộc' : '',
+          newPassword: !newPassword ? 'Bắt buộc' : '',
+        }
+      );
+    }
+
+    const cleanNewPassword = String(newPassword).trim();
+    if (cleanNewPassword.length < 4) {
+      throw new ApiError(
+        400,
+        'VALIDATION_ERROR',
+        'Mật khẩu mới phải có ít nhất 4 ký tự',
+        { newPassword: 'Tối thiểu 4 ký tự' }
+      );
+    }
+
+    let staff = null;
+    if (req.user?.userId) {
+      staff = await staffRepo.findById(req.user.userId);
+    }
+    if (!staff && username) {
+      staff = await staffRepo.findOne({
+        username: String(username).trim().toLowerCase(),
+      });
+    }
+    if (!staff && req.user?.username) {
+      staff = await staffRepo.findOne({
+        username: String(req.user.username).trim().toLowerCase(),
+      });
+    }
+
+    if (!staff) {
+      throw new ApiError(404, 'STAFF_NOT_FOUND', 'Không tìm thấy tài khoản cần đổi mật khẩu');
+    }
+
+    if (!verifyPassword(String(currentPassword), staff.passwordHash)) {
+      throw new ApiError(
+        400,
+        'INVALID_CURRENT_PASSWORD',
+        'Mật khẩu hiện tại không chính xác',
+        { currentPassword: 'Không chính xác' }
+      );
+    }
+
+    await staffRepo.updateById(staff._id, {
+      passwordHash: hashPassword(cleanNewPassword),
+    });
+
+    res.json({
+      data: {
+        changed: true,
+        _id: staff._id,
+        username: staff.username,
+        fullName: staff.fullName,
+      },
+      meta: {},
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/v1/staff
 authStaffRouter.get('/staff', async (req, res, next) => {
   try {

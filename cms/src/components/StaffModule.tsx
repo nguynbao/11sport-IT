@@ -11,6 +11,8 @@ import {
   Unlock,
   CheckCircle2,
   AlertCircle,
+  KeyRound,
+  X,
 } from "lucide-react";
 
 export default function StaffModule() {
@@ -20,6 +22,12 @@ export default function StaffModule() {
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [role, setRole] = useState<UserRole>("SALES");
+
+  // Modal đổi mật khẩu cho nhân viên / quản trị viên
+  const [pwdTargetStaff, setPwdTargetStaff] = useState<StaffUser | null>(null);
+  const [newStaffPassword, setNewStaffPassword] = useState("");
+  const [confirmStaffPassword, setConfirmStaffPassword] = useState("");
+  const [pwdSaving, setPwdSaving] = useState(false);
 
   const [statusMsg, setStatusMsg] = useState<{
     type: "success" | "error";
@@ -72,7 +80,12 @@ export default function StaffModule() {
 
   const handleUpdateStaff = async (
     staff: StaffUser,
-    updates: { role?: UserRole; status?: "ACTIVE" | "LOCKED"; fullName?: string }
+    updates: {
+      role?: UserRole;
+      status?: "ACTIVE" | "LOCKED";
+      fullName?: string;
+      password?: string;
+    }
   ) => {
     setStatusMsg(null);
     try {
@@ -90,6 +103,56 @@ export default function StaffModule() {
         type: "error",
         text: err?.message || "Lỗi khi cập nhật nhân viên.",
       });
+    }
+  };
+
+  const handleOpenResetPassword = (staff: StaffUser) => {
+    setPwdTargetStaff(staff);
+    setNewStaffPassword("");
+    setConfirmStaffPassword("");
+    setStatusMsg(null);
+  };
+
+  const handleResetStaffPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pwdTargetStaff) return;
+    setStatusMsg(null);
+    const cleanPwd = newStaffPassword.trim();
+    if (cleanPwd.length < 4) {
+      setStatusMsg({
+        type: "error",
+        text: "Mật khẩu mới phải có ít nhất 4 ký tự.",
+      });
+      return;
+    }
+    if (cleanPwd !== confirmStaffPassword.trim()) {
+      setStatusMsg({
+        type: "error",
+        text: "Xác nhận mật khẩu mới không khớp.",
+      });
+      return;
+    }
+
+    setPwdSaving(true);
+    try {
+      await apiRequest(`/staff/${pwdTargetStaff._id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ password: cleanPwd }),
+      });
+      setStatusMsg({
+        type: "success",
+        text: `Đã đổi mật khẩu cho tài khoản "${pwdTargetStaff.username}" (${pwdTargetStaff.fullName}) thành công!`,
+      });
+      setPwdTargetStaff(null);
+      setNewStaffPassword("");
+      setConfirmStaffPassword("");
+    } catch (err: any) {
+      setStatusMsg({
+        type: "error",
+        text: err?.message || "Không thể đổi mật khẩu cho tài khoản này.",
+      });
+    } finally {
+      setPwdSaving(false);
     }
   };
 
@@ -209,7 +272,7 @@ export default function StaffModule() {
                 <th className="py-3 px-4">Họ và tên</th>
                 <th className="py-3 px-4">Phân quyền (Role)</th>
                 <th className="py-3 px-4 text-center">Trạng thái</th>
-                <th className="py-3 px-4 text-right">Khóa / Mở khóa</th>
+                <th className="py-3 px-4 text-right">Đổi mật khẩu / Khóa TK</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -250,30 +313,40 @@ export default function StaffModule() {
                       {st.status === "ACTIVE" ? "Đang hoạt động" : "Đã khóa"}
                     </span>
                   </td>
-                  <td className="py-3 px-4 text-right">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleUpdateStaff(st, {
-                          status: st.status === "ACTIVE" ? "LOCKED" : "ACTIVE",
-                        })
-                      }
-                      className={`px-3 py-1.5 rounded-lg font-bold inline-flex items-center gap-1 ${
-                        st.status === "ACTIVE"
-                          ? "bg-red-50 hover:bg-red-100 text-red-600"
-                          : "bg-emerald-50 hover:bg-emerald-100 text-emerald-700"
-                      }`}
-                    >
-                      {st.status === "ACTIVE" ? (
-                        <>
-                          <Lock className="w-3.5 h-3.5" /> Khóa TK
-                        </>
-                      ) : (
-                        <>
-                          <Unlock className="w-3.5 h-3.5" /> Mở khóa
-                        </>
-                      )}
-                    </button>
+                  <td className="py-3 px-4 text-right whitespace-nowrap">
+                    <div className="inline-flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenResetPassword(st)}
+                        className="px-3 py-1.5 rounded-lg font-bold inline-flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200"
+                      >
+                        <KeyRound className="w-3.5 h-3.5" /> Đổi mật khẩu
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleUpdateStaff(st, {
+                            status: st.status === "ACTIVE" ? "LOCKED" : "ACTIVE",
+                          })
+                        }
+                        className={`px-3 py-1.5 rounded-lg font-bold inline-flex items-center gap-1 ${
+                          st.status === "ACTIVE"
+                            ? "bg-red-50 hover:bg-red-100 text-red-600"
+                            : "bg-emerald-50 hover:bg-emerald-100 text-emerald-700"
+                        }`}
+                      >
+                        {st.status === "ACTIVE" ? (
+                          <>
+                            <Lock className="w-3.5 h-3.5" /> Khóa TK
+                          </>
+                        ) : (
+                          <>
+                            <Unlock className="w-3.5 h-3.5" /> Mở khóa
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -281,6 +354,88 @@ export default function StaffModule() {
           </table>
         </div>
       </div>
+
+      {/* Modal Đổi mật khẩu cho nhân viên / Admin */}
+      {pwdTargetStaff && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <KeyRound className="w-4 h-4 text-emerald-400" />
+                <h4 className="font-extrabold text-sm">
+                  Đổi mật khẩu tài khoản: {pwdTargetStaff.username}
+                </h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPwdTargetStaff(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleResetStaffPassword} className="p-5 space-y-4">
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-1">
+                <div>
+                  Nhân sự: <strong className="text-slate-900">{pwdTargetStaff.fullName}</strong>
+                </div>
+                <div>
+                  Username: <span className="font-mono font-bold">{pwdTargetStaff.username}</span> · Vai trò:{" "}
+                  <span className="font-mono font-bold text-emerald-700">{pwdTargetStaff.role}</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Mật khẩu mới (Tối thiểu 4 ký tự) *
+                </label>
+                <input
+                  type="password"
+                  required
+                  minLength={4}
+                  value={newStaffPassword}
+                  onChange={(e) => setNewStaffPassword(e.target.value)}
+                  placeholder="Nhập mật khẩu mới..."
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Xác nhận mật khẩu mới *
+                </label>
+                <input
+                  type="password"
+                  required
+                  minLength={4}
+                  value={confirmStaffPassword}
+                  onChange={(e) => setConfirmStaffPassword(e.target.value)}
+                  placeholder="Nhập lại mật khẩu mới..."
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setPwdTargetStaff(null)}
+                  className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={pwdSaving}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-xs font-bold shadow"
+                >
+                  {pwdSaving ? "Đang lưu..." : "Lưu mật khẩu mới"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
