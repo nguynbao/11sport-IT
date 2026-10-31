@@ -1528,224 +1528,374 @@ export default function RevenueDashboardModule({ onNavigateToInventory }: Props)
 
               {/* CHẾ ĐỘ 1: BIỂU ĐỒ CỘT ĐỨNG ĐÔI (COLUMN CHART) */}
               {chartType === "COLUMN" && (
-                <div className="pt-4 pb-1">
-                  <div className="relative h-56 flex items-end gap-2 sm:gap-3 border-b border-slate-300 px-2 pb-1">
-                    {/* Đường lưới ngang tham chiếu */}
-                    <div className="absolute inset-0 flex flex-col justify-between pointer-events-none pb-1">
+                <div className="pt-3 pb-1 overflow-hidden">
+                  <div className="flex items-stretch gap-2">
+                    {/* Cột nhãn trục Y cố định bên trái */}
+                    <div className="w-11 shrink-0 h-56 flex flex-col justify-between text-right pr-1 pb-1 select-none">
                       {[1, 0.75, 0.5, 0.25, 0].map((ratio, idx) => (
-                        <div
+                        <span
                           key={idx}
-                          className="border-b border-dashed border-slate-200/90 w-full flex items-center"
+                          className="text-[10px] font-mono text-slate-400 leading-none"
                         >
-                          <span className="text-[10px] font-mono text-slate-400 bg-slate-50 pr-1 -mt-3">
-                            {formatShortVND(Math.round(maxSeriesRevenue * ratio))}
-                          </span>
-                        </div>
+                          {formatShortVND(Math.round(maxSeriesRevenue * ratio))}
+                        </span>
                       ))}
                     </div>
 
-                    {chartSeries.map((d) => {
-                      const revH = Math.min(
-                        100,
-                        Math.max(4, Math.round((Math.max(0, d.netRevenue) / maxSeriesRevenue) * 100))
-                      );
-                      const profH = Math.min(
-                        100,
-                        Math.max(
-                          d.grossProfit > 0 ? 3 : 0,
-                          Math.round((Math.max(0, d.grossProfit) / maxSeriesRevenue) * 100)
-                        )
-                      );
-                      return (
-                        <div
-                          key={d.key}
-                          className="flex-1 min-w-[28px] h-full flex flex-col justify-end items-center group relative z-10"
-                        >
-                          {/* Tooltip chi tiết khi di chuột */}
-                          <div className="opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity absolute bottom-full mb-2 z-30 bg-slate-900 text-white text-[11px] rounded-xl px-3 py-2 shadow-xl whitespace-nowrap border border-slate-700">
-                            <div className="font-extrabold text-emerald-300 border-b border-slate-700 pb-1 mb-1">
-                              {d.fullLabel} ({d.orders} đơn · {d.unitsSold} SP)
-                            </div>
-                            <div className="font-mono flex justify-between gap-3">
-                              <span className="text-slate-300">Doanh thu:</span>
-                              <strong className="text-emerald-400">{formatVND(d.netRevenue)}</strong>
-                            </div>
-                            <div className="font-mono flex justify-between gap-3">
-                              <span className="text-slate-300">Giá vốn:</span>
-                              <span className="text-amber-300">{formatVND(d.cogs)}</span>
-                            </div>
-                            <div className="font-mono flex justify-between gap-3">
-                              <span className="text-slate-300">Lãi gộp:</span>
-                              <strong className="text-indigo-300">{formatVND(d.grossProfit)}</strong>
-                            </div>
-                          </div>
-
-                          {/* Nhãn giá trị trên đầu cột */}
-                          <span className="text-[10px] font-mono font-bold text-emerald-800 mb-1 hidden sm:block">
-                            {formatShortVND(d.netRevenue)}
-                          </span>
-
-                          {/* Cặp cột Doanh thu & Lãi gộp */}
-                          <div className="w-full max-w-[38px] h-[82%] flex items-end justify-center gap-1">
-                            <div
-                              className="flex-1 bg-gradient-to-t from-emerald-600 to-emerald-400 group-hover:from-emerald-500 group-hover:to-emerald-300 rounded-t-md shadow-sm transition-all"
-                              style={{ height: `${revH}%` }}
-                            />
-                            <div
-                              className="flex-1 bg-gradient-to-t from-indigo-600 to-indigo-400 group-hover:from-indigo-500 group-hover:to-indigo-300 rounded-t-md shadow-sm transition-all"
-                              style={{ height: `${profH}%` }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Nhãn trục X */}
-                  <div className="flex items-center gap-2 sm:gap-3 px-2 pt-2">
-                    {chartSeries.map((d) => (
+                    {/* Vùng vẽ các cột tràn đều 100% chiều ngang, không tràn khung */}
+                    <div className="flex-1 min-w-0">
                       <div
-                        key={d.key}
-                        className="flex-1 min-w-[28px] text-center font-mono text-[10px] font-bold text-slate-600 truncate"
+                        className={`relative h-56 flex items-end border-b border-slate-300 pb-1 ${
+                          chartSeries.length > 20
+                            ? "gap-0.5 sm:gap-1"
+                            : chartSeries.length > 12
+                            ? "gap-1 sm:gap-1.5"
+                            : "gap-2 sm:gap-3"
+                        }`}
                       >
-                        {d.label}
+                        {/* Đường lưới ngang tham chiếu */}
+                        <div className="absolute inset-0 flex flex-col justify-between pointer-events-none pb-1">
+                          {[1, 0.75, 0.5, 0.25, 0].map((_, idx) => (
+                            <div
+                              key={idx}
+                              className="border-b border-dashed border-slate-200/90 w-full"
+                            />
+                          ))}
+                        </div>
+
+                        {chartSeries.map((d) => {
+                          const hasRev = d.netRevenue > 0;
+                          const hasProf = d.grossProfit > 0;
+                          const revH = hasRev
+                            ? Math.min(
+                                100,
+                                Math.max(6, Math.round((d.netRevenue / maxSeriesRevenue) * 100))
+                              )
+                            : 2;
+                          const profH = hasProf
+                            ? Math.min(
+                                100,
+                                Math.max(4, Math.round((d.grossProfit / maxSeriesRevenue) * 100))
+                              )
+                            : 0;
+                          return (
+                            <div
+                              key={d.key}
+                              className="flex-1 min-w-0 h-full flex flex-col justify-end items-center group relative z-10"
+                            >
+                              {/* Tooltip chi tiết khi di chuột */}
+                              <div className="opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity absolute bottom-full mb-2 z-30 bg-slate-900 text-white text-[11px] rounded-xl px-3 py-2 shadow-xl whitespace-nowrap border border-slate-700 left-1/2 -translate-x-1/2">
+                                <div className="font-extrabold text-emerald-300 border-b border-slate-700 pb-1 mb-1">
+                                  {d.fullLabel} ({d.orders} đơn · {d.unitsSold} SP)
+                                </div>
+                                <div className="font-mono flex justify-between gap-3">
+                                  <span className="text-slate-300">Doanh thu:</span>
+                                  <strong className="text-emerald-400">
+                                    {formatVND(d.netRevenue)}
+                                  </strong>
+                                </div>
+                                <div className="font-mono flex justify-between gap-3">
+                                  <span className="text-slate-300">Giá vốn:</span>
+                                  <span className="text-amber-300">{formatVND(d.cogs)}</span>
+                                </div>
+                                <div className="font-mono flex justify-between gap-3">
+                                  <span className="text-slate-300">Lãi gộp:</span>
+                                  <strong className="text-indigo-300">
+                                    {formatVND(d.grossProfit)}
+                                  </strong>
+                                </div>
+                              </div>
+
+                              {/* Cặp cột Doanh thu & Lãi gộp bám sát đáy */}
+                              <div className="relative w-full max-w-[34px] h-[86%] flex items-end justify-center gap-0.5 sm:gap-1">
+                                {/* Nhãn giá trị nằm ngay trên đỉnh cột có doanh thu */}
+                                {hasRev && (
+                                  <span
+                                    className="
+                                      absolute left-1/2 -translate-x-1/2 mb-1
+                                      text-[9px] sm:text-[10px] font-mono font-extrabold text-emerald-800
+                                      whitespace-nowrap pointer-events-none
+                                    "
+                                    style={{ bottom: `${Math.max(revH, profH)}%` }}
+                                  >
+                                    {formatShortVND(d.netRevenue)}
+                                  </span>
+                                )}
+
+                                <div
+                                  className={`flex-1 rounded-t-sm sm:rounded-t-md transition-all ${
+                                    hasRev
+                                      ? "bg-gradient-to-t from-emerald-600 to-emerald-400 group-hover:from-emerald-500 group-hover:to-emerald-300 shadow-sm"
+                                      : "bg-slate-200/80"
+                                  }`}
+                                  style={{ height: `${revH}%` }}
+                                />
+                                { (hasProf || chartSeries.length <= 16) && (
+                                  <div
+                                    className={`flex-1 rounded-t-sm sm:rounded-t-md transition-all ${
+                                      hasProf
+                                        ? "bg-gradient-to-t from-indigo-600 to-indigo-400 group-hover:from-indigo-500 group-hover:to-indigo-300 shadow-sm"
+                                        : "bg-transparent"
+                                    }`}
+                                    style={{ height: `${profH}%` }}
+                                  />
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                    ))}
+
+                      {/* Nhãn trục X tự động giản lược khi có nhiều ngày */}
+                      <div
+                        className={`flex items-center pt-2 ${
+                          chartSeries.length > 20
+                            ? "gap-0.5 sm:gap-1"
+                            : chartSeries.length > 12
+                            ? "gap-1 sm:gap-1.5"
+                            : "gap-2 sm:gap-3"
+                        }`}
+                      >
+                        {chartSeries.map((d, idx) => {
+                          const n = chartSeries.length;
+                          const step = n > 22 ? 3 : n > 12 ? 2 : 1;
+                          const showLabel =
+                            idx === 0 ||
+                            idx === n - 1 ||
+                            (idx % step === 0 && n - 1 - idx >= Math.ceil(step / 2));
+                          return (
+                            <div
+                              key={d.key}
+                              className="flex-1 min-w-0 text-center font-mono text-[9px] sm:text-[10px] font-bold text-slate-600 overflow-visible"
+                            >
+                              {showLabel ? (
+                                <span className="inline-block whitespace-nowrap">
+                                  {d.label}
+                                </span>
+                              ) : (
+                                <span className="text-slate-300">·</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
 
-              {/* CHẾ ĐỘ 2: BIỂU ĐỒ ĐƯỜNG & MIỀN (SVG AREA / LINE CHART) */}
+              {/* CHẾ ĐỘ 2: BIỂU ĐỒ ĐƯỜNG & MIỀN (SVG AREA / LINE CHART - FULL WIDTH KHÔNG PADDING 2 BÊN) */}
               {chartType === "AREA" && (
-                <div className="pt-2">
-                  <div className="relative h-56 w-full">
-                    <svg viewBox="0 0 700 220" className="w-full h-full overflow-visible">
-                      <defs>
-                        <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#10b981" stopOpacity="0.35" />
-                          <stop offset="100%" stopColor="#10b981" stopOpacity="0.02" />
-                        </linearGradient>
-                        <linearGradient id="profGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#6366f1" stopOpacity="0.3" />
-                          <stop offset="100%" stopColor="#6366f1" stopOpacity="0.02" />
-                        </linearGradient>
-                      </defs>
+                <div className="pt-3 pb-1">
+                  <div className="flex items-stretch gap-2">
+                    {/* Cột nhãn trục Y cố định sát lề trái */}
+                    <div className="w-11 shrink-0 h-56 flex flex-col justify-between text-right pr-1 pb-1 select-none">
+                      {[1, 0.75, 0.5, 0.25, 0].map((ratio, idx) => (
+                        <span
+                          key={idx}
+                          className="text-[10px] font-mono text-slate-400 leading-none"
+                        >
+                          {formatShortVND(Math.round(maxSeriesRevenue * ratio))}
+                        </span>
+                      ))}
+                    </div>
 
-                      {/* Lưới ngang */}
-                      {[0, 0.25, 0.5, 0.75, 1].map((r, i) => {
-                        const y = 20 + r * 170;
-                        return (
-                          <g key={i}>
-                            <line
-                              x1="45"
-                              y1={y}
-                              x2="685"
-                              y2={y}
-                              stroke="#cbd5e1"
-                              strokeDasharray="4 4"
-                              strokeWidth="1"
+                    {/* Vùng đồ thị kéo sát 100% mép trái - phải (bỏ hoàn toàn padding 2 bên) */}
+                    <div className="flex-1 min-w-0">
+                      <div className="relative h-56 w-full border-b border-slate-300">
+                        {/* Đường lưới ngang */}
+                        <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
+                          {[1, 0.75, 0.5, 0.25, 0].map((_, idx) => (
+                            <div
+                              key={idx}
+                              className="border-b border-dashed border-slate-200/90 w-full"
                             />
-                            <text
-                              x="40"
-                              y={y + 3}
-                              textAnchor="end"
-                              className="fill-slate-400 text-[10px] font-mono"
+                          ))}
+                        </div>
+
+                        {/* SVG đường & miền phủ kín 100% chiều rộng từ x=0 đến x=1000 */}
+                        <svg
+                          viewBox="0 0 1000 200"
+                          preserveAspectRatio="none"
+                          className="w-full h-full block overflow-visible"
+                        >
+                          <defs>
+                            <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#10b981" stopOpacity="0.38" />
+                              <stop offset="100%" stopColor="#10b981" stopOpacity="0.02" />
+                            </linearGradient>
+                            <linearGradient id="profGrad" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#6366f1" stopOpacity="0.32" />
+                              <stop offset="100%" stopColor="#6366f1" stopOpacity="0.02" />
+                            </linearGradient>
+                          </defs>
+
+                          {(() => {
+                            const n = chartSeries.length;
+                            const getX = (idx: number) =>
+                              n === 1 ? 500 : (idx / (n - 1)) * 1000;
+                            const getRevY = (v: number) =>
+                              196 - (Math.max(0, v) / maxSeriesRevenue) * 184;
+                            const getProfY = (v: number) =>
+                              196 - (Math.max(0, v) / maxSeriesRevenue) * 184;
+
+                            const revPoints =
+                              n === 1
+                                ? `0,${getRevY(chartSeries[0].netRevenue)} 500,${getRevY(
+                                    chartSeries[0].netRevenue
+                                  )} 1000,${getRevY(chartSeries[0].netRevenue)}`
+                                : chartSeries
+                                    .map((d, i) => `${getX(i)},${getRevY(d.netRevenue)}`)
+                                    .join(" ");
+                            const profPoints =
+                              n === 1
+                                ? `0,${getProfY(chartSeries[0].grossProfit)} 500,${getProfY(
+                                    chartSeries[0].grossProfit
+                                  )} 1000,${getProfY(chartSeries[0].grossProfit)}`
+                                : chartSeries
+                                    .map((d, i) => `${getX(i)},${getProfY(d.grossProfit)}`)
+                                    .join(" ");
+
+                            const revArea = `0,200 ${revPoints} 1000,200`;
+                            const profArea = `0,200 ${profPoints} 1000,200`;
+
+                            return (
+                              <>
+                                <polygon points={revArea} fill="url(#revGrad)" />
+                                <polygon points={profArea} fill="url(#profGrad)" />
+                                <polyline
+                                  fill="none"
+                                  stroke="#10b981"
+                                  strokeWidth="2.5"
+                                  vectorEffect="non-scaling-stroke"
+                                  points={revPoints}
+                                />
+                                <polyline
+                                  fill="none"
+                                  stroke="#6366f1"
+                                  strokeWidth="2"
+                                  strokeDasharray="5 3"
+                                  vectorEffect="non-scaling-stroke"
+                                  points={profPoints}
+                                />
+                              </>
+                            );
+                          })()}
+                        </svg>
+
+                        {/* Các nút chấm tròn (Dots) & Tooltip chuẩn tỷ lệ 1:1 không bị méo */}
+                        <div className="absolute inset-0 pointer-events-none">
+                          {chartSeries.map((d, i) => {
+                            const n = chartSeries.length;
+                            const leftPct = n === 1 ? 50 : (i / (n - 1)) * 100;
+                            const revBottomPct =
+                              2 + (Math.max(0, d.netRevenue) / maxSeriesRevenue) * 92;
+                            const profBottomPct =
+                              2 + (Math.max(0, d.grossProfit) / maxSeriesRevenue) * 92;
+                            const hasVal = d.netRevenue > 0 || d.grossProfit > 0;
+
+                            return (
+                              <div
+                                key={d.key}
+                                className="absolute top-0 bottom-0 group pointer-events-auto"
+                                style={{
+                                  left: `${leftPct}%`,
+                                  width: n > 20 ? "14px" : "22px",
+                                  transform: "translateX(-50%)",
+                                }}
+                              >
+                                {/* Đường gióng dọc khi hover */}
+                                <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-emerald-500/50" />
+
+                                {/* Tooltip chi tiết khi hover */}
+                                <div className="opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-30 bg-slate-900 text-white text-[11px] rounded-xl px-3 py-2 shadow-xl whitespace-nowrap border border-slate-700">
+                                  <div className="font-extrabold text-emerald-300 border-b border-slate-700 pb-1 mb-1">
+                                    {d.fullLabel} ({d.orders} đơn · {d.unitsSold} SP)
+                                  </div>
+                                  <div className="font-mono flex justify-between gap-3">
+                                    <span className="text-slate-300">Doanh thu:</span>
+                                    <strong className="text-emerald-400">
+                                      {formatVND(d.netRevenue)}
+                                    </strong>
+                                  </div>
+                                  <div className="font-mono flex justify-between gap-3">
+                                    <span className="text-slate-300">Giá vốn:</span>
+                                    <span className="text-amber-300">{formatVND(d.cogs)}</span>
+                                  </div>
+                                  <div className="font-mono flex justify-between gap-3">
+                                    <span className="text-slate-300">Lãi gộp:</span>
+                                    <strong className="text-indigo-300">
+                                      {formatVND(d.grossProfit)}
+                                    </strong>
+                                  </div>
+                                </div>
+
+                                {/* Nhãn số trên đỉnh điểm có doanh thu */}
+                                {d.netRevenue > 0 && (
+                                  <span
+                                    className="absolute left-1/2 -translate-x-1/2 mb-2 text-[9px] sm:text-[10px] font-mono font-extrabold text-emerald-800 whitespace-nowrap"
+                                    style={{ bottom: `${revBottomPct}%` }}
+                                  >
+                                    {formatShortVND(d.netRevenue)}
+                                  </span>
+                                )}
+
+                                {/* Điểm tròn Doanh thu */}
+                                <span
+                                  className={`absolute left-1/2 -translate-x-1/2 translate-y-1/2 rounded-full border-2 border-white shadow-sm transition-transform group-hover:scale-125 ${
+                                    hasVal
+                                      ? "w-2.5 h-2.5 bg-emerald-600"
+                                      : "w-1.5 h-1.5 bg-emerald-400/70"
+                                  }`}
+                                  style={{ bottom: `${revBottomPct}%` }}
+                                />
+
+                                {/* Điểm tròn Lãi gộp */}
+                                {(d.grossProfit > 0 || n <= 14) && (
+                                  <span
+                                    className={`absolute left-1/2 -translate-x-1/2 translate-y-1/2 rounded-full border border-white shadow-sm ${
+                                      d.grossProfit > 0
+                                        ? "w-2 h-2 bg-indigo-600"
+                                        : "w-1.5 h-1.5 bg-indigo-400/60"
+                                    }`}
+                                    style={{ bottom: `${profBottomPct}%` }}
+                                  />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Nhãn trục X bám sát từ mép trái đến mép phải, tự động giản lược khi có 30 ngày */}
+                      <div className="relative h-6 mt-2 w-full select-none">
+                        {chartSeries.map((d, idx) => {
+                          const n = chartSeries.length;
+                          const step = n > 22 ? 3 : n > 12 ? 2 : 1;
+                          const showLabel =
+                            idx === 0 ||
+                            idx === n - 1 ||
+                            (idx % step === 0 && n - 1 - idx >= Math.ceil(step / 2));
+                          if (!showLabel) return null;
+                          const leftPct = n === 1 ? 50 : (idx / (n - 1)) * 100;
+                          const alignClass =
+                            idx === 0
+                              ? "translate-x-0"
+                              : idx === n - 1
+                              ? "-translate-x-full"
+                              : "-translate-x-1/2";
+                          return (
+                            <span
+                              key={d.key}
+                              className={`absolute top-0 font-mono text-[9px] sm:text-[10px] font-bold text-slate-600 whitespace-nowrap ${alignClass}`}
+                              style={{ left: `${leftPct}%` }}
                             >
-                              {formatShortVND(Math.round(maxSeriesRevenue * (1 - r)))}
-                            </text>
-                          </g>
-                        );
-                      })}
-
-                      {(() => {
-                        const n = chartSeries.length;
-                        const getX = (idx: number) =>
-                          n === 1 ? 365 : 55 + (idx / (n - 1)) * 620;
-                        const getRevY = (v: number) =>
-                          190 - (Math.max(0, v) / maxSeriesRevenue) * 170;
-                        const getProfY = (v: number) =>
-                          190 - (Math.max(0, v) / maxSeriesRevenue) * 170;
-
-                        const revPoints =
-                          n === 1
-                            ? `55,${getRevY(chartSeries[0].netRevenue)} 365,${getRevY(
-                                chartSeries[0].netRevenue
-                              )} 675,${getRevY(chartSeries[0].netRevenue)}`
-                            : chartSeries
-                                .map((d, i) => `${getX(i)},${getRevY(d.netRevenue)}`)
-                                .join(" ");
-                        const profPoints =
-                          n === 1
-                            ? `55,${getProfY(chartSeries[0].grossProfit)} 365,${getProfY(
-                                chartSeries[0].grossProfit
-                              )} 675,${getProfY(chartSeries[0].grossProfit)}`
-                            : chartSeries
-                                .map((d, i) => `${getX(i)},${getProfY(d.grossProfit)}`)
-                                .join(" ");
-
-                        const firstX = n === 1 ? 55 : getX(0);
-                        const lastX = n === 1 ? 675 : getX(n - 1);
-                        const revArea = `${firstX},190 ${revPoints} ${lastX},190`;
-                        const profArea = `${firstX},190 ${profPoints} ${lastX},190`;
-
-                        return (
-                          <>
-                            <polygon points={revArea} fill="url(#revGrad)" />
-                            <polygon points={profArea} fill="url(#profGrad)" />
-                            <polyline
-                              fill="none"
-                              stroke="#10b981"
-                              strokeWidth="3"
-                              points={revPoints}
-                            />
-                            <polyline
-                              fill="none"
-                              stroke="#6366f1"
-                              strokeWidth="2.5"
-                              strokeDasharray="5 3"
-                              points={profPoints}
-                            />
-                            {chartSeries.map((d, i) => {
-                              const cx = getX(i);
-                              const cyRev = getRevY(d.netRevenue);
-                              const cyProf = getProfY(d.grossProfit);
-                              return (
-                                <g key={d.key}>
-                                  <circle
-                                    cx={cx}
-                                    cy={cyRev}
-                                    r="4.5"
-                                    className="fill-emerald-600 stroke-white stroke-2"
-                                  >
-                                    <title>
-                                      {d.fullLabel} — Doanh thu: {formatVND(d.netRevenue)}
-                                    </title>
-                                  </circle>
-                                  <circle
-                                    cx={cx}
-                                    cy={cyProf}
-                                    r="3.5"
-                                    className="fill-indigo-600 stroke-white stroke-2"
-                                  >
-                                    <title>
-                                      {d.fullLabel} — Lãi gộp: {formatVND(d.grossProfit)}
-                                    </title>
-                                  </circle>
-                                  <text
-                                    x={cx}
-                                    y={210}
-                                    textAnchor="middle"
-                                    className="fill-slate-600 text-[10px] font-mono font-bold"
-                                  >
-                                    {d.label}
-                                  </text>
-                                </g>
-                              );
-                            })}
-                          </>
-                        );
-                      })()}
-                    </svg>
+                              {d.label}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
