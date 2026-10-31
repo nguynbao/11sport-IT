@@ -57,6 +57,7 @@ export interface StockMovement {
   referenceCode?: string;
   performedBy?: string;
   performedByName?: string;
+  performedByRole?: string;
   note?: string;
   createdAt: string;
 }

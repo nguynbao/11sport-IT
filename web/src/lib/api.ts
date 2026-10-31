@@ -39,6 +39,13 @@ export interface Product {
   stock: number;
 }
 
+export interface ImportScanCount {
+  userId: string;
+  name: string;
+  role?: string;
+  quantity: number;
+}
+
 export interface ImportItem {
   stt: number;
   productCode: string;
@@ -52,6 +59,11 @@ export interface ImportItem {
   sellingPrice?: number;
   /** Số chiếc đã quét tag ở bước kiểm thực tế */
   scannedQuantity?: number;
+  checkedBy?: string;
+  checkedByName?: string;
+  checkedByRole?: string;
+  checkedAt?: string;
+  scanCounts?: ImportScanCount[];
   /** Mã vạch đã học được khi quét tag */
   barcode?: string;
   note: string;
@@ -71,6 +83,10 @@ export interface ImportReceipt {
   items: ImportItem[];
   createdBy?: string | { fullName?: string; username?: string };
   createdByName?: string;
+  createdByRole?: string;
+  completedBy?: string;
+  completedByName?: string;
+  completedByRole?: string;
   completedAt?: string;
   createdAt: string;
   updatedAt?: string;

@@ -37,10 +37,13 @@ describe('v1.4: Báo cáo hoạt động nhân viên (bán hàng / kiểm kho)',
 
   it('ghi nhận người quét kiểm trên dòng phiếu và giữ nguyên khi client PUT lại items (không tin dữ liệu client)', async () => {
     const detail = await request(app).get(`/api/v1/imports/${importId}`).set('x-user-id', 'warehouse1');
+    expect(detail.body.data.createdByRole).toBe('WAREHOUSE');
     const item = detail.body.data.items[0];
     expect(item.scannedQuantity).toBe(2);
     expect(item.checkedByName).toBeTruthy();
+    expect(item.checkedByRole).toBe('ADMIN');
     expect(item.scanCounts.length).toBe(2);
+    expect(item.scanCounts.map((s: any) => s.role).sort()).toEqual(['ADMIN', 'WAREHOUSE']);
 
     const forged = { ...item, scanCounts: [{ userId: 'x', name: 'Giả mạo', quantity: 99 }] };
     const put = await request(app)
@@ -54,6 +57,12 @@ describe('v1.4: Báo cáo hoạt động nhân viên (bán hàng / kiểm kho)',
       .set('x-user-id', 'warehouse1')
       .send({});
     expect(done.status).toBe(200);
+    expect(done.body.data.receipt.completedByRole).toBe('WAREHOUSE');
+
+    // Kiểm tra sổ kho lưu performedByRole = WAREHOUSE
+    const movRes = await request(app).get('/api/v1/inventory/movements?type=IMPORT').set('x-user-id', 'admin');
+    expect(movRes.status).toBe(200);
+    expect(movRes.body.data[0].performedByRole).toBe('WAREHOUSE');
   });
 
   it('bán hàng bởi sales1 rồi xem báo cáo bằng admin', async () => {
