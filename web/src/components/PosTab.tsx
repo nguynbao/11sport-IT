@@ -614,6 +614,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       setSuccessMsg(
         `Tạo đơn hàng ${createdOrder.orderCode || createdOrder.code || ""} thành công!`
       );
+      setCustomerPhone("");
+      setCustomerName("");
+      setIsExistingCustomer(false);
+      setCustomerOrders([]);
       setCart([]);
       setGiftCart([]);
       setSplitPayments([]);

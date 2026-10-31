@@ -34,6 +34,10 @@ import {
   Search,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   Trash2,
   ArrowLeftRight,
 } from "lucide-react";
@@ -59,6 +63,16 @@ export default function InventoryModule() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [movementType, setMovementType] = useState("");
+
+  // Phân trang (Pagination) cho Quản lý kho
+  const [prodPage, setProdPage] = useState<number>(1);
+  const [prodPageSize, setProdPageSize] = useState<number>(15);
+  const [reportPage, setReportPage] = useState<number>(1);
+  const [reportPageSize, setReportPageSize] = useState<number>(20);
+  const [movPage, setMovPage] = useState<number>(1);
+  const [movPageSize, setMovPageSize] = useState<number>(20);
+  const [impPage, setImpPage] = useState<number>(1);
+  const [impPageSize, setImpPageSize] = useState<number>(15);
 
   // Tên, Category, ĐVT, Số lượng từng tầng (Tầng 1, Tầng 2), Giá gốc & Giá bán chỉnh sửa theo productId
   const [editingNames, setEditingNames] = useState<Record<string, string>>({});
@@ -638,6 +652,220 @@ export default function InventoryModule() {
       ? "🏬 Kho Tầng 2"
       : "📊 Tổng hợp Cả 2 Kho (Tầng 1 + Tầng 2)";
 
+  // Reset trang về 1 khi thay đổi bộ lọc
+  useEffect(() => {
+    setProdPage(1);
+  }, [activeWarehouse, showZeroFloorItems, search, categoryId, prodPageSize]);
+
+  useEffect(() => {
+    setReportPage(1);
+  }, [activeWarehouse, fromDate, toDate, categoryId, reportPageSize]);
+
+  useEffect(() => {
+    setMovPage(1);
+  }, [activeWarehouse, movementType, fromDate, toDate, movPageSize]);
+
+  useEffect(() => {
+    setImpPage(1);
+  }, [activeWarehouse, impPageSize]);
+
+  const prodTotalPages =
+    prodPageSize <= 0
+      ? 1
+      : Math.max(1, Math.ceil(displayedProducts.length / prodPageSize));
+  const safeProdPage = Math.min(prodPage, prodTotalPages);
+  const pagedProducts =
+    prodPageSize <= 0
+      ? displayedProducts
+      : displayedProducts.slice(
+          (safeProdPage - 1) * prodPageSize,
+          safeProdPage * prodPageSize
+        );
+
+  const filteredReportRows = reportRows.filter((r) => {
+    if (activeWarehouse === "FLOOR_1") {
+      return (
+        (Number(r.stockFloor1 ?? r.closingStock) || 0) > 0 ||
+        floor1ImportedCodes.has(r.productCode)
+      );
+    }
+    if (activeWarehouse === "FLOOR_2") {
+      return (
+        (Number(r.stockFloor2) || 0) > 0 ||
+        floor2ImportedCodes.has(r.productCode)
+      );
+    }
+    return true;
+  });
+  const reportTotalPages =
+    reportPageSize <= 0
+      ? 1
+      : Math.max(1, Math.ceil(filteredReportRows.length / reportPageSize));
+  const safeReportPage = Math.min(reportPage, reportTotalPages);
+  const pagedReportRows =
+    reportPageSize <= 0
+      ? filteredReportRows
+      : filteredReportRows.slice(
+          (safeReportPage - 1) * reportPageSize,
+          safeReportPage * reportPageSize
+        );
+
+  const filteredMovements = movements.filter((m) => {
+    if (activeWarehouse === "ALL") return true;
+    const loc = m.warehouseLocation || "FLOOR_1";
+    return loc === activeWarehouse;
+  });
+  const movTotalPages =
+    movPageSize <= 0
+      ? 1
+      : Math.max(1, Math.ceil(filteredMovements.length / movPageSize));
+  const safeMovPage = Math.min(movPage, movTotalPages);
+  const pagedMovements =
+    movPageSize <= 0
+      ? filteredMovements
+      : filteredMovements.slice(
+          (safeMovPage - 1) * movPageSize,
+          safeMovPage * movPageSize
+        );
+
+  const filteredImports = importsList.filter((imp) => {
+    if (activeWarehouse === "ALL") return true;
+    const wh = imp.targetWarehouse === "FLOOR_2" ? "FLOOR_2" : "FLOOR_1";
+    return wh === activeWarehouse;
+  });
+  const impTotalPages =
+    impPageSize <= 0
+      ? 1
+      : Math.max(1, Math.ceil(filteredImports.length / impPageSize));
+  const safeImpPage = Math.min(impPage, impTotalPages);
+  const pagedImports =
+    impPageSize <= 0
+      ? filteredImports
+      : filteredImports.slice(
+          (safeImpPage - 1) * impPageSize,
+          safeImpPage * impPageSize
+        );
+
+  const renderPaginationBar = (opts: {
+    totalItems: number;
+    page: number;
+    totalPages: number;
+    pageSize: number;
+    onPageChange: (p: number) => void;
+    onPageSizeChange: (sz: number) => void;
+    itemLabel?: string;
+  }) => {
+    const {
+      totalItems,
+      page,
+      totalPages,
+      pageSize,
+      onPageChange,
+      onPageSizeChange,
+      itemLabel = "mặt hàng",
+    } = opts;
+    if (totalItems === 0) return null;
+    const startIdx = pageSize <= 0 ? 1 : (page - 1) * pageSize + 1;
+    const endIdx =
+      pageSize <= 0 ? totalItems : Math.min(page * pageSize, totalItems);
+
+    const pages: number[] = [];
+    const maxButtons = 5;
+    let startPage = Math.max(1, page - Math.floor(maxButtons / 2));
+    let endPage = Math.min(totalPages, startPage + maxButtons - 1);
+    if (endPage - startPage + 1 < maxButtons) {
+      startPage = Math.max(1, endPage - maxButtons + 1);
+    }
+    for (let i = startPage; i <= endPage; i++) pages.push(i);
+
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-3 pt-2 text-xs text-slate-600">
+        <div className="flex flex-wrap items-center gap-2">
+          <span>
+            Hiển thị{" "}
+            <strong className="text-slate-900 font-mono">
+              {startIdx}–{endIdx}
+            </strong>{" "}
+            trên tổng{" "}
+            <strong className="text-emerald-700 font-mono">{totalItems}</strong>{" "}
+            {itemLabel}
+          </span>
+          <span className="text-slate-300">|</span>
+          <label className="inline-flex items-center gap-1.5 font-semibold text-slate-700">
+            <span>Số dòng/trang:</span>
+            <select
+              value={pageSize}
+              onChange={(e) => onPageSizeChange(Number(e.target.value))}
+              className="px-2 py-1 rounded-lg border border-slate-300 bg-white font-mono font-bold text-slate-900"
+            >
+              <option value={10}>10</option>
+              <option value={15}>15</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={0}>Tất cả ({totalItems})</option>
+            </select>
+          </label>
+        </div>
+
+        {totalPages > 1 && (
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              disabled={page <= 1}
+              onClick={() => onPageChange(1)}
+              className="p-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40"
+              title="Trang đầu"
+            >
+              <ChevronsLeft className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              disabled={page <= 1}
+              onClick={() => onPageChange(page - 1)}
+              className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 font-bold inline-flex items-center gap-1"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" /> Trước
+            </button>
+
+            {pages.map((pNum) => (
+              <button
+                key={pNum}
+                type="button"
+                onClick={() => onPageChange(pNum)}
+                className={`w-8 h-8 rounded-lg font-mono font-extrabold text-xs transition ${
+                  pNum === page
+                    ? "bg-emerald-600 text-white shadow"
+                    : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                }`}
+              >
+                {pNum}
+              </button>
+            ))}
+
+            <button
+              type="button"
+              disabled={page >= totalPages}
+              onClick={() => onPageChange(page + 1)}
+              className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 font-bold inline-flex items-center gap-1"
+            >
+              Tiếp <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              disabled={page >= totalPages}
+              onClick={() => onPageChange(totalPages)}
+              className="p-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40"
+              title="Trang cuối"
+            >
+              <ChevronsRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* THANH CHỌN KHO (CHIA RIÊNG KHO TẦNG 1 VÀ KHO TẦNG 2) */}
@@ -1086,32 +1314,37 @@ export default function InventoryModule() {
               <table className="w-full text-xs text-left">
                 <thead className="bg-slate-900 text-white uppercase">
                   <tr>
-                    <th className="py-3 px-3">Mã hàng</th>
-                    <th className="py-3 px-3 min-w-[240px]">Tên sản phẩm</th>
-                    <th className="py-3 px-3 min-w-[130px]">Category</th>
-                    <th className="py-3 px-2.5 text-center w-20">ĐVT</th>
+                    <th className="py-3 px-2.5 w-12 text-center">STT</th>
+                    <th className="py-3 px-2.5 max-w-[180px]">Mã hàng</th>
+                    <th className="py-3 px-2.5 min-w-[220px]">Tên sản phẩm</th>
+                    <th className="py-3 px-2.5 w-32">Category</th>
+                    <th className="py-3 px-2 text-center w-16">ĐVT</th>
                     {(activeWarehouse === "FLOOR_1" || activeWarehouse === "ALL") && (
-                      <th className="py-3 px-3 text-right w-36 whitespace-nowrap bg-emerald-950 text-emerald-300">
+                      <th className="py-3 px-2.5 text-right w-32 whitespace-nowrap bg-emerald-950 text-emerald-300">
                         🏢 Tồn Kho Tầng 1
                       </th>
                     )}
                     {(activeWarehouse === "FLOOR_2" || activeWarehouse === "ALL") && (
-                      <th className="py-3 px-3 text-right w-36 whitespace-nowrap bg-purple-950 text-purple-300">
+                      <th className="py-3 px-2.5 text-right w-32 whitespace-nowrap bg-purple-950 text-purple-300">
                         🏬 Tồn Kho Tầng 2
                       </th>
                     )}
                     {activeWarehouse === "ALL" && (
-                      <th className="py-3 px-3 text-right w-28 whitespace-nowrap bg-slate-800">
+                      <th className="py-3 px-2.5 text-right w-24 whitespace-nowrap bg-slate-800">
                         Tổng 2 Kho
                       </th>
                     )}
-                    <th className="py-3 px-3 text-right w-40 whitespace-nowrap">Giá gốc (VND)</th>
-                    <th className="py-3 px-3 text-right w-40 whitespace-nowrap">Giá bán lẻ (VND)</th>
-                    <th className="py-3 px-3 text-right w-40 whitespace-nowrap">Thao tác</th>
+                    <th className="py-3 px-2.5 text-right w-36 whitespace-nowrap">Giá gốc (VND)</th>
+                    <th className="py-3 px-2.5 text-right w-36 whitespace-nowrap">Giá bán lẻ (VND)</th>
+                    <th className="py-3 px-2.5 text-right w-36 whitespace-nowrap">Thao tác</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {displayedProducts.map((p) => {
+                  {pagedProducts.map((p, idx) => {
+                    const rowStt =
+                      prodPageSize <= 0
+                        ? idx + 1
+                        : (safeProdPage - 1) * prodPageSize + idx + 1;
                     const nameVal = editingNames[p._id] ?? p.name ?? "";
                     const catVal =
                       editingCats[p._id] ??
@@ -1134,12 +1367,15 @@ export default function InventoryModule() {
                     const margin = sellVal - costVal;
                     return (
                       <tr key={p._id} className="hover:bg-slate-50">
-                        <td className="py-3 px-3 font-mono font-bold text-slate-800 align-top">
+                        <td className="py-3 px-2 text-center font-mono font-bold text-slate-400 align-top">
+                          {rowStt}
+                        </td>
+                        <td className="py-3 px-2.5 font-mono font-bold text-slate-800 align-top break-all max-w-[180px] text-[11px] leading-snug">
                           {p.code}
                         </td>
-                        <td className="py-3 px-3 align-top">
+                        <td className="py-3 px-2.5 align-top">
                           <textarea
-                            rows={Math.max(2, Math.ceil((nameVal.length || 0) / 36))}
+                            rows={Math.max(2, Math.ceil((nameVal.length || 0) / 42))}
                             value={nameVal}
                             onChange={(e) =>
                               setEditingNames((prev) => ({
@@ -1150,7 +1386,7 @@ export default function InventoryModule() {
                             className="w-full px-2.5 py-1.5 rounded border border-slate-300 font-semibold text-slate-900 whitespace-pre-wrap break-words leading-snug resize-y"
                           />
                         </td>
-                        <td className="py-3 px-3 align-top">
+                        <td className="py-3 px-2.5 align-top">
                           <select
                             value={catVal}
                             onChange={(e) =>
@@ -1168,7 +1404,7 @@ export default function InventoryModule() {
                             ))}
                           </select>
                         </td>
-                        <td className="py-3 px-2.5 text-center align-top">
+                        <td className="py-3 px-2 text-center align-top">
                           <input
                             type="text"
                             value={unitVal}
@@ -1178,12 +1414,12 @@ export default function InventoryModule() {
                                 [p._id]: e.target.value,
                               }))
                             }
-                            className="w-16 px-2 py-1.5 rounded border border-slate-300 text-center"
+                            className="w-14 px-1.5 py-1.5 rounded border border-slate-300 text-center"
                           />
                         </td>
 
                         {(activeWarehouse === "FLOOR_1" || activeWarehouse === "ALL") && (
-                          <td className="py-3 px-3 text-right align-top bg-emerald-50/30">
+                          <td className="py-3 px-2.5 text-right align-top bg-emerald-50/30">
                             <input
                               type="number"
                               min={0}
@@ -1195,7 +1431,7 @@ export default function InventoryModule() {
                                   [p._id]: Math.max(0, Math.round(Number(e.target.value) || 0)),
                                 }))
                               }
-                              className={`w-28 px-2.5 py-1.5 rounded border text-right font-mono font-extrabold ${
+                              className={`w-24 px-2 py-1.5 rounded border text-right font-mono font-extrabold ${
                                 f1Val !== origF1
                                   ? "border-emerald-500 bg-emerald-50 text-emerald-900"
                                   : "border-slate-300 bg-white text-emerald-700"
@@ -1215,7 +1451,7 @@ export default function InventoryModule() {
                         )}
 
                         {(activeWarehouse === "FLOOR_2" || activeWarehouse === "ALL") && (
-                          <td className="py-3 px-3 text-right align-top bg-purple-50/30">
+                          <td className="py-3 px-2.5 text-right align-top bg-purple-50/30">
                             <input
                               type="number"
                               min={0}
@@ -1227,7 +1463,7 @@ export default function InventoryModule() {
                                   [p._id]: Math.max(0, Math.round(Number(e.target.value) || 0)),
                                 }))
                               }
-                              className={`w-28 px-2.5 py-1.5 rounded border text-right font-mono font-extrabold ${
+                              className={`w-24 px-2 py-1.5 rounded border text-right font-mono font-extrabold ${
                                 f2Val !== origF2
                                   ? "border-purple-500 bg-purple-50 text-purple-900"
                                   : "border-slate-300 bg-white text-purple-700"
@@ -1247,13 +1483,13 @@ export default function InventoryModule() {
                         )}
 
                         {activeWarehouse === "ALL" && (
-                          <td className="py-3 px-3 text-right align-top font-mono font-extrabold text-slate-900 bg-slate-50">
+                          <td className="py-3 px-2.5 text-right align-top font-mono font-extrabold text-slate-900 bg-slate-50">
                             <div className="py-1.5">{f1Val + f2Val}</div>
                           </td>
                         )}
 
-                        <td className="py-3 px-3 text-right align-top">
-                          <div className="relative inline-block w-36">
+                        <td className="py-3 px-2.5 text-right align-top">
+                          <div className="relative inline-block w-32">
                             <input
                               type="text"
                               inputMode="numeric"
@@ -1265,22 +1501,22 @@ export default function InventoryModule() {
                                   [p._id]: parseNumberDots(e.target.value),
                                 }))
                               }
-                              className={`w-full pl-2.5 pr-10 py-1.5 rounded border text-right font-mono font-bold ${
+                              className={`w-full pl-2 pr-9 py-1.5 rounded border text-right font-mono font-bold ${
                                 costVal === 0
                                   ? "border-orange-300 bg-orange-50 text-orange-900"
                                   : "border-slate-300 bg-white text-slate-800"
                               }`}
                             />
-                            <span className="absolute right-2.5 top-2 text-[10px] font-mono font-bold text-slate-400 pointer-events-none">
+                            <span className="absolute right-2 top-2 text-[10px] font-mono font-bold text-slate-400 pointer-events-none">
                               VND
                             </span>
                           </div>
-                          <div className="mt-1 text-[10px] text-slate-500 font-mono">
+                          <div className="mt-1 text-[10px] text-slate-500 font-mono whitespace-nowrap">
                             Tổng vốn: {formatVND(activeQty * costVal)}
                           </div>
                         </td>
-                        <td className="py-3 px-3 text-right align-top">
-                          <div className="relative inline-block w-36">
+                        <td className="py-3 px-2.5 text-right align-top">
+                          <div className="relative inline-block w-32">
                             <input
                               type="text"
                               inputMode="numeric"
@@ -1292,22 +1528,22 @@ export default function InventoryModule() {
                                   [p._id]: parseNumberDots(e.target.value),
                                 }))
                               }
-                              className={`w-full pl-2.5 pr-10 py-1.5 rounded border text-right font-mono font-bold ${
+                              className={`w-full pl-2 pr-9 py-1.5 rounded border text-right font-mono font-bold ${
                                 sellVal === 0
                                   ? "border-amber-400 bg-amber-50 text-amber-900"
                                   : "border-slate-300 bg-white text-slate-900"
                               }`}
                             />
-                            <span className="absolute right-2.5 top-2 text-[10px] font-mono font-bold text-slate-400 pointer-events-none">
+                            <span className="absolute right-2 top-2 text-[10px] font-mono font-bold text-slate-400 pointer-events-none">
                               VND
                             </span>
                           </div>
-                          <div className="mt-1 text-[10px] text-slate-500 font-mono">
+                          <div className="mt-1 text-[10px] text-slate-500 font-mono whitespace-nowrap">
                             Tổng bán: {formatVND(activeQty * sellVal)}
                           </div>
                           {sellVal > 0 && costVal > 0 && (
                             <div
-                              className={`mt-0.5 text-[10px] font-bold ${
+                              className={`mt-0.5 text-[10px] font-bold whitespace-nowrap ${
                                 margin < 0 ? "text-red-600" : "text-emerald-700"
                               }`}
                             >
@@ -1316,12 +1552,12 @@ export default function InventoryModule() {
                             </div>
                           )}
                         </td>
-                        <td className="py-3 px-3 text-right align-top">
-                          <div className="inline-flex items-center gap-1.5">
+                        <td className="py-3 px-2.5 text-right align-top whitespace-nowrap">
+                          <div className="inline-flex items-center gap-1">
                             <button
                               type="button"
                               onClick={() => handleUpdateProductPrices(p)}
-                              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold inline-flex items-center gap-1"
+                              className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold inline-flex items-center gap-1"
                               title="Lưu thay đổi sản phẩm"
                             >
                               <Save className="w-3.5 h-3.5" /> Lưu
@@ -1359,11 +1595,11 @@ export default function InventoryModule() {
                 {displayedProducts.length > 0 && (
                   <tfoot className="bg-slate-100 border-t-2 border-slate-300 font-extrabold text-slate-900">
                     <tr>
-                      <td colSpan={4} className="py-3 px-3 text-right uppercase">
-                        Tổng cộng {activeWarehouseLabel} ({displayedProducts.length} sản phẩm):
+                      <td colSpan={5} className="py-3 px-3 text-right uppercase">
+                        Tổng toàn kho {activeWarehouseLabel} ({displayedProducts.length} mặt hàng):
                       </td>
                       {(activeWarehouse === "FLOOR_1" || activeWarehouse === "ALL") && (
-                        <td className="py-3 px-3 text-right font-mono text-emerald-700">
+                        <td className="py-3 px-2.5 text-right font-mono text-emerald-700">
                           {displayedProducts.reduce(
                             (s, p) => s + (Number(p.stockFloor1 ?? p.stock) || 0),
                             0
@@ -1371,7 +1607,7 @@ export default function InventoryModule() {
                         </td>
                       )}
                       {(activeWarehouse === "FLOOR_2" || activeWarehouse === "ALL") && (
-                        <td className="py-3 px-3 text-right font-mono text-purple-700">
+                        <td className="py-3 px-2.5 text-right font-mono text-purple-700">
                           {displayedProducts.reduce(
                             (s, p) => s + (Number(p.stockFloor2) || 0),
                             0
@@ -1379,14 +1615,14 @@ export default function InventoryModule() {
                         </td>
                       )}
                       {activeWarehouse === "ALL" && (
-                        <td className="py-3 px-3 text-right font-mono text-slate-900">
+                        <td className="py-3 px-2.5 text-right font-mono text-slate-900">
                           {totalStockQty}
                         </td>
                       )}
-                      <td className="py-3 px-3 text-right font-mono text-amber-800">
+                      <td className="py-3 px-2.5 text-right font-mono text-amber-800 whitespace-nowrap">
                         {formatVND(totalCostInventoryValue)}
                       </td>
-                      <td className="py-3 px-3 text-right font-mono text-emerald-800">
+                      <td className="py-3 px-2.5 text-right font-mono text-emerald-800 whitespace-nowrap">
                         {formatVND(totalSellInventoryValue)}
                       </td>
                       <td></td>
@@ -1395,6 +1631,16 @@ export default function InventoryModule() {
                 )}
               </table>
             </div>
+
+            {renderPaginationBar({
+              totalItems: displayedProducts.length,
+              page: safeProdPage,
+              totalPages: prodTotalPages,
+              pageSize: prodPageSize,
+              onPageChange: setProdPage,
+              onPageSizeChange: setProdPageSize,
+              itemLabel: "mặt hàng trong kho",
+            })}
           </div>
         </div>
       )}
@@ -1474,17 +1720,7 @@ export default function InventoryModule() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {reportRows
-                  .filter((r) => {
-                    if (activeWarehouse === "FLOOR_1") {
-                      return (Number(r.stockFloor1 ?? r.closingStock) || 0) > 0 || floor1ImportedCodes.has(r.productCode);
-                    }
-                    if (activeWarehouse === "FLOOR_2") {
-                      return (Number(r.stockFloor2) || 0) > 0 || floor2ImportedCodes.has(r.productCode);
-                    }
-                    return true;
-                  })
-                  .map((r, i) => {
+                {pagedReportRows.map((r, i) => {
                   const cost = Number(r.costPrice) || 0;
                   const sell = Number(r.sellingPrice) || 0;
                   const f1 = Number(r.stockFloor1 ?? r.closingStock) || 0;
@@ -1584,6 +1820,16 @@ export default function InventoryModule() {
               )}
             </table>
           </div>
+
+          {renderPaginationBar({
+            totalItems: filteredReportRows.length,
+            page: safeReportPage,
+            totalPages: reportTotalPages,
+            pageSize: reportPageSize,
+            onPageChange: setReportPage,
+            onPageSizeChange: setReportPageSize,
+            itemLabel: "mặt hàng trong báo cáo",
+          })}
         </div>
       )}
 
@@ -1645,13 +1891,7 @@ export default function InventoryModule() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {movements
-                  .filter((m) => {
-                    if (activeWarehouse === "ALL") return true;
-                    const loc = m.warehouseLocation || "FLOOR_1";
-                    return loc === activeWarehouse;
-                  })
-                  .map((m) => {
+                {pagedMovements.map((m) => {
                   const fallbackProd = productByCode.get(m.productCode);
                   const cost = Number(m.costPrice ?? fallbackProd?.costPrice ?? 0);
                   const sell = Number(m.sellingPrice ?? fallbackProd?.sellingPrice ?? 0);
@@ -1705,6 +1945,16 @@ export default function InventoryModule() {
               </tbody>
             </table>
           </div>
+
+          {renderPaginationBar({
+            totalItems: filteredMovements.length,
+            page: safeMovPage,
+            totalPages: movTotalPages,
+            pageSize: movPageSize,
+            onPageChange: setMovPage,
+            onPageSizeChange: setMovPageSize,
+            itemLabel: "bút toán sổ kho",
+          })}
         </div>
       )}
 
@@ -1751,13 +2001,7 @@ export default function InventoryModule() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {importsList
-                  .filter((imp) => {
-                    if (activeWarehouse === "ALL") return true;
-                    const wh = imp.targetWarehouse === "FLOOR_2" ? "FLOOR_2" : "FLOOR_1";
-                    return wh === activeWarehouse;
-                  })
-                  .map((imp) => {
+                {pagedImports.map((imp) => {
                   const items: any[] = imp.items || [];
                   const totalQty = items.reduce(
                     (s, it) => s + (Number(it.actualQuantity ?? it.expectedQuantity) || 0),
@@ -1938,6 +2182,16 @@ export default function InventoryModule() {
               </tbody>
             </table>
           </div>
+
+          {renderPaginationBar({
+            totalItems: filteredImports.length,
+            page: safeImpPage,
+            totalPages: impTotalPages,
+            pageSize: impPageSize,
+            onPageChange: setImpPage,
+            onPageSizeChange: setImpPageSize,
+            itemLabel: "phiếu nhập kho",
+          })}
         </div>
       )}
 

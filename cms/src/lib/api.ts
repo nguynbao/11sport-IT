@@ -200,6 +200,115 @@ export interface StaffActivityReport {
   warehouse: WarehouseActivity[];
 }
 
+/* ---------------- Dashboard Doanh thu chi tiết & Phân tích Sản phẩm ---------------- */
+
+export interface RevenueDashboardSummary {
+  grossRevenue: number;
+  itemDiscountTotal: number;
+  billDiscountTotal: number;
+  totalDiscount: number;
+  cardFeeTotal: number;
+  orderRevenue: number;
+  returnTotal: number;
+  exchangeTotal: number;
+  netReturnImpact: number;
+  netRevenue: number;
+  estimatedCogs: number;
+  grossProfit: number;
+  grossMarginPercent: number;
+  totalOrders: number;
+  paidOrders: number;
+  returnedOrders: number;
+  avgOrderValue: number;
+  totalUnitsSold: number;
+  totalGiftUnits: number;
+  totalUnitsReturned: number;
+}
+
+export interface RevenueByPaymentMethod {
+  method: string;
+  label: string;
+  orders: number;
+  revenue: number;
+  sharePercent: number;
+}
+
+export interface RevenueByCategory {
+  categoryId: string;
+  categoryName: string;
+  unitsSold: number;
+  revenue: number;
+  cogs: number;
+  grossProfit: number;
+  sharePercent: number;
+}
+
+export interface DailyRevenueTrend {
+  date: string;
+  orders: number;
+  unitsSold: number;
+  grossRevenue: number;
+  discountTotal: number;
+  orderRevenue: number;
+  returnImpact: number;
+  netRevenue: number;
+  cogs: number;
+  grossProfit: number;
+}
+
+export interface ProductSalesAnalysisRow {
+  productId: string;
+  productCode: string;
+  productName: string;
+  categoryId: string;
+  categoryName: string;
+  unit: string;
+  soldQty: number;
+  giftQty: number;
+  returnedQty: number;
+  netSoldQty: number;
+  revenue: number;
+  cogs: number;
+  grossProfit: number;
+  marginPercent: number;
+  orderCount: number;
+  lastSoldAt: string | null;
+  sellingPrice: number;
+  costPrice: number;
+  stockFloor1: number;
+  stockFloor2: number;
+  stock: number;
+  inventoryCostValue: number;
+  inventorySellValue: number;
+  restockAlert: string;
+  pushScore: number;
+  pushReasons: string[];
+  suggestedAction: string;
+}
+
+export interface HourlyRevenueTrend {
+  hour: string;
+  orders: number;
+  unitsSold: number;
+  grossRevenue: number;
+  discountTotal: number;
+  orderRevenue: number;
+  returnImpact: number;
+  netRevenue: number;
+  cogs: number;
+  grossProfit: number;
+}
+
+export interface RevenueDashboardData {
+  summary: RevenueDashboardSummary;
+  byPaymentMethod: RevenueByPaymentMethod[];
+  byCategory: RevenueByCategory[];
+  dailyTrend: DailyRevenueTrend[];
+  hourlyTrend?: HourlyRevenueTrend[];
+  topSellingProducts: ProductSalesAnalysisRow[];
+  needsPushProducts: ProductSalesAnalysisRow[];
+}
+
 export function generateProductCode(rawName: string): string {
   if (!rawName || typeof rawName !== "string") return "";
   const trimmed = rawName.trim();
