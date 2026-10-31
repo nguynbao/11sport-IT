@@ -27,6 +27,7 @@ export interface Product {
   code: string;
   name: string;
   categoryId: string | Category;
+  categoryCode?: string;
   categoryName?: string;
   unit: string;
   sellingPrice: number;
