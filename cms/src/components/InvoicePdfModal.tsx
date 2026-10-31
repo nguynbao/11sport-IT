@@ -166,7 +166,7 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
             {/* Header cửa hàng 11Sport với Logo */}
             <div className="text-center border-b-2 border-dashed border-black pb-3 mb-3 text-black">
               <img
-                src="/logo-11sport.png"
+                src="/logo-11sport.svg"
                 alt="11SPORT"
                 className={`mx-auto object-contain mb-1.5 ${
                   paperSize === "K80" ? "h-16 w-auto" : "h-20 w-auto"

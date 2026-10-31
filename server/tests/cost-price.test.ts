@@ -68,16 +68,23 @@ describe('v1.1: Giá gốc khi nhập kho & phân quyền giá bán', () => {
     expect(prod.stock).toBe(15);
   });
 
-  it('Chỉ ADMIN được đặt giá bán / sửa giá gốc; SALES không thấy giá gốc', async () => {
+  it('ADMIN và WAREHOUSE được đặt giá bán; SALES bị chặn đặt giá bán và không thấy giá gốc', async () => {
     const list = await request(app).get('/api/v1/products').set('x-user-id', 'admin');
     const prod = list.body.data.find((p: any) => p.code === productCode);
+
+    const salesPrice = await request(app)
+      .patch(`/api/v1/products/${prod._id}`)
+      .set('x-user-id', 'sales1')
+      .send({ sellingPrice: 300000 });
+    expect(salesPrice.status).toBe(403);
+    expect(salesPrice.body.code).toBe('SELLING_PRICE_FORBIDDEN');
 
     const whPrice = await request(app)
       .patch(`/api/v1/products/${prod._id}`)
       .set('x-user-id', 'warehouse1')
-      .send({ sellingPrice: 300000 });
-    expect(whPrice.status).toBe(403);
-    expect(whPrice.body.code).toBe('SELLING_PRICE_FORBIDDEN');
+      .send({ sellingPrice: 280000 });
+    expect(whPrice.status).toBe(200);
+    expect(whPrice.body.data.sellingPrice).toBe(280000);
 
     const whCost = await request(app)
       .patch(`/api/v1/products/${prod._id}`)

@@ -84,9 +84,11 @@ export default function DrawerMenu({
         {/* Header của Drawer */}
         <div className="px-4 py-3.5 bg-slate-950 border-b border-slate-800 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-9 h-9 shrink-0 rounded-xl bg-emerald-600 flex items-center justify-center font-black text-base tracking-tighter">
-              11S
-            </div>
+            <img
+              src="/logo-11sport-white.svg"
+              alt="11Sport Logo"
+              className="h-9 w-auto object-contain shrink-0"
+            />
             <div className="min-w-0">
               <div className="font-extrabold text-sm tracking-tight truncate">
                 MENU CÁ NHÂN

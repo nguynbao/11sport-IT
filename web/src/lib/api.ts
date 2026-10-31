@@ -48,6 +48,7 @@ export interface ImportItem {
   actualQuantity: number;
   /** Giá gốc (đơn giá nhập, VND) do thủ kho nhập */
   costPrice?: number;
+  sellingPrice?: number;
   /** Số chiếc đã quét tag ở bước kiểm thực tế */
   scannedQuantity?: number;
   /** Mã vạch đã học được khi quét tag */
