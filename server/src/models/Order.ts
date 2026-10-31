@@ -1,7 +1,7 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
 export type PaymentMethod = 'CASH' | 'BANKING' | 'CARD' | 'OTHER';
-export type OrderStatus = 'PAID' | 'PARTIALLY_RETURNED' | 'FULLY_RETURNED';
+export type OrderStatus = 'DRAFT' | 'PAID' | 'PARTIALLY_RETURNED' | 'FULLY_RETURNED';
 export type DiscountType = 'NONE' | 'PERCENT' | 'AMOUNT' | 'GIFT';
 
 export interface IOrderItem {
@@ -42,6 +42,9 @@ export interface IOrder extends Document {
   status: OrderStatus;
   createdBy: string;
   createdByName: string;
+  confirmedBy?: string;
+  confirmedByName?: string;
+  confirmedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -69,8 +72,8 @@ const OrderSchema = new Schema<IOrder>(
   {
     orderCode: { type: String, required: true, unique: true, index: true },
     customerId: { type: String, default: '' },
-    customerName: { type: String, required: true },
-    customerPhone: { type: String, required: true, index: true },
+    customerName: { type: String, default: '' },
+    customerPhone: { type: String, default: '', index: true },
     items: { type: [OrderItemSchema], default: [] },
     rawSubtotal: { type: Number, default: 0 },
     itemDiscountTotal: { type: Number, default: 0 },
@@ -87,11 +90,14 @@ const OrderSchema = new Schema<IOrder>(
     note: { type: String, default: 'Giá đã bao gồm thuế' },
     status: {
       type: String,
-      enum: ['PAID', 'PARTIALLY_RETURNED', 'FULLY_RETURNED'],
+      enum: ['DRAFT', 'PAID', 'PARTIALLY_RETURNED', 'FULLY_RETURNED'],
       default: 'PAID',
     },
     createdBy: { type: String, default: '' },
     createdByName: { type: String, default: '' },
+    confirmedBy: { type: String, default: '' },
+    confirmedByName: { type: String, default: '' },
+    confirmedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

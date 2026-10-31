@@ -28,6 +28,9 @@ async function prepareReturnExchangeCalculation(body: any) {
   if (!order) {
     throw new ApiError(404, 'ORDER_NOT_FOUND', 'Không tìm thấy đơn hàng gốc cần trả/đổi');
   }
+  if (order.status === 'DRAFT') {
+    throw new ApiError(400, 'ORDER_IS_DRAFT', 'Hóa đơn đang ở trạng thái Bản nháp (chưa thanh toán), không thể thực hiện trả/đổi hàng');
+  }
 
   if (!Array.isArray(returnItems) || returnItems.length === 0) {
     throw new ApiError(400, 'EMPTY_RETURN_ITEMS', 'Phải chọn ít nhất 1 sản phẩm trả lại');

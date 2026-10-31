@@ -33,6 +33,7 @@ const IMPORT_STATUS: Record<string, string> = {
   COMPLETED: "Hoàn thành",
 };
 const ORDER_STATUS: Record<string, string> = {
+  DRAFT: "Bản nháp",
   PAID: "Đã bán",
   PARTIALLY_RETURNED: "Trả 1 phần",
   FULLY_RETURNED: "Trả toàn bộ",
@@ -294,7 +295,7 @@ export function exportOrders(orders: Order[]) {
       width: 45,
     },
     { header: "ĐVT", value: (l) => l.item.unit, width: 8 },
-    { header: "Đơn giá", value: (l) => Number(l.item.unitPrice) || 0, format: "money" },
+    { header: "Đơn giá", value: (l) => Number(l.item.originalUnitPrice || l.item.unitPrice) || 0, format: "money" },
     { header: "Số lượng", value: (l) => Number(l.item.quantity) || 0, format: "int", total: true },
     { header: "Đã trả lại", value: (l) => Number(l.item.returnedQuantity) || 0, format: "int", total: true },
     {

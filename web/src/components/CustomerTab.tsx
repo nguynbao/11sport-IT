@@ -198,14 +198,16 @@ export default function CustomerTab({ onOpenInvoice }: CustomerTabProps) {
               <div className="md:text-right">
                 <div className="text-xs text-slate-400">Tổng số đơn đã mua</div>
                 <div className="text-xl sm:text-2xl font-mono font-extrabold text-white">
-                  {orders.length} đơn
+                  {orders.filter((o) => o.status !== "DRAFT").length} đơn
                 </div>
               </div>
               <div className="md:text-right">
                 <div className="text-xs text-slate-400">Tổng chi tiêu tích lũy</div>
                 <div className="text-xl sm:text-2xl font-mono font-extrabold text-emerald-400 break-all">
                   {formatVND(
-                    orders.reduce((s, o) => s + Number(o.totalAmount || 0), 0)
+                    orders
+                      .filter((o) => o.status !== "DRAFT")
+                      .reduce((s, o) => s + Number(o.totalAmount || 0), 0)
                   )}
                 </div>
               </div>
@@ -265,14 +267,19 @@ export default function CustomerTab({ onOpenInvoice }: CustomerTabProps) {
                         </td>
                         <td className="py-3 px-4 text-center">
                           <span
-                            className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full whitespace-nowrap ${ord.status === "PAID"
+                            className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full whitespace-nowrap ${
+                              ord.status === "DRAFT"
+                                ? "bg-indigo-100 text-indigo-800 border border-indigo-300"
+                                : ord.status === "PAID"
                                 ? "bg-emerald-100 text-emerald-800"
                                 : ord.status === "PARTIALLY_RETURNED"
                                   ? "bg-amber-100 text-amber-800"
                                   : "bg-red-100 text-red-700"
                               }`}
                           >
-                            {ord.status === "PAID"
+                            {ord.status === "DRAFT"
+                              ? "Bản nháp"
+                              : ord.status === "PAID"
                               ? "Đã thanh toán"
                               : ord.status === "PARTIALLY_RETURNED"
                                 ? "Đã trả 1 phần"

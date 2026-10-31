@@ -113,6 +113,7 @@ reportsRouter.get('/reports/staff-activity', async (req, res, next) => {
     const warehouse: WarehouseActivity[] = [];
 
     for (const o of orders) {
+      if (o.status === 'DRAFT') continue;
       if (!inRange(o.createdAt)) continue;
       sales.push({
         type: 'ORDER',
@@ -371,6 +372,7 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
     const filterPayMethod = paymentMethod ? String(paymentMethod).toUpperCase() : '';
 
     const filteredOrders = orders.filter((o) => {
+      if (o.status === 'DRAFT') return false;
       if (!inRange(o.createdAt)) return false;
       if (filterPayMethod && o.paymentMethod !== filterPayMethod) return false;
       if (filterCatId) {
