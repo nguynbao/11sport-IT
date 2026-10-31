@@ -39,6 +39,8 @@ import {
   ArrowUpDown,
   Layers,
   Sparkles,
+  FileText,
+  Save,
 } from "lucide-react";
 
 const PINNED_GIFTS_STORAGE_KEY = "11sport_pos_pinned_gift_ids";
@@ -183,6 +185,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [savedDraftOrders, setSavedDraftOrders] = useState<Order[]>([]);
+  const [loadingSavedDrafts, setLoadingSavedDrafts] = useState(false);
+  const [editingServerDraftOrder, setEditingServerDraftOrder] = useState<Order | null>(null);
 
   // Danh sách đơn nháp (nhiều khách cùng lúc). State bên trên luôn là dữ liệu của đơn đang mở (activeDraftId);
   // các đơn khác được lưu trong `drafts` và nạp lại khi chuyển tab.
@@ -533,6 +539,22 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     fetchCategories();
     fetchActivePromotions();
   }, [fetchCategories, fetchActivePromotions]);
+
+  const fetchSavedDraftOrders = useCallback(async () => {
+    setLoadingSavedDrafts(true);
+    try {
+      const res = await apiRequest<Order[]>("/orders?status=DRAFT");
+      setSavedDraftOrders(Array.isArray(res.data) ? res.data : []);
+    } catch {
+      // ignore
+    } finally {
+      setLoadingSavedDrafts(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSavedDraftOrders();
+  }, [fetchSavedDraftOrders]);
 
   useEffect(() => {
     fetchSellableProducts();
@@ -1319,7 +1341,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
         ],
       };
 
-      const res = await apiRequest<Order>("/orders", {
+      const endpoint = editingServerDraftOrder
+        ? `/orders/${editingServerDraftOrder._id}/confirm`
+        : "/orders";
+      const res = await apiRequest<Order>(endpoint, {
         method: "POST",
         body: JSON.stringify(payload),
       });
@@ -1336,11 +1361,272 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       );
       fetchSellableProducts();
       fetchActivePromotions();
+      setEditingServerDraftOrder(null);
+      fetchSellableProducts();
+      fetchActivePromotions();
+      fetchSavedDraftOrders();
       onOpenInvoice(createdOrder);
     } catch (err: any) {
       setErrorMsg(err?.message || "Lỗi khi tạo đơn bán hàng");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // Lưu bản nháp hóa đơn lên hệ thống (status = DRAFT: chỉ lưu lại, chưa trừ tồn kho Tầng 1)
+  const handleSaveOrderAsDraft = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    setErrorMsg("");
+    setSuccessMsg("");
+
+    const form = e.currentTarget.form;
+    if (form && !form.reportValidity()) {
+      return;
+    }
+
+    const cleanPhone = cleanPhoneDigits(customerPhone);
+    if (!cleanPhone) {
+      setErrorMsg("Vui lòng nhập Số điện thoại khách hàng (bắt buộc khi lưu bản nháp).");
+      return;
+    }
+    if (!customerName.trim()) {
+      setErrorMsg("Vui lòng nhập Tên khách hàng (bắt buộc khi lưu bản nháp).");
+      return;
+    }
+    if (cart.length === 0 && giftCart.length === 0) {
+      setErrorMsg("Giỏ hàng đang trống. Vui lòng chọn ít nhất 1 sản phẩm để lưu nháp.");
+      return;
+    }
+
+    const formattedSplitDetail =
+      paymentMethod === "OTHER"
+        ? splitPayments
+          .map((sp) => {
+            const label =
+              SPLIT_METHOD_OPTIONS.find((o) => o.value === sp.method)?.label ||
+              sp.method;
+            return `${label}: ${formatNumberDots(sp.amount || 0)}`;
+          })
+          .join(" + ")
+        : "";
+
+    setSavingDraft(true);
+    try {
+      const payload = {
+        status: "DRAFT",
+        isDraft: true,
+        customerPhone: cleanPhone,
+        customerName: customerName.trim(),
+        paymentMethod,
+        paymentMethodDetail: formattedSplitDetail,
+        hasCardFee: paymentMethod === "CARD" ? hasCardFee : false,
+        billDiscountType: cleanBillDiscountValue > 0 ? billDiscountType : "NONE",
+        billDiscountValue: cleanBillDiscountValue,
+        note: note.trim() || "Giá đã bao gồm thuế",
+        items: [
+          ...cart.map((c) => ({
+            productId: c.product._id,
+            quantity: c.quantity,
+            isGift: false,
+            discountType: c.discountValue > 0 ? c.discountType : "NONE",
+            discountValue: c.discountValue,
+          })),
+          ...giftCart.map((g) => ({
+            productId: g.product._id,
+            quantity: g.quantity,
+            isGift: true,
+            discountType: "GIFT" as DiscountType,
+            discountValue: 100,
+          })),
+        ],
+      };
+
+      const res = editingServerDraftOrder
+        ? await apiRequest<Order>(`/orders/${editingServerDraftOrder._id}`, {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        })
+        : await apiRequest<Order>("/orders", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+
+      const savedOrder = res.data;
+      const code = savedOrder.orderCode || savedOrder.code || "";
+      setEditingServerDraftOrder(null);
+      removeDraft(activeDraftId);
+      setSuccessMsg(
+        `Đã lưu bản nháp hóa đơn ${code}`
+      );
+      fetchSavedDraftOrders();
+      onOpenInvoice(savedOrder);
+    } catch (err: any) {
+      setErrorMsg(err?.message || "Lỗi khi lưu bản nháp hóa đơn");
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  // Nạp hóa đơn nháp đã lưu từ server lên màn hình POS để chỉnh sửa hoặc thanh toán
+  // Kiểm tra các sản phẩm trong bản nháp có còn đủ tồn tại Kho Tầng 1 hay đã hết/thiếu
+  const getDraftOrderStockShortages = (ord: Order) => {
+    if (products.length === 0) return [];
+    const reqMap = new Map<
+      string,
+      { name: string; unit: string; requested: number }
+    >();
+    for (const it of ord.items || []) {
+      const pid = String(it.productId || "");
+      const qty = Math.max(1, Number(it.quantity) || 1);
+      const prev = reqMap.get(pid);
+      if (prev) {
+        prev.requested += qty;
+      } else {
+        reqMap.set(pid, {
+          name: it.productName || "Sản phẩm",
+          unit: it.unit || "Cái",
+          requested: qty,
+        });
+      }
+    }
+    const shortages: {
+      name: string;
+      unit: string;
+      requested: number;
+      available: number;
+    }[] = [];
+    for (const [pid, info] of Array.from(reqMap.entries())) {
+      const prod = products.find((p) => p._id === pid);
+      const available = prod ? getFloor1Stock(prod) : 0;
+      if (available < info.requested) {
+        shortages.push({
+          ...info,
+          available,
+        });
+      }
+    }
+    return shortages;
+  };
+
+  const handleLoadServerDraftToPos = (ord: Order) => {
+    setErrorMsg("");
+    setSuccessMsg("");
+    const saleItems: CartItem[] = [];
+    const giftItems: GiftCartItem[] = [];
+
+    for (const it of ord.items || []) {
+      const prodId = String(it.productId || "");
+      const foundProd =
+        products.find((p) => p._id === prodId) ||
+        ({
+          _id: prodId,
+          code: it.productCode || "",
+          name: it.productName || "Sản phẩm",
+          categoryId: "",
+          unit: it.unit || "Cái",
+          sellingPrice: Number(it.originalUnitPrice ?? it.unitPrice) || 0,
+          stockFloor1: 0,
+          stock: 0,
+        } as Product);
+
+      if (it.isGift || it.discountType === "GIFT") {
+        giftItems.push({
+          product: foundProd,
+          quantity: Number(it.quantity) || 1,
+        });
+      } else {
+        saleItems.push({
+          product: foundProd,
+          quantity: Number(it.quantity) || 1,
+          discountType: (it.discountType as DiscountType) || "NONE",
+          discountValue: Number(it.discountValue) || 0,
+          isManualDiscount: (Number(it.discountValue) || 0) > 0,
+        });
+      }
+    }
+
+    setEditingServerDraftOrder(ord);
+    setCart(saleItems);
+    setGiftCart(giftItems);
+    setBillDiscountType((ord.billDiscountType as DiscountType) || "NONE");
+    setBillDiscountValue(Number(ord.billDiscountValue) || 0);
+    setCustomerPhone(ord.customerPhone ? formatPhone(ord.customerPhone) : "");
+    setCustomerName(
+      ord.customerName === "Khách lẻ (Bản nháp)" ? "" : ord.customerName || ""
+    );
+    setPaymentMethod((ord.paymentMethod as PaymentMethodType) || "CASH");
+    setHasCardFee(ord.hasCardFee !== false);
+    setNote(ord.note || DEFAULT_NOTE);
+    setSuccessMsg(
+      `Đang mở bản nháp ${ord.orderCode || ord.code} (Người tạo: ${ord.createdByName || "Nhân viên"}).`
+    );
+    const shortages = getDraftOrderStockShortages(ord);
+    if (shortages.length > 0) {
+      setErrorMsg(
+        `Lưu ý: Trong kho Tầng 1 hiện không đủ hàng cho bản nháp này: ${shortages
+          .map(
+            (s) =>
+              `${s.name} (Tồn T1 còn ${s.available} ${s.unit}, đơn cần ${s.requested} ${s.unit})`
+          )
+          .join("; ")}. Vui lòng chỉnh lại số lượng hoặc xuất thêm hàng xuống Tầng 1 trước khi chốt thanh toán.`
+      );
+    }
+    String(
+    );
+  };
+
+  const handleQuickConfirmServerDraft = async (ord: Order) => {
+    const code = ord.orderCode || ord.code || "";
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(
+        `Xác nhận thanh toán cho bản nháp ${code}?\nHệ thống sẽ thực hiện TRỪ TỒN KHO TẦNG 1 ngay bây giờ.`
+      )
+    ) {
+      return;
+    }
+    setErrorMsg("");
+    setSuccessMsg("");
+    try {
+      const res = await apiRequest<Order>(`/orders/${ord._id}/confirm`, {
+        method: "POST",
+        body: JSON.stringify({
+          customerName: ord.customerName || "Khách lẻ",
+          customerPhone: ord.customerPhone || "0000000000",
+        }),
+      });
+      if (editingServerDraftOrder?._id === ord._id) {
+        setEditingServerDraftOrder(null);
+      }
+      setSuccessMsg(
+        `Đã xác nhận thanh toán & trừ kho thành công cho hóa đơn ${code}!`
+      );
+      fetchSellableProducts();
+      fetchSavedDraftOrders();
+      onOpenInvoice(res.data);
+    } catch (err: any) {
+      fetchSellableProducts();
+      setErrorMsg(err?.message || "Không thể chốt thanh toán bản nháp");
+    }
+  };
+
+  const handleDeleteServerDraft = async (ord: Order) => {
+    const code = ord.orderCode || ord.code || "";
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(`Xóa bản nháp hóa đơn ${code}?`)
+    ) {
+      return;
+    }
+    setErrorMsg("");
+    try {
+      await apiRequest(`/orders/${ord._id}`, { method: "DELETE" });
+      if (editingServerDraftOrder?._id === ord._id) {
+        setEditingServerDraftOrder(null);
+      }
+      setSuccessMsg(`Đã xóa bản nháp hóa đơn ${code}.`);
+      fetchSavedDraftOrders();
+    } catch (err: any) {
+      setErrorMsg(err?.message || "Không thể xóa bản nháp");
     }
   };
 
@@ -1502,109 +1788,242 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
         </div>
       </div>
       {/* Cột trái (7 phần): Tìm kiếm, Lọc/Sắp xếp theo Category & Chọn sản phẩm */}
-      <div className="lg:col-span-7 space-y-4">
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-3 md:p-4 space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-bold text-slate-900">
-                Danh mục Hàng hóa tại Quầy POS (Kho Tầng 1)
-              </h2>
-              <p className="text-xs text-slate-500">
-                Nhân viên bán hàng <strong>chỉ bán số lượng tại Kho Tầng 1</strong> (không vượt tồn Kho Tầng 1).
-              </p>
-            </div>
-            <div className="relative w-full sm:w-64">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Quét mã / tìm tên sản phẩm..."
-                className="w-full min-h-[40px] pl-9 pr-3 py-2 rounded-lg border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
-              />
-            </div>
-          </div>
+      <div className="lg:col-span-7 lg:relative">
+        <div className="flex flex-col gap-4 lg:absolute lg:inset-0">
+          <div className="flex flex-col flex-1 min-h-0">
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-3 md:p-4 flex flex-col flex-1 min-h-0 gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">
+                    Danh mục Hàng hóa tại Quầy POS (Kho Tầng 1)
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Nhân viên bán hàng <strong>chỉ bán số lượng tại Kho Tầng 1</strong> (không vượt tồn Kho Tầng 1).
+                  </p>
+                </div>
+                <div className="relative w-full sm:w-64">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Quét mã / tìm tên sản phẩm..."
+                    className="w-full min-h-[40px] pl-9 pr-3 py-2 rounded-lg border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                  />
+                </div>
+              </div>
 
-          {/* Thanh chọn nhanh Category & Sắp xếp theo Category */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2 border-t border-slate-100">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setSelectedCategoryId("")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${selectedCategoryId === ""
-                  ? "bg-slate-900 text-white border-slate-900 shadow-sm"
-                  : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200"
-                  }`}
-              >
-                Tất cả ({floor1Products.length})
-              </button>
-              {categories.map((cat) => {
-                const count = floor1Products.filter((p) => getCategoryId(p) === cat._id).length;
-                return (
+              {/* Thanh chọn nhanh Category & Sắp xếp theo Category */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2 border-t border-slate-100">
+                <div className="flex flex-wrap items-center gap-1.5">
                   <button
-                    key={cat._id}
                     type="button"
-                    onClick={() => setSelectedCategoryId(cat._id)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${selectedCategoryId === cat._id
-                      ? "bg-emerald-600 text-white border-emerald-700 shadow-sm"
-                      : "bg-white text-slate-700 border-slate-200 hover:bg-emerald-50"
+                    onClick={() => setSelectedCategoryId("")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${selectedCategoryId === ""
+                      ? "bg-slate-900 text-white border-slate-900 shadow-sm"
+                      : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200"
                       }`}
                   >
-                    {cat.name} ({count})
+                    Tất cả ({floor1Products.length})
                   </button>
-                );
-              })}
-            </div>
+                  {categories.map((cat) => {
+                    const count = floor1Products.filter((p) => getCategoryId(p) === cat._id).length;
+                    return (
+                      <button
+                        key={cat._id}
+                        type="button"
+                        onClick={() => setSelectedCategoryId(cat._id)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${selectedCategoryId === cat._id
+                          ? "bg-emerald-600 text-white border-emerald-700 shadow-sm"
+                          : "bg-white text-slate-700 border-slate-200 hover:bg-emerald-50"
+                          }`}
+                      >
+                        {cat.name} ({count})
+                      </button>
+                    );
+                  })}
+                </div>
 
-            <div className="flex items-center gap-1.5 shrink-0">
-              <ArrowUpDown className="w-3.5 h-3.5 text-slate-500" />
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as SortByOption)}
-                className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold bg-white text-slate-800 focus:border-emerald-600 focus:outline-none"
-              >
-                <option value="CATEGORY">📂 Xếp theo Category (Danh mục)</option>
-                <option value="NAME_ASC">🔤 Tên sản phẩm (A → Z)</option>
-                <option value="STOCK_DESC">📦 Tồn Kho Tầng 1 (Nhiều → Ít)</option>
-                <option value="PRICE_ASC">💰 Giá bán (Thấp → Cao)</option>
-                <option value="PRICE_DESC">💎 Giá bán (Cao → Thấp)</option>
-              </select>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <ArrowUpDown className="w-3.5 h-3.5 text-slate-500" />
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as SortByOption)}
+                    className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold bg-white text-slate-800 focus:border-emerald-600 focus:outline-none"
+                  >
+                    <option value="CATEGORY">📂 Xếp theo Category (Danh mục)</option>
+                    <option value="NAME_ASC">🔤 Tên sản phẩm (A → Z)</option>
+                    <option value="STOCK_DESC">📦 Tồn Kho Tầng 1 (Nhiều → Ít)</option>
+                    <option value="PRICE_ASC">💰 Giá bán (Thấp → Cao)</option>
+                    <option value="PRICE_DESC">💎 Giá bán (Cao → Thấp)</option>
+                  </select>
+                </div>
+              </div>
+
+              {loadingProducts ? (
+                <div className="py-12 text-center text-sm text-slate-500">
+                  Đang tải danh sách sản phẩm...
+                </div>
+              ) : filteredAndSortedProducts.length === 0 ? (
+                <div className="py-12 text-center text-sm text-slate-500">
+                  Không tìm thấy sản phẩm phù hợp.
+                </div>
+              ) : sortBy === "CATEGORY" ? (
+                <div className="space-y-5 flex-1 min-h-0 max-h-[60vh] lg:max-h-none overflow-y-auto pr-1">
+                  {groupedByCategory.map(([catName, catProducts]) => (
+                    <div key={catName} className="space-y-2.5">
+                      <div className="sticky top-0 z-10 bg-slate-900 text-white px-3 py-2 rounded-lg flex items-center justify-between shadow-sm">
+                        <span className="text-xs font-extrabold uppercase tracking-wider flex items-center gap-1.5">
+                          <Layers className="w-3.5 h-3.5 text-emerald-400" />
+                          Danh mục: {catName}
+                        </span>
+                        <span className="text-[11px] font-mono bg-white/15 px-2 py-0.5 rounded">
+                          {catProducts.length} mặt hàng · Tồn Tầng 1:{" "}
+                          {catProducts.reduce((s, p) => s + getFloor1Stock(p), 0)}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {catProducts.map((p) => renderProductCard(p))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 content-start flex-1 min-h-0 max-h-[60vh] lg:max-h-none overflow-y-auto pr-1">
+                  {filteredAndSortedProducts.map((p) => renderProductCard(p))}
+                </div>
+              )}
             </div>
           </div>
 
-          {loadingProducts ? (
-            <div className="py-12 text-center text-sm text-slate-500">
-              Đang tải danh sách sản phẩm...
+          {/* Danh sách Hóa đơn nháp đã lưu trên hệ thống (status = DRAFT */}
+          <div className="bg-white rounded-xl shadow-sm border border-amber-200 p-3.5 sm:p-4 space-y-2.5 shrink-0">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-amber-600" />
+                <h3 className="text-xs sm:text-sm font-extrabold uppercase text-slate-900">
+                  Hóa đơn nháp đã lưu ({savedDraftOrders.length})
+                </h3>
+              </div>
             </div>
-          ) : filteredAndSortedProducts.length === 0 ? (
-            <div className="py-12 text-center text-sm text-slate-500">
-              Không tìm thấy sản phẩm phù hợp.
-            </div>
-          ) : sortBy === "CATEGORY" ? (
-            <div className="space-y-5 max-h-[60vh] lg:max-h-[640px] overflow-y-auto pr-1">
-              {groupedByCategory.map(([catName, catProducts]) => (
-                <div key={catName} className="space-y-2.5">
-                  <div className="sticky top-0 z-10 bg-slate-900 text-white px-3 py-2 rounded-lg flex items-center justify-between shadow-sm">
-                    <span className="text-xs font-extrabold uppercase tracking-wider flex items-center gap-1.5">
-                      <Layers className="w-3.5 h-3.5 text-emerald-400" />
-                      Danh mục: {catName}
-                    </span>
-                    <span className="text-[11px] font-mono bg-white/15 px-2 py-0.5 rounded">
-                      {catProducts.length} mặt hàng · Tồn Tầng 1:{" "}
-                      {catProducts.reduce((s, p) => s + getFloor1Stock(p), 0)}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {catProducts.map((p) => renderProductCard(p))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[60vh] lg:max-h-[640px] overflow-y-auto pr-1">
-              {filteredAndSortedProducts.map((p) => renderProductCard(p))}
-            </div>
-          )}
+
+            {loadingSavedDrafts ? (
+              <div className="py-3 text-center text-xs text-slate-500">
+                Đang tải danh sách bản nháp...
+              </div>
+            ) : savedDraftOrders.length === 0 ? (
+              <div className="py-3 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg">
+                Chưa có hóa đơn nháp nào được lưu.
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+                {savedDraftOrders.map((ord) => {
+                  const code = ord.orderCode || ord.code || "";
+                  const isBeingEdited = editingServerDraftOrder?._id === ord._id;
+                  const totalQty = (ord.items || []).reduce(
+                    (s, it) => s + (Number(it.quantity) || 0),
+                    0
+                  );
+                  return (
+                    <div
+                      key={ord._id}
+                      className={`p-2.5 rounded-xl border text-xs space-y-1.5 transition ${isBeingEdited
+                        ? "border-amber-500 bg-amber-50/70"
+                        : "border-slate-200 bg-slate-50/70 hover:border-amber-300"
+                        }`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-extrabold text-slate-900">
+                            {code}
+                          </span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                            NHÁP
+                          </span>
+                        </div>
+                        <span className="font-mono font-extrabold text-emerald-700 text-sm">
+                          {formatVND(ord.totalAmount)}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600">
+                        <span>
+                          Khách:{" "}
+                          <strong className="text-slate-800">
+                            {ord.customerName || "Khách lẻ"}
+                          </strong>{" "}
+                          {ord.customerPhone ? `(${formatPhone(ord.customerPhone)})` : ""}
+                        </span>
+                        <span>
+                          {totalQty} SP · {formatDateTime(ord.createdAt)}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+                        <span>
+                          Người tạo nháp:{" "}
+                          <strong className="text-slate-700">
+                            {ord.createdByName || "Nhân viên bán hàng"}
+                          </strong>
+                        </span>
+                        {(() => {
+                          const shortages = getDraftOrderStockShortages(ord);
+                          if (shortages.length === 0) return null;
+                          return (
+                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-red-100 text-red-700 border border-red-300">
+                              ⚠️ Hết/thiếu tồn Kho T1:{" "}
+                              {shortages
+                                .map(
+                                  (s) =>
+                                    `${s.name} (còn ${s.available}/${s.requested})`
+                                )
+                                .join(", ")}
+                            </span>
+                          );
+                        })()}
+                      </div>
+                      <div className="hidden">
+                        <span>
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-200/80">
+                        <button
+                          type="button"
+                          onClick={() => handleLoadServerDraftToPos(ord)}
+                          className="px-2.5 py-1 rounded-lg bg-white hover:bg-amber-50 text-amber-900 border border-amber-300 font-bold text-[11px] transition"
+                        >
+                          ✏️ Mở sửa trên POS
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleQuickConfirmServerDraft(ord)}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition"
+                        >
+                          ✓ Chốt TT
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onOpenInvoice(ord)}
+                          className="px-2.5 py-1 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-[11px] flex items-center gap-1 transition"
+                        >
+                          <Printer className="w-3 h-3" /> Bill nháp
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteServerDraft(ord)}
+                          className="ml-auto px-2 py-1 rounded-lg text-red-600 hover:bg-red-50 font-bold text-[11px] flex items-center gap-1 transition"
+                          title="Xóa bản nháp"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" /> Xóa
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1638,6 +2057,30 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
             <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 shrink-0" />
               <span>{successMsg}</span>
+            </div>
+          )}
+
+          {editingServerDraftOrder && (
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-amber-600 shrink-0" />
+                <div>
+                  <span className="font-extrabold">
+                    Đang sửa bản nháp:{" "}
+                    {editingServerDraftOrder.orderCode || editingServerDraftOrder.code}
+                  </span>
+                  <div className="text-[11px] text-amber-800">
+                    Bấm &ldquo;Cập nhật bản nháp&rdquo; hoặc &ldquo;Xác nhận thanh toán&rdquo; để chốt.
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingServerDraftOrder(null)}
+                className="px-2.5 py-1 rounded-lg bg-white border border-amber-300 hover:bg-amber-100 text-amber-900 font-bold text-[11px] shrink-0"
+              >
+                Thoát sửa nháp
+              </button>
             </div>
           )}
 
@@ -2460,6 +2903,23 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
             {submitting
               ? "Đang xử lý đơn hàng..."
               : "XÁC NHẬN THANH TOÁN & XUẤT HÓA ĐƠN PDF"}
+          </button>
+          <button
+            type="button"
+            disabled={
+              submitting ||
+              savingDraft ||
+              (cart.length === 0 && giftCart.length === 0)
+            }
+            onClick={handleSaveOrderAsDraft}
+            className="w-full py-3 px-4 rounded-xl bg-amber-50 hover:bg-amber-100 disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 text-amber-900 border-2 border-amber-400 font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 transition"
+          >
+            <Save className="w-4 h-4 text-amber-700" />
+            {savingDraft
+              ? "Đang lưu bản nháp..."
+              : editingServerDraftOrder
+                ? `CẬP NHẬT BẢN NHÁP ${editingServerDraftOrder.orderCode || editingServerDraftOrder.code}`
+                : "LƯU BẢN NHÁP HÓA ĐƠN"}
           </button>
         </form>
       </div>

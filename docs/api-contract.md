@@ -253,7 +253,13 @@
     - **Phí quẹt thẻ 3% & Tổng thanh toán**:
       - Nếu `paymentMethod === "CARD"` và `hasCardFee === true`: `cardFee = Math.round(afterBillDiscount * 0.03)`, ngược lại `cardFee = 0`.
       - `totalAmount = afterBillDiscount + cardFee`.
-    - Trừ trực tiếp `stockFloor1` (và `stock`) của sản phẩm, ghi `StockMovement` loại `SALE` (`warehouseLocation: "FLOOR_1"`), cập nhật/tạo `Customer` theo SĐT.
+    - **Lưu Bản Nháp Hóa Đơn (`status === "DRAFT"` hoặc `isDraft === true`) *(v2.8)***:
+      - Mọi nhân viên Sales và Admin đều nhìn thấy toàn bộ danh sách hóa đơn nháp (`GET /api/v1/orders?status=DRAFT`) để phối hợp phục vụ khách.
+      - Khi lưu bản nháp (`DRAFT`), hệ thống bắt buộc nhập đầy đủ thông tin khách hàng (`customerName`, `customerPhone`), ghi nhận **Người tạo nháp** (`createdBy`, `createdByName`), lưu hóa đơn vào CSDL nhưng **chưa trừ tồn kho** (`stockFloor1` giữ nguyên), chưa ghi `StockMovement`, chưa cộng doanh thu.
+      - Khi chốt thanh toán (`status === "PAID"`), hệ thống ghi nhận thêm **Người chốt thanh toán** (`confirmedBy`, `confirmedByName`, `confirmedAt`), kiểm tra lại tồn kho thực tế tại thời điểm thanh toán (`stockFloor1 >= requestedQty` — nếu lúc tạo nháp còn hàng nhưng đến lúc thanh toán kho đã hết/thiếu thì chặn ngay với lỗi `400 INSUFFICIENT_STOCK` và giữ nguyên trạng thái `DRAFT`), trừ trực tiếp `stockFloor1` (và `stock`), ghi `StockMovement` loại `SALE` (`warehouseLocation: "FLOOR_1"`), cập nhật/tạo `Customer` theo SĐT.
+- `PUT /api/v1/orders/:id` *(v2.8)* — Cập nhật nội dung hóa đơn nháp (`status === "DRAFT"`), chưa trừ kho (hoặc truyền `status: "PAID"` để chốt thanh toán và trừ kho Tầng 1).
+- `POST /api/v1/orders/:id/confirm` *(v2.8)* — Xác nhận thanh toán cho hóa đơn nháp (`DRAFT` → `PAID`), thực hiện kiểm tra và trừ tồn Kho Tầng 1, ghi `StockMovement` loại `SALE` và cập nhật `Customer`.
+- `DELETE /api/v1/orders/:id` *(v2.8)* — Xóa hóa đơn đang ở trạng thái `DRAFT` (chặn xóa nếu đơn đã `PAID` → `400 ORDER_ALREADY_PAID`).
 
 ### 2.6 Trả / Đổi hàng (`/returns`)
 - `GET /api/v1/returns` — Danh sách phiếu trả/đổi (CMS & POS)

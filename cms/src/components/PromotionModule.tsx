@@ -226,9 +226,9 @@ export default function PromotionModule() {
     setGiftItems(
       Array.isArray(promo.giftItems)
         ? promo.giftItems.map((g) => ({
-            productId: g.productId,
-            quantity: Math.max(1, Number(g.quantity) || 1),
-          }))
+          productId: g.productId,
+          quantity: Math.max(1, Number(g.quantity) || 1),
+        }))
         : []
     );
     setMultiplyGiftByConditionQty(promo.multiplyGiftByConditionQty !== false);
@@ -631,15 +631,13 @@ export default function PromotionModule() {
               },
               {
                 id: "PERMANENT",
-                label: `♾️ Chạy vĩnh viễn (${
-                  promotions.filter((p) => p.isPermanent).length
-                })`,
+                label: `♾️ Chạy vĩnh viễn (${promotions.filter((p) => p.isPermanent).length
+                  })`,
               },
               {
                 id: "SCHEDULED",
-                label: `📅 Có thời hạn (${
-                  promotions.filter((p) => !p.isPermanent).length
-                })`,
+                label: `📅 Có thời hạn (${promotions.filter((p) => !p.isPermanent).length
+                  })`,
               },
               {
                 id: "INACTIVE",
@@ -650,11 +648,10 @@ export default function PromotionModule() {
                 key={tab.id}
                 type="button"
                 onClick={() => setStatusFilter(tab.id as any)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${
-                  statusFilter === tab.id
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${statusFilter === tab.id
                     ? "bg-slate-900 text-white border-slate-900 shadow-xs"
                     : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200"
-                }`}
+                  }`}
               >
                 {tab.label}
               </button>
@@ -703,9 +700,8 @@ export default function PromotionModule() {
             {filteredPromotions.map((promo) => (
               <div
                 key={promo._id}
-                className={`p-4 sm:p-5 transition hover:bg-slate-50/80 ${
-                  promo.isCurrentlyActive ? "" : "opacity-80 bg-slate-50/40"
-                }`}
+                className={`p-4 sm:p-5 transition hover:bg-slate-50/80 ${promo.isCurrentlyActive ? "" : "opacity-80 bg-slate-50/40"
+                  }`}
               >
                 <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
                   {/* Cột trái: Tên, Mã, Thời gian & Điều kiện */}
@@ -811,7 +807,7 @@ export default function PromotionModule() {
                       {promo.giftItems && promo.giftItems.length > 0 && (
                         <div className="space-y-1">
                           <div className="text-[11px] font-bold text-amber-800">
-                            🎁 Mặc định tặng kèm (0 VND ·{" "}
+                            Mặc định tặng kèm (0 VND ·{" "}
                             {promo.multiplyGiftByConditionQty
                               ? "Nhân theo SL mua"
                               : "Cố định 1 suất/đơn"}
@@ -830,11 +826,10 @@ export default function PromotionModule() {
                                   ×{g.quantity} {g.unit}
                                 </span>
                                 <span
-                                  className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
-                                    (g.stockFloor1 ?? 0) > 0
+                                  className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${(g.stockFloor1 ?? 0) > 0
                                       ? "bg-emerald-50 text-emerald-700"
                                       : "bg-red-50 text-red-600 font-bold"
-                                  }`}
+                                    }`}
                                 >
                                   T1: {g.stockFloor1 ?? 0}
                                 </span>
@@ -877,11 +872,10 @@ export default function PromotionModule() {
                     <button
                       type="button"
                       onClick={() => handleToggleStatus(promo)}
-                      className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition w-full justify-center ${
-                        promo.status === "ACTIVE"
+                      className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition w-full justify-center ${promo.status === "ACTIVE"
                           ? "bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-300"
                           : "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700"
-                      }`}
+                        }`}
                     >
                       {promo.status === "ACTIVE" ? (
                         <>
@@ -1023,11 +1017,10 @@ export default function PromotionModule() {
                     <button
                       type="button"
                       onClick={() => setIsPermanent(true)}
-                      className={`p-3 rounded-xl border text-left transition flex items-center gap-3 ${
-                        isPermanent
+                      className={`p-3 rounded-xl border text-left transition flex items-center gap-3 ${isPermanent
                           ? "bg-emerald-600 text-white border-emerald-700 shadow-xs"
                           : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
-                      }`}
+                        }`}
                     >
                       <InfinityIcon className="w-5 h-5 shrink-0" />
                       <div>
@@ -1035,9 +1028,8 @@ export default function PromotionModule() {
                           Chạy vĩnh viễn (Không giới hạn ngày)
                         </div>
                         <div
-                          className={`text-[11px] ${
-                            isPermanent ? "text-emerald-100" : "text-slate-500"
-                          }`}
+                          className={`text-[11px] ${isPermanent ? "text-emerald-100" : "text-slate-500"
+                            }`}
                         >
                           Luôn tự động áp dụng khi chương trình đang bật
                         </div>
@@ -1047,11 +1039,10 @@ export default function PromotionModule() {
                     <button
                       type="button"
                       onClick={() => setIsPermanent(false)}
-                      className={`p-3 rounded-xl border text-left transition flex items-center gap-3 ${
-                        !isPermanent
+                      className={`p-3 rounded-xl border text-left transition flex items-center gap-3 ${!isPermanent
                           ? "bg-blue-600 text-white border-blue-700 shadow-xs"
                           : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
-                      }`}
+                        }`}
                     >
                       <Calendar className="w-5 h-5 shrink-0" />
                       <div>
@@ -1059,9 +1050,8 @@ export default function PromotionModule() {
                           Cài đặt thời gian bắt đầu / kết thúc
                         </div>
                         <div
-                          className={`text-[11px] ${
-                            !isPermanent ? "text-blue-100" : "text-slate-500"
-                          }`}
+                          className={`text-[11px] ${!isPermanent ? "text-blue-100" : "text-slate-500"
+                            }`}
                         >
                           Tự động kích hoạt khi đến hạn & tự ngắt khi hết hạn
                         </div>
@@ -1132,19 +1122,17 @@ export default function PromotionModule() {
                   <button
                     type="button"
                     onClick={() => setConditionType("BUY_PRODUCTS")}
-                    className={`p-3 rounded-xl border text-left text-xs font-bold transition ${
-                      conditionType === "BUY_PRODUCTS"
+                    className={`p-3 rounded-xl border text-left text-xs font-bold transition ${conditionType === "BUY_PRODUCTS"
                         ? "bg-slate-900 text-white border-slate-900 shadow-xs"
                         : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
-                    }`}
+                      }`}
                   >
                     <div>🛍️ Mua Sản phẩm cụ thể</div>
                     <div
-                      className={`text-[11px] font-normal mt-0.5 ${
-                        conditionType === "BUY_PRODUCTS"
+                      className={`text-[11px] font-normal mt-0.5 ${conditionType === "BUY_PRODUCTS"
                           ? "text-slate-300"
                           : "text-slate-500"
-                      }`}
+                        }`}
                     >
                       Chọn 1 hoặc nhiều sản phẩm trong kho
                     </div>
@@ -1153,19 +1141,17 @@ export default function PromotionModule() {
                   <button
                     type="button"
                     onClick={() => setConditionType("BUY_CATEGORY")}
-                    className={`p-3 rounded-xl border text-left text-xs font-bold transition ${
-                      conditionType === "BUY_CATEGORY"
+                    className={`p-3 rounded-xl border text-left text-xs font-bold transition ${conditionType === "BUY_CATEGORY"
                         ? "bg-slate-900 text-white border-slate-900 shadow-xs"
                         : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
-                    }`}
+                      }`}
                   >
                     <div>📂 Mua theo Danh mục (Category)</div>
                     <div
-                      className={`text-[11px] font-normal mt-0.5 ${
-                        conditionType === "BUY_CATEGORY"
+                      className={`text-[11px] font-normal mt-0.5 ${conditionType === "BUY_CATEGORY"
                           ? "text-slate-300"
                           : "text-slate-500"
-                      }`}
+                        }`}
                     >
                       VD: Cứ mua bất kỳ sản phẩm thuộc danh mục Vợt
                     </div>
@@ -1174,19 +1160,17 @@ export default function PromotionModule() {
                   <button
                     type="button"
                     onClick={() => setConditionType("ALL_PRODUCTS")}
-                    className={`p-3 rounded-xl border text-left text-xs font-bold transition ${
-                      conditionType === "ALL_PRODUCTS"
+                    className={`p-3 rounded-xl border text-left text-xs font-bold transition ${conditionType === "ALL_PRODUCTS"
                         ? "bg-slate-900 text-white border-slate-900 shadow-xs"
                         : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
-                    }`}
+                      }`}
                   >
                     <div>🌐 Tất cả sản phẩm / Toàn đơn</div>
                     <div
-                      className={`text-[11px] font-normal mt-0.5 ${
-                        conditionType === "ALL_PRODUCTS"
+                      className={`text-[11px] font-normal mt-0.5 ${conditionType === "ALL_PRODUCTS"
                           ? "text-slate-300"
                           : "text-slate-500"
-                      }`}
+                        }`}
                     >
                       Áp dụng cho mọi sản phẩm hoặc theo tổng tiền đơn
                     </div>
@@ -1286,19 +1270,17 @@ export default function PromotionModule() {
                           <div
                             key={p._id}
                             onClick={() => toggleConditionProduct(p._id)}
-                            className={`px-3 py-2 flex items-center justify-between gap-2 text-xs cursor-pointer transition ${
-                              checked
+                            className={`px-3 py-2 flex items-center justify-between gap-2 text-xs cursor-pointer transition ${checked
                                 ? "bg-emerald-50 font-bold text-emerald-900"
                                 : "hover:bg-slate-50 text-slate-800"
-                            }`}
+                              }`}
                           >
                             <div className="flex items-center gap-2 min-w-0">
                               <div
-                                className={`w-4 h-4 rounded flex items-center justify-center border shrink-0 ${
-                                  checked
+                                className={`w-4 h-4 rounded flex items-center justify-center border shrink-0 ${checked
                                     ? "bg-emerald-600 border-emerald-600 text-white"
                                     : "border-slate-300 bg-white"
-                                }`}
+                                  }`}
                               >
                                 {checked && <Check className="w-3 h-3" />}
                               </div>
@@ -1333,11 +1315,10 @@ export default function PromotionModule() {
                             key={cat._id}
                             type="button"
                             onClick={() => toggleConditionCategory(cat._id)}
-                            className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-between transition ${
-                              checked
+                            className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-between transition ${checked
                                 ? "bg-emerald-600 text-white border-emerald-700 shadow-xs"
                                 : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
-                            }`}
+                              }`}
                           >
                             <span className="truncate">{cat.name}</span>
                             {checked && <Check className="w-4 h-4 shrink-0" />}
@@ -1423,7 +1404,7 @@ export default function PromotionModule() {
                           >
                             <div className="min-w-0 flex-1">
                               <div className="font-bold text-slate-900">
-                                🎁 {prod?.name || g.productId}
+                                {prod?.name || g.productId}
                               </div>
                               <div className="text-[11px] text-slate-500 font-mono">
                                 Giá gốc bán lẻ: {formatVND(prod?.sellingPrice || 0)} → Tặng 0 VND · Tồn T1:{" "}
@@ -1516,11 +1497,10 @@ export default function PromotionModule() {
                           <button
                             type="button"
                             onClick={() => handleAddGiftItem(p._id)}
-                            className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 shrink-0 transition ${
-                              selectedGift
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 shrink-0 transition ${selectedGift
                                 ? "bg-amber-600 text-white"
                                 : "bg-amber-100 hover:bg-amber-200 text-amber-900"
-                            }`}
+                              }`}
                           >
                             <Plus className="w-3.5 h-3.5" />
                             {selectedGift
@@ -1684,8 +1664,8 @@ export default function PromotionModule() {
                   {submitting
                     ? "Đang lưu..."
                     : editingPromo
-                    ? "Lưu cập nhật Chương trình"
-                    : "Tạo Chương trình Khuyến mãi"}
+                      ? "Lưu cập nhật Chương trình"
+                      : "Tạo Chương trình Khuyến mãi"}
                 </button>
               </div>
             </form>

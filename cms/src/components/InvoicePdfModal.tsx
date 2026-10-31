@@ -30,6 +30,67 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
       ? `Khác (${order.paymentMethodDetail || "Tùy chọn"})`
       : `Thẻ (CARD)${order.hasCardFee ? " - Có phí 3%" : " - Không phí"}`;
 
+  const getItemCalculatedPricing = (item: Order["items"][number]) => {
+    const isGift = Boolean(item.isGift) || item.discountType === "GIFT";
+    const qty = Math.max(1, Number(item.quantity) || 1);
+    const discAmt = Math.max(0, Number(item.discountAmount) || 0);
+    const rawOrigUnit = Number(item.originalUnitPrice) || 0;
+    const storedUnit = Number(item.unitPrice) || 0;
+    const storedLine = Number(item.lineTotal) || 0;
+
+    const origUnitPrice =
+      discAmt > 0
+        ? rawOrigUnit > storedUnit
+          ? rawOrigUnit
+          : storedLine === storedUnit * qty &&
+            (Number(order.rawSubtotal) || 0) > (Number(order.subtotal) || 0)
+          ? storedUnit + Math.round(discAmt / qty)
+          : rawOrigUnit > 0
+          ? rawOrigUnit
+          : storedUnit
+        : rawOrigUnit > 0
+        ? rawOrigUnit
+        : storedUnit;
+
+    const origLineTotal = origUnitPrice * qty;
+    const netLineTotal = Math.max(0, origLineTotal - discAmt);
+
+    return {
+      isGift,
+      qty,
+      discAmt,
+      origUnitPrice,
+      origLineTotal,
+      netLineTotal,
+    };
+  };
+
+  const calcRawSub =
+    (order.items || []).reduce((s, item) => {
+      const p = getItemCalculatedPricing(item);
+      return p.isGift ? s : s + p.origLineTotal;
+    }, 0) ||
+    Number(order.rawSubtotal) ||
+    Number(order.subtotal) ||
+    0;
+
+  const calcItemDisc =
+    (order.items || []).reduce((s, item) => {
+      const p = getItemCalculatedPricing(item);
+      return p.isGift ? s : s + p.discAmt;
+    }, 0) ||
+    Number(order.itemDiscountTotal) ||
+    0;
+
+  const calcSubtotal = Math.max(0, calcRawSub - calcItemDisc);
+  const calcBillDisc = Math.max(0, Number(order.billDiscountAmount) || 0);
+  const calcAfterBillDisc = Math.max(0, calcSubtotal - calcBillDisc);
+  const calcCardFee =
+    order.paymentMethod === "CARD" && order.hasCardFee
+      ? Number(order.cardFee) || Math.round(calcAfterBillDisc * 0.03)
+      : 0;
+  const calcTotalAmount = calcAfterBillDisc + calcCardFee;
+
   const handlePrint = () => {
     if (!printAreaRef.current) {
       window.print();
@@ -97,22 +158,39 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/75 p-4 overflow-y-auto">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[92vh]">
-        <div className="bg-slate-900 text-white px-6 py-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Printer className="w-5 h-5 text-emerald-400" />
-            <h3 className="font-bold text-lg">
-              Xuất / In Hóa Đơn PDF — <span className="font-mono text-emerald-400">{orderCode}</span>
-            </h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/75 p-2 sm:p-4 overflow-y-auto">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh]">
+        {/* Thanh công cụ Modal */}
+        <div className="bg-slate-900 text-white px-3 py-3 sm:px-6 sm:py-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <Printer className="w-5 h-5 shrink-0 text-emerald-400" />
+              <h3 className="font-bold text-base sm:text-lg truncate">
+                Xuất / In Hóa Đơn PDF — <span className="font-mono text-emerald-400">{orderCode}</span>
+                {order.status === "DRAFT" && (
+                  <span className="ml-2 px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-400/40 text-xs font-extrabold">
+                    BẢN NHÁP
+                  </span>
+                )}
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="md:hidden w-10 h-10 shrink-0 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center"
+              title="Đóng"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
 
-          <div className="flex items-center gap-2">
-            <div className="bg-slate-800 p-1 rounded-lg flex items-center gap-1">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            {/* Chuyển đổi khổ K80 và A4 */}
+            <div className="bg-slate-800 p-1 rounded-lg grid grid-cols-2 sm:flex sm:items-center gap-1">
               <button
                 type="button"
                 onClick={() => setPaperSize("K80")}
-                className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition ${
+                className={`min-h-[40px] px-3 py-1.5 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition ${
                   paperSize === "K80"
                     ? "bg-emerald-600 text-white shadow"
                     : "text-slate-300 hover:text-white"
@@ -124,7 +202,7 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
               <button
                 type="button"
                 onClick={() => setPaperSize("A4")}
-                className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition ${
+                className={`min-h-[40px] px-3 py-1.5 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition ${
                   paperSize === "A4"
                     ? "bg-emerald-600 text-white shadow"
                     : "text-slate-300 hover:text-white"
@@ -138,7 +216,7 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
             <button
               type="button"
               onClick={handlePrint}
-              className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm flex items-center gap-1.5 shadow"
+              className="min-h-[44px] px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm flex items-center justify-center gap-1.5 shadow"
             >
               <Download className="w-4 h-4" />
               In / Lưu PDF ({paperSize})
@@ -147,20 +225,23 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
             <button
               type="button"
               onClick={onClose}
-              className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white"
+              className="hidden md:flex w-10 h-10 items-center justify-center rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white"
+              title="Đóng"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        <div className="p-6 overflow-y-auto bg-slate-100 flex-1 flex justify-center">
+        {/* Vùng hiển thị bản xem trước */}
+        <div className="p-2 sm:p-6 overflow-auto bg-slate-100 flex-1">
           <div
             ref={printAreaRef}
-            className={`bg-white text-black shadow-md border border-slate-300 overflow-hidden ${
+            id="printable-invoice"
+            className={`mx-auto bg-white text-black shadow-md border border-slate-300 overflow-hidden ${
               paperSize === "K80"
-                ? "w-[360px] p-4 text-[11px]"
-                : "w-full max-w-[794px] p-8 text-xs"
+                ? "w-full max-w-[360px] p-3.5 sm:p-4 text-[11px]"
+                : "w-full min-w-[560px] max-w-[794px] p-6 sm:p-8 text-xs"
             }`}
           >
             {/* Header cửa hàng 11Sport với Logo */}
@@ -179,8 +260,13 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
                 Hotline: 076.576.3456
               </div>
               <div className="mt-2 font-extrabold uppercase tracking-wider text-xs sm:text-sm text-black">
-                HÓA ĐƠN BÁN HÀNG
+                {order.status === "DRAFT" ? "HÓA ĐƠN BÁN HÀNG (BẢN NHÁP)" : "HÓA ĐƠN BÁN HÀNG"}
               </div>
+              {order.status === "DRAFT" && (
+                <div className="mt-1 inline-block px-2 py-0.5 border border-black text-[10px] font-extrabold uppercase text-black">
+                  Bản nháp — Chưa thanh toán
+                </div>
+              )}
               <div className="font-mono text-[11px] font-semibold text-black mt-0.5">
                 Mã đơn: <strong className="font-extrabold">{orderCode}</strong>
               </div>
@@ -193,16 +279,26 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
             <div className="space-y-1 mb-3 pb-2.5 border-b border-black text-black text-[11px]">
               <div>
                 <span className="font-semibold">Khách hàng: </span>
-                <span className="font-extrabold">{order.customerName}</span>
+                <span className="font-extrabold">{order.customerName || "Khách lẻ"}</span>
               </div>
               <div className="font-mono">
                 <span className="font-semibold font-sans">SĐT: </span>
-                <span className="font-bold">{formatPhone(order.customerPhone)}</span>
+                <span className="font-bold">{formatPhone(order.customerPhone) || "-"}</span>
               </div>
               <div>
-                <span className="font-semibold">Thu ngân / Người bán: </span>
+                <span className="font-semibold">
+                  {order.status === "DRAFT" ? "Người tạo nháp: " : "Người tạo đơn: "}
+                </span>
                 <span className="font-extrabold">{sellerName}</span>
               </div>
+              {order.status !== "DRAFT" && (
+                <div>
+                  <span className="font-semibold">Người chốt TT: </span>
+                  <span className="font-extrabold">
+                    {order.confirmedByName || sellerName}
+                  </span>
+                </div>
+              )}
               <div>
                 <span className="font-semibold">Thanh toán: </span>
                 <span className="font-bold">{paymentMethodLabel}</span>
@@ -214,26 +310,33 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
               <table className="w-full border-collapse border border-black text-black">
                 <thead>
                   <tr className="bg-slate-100 border-b border-black text-[10px] font-extrabold uppercase">
-                    <th className="border-r border-black py-1.5 px-1.5 text-left">
+                    <th className="border-r border-black py-1.5 px-1.5 text-left align-middle">
                       Mặt hàng
                     </th>
-                    <th className="border-r border-black py-1.5 px-1 text-center w-8">
+                    <th className="border-r border-black py-1.5 px-1 text-center align-middle w-8">
                       SL
                     </th>
-                    <th className="border-r border-black py-1.5 px-1.5 text-right whitespace-nowrap">
+                    <th className="border-r border-black py-1.5 px-1.5 text-center align-middle whitespace-nowrap">
                       Đơn giá
                     </th>
-                    <th className="py-1.5 px-1.5 text-right whitespace-nowrap">
+                    <th className="py-1.5 px-1.5 text-center align-middle whitespace-nowrap">
                       Thành tiền
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-black text-[11px]">
                   {order.items?.map((item, idx) => {
-                    const isGift = Boolean(item.isGift) || item.discountType === "GIFT";
+                    const {
+                      isGift,
+                      qty,
+                      discAmt,
+                      origUnitPrice,
+                      netLineTotal,
+                    } = getItemCalculatedPricing(item);
+
                     return (
-                      <tr key={idx} className="align-top">
-                        <td className="border-r border-black py-1.5 px-1.5 font-semibold leading-snug break-words">
+                      <tr key={idx}>
+                        <td className="border-r border-black py-1.5 px-1.5 font-semibold leading-snug break-words align-middle">
                           <div>
                             {idx + 1}. {item.productName}
                           </div>
@@ -242,21 +345,21 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
                               (🎁 Hàng tặng - Không tính tiền)
                             </div>
                           ) : (
-                            (Number(item.discountAmount) || 0) > 0 && (
+                            discAmt > 0 && (
                               <div className="text-[10px] font-bold text-black mt-0.5">
-                                (Giảm SP: -{formatVND(item.discountAmount)})
+                                (Giảm SP: -{formatVND(discAmt)})
                               </div>
                             )
                           )}
                         </td>
-                        <td className="border-r border-black py-1.5 px-1 text-center font-mono font-bold">
-                          {item.quantity}
+                        <td className="border-r border-black py-1.5 px-1 text-center align-middle font-mono font-bold">
+                          {qty}
                         </td>
-                        <td className="border-r border-black py-1.5 px-1.5 text-right font-mono font-semibold whitespace-nowrap">
-                          {isGift ? "0 VND" : formatVND(item.unitPrice)}
+                        <td className="border-r border-black py-1.5 px-1.5 text-center align-middle font-mono font-semibold whitespace-nowrap">
+                          {isGift ? "0 VND" : formatVND(origUnitPrice)}
                         </td>
-                        <td className="py-1.5 px-1.5 text-right font-mono font-extrabold whitespace-nowrap">
-                          {isGift ? "0 VND" : formatVND(item.lineTotal)}
+                        <td className="py-1.5 px-1.5 text-center align-middle font-mono font-extrabold whitespace-nowrap">
+                          {isGift ? "0 VND" : formatVND(netLineTotal)}
                         </td>
                       </tr>
                     );
@@ -267,18 +370,18 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
 
             {/* Tạm tính, Giảm giá, Phí thẻ & Tổng thanh toán (1 dòng, giảm font-size, chữ đen đậm) */}
             <div className="border-t-2 border-black pt-2 space-y-1 text-black text-[11px]">
-              {(Number(order.itemDiscountTotal) || 0) > 0 && (
+              {calcItemDisc > 0 && (
                 <>
                   <div className="flex justify-between items-center whitespace-nowrap gap-2">
                     <span className="font-semibold">Tiền hàng (niêm yết):</span>
                     <span className="font-mono font-bold">
-                      {formatVND(order.rawSubtotal)}
+                      {formatVND(calcRawSub)}
                     </span>
                   </div>
                   <div className="flex justify-between items-center whitespace-nowrap gap-2">
                     <span className="font-semibold">Giảm giá sản phẩm:</span>
                     <span className="font-mono font-bold">
-                      -{formatVND(order.itemDiscountTotal)}
+                      -{formatVND(calcItemDisc)}
                     </span>
                   </div>
                 </>
@@ -287,11 +390,11 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
               <div className="flex justify-between items-center whitespace-nowrap gap-2">
                 <span className="font-semibold">Tạm tính tiền hàng (Subtotal):</span>
                 <span className="font-mono font-bold">
-                  {formatVND(order.subtotal)}
+                  {formatVND(calcSubtotal)}
                 </span>
               </div>
 
-              {(Number(order.billDiscountAmount) || 0) > 0 && (
+              {calcBillDisc > 0 && (
                 <div className="flex justify-between items-center whitespace-nowrap gap-2">
                   <span className="font-semibold">
                     Giảm giá Bill
@@ -301,7 +404,7 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
                     :
                   </span>
                   <span className="font-mono font-bold">
-                    -{formatVND(order.billDiscountAmount)}
+                    -{formatVND(calcBillDisc)}
                   </span>
                 </div>
               )}
@@ -312,15 +415,17 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
                     Phí quẹt thẻ {order.hasCardFee ? "(3%)" : "(0%)"}:
                   </span>
                   <span className="font-mono font-bold">
-                    +{formatVND(order.cardFee)}
+                    +{formatVND(calcCardFee)}
                   </span>
                 </div>
               )}
 
               <div className="flex justify-between items-center whitespace-nowrap gap-2 text-xs font-extrabold text-black pt-1.5 border-t border-black">
-                <span>TỔNG THANH TOÁN:</span>
+                <span>
+                  {order.status === "DRAFT" ? "TỔNG TẠM TÍNH (NHÁP):" : "TỔNG THANH TOÁN:"}
+                </span>
                 <span className="font-mono text-xs sm:text-[13px] font-black">
-                  {formatVND(order.totalAmount)}
+                  {formatVND(calcTotalAmount)}
                 </span>
               </div>
             </div>

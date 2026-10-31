@@ -115,10 +115,14 @@ export interface Order {
   cardFee: number;
   totalAmount: number;
   note: string;
-  status: "PAID" | "PARTIALLY_RETURNED" | "FULLY_RETURNED";
+  status: "DRAFT" | "PAID" | "PARTIALLY_RETURNED" | "FULLY_RETURNED";
   items: OrderItem[];
   soldBy?: string;
   soldByName?: string;
+  createdBy?: string;
+  confirmedBy?: string;
+  confirmedByName?: string;
+  confirmedAt?: string;
   createdByName?: string;
   createdAt: string;
 }
