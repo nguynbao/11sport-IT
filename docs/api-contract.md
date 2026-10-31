@@ -35,9 +35,14 @@
 - `POST /api/v1/auth/login`
   - Body: `{ "username": "string", "password": "string" }`
   - Response: `{ "data": { "token": "string", "user": { "_id": "...", "code": "NV001", "username": "sales1", "fullName": "Nguyễn Văn Bán", "role": "SALES | WAREHOUSE | ADMIN", "status": "ACTIVE | LOCKED" } } }`
+- `POST /api/v1/auth/change-password` *(v2.3)*
+  - Đổi mật khẩu của tài khoản đang đăng nhập.
+  - Body: `{ "currentPassword": "string", "newPassword": "string" }`
+  - Quy tắc: Kiểm tra `currentPassword` khớp mật khẩu hiện tại (sai → `400 INVALID_CURRENT_PASSWORD`), `newPassword` tối thiểu 4 ký tự (`400 VALIDATION_ERROR`).
+  - Response: `{ "data": { "changed": true, "username": "admin", "fullName": "Quản Trị Viên 11Sport" }, "meta": {} }`
 - `GET /api/v1/staff` — Danh sách nhân viên (CMS)
 - `POST /api/v1/staff` — Tạo nhân viên mới (`username`, `password`, `fullName`, `phone`, `role`)
-- `PATCH /api/v1/staff/:id` — Cập nhật thông tin, phân quyền (`role`) hoặc khóa/mở khóa tài khoản (`status: "ACTIVE" | "LOCKED"`)
+- `PATCH /api/v1/staff/:id` — Cập nhật thông tin, phân quyền (`role`), khóa/mở khóa tài khoản (`status: "ACTIVE" | "LOCKED"`), hoặc cấp lại mật khẩu mới (`password`)
 
 ### 2.2 Danh mục - Category (`/categories`)
 - `GET /api/v1/categories`
@@ -303,3 +308,15 @@
     }
     ```
   - Nguồn dữ liệu: đơn hàng (`createdBy`), phiếu trả/đổi (`performedBy`), phiếu nhập (`createdBy`, `completedBy`, `items[].scanCounts`), sổ kho loại `ADJUSTMENT` (`performedBy`). Thao tác không gắn được với nhân viên nào được gom vào dòng "Không xác định" (`staffId = ""`).
+
+### 2.8 Dashboard Doanh thu chi tiết & Phân tích Sản phẩm (`/reports/revenue-dashboard`) *(v2.3)*
+- `GET /api/v1/reports/revenue-dashboard?from=YYYY-MM-DD&to=YYYY-MM-DD&categoryId=...&paymentMethod=...`
+  - Chỉ role `ADMIN` (Quản lý) → role khác `403 FORBIDDEN`.
+  - Trả về:
+    - `summary`: Tổng hợp doanh thu gộp (`grossRevenue`), giảm giá sản phẩm (`itemDiscountTotal`), giảm giá Bill (`billDiscountTotal`), phí quẹt thẻ (`cardFeeTotal`), doanh thu đơn hàng (`orderRevenue`), hoàn trả/đổi chênh lệch (`netReturnRefund`), doanh thu thuần (`netRevenue`), giá vốn hàng bán (`estimatedCogs`), lãi gộp thực tế (`grossProfit`), tỷ suất lãi gộp (`grossMarginPercent`), tổng số đơn (`totalOrders`), giá trị đơn trung bình (`avgOrderValue`), tổng sản phẩm bán (`totalUnitsSold`), sản phẩm tặng (`totalGiftUnits`).
+    - `byPaymentMethod`: Cơ cấu doanh thu theo hình thức thanh toán (`CASH`, `BANKING`, `CARD`, `OTHER`).
+    - `byCategory`: Cơ cấu doanh thu, số lượng bán, giá vốn và lãi gộp theo từng Category.
+    - `dailyTrend`: Chuỗi doanh thu & lợi nhuận theo từng ngày trong kỳ (tự động điền đầy đủ các ngày trong khoảng `from` – `to` để vẽ biểu đồ xu hướng).
+    - `hourlyTrend`: Chuỗi doanh thu & lợi nhuận theo từng khung giờ (`00:00` – `23:00`) của các giao dịch trong kỳ.
+    - `topSellingProducts`: Danh sách sản phẩm bán chạy nhất trong kỳ kèm tồn kho hiện tại (`stockFloor1`, `stockFloor2`, `stock`) và cảnh báo cần nhập thêm / dời từ Tầng 2 xuống Tầng 1 (`restockAlert`).
+    - `needsPushProducts`: Danh sách sản phẩm đang cần đẩy mạnh (tồn kho cao nhưng bán chậm/chưa bán được, vốn tồn đọng lớn, hàng nằm ở Kho Tầng 2 nhưng Kho Tầng 1 hết hàng trưng bày, hoặc chưa đặt giá bán), kèm lý do (`pushReasons`) và gợi ý hành động (`suggestedAction`).

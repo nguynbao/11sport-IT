@@ -11,6 +11,7 @@ import {
   clearStoredAuth,
 } from "@/lib/api";
 import InventoryModule from "@/components/InventoryModule";
+import RevenueDashboardModule from "@/components/RevenueDashboardModule";
 import CategoryModule from "@/components/CategoryModule";
 import OrdersReturnsModule from "@/components/OrdersReturnsModule";
 import StaffModule from "@/components/StaffModule";
@@ -18,6 +19,7 @@ import StaffActivityModule from "@/components/StaffActivityModule";
 import InvoicePdfModal from "@/components/InvoicePdfModal";
 import {
   Boxes,
+  TrendingUp,
   FolderKanban,
   ShoppingBag,
   Users,
@@ -28,13 +30,21 @@ import {
   User,
   KeyRound,
   AlertCircle,
+  CheckCircle2,
   Activity,
+  X,
 } from "lucide-react";
 
-type CmsModuleType = "INVENTORY" | "CATEGORIES" | "ORDERS" | "STAFF" | "ACTIVITY";
+type CmsModuleType =
+  | "INVENTORY"
+  | "REVENUE"
+  | "CATEGORIES"
+  | "ORDERS"
+  | "STAFF"
+  | "ACTIVITY";
 
 export default function CmsDashboardPage() {
-  const [activeModule, setActiveModule] = useState<CmsModuleType>("INVENTORY");
+  const [activeModule, setActiveModule] = useState<CmsModuleType>("REVENUE");
   const [adminUser, setAdminUser] = useState<StaffUser | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [invoiceOrder, setInvoiceOrder] = useState<Order | null>(null);
@@ -45,15 +55,31 @@ export default function CmsDashboardPage() {
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState("");
 
+  // State Modal Đổi mật khẩu trong CMS
+  const [showChangePwdModal, setShowChangePwdModal] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [pwdLoading, setPwdLoading] = useState(false);
+  const [pwdMessage, setPwdMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
+
   useEffect(() => {
-    const saved = getStoredUser();
-    const token = getStoredToken();
-    if (saved && token && token !== "demo-admin-token" && saved.role === "ADMIN") {
-      setAdminUser(saved);
-    } else {
+    try {
+      const saved = getStoredUser();
+      const token = getStoredToken();
+      if (saved && token && token !== "demo-admin-token" && saved.role === "ADMIN") {
+        setAdminUser(saved);
+      } else {
+        clearStoredAuth();
+      }
+    } catch {
       clearStoredAuth();
+    } finally {
+      setCheckingAuth(false);
     }
-    setCheckingAuth(false);
   }, []);
 
   // Định kỳ 8 phút gửi 1 API đánh thức server chống sleep (5-10 phút/lần)
@@ -109,6 +135,93 @@ export default function CmsDashboardPage() {
     setUsername("");
     setPassword("");
     setLoginError("");
+  };
+
+  const handleOpenChangePwd = () => {
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmNewPassword("");
+    setPwdMessage(null);
+    setShowChangePwdModal(true);
+  };
+
+  const handleChangePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPwdMessage(null);
+
+    if (!currentPassword || !newPassword || !confirmNewPassword) {
+      setPwdMessage({
+        type: "error",
+        text: "Vui lòng nhập đầy đủ mật khẩu hiện tại và mật khẩu mới.",
+      });
+      return;
+    }
+
+    const cleanNew = newPassword.trim();
+    if (cleanNew.length < 4) {
+      setPwdMessage({
+        type: "error",
+        text: "Mật khẩu mới phải có ít nhất 4 ký tự.",
+      });
+      return;
+    }
+
+    if (cleanNew !== confirmNewPassword.trim()) {
+      setPwdMessage({
+        type: "error",
+        text: "Xác nhận mật khẩu mới không khớp.",
+      });
+      return;
+    }
+
+    setPwdLoading(true);
+    try {
+      try {
+        await apiRequest("/auth/change-password", {
+          method: "POST",
+          body: JSON.stringify({
+            currentPassword,
+            newPassword: cleanNew,
+            username: adminUser?.username,
+          }),
+        });
+      } catch (err: any) {
+        // Nếu server cũ chưa có /auth/change-password thì xác thực bằng /auth/login rồi PATCH /staff/:id
+        if (err?.code === " INVALID_CURRENT_PASSWORD" || err?.code === "INVALID_CURRENT_PASSWORD") {
+          throw err;
+        }
+        if (adminUser?.username && adminUser?._id) {
+          await apiRequest("/auth/login", {
+            method: "POST",
+            body: JSON.stringify({
+              username: adminUser.username,
+              password: currentPassword,
+            }),
+          });
+          await apiRequest(`/staff/${adminUser._id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ password: cleanNew }),
+          });
+        } else {
+          throw err;
+        }
+      }
+
+      setPwdMessage({
+        type: "success",
+        text: "Đã đổi mật khẩu tài khoản Quản trị thành công!",
+      });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+    } catch (err: any) {
+      setPwdMessage({
+        type: "error",
+        text: err?.message || "Mật khẩu hiện tại không đúng hoặc không thể đổi mật khẩu.",
+      });
+    } finally {
+      setPwdLoading(false);
+    }
   };
 
   if (checkingAuth) {
@@ -198,7 +311,7 @@ export default function CmsDashboardPage() {
     <div className="min-h-screen flex flex-col bg-slate-100">
       {/* Header CMS */}
       <header className="bg-slate-900 text-white shadow-lg print:hidden">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="max-w-[98vw] 2xl:max-w-[1880px] mx-auto px-3 sm:px-5 py-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center font-black text-lg">
               CMS
@@ -211,12 +324,12 @@ export default function CmsDashboardPage() {
                 </span>
               </div>
               <div className="text-xs text-slate-400">
-                Quản trị Tồn kho Đầu kỳ/Cuối kỳ, Giá bán, Category, Đơn hàng & Nhân sự
+                Quản trị Tồn kho, Doanh thu chi tiết, Giá bán, Category, Đơn hàng & Nhân sự
               </div>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700 text-xs">
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
               <span className="text-slate-300">Quản trị viên:</span>
@@ -225,6 +338,16 @@ export default function CmsDashboardPage() {
                 {adminUser.role}
               </span>
             </div>
+
+            <button
+              type="button"
+              onClick={handleOpenChangePwd}
+              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-amber-300 border border-slate-700 flex items-center gap-1.5 transition"
+              title="Đổi mật khẩu tài khoản Quản trị"
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              Đổi mật khẩu
+            </button>
 
             <a
               href={process.env.NEXT_PUBLIC_WEB_URL || "https://11sport-it.vercel.app"}
@@ -246,9 +369,22 @@ export default function CmsDashboardPage() {
           </div>
         </div>
 
-        {/* Navigation 4 Module chính của CMS */}
+        {/* Navigation các Module chính của CMS */}
         <div className="bg-slate-800/90 border-t border-slate-800">
-          <div className="max-w-7xl mx-auto px-4 flex items-center gap-1.5 overflow-x-auto py-1.5">
+          <div className="max-w-[98vw] 2xl:max-w-[1880px] mx-auto px-3 sm:px-5 flex items-center gap-1.5 overflow-x-auto py-1.5">
+            <button
+              type="button"
+              onClick={() => setActiveModule("REVENUE")}
+              className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 whitespace-nowrap transition ${
+                activeModule === "REVENUE"
+                  ? "bg-emerald-600 text-white shadow"
+                  : "text-slate-300 hover:bg-slate-700/60 hover:text-white"
+              }`}
+            >
+              <TrendingUp className="w-4 h-4" />
+              1. Dashboard Doanh thu & SP Bán chạy / Cần đẩy
+            </button>
+
             <button
               type="button"
               onClick={() => setActiveModule("INVENTORY")}
@@ -259,7 +395,7 @@ export default function CmsDashboardPage() {
               }`}
             >
               <Boxes className="w-4 h-4" />
-              1. Quản lý Kho, Giá bán & Sổ kho
+              2. Quản lý Kho, Giá bán & Sổ kho
             </button>
 
             <button
@@ -272,7 +408,7 @@ export default function CmsDashboardPage() {
               }`}
             >
               <FolderKanban className="w-4 h-4" />
-              2. Quản lý Category (Danh mục)
+              3. Quản lý Category (Danh mục)
             </button>
 
             <button
@@ -285,7 +421,7 @@ export default function CmsDashboardPage() {
               }`}
             >
               <ShoppingBag className="w-4 h-4" />
-              3. Quản lý Đơn hàng & Trả/Đổi
+              4. Quản lý Đơn hàng & Trả/Đổi
             </button>
 
             <button
@@ -298,7 +434,7 @@ export default function CmsDashboardPage() {
               }`}
             >
               <Users className="w-4 h-4" />
-              4. Quản lý Nhân viên & Phân quyền
+              5. Quản lý Nhân viên & Phân quyền
             </button>
 
             <button
@@ -311,15 +447,20 @@ export default function CmsDashboardPage() {
               }`}
             >
               <Activity className="w-4 h-4" />
-              5. Hoạt động NV (Bán hàng / Kiểm kho)
+              6. Hoạt động NV (Bán hàng / Kiểm kho)
             </button>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6 print:p-0">
+      {/* Main Content (Nới rộng tối đa không gian hiển thị 2 bên) */}
+      <main className="flex-1 max-w-[98vw] 2xl:max-w-[1880px] w-full mx-auto px-3 sm:px-5 py-5 print:p-0">
         {activeModule === "INVENTORY" && <InventoryModule />}
+        {activeModule === "REVENUE" && (
+          <RevenueDashboardModule
+            onNavigateToInventory={() => setActiveModule("INVENTORY")}
+          />
+        )}
         {activeModule === "CATEGORIES" && <CategoryModule />}
         {activeModule === "ORDERS" && (
           <OrdersReturnsModule onOpenInvoice={(ord) => setInvoiceOrder(ord)} />
@@ -327,6 +468,112 @@ export default function CmsDashboardPage() {
         {activeModule === "STAFF" && <StaffModule />}
         {activeModule === "ACTIVITY" && <StaffActivityModule />}
       </main>
+
+      {/* Modal Đổi mật khẩu Quản trị viên (Header CMS) */}
+      {showChangePwdModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/65 p-4 print:hidden">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <KeyRound className="w-4 h-4 text-amber-400" />
+                <h3 className="font-extrabold text-sm">
+                  Đổi mật khẩu Quản trị viên ({adminUser.username})
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowChangePwdModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleChangePasswordSubmit} className="p-5 space-y-4">
+              {pwdMessage && (
+                <div
+                  className={`p-3 rounded-xl border text-xs font-bold flex items-start gap-2 ${
+                    pwdMessage.type === "success"
+                      ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                      : "bg-red-50 border-red-200 text-red-700"
+                  }`}
+                >
+                  {pwdMessage.type === "success" ? (
+                    <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  )}
+                  <span>{pwdMessage.text}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Mật khẩu hiện tại *
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="Nhập mật khẩu đang sử dụng..."
+                  autoComplete="current-password"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Mật khẩu mới (Tối thiểu 4 ký tự) *
+                </label>
+                <input
+                  type="password"
+                  required
+                  minLength={4}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Nhập mật khẩu mới..."
+                  autoComplete="new-password"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Xác nhận mật khẩu mới *
+                </label>
+                <input
+                  type="password"
+                  required
+                  minLength={4}
+                  value={confirmNewPassword}
+                  onChange={(e) => setConfirmNewPassword(e.target.value)}
+                  placeholder="Nhập lại mật khẩu mới..."
+                  autoComplete="new-password"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowChangePwdModal(false)}
+                  className="px-4 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100"
+                >
+                  Đóng
+                </button>
+                <button
+                  type="submit"
+                  disabled={pwdLoading}
+                  className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-xs font-bold shadow"
+                >
+                  {pwdLoading ? "Đang cập nhật..." : "Cập nhật Mật khẩu"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Modal In Hóa Đơn PDF (K80 / A4) */}
       <InvoicePdfModal

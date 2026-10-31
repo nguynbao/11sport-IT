@@ -10,6 +10,10 @@ import {
   StaffActivitySummary,
   SalesActivity,
   WarehouseActivity,
+  RevenueDashboardData,
+  ProductSalesAnalysisRow,
+  DailyRevenueTrend,
+  RevenueByCategory,
 } from "./api";
 import { buildSheet, downloadExcel, excelFileName, ExcelColumn, toDate } from "./excel";
 
@@ -421,5 +425,90 @@ export function exportStaffActivity(report: StaffActivityReport, from?: string, 
     buildSheet("Tong hop", summaryCols, report.staff, { title: "TỔNG HỢP HOẠT ĐỘNG NHÂN VIÊN", subtitle }),
     buildSheet("Ban hang", salesCols, report.sales, { title: "NHẬT KÝ BÁN HÀNG / TRẢ ĐỔI THEO NHÂN VIÊN", subtitle }),
     buildSheet("Kiem kho", whCols, report.warehouse, { title: "NHẬT KÝ KIỂM KHO / NHẬP KHO THEO NHÂN VIÊN", subtitle }),
+  ]);
+}
+
+/* ---------------- Báo cáo Doanh thu chi tiết & Sản phẩm ---------------- */
+
+export function exportRevenueDashboard(data: RevenueDashboardData, from?: string, to?: string) {
+  const period = `Kỳ: ${from || "đầu kỳ"} → ${to || "hiện tại"}`;
+  const subtitle = `${period} — Xuất lúc ${new Date().toLocaleString("vi-VN")}`;
+
+  const dailyCols: ExcelColumn<DailyRevenueTrend>[] = [
+    { header: "Ngày", value: (d) => d.date, width: 14 },
+    { header: "Số đơn", value: (d) => d.orders, format: "int", total: true },
+    { header: "SL bán", value: (d) => d.unitsSold, format: "int", total: true },
+    { header: "Doanh thu gộp", value: (d) => d.grossRevenue, format: "money", total: true },
+    { header: "Giảm giá", value: (d) => d.discountTotal, format: "money", total: true },
+    { header: "Doanh thu đơn hàng", value: (d) => d.orderRevenue, format: "money", total: true },
+    { header: "Chênh lệch Trả/Đổi", value: (d) => d.returnImpact, format: "money", total: true },
+    { header: "Doanh thu thuần", value: (d) => d.netRevenue, format: "money", total: true },
+    { header: "Giá vốn (COGS)", value: (d) => d.cogs, format: "money", total: true },
+    { header: "Lãi gộp", value: (d) => d.grossProfit, format: "money", total: true },
+  ];
+
+  const topCols: ExcelColumn<ProductSalesAnalysisRow>[] = [
+    { header: "Hạng", value: (_, i) => i + 1, format: "int", width: 7 },
+    { header: "Mã hàng", value: (p) => p.productCode },
+    { header: "Tên sản phẩm", value: (p) => p.productName, width: 45 },
+    { header: "Category", value: (p) => p.categoryName },
+    { header: "ĐVT", value: (p) => p.unit, width: 8 },
+    { header: "SL Bán thuần", value: (p) => p.netSoldQty, format: "int", total: true },
+    { header: "SL Tặng (0đ)", value: (p) => p.giftQty, format: "int", total: true },
+    { header: "SL Hoàn trả", value: (p) => p.returnedQty, format: "int", total: true },
+    { header: "Số đơn", value: (p) => p.orderCount, format: "int" },
+    { header: "Doanh thu thuần", value: (p) => p.revenue, format: "money", total: true },
+    { header: "Giá vốn", value: (p) => p.cogs, format: "money", total: true },
+    { header: "Lãi gộp", value: (p) => p.grossProfit, format: "money", total: true },
+    { header: "Biên lãi (%)", value: (p) => `${p.marginPercent}%`, width: 12 },
+    { header: "Tồn Kho Tầng 1", value: (p) => p.stockFloor1, format: "int", total: true },
+    { header: "Tồn Kho Tầng 2", value: (p) => p.stockFloor2, format: "int", total: true },
+    { header: "Tổng tồn", value: (p) => p.stock, format: "int", total: true },
+    { header: "Cảnh báo tồn kho", value: (p) => p.restockAlert || "Ổn định", width: 35 },
+  ];
+
+  const pushCols: ExcelColumn<ProductSalesAnalysisRow>[] = [
+    { header: "Ưu tiên", value: (_, i) => i + 1, format: "int", width: 8 },
+    { header: "Mã hàng", value: (p) => p.productCode },
+    { header: "Tên sản phẩm", value: (p) => p.productName, width: 45 },
+    { header: "Category", value: (p) => p.categoryName },
+    { header: "ĐVT", value: (p) => p.unit, width: 8 },
+    { header: "Tồn Kho Tầng 1", value: (p) => p.stockFloor1, format: "int", total: true },
+    { header: "Tồn Kho Tầng 2", value: (p) => p.stockFloor2, format: "int", total: true },
+    { header: "Tổng tồn", value: (p) => p.stock, format: "int", total: true },
+    { header: "SL đã bán trong kỳ", value: (p) => p.netSoldQty, format: "int", total: true },
+    { header: "Giá gốc", value: (p) => p.costPrice, format: "money" },
+    { header: "Giá bán lẻ", value: (p) => p.sellingPrice, format: "money" },
+    { header: "Vốn tồn đọng", value: (p) => p.inventoryCostValue, format: "money", total: true },
+    { header: "Lý do cần đẩy mạnh", value: (p) => p.pushReasons.join("; "), width: 45 },
+    { header: "Đề xuất hành động", value: (p) => p.suggestedAction, width: 45 },
+  ];
+
+  const catCols: ExcelColumn<RevenueByCategory>[] = [
+    { header: "Category", value: (c) => c.categoryName, width: 28 },
+    { header: "SL Bán", value: (c) => c.unitsSold, format: "int", total: true },
+    { header: "Doanh thu", value: (c) => c.revenue, format: "money", total: true },
+    { header: "Giá vốn", value: (c) => c.cogs, format: "money", total: true },
+    { header: "Lãi gộp", value: (c) => c.grossProfit, format: "money", total: true },
+    { header: "Tỷ trọng (%)", value: (c) => `${c.sharePercent}%`, width: 14 },
+  ];
+
+  downloadExcel(excelFileName("Dashboard_DoanhThu_SanPham"), [
+    buildSheet("Doanh thu theo ngay", dailyCols, data.dailyTrend, {
+      title: "BÁO CÁO DOANH THU & LỢI NHUẬN CHI TIẾT THEO NGÀY",
+      subtitle,
+    }),
+    buildSheet("SP Ban chay", topCols, data.topSellingProducts, {
+      title: "TOP SẢN PHẨM ĐANG BÁN CHẠY (BEST SELLERS)",
+      subtitle,
+    }),
+    buildSheet("SP Can day manh", pushCols, data.needsPushProducts, {
+      title: "DANH SÁCH SẢN PHẨM CẦN ĐẨY MẠNH / XẢ HÀNG / CHUYỂN TẦNG",
+      subtitle,
+    }),
+    buildSheet("Theo Category", catCols, data.byCategory, {
+      title: "DOANH THU THEO DANH MỤC (CATEGORY)",
+      subtitle,
+    }),
   ]);
 }
