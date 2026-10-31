@@ -9,6 +9,7 @@ import { importsRouter } from './routes/imports';
 import { ordersCustomersRouter } from './routes/ordersCustomers';
 import { returnsRouter } from './routes/returns';
 import { reportsRouter } from './routes/reports';
+import { wiseRouter } from './routes/wise';
 
 export function createApp() {
   const app = express();
@@ -89,6 +90,7 @@ export function createApp() {
   app.use('/api/v1', ordersCustomersRouter);
   app.use('/api/v1', returnsRouter);
   app.use('/api/v1', reportsRouter);
+  app.use('/api/v1', wiseRouter);
 
   // 404 Not Found
   app.use((req, res) => {

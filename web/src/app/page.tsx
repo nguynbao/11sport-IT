@@ -18,6 +18,7 @@ import CustomerTab from "@/components/CustomerTab";
 import ReturnExchangeTab from "@/components/ReturnExchangeTab";
 import InvoicePdfModal from "@/components/InvoicePdfModal";
 import AccountProfileTab from "@/components/AccountProfileTab";
+import WiseCalculatorStash from "@/components/WiseCalculatorStash";
 import DrawerMenu, {
   TabType,
   TabConfig,
@@ -461,6 +462,9 @@ export default function WebPosHomePage() {
         order={invoiceOrder}
         onClose={() => setInvoiceOrder(null)}
       />
+
+      {/* Nút Stash Tròn (Hình Máy Tính) mở Cửa sổ nhỏ Đổi tiền nhanh Wise */}
+      <WiseCalculatorStash />
     </div>
   );
 }

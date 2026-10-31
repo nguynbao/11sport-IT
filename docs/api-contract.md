@@ -321,3 +321,67 @@
     - `hourlyTrend`: Chuỗi doanh thu & lợi nhuận theo từng khung giờ (`00:00` – `23:00`) của các giao dịch trong kỳ.
     - `topSellingProducts`: Danh sách sản phẩm bán chạy nhất trong kỳ kèm tồn kho hiện tại (`stockFloor1`, `stockFloor2`, `stock`) và cảnh báo cần nhập thêm / dời từ Tầng 2 xuống Tầng 1 (`restockAlert`).
     - `needsPushProducts`: Danh sách sản phẩm đang cần đẩy mạnh (tồn kho cao nhưng bán chậm/chưa bán được, vốn tồn đọng lớn, hàng nằm ở Kho Tầng 2 nhưng Kho Tầng 1 hết hàng trưng bày, hoặc chưa đặt giá bán), kèm lý do (`pushReasons`) và gợi ý hành động (`suggestedAction`).
+
+
+### 2.9 Tích hợp Wise API — Máy tính Quy đổi Ngoại tệ & Chuyển tiền nhanh (`/wise`) *(v2.6)*
+- `GET /api/v1/wise/currencies`
+  - Trả về danh sách các đồng tiền hỗ trợ quy đổi nhanh trên POS (`VND`, `USD`, `EUR`, `GBP`, `AUD`, `SGD`, `CAD`, `JPY`, `KRW`, `THB`, `CHF`, `CNY`, `HKD`, `MYR`, `TWD`) kèm thông tin chế độ kết nối Wise (`mode`: `"LIVE_AUTHENTICATED" | "LIVE_PUBLIC" | "SANDBOX"`).
+- `POST /api/v1/wise/quote`
+  - Body:
+    ```json
+    {
+      "sourceCurrency": "USD",
+      "targetCurrency": "VND",
+      "sourceAmount": 100,
+      "targetAmount": null
+    }
+    ```
+  - Nghiệp vụ:
+    - Gọi trực tiếp Wise API `POST /v3/quotes` (kèm `Authorization: Bearer <WISE_API_TOKEN>` nếu có cấu hình trong `.env`, hoặc sử dụng Unauthenticated Quote trực tiếp từ `https://api.wise.com/v3/quotes`).
+    - **Xử lý thông minh chiều `VND -> Ngoại tệ`**: Vì Wise không cho phép `sourceCurrency = "VND"` trực tiếp (trả về `422`), khi người dùng chọn đổi từ `VND` sang ngoại tệ (VD: khách hỏi `10,000,000 VND` tương đương bao nhiêu `USD` trên Wise), server tự động truy vấn chiều đối ứng (`targetCurrency -> VND`) trên Wise để lấy chính xác tỷ giá mid-market thực tế (`rate`), phí dịch vụ Wise (`fee`) theo từng phương thức (`BANK_TRANSFER`, `DEBIT`, `CREDIT`, `BALANCE`...) và tính ra số tiền ngoại tệ cần gửi / thực nhận để nhân viên báo ngay cho khách.
+    - Nếu kết nối mạng tới Wise gặp sự cố, tự động fallback về tỷ giá tham chiếu dự phòng kèm cờ `isFallback: true`.
+  - Response:
+    ```json
+    {
+      "data": {
+        "sourceCurrency": "USD",
+        "targetCurrency": "VND",
+        "sourceAmount": 100,
+        "targetAmount": 2532355,
+        "rate": 25803.5,
+        "inverseRate": 0.00003875,
+        "rateTimestamp": "2026-10-31T10:49:01Z",
+        "isReversedCorridor": false,
+        "isFallback": false,
+        "mode": "LIVE_PUBLIC",
+        "selectedOption": {
+          "payIn": "DEBIT",
+          "payOut": "BANK_TRANSFER",
+          "sourceAmount": 100,
+          "targetAmount": 2489006,
+          "feeTotal": 3.54,
+          "feeTransferwise": 2.31,
+          "feePayIn": 1.23,
+          "feeCurrency": "USD",
+          "feePercentage": 3.54,
+          "formattedEstimatedDelivery": "in 30 minutes"
+        },
+        "paymentOptions": []
+      },
+      "meta": {}
+    }
+    ```
+- `POST /api/v1/wise/transfers`
+  - Tạo lệnh chuyển tiền nhanh qua Wise (nếu cấu hình `WISE_API_TOKEN` thật sẽ gọi luồng `Profile -> Quote -> Transfer` của Wise; nếu chưa cấu hình token sẽ tạo phiếu mô phỏng Sandbox/Quote Ticket để lưu/copy báo giá gửi khách).
+  - Body:
+    ```json
+    {
+      "sourceCurrency": "USD",
+      "targetCurrency": "VND",
+      "sourceAmount": 100,
+      "recipientName": "Nguyen Van A",
+      "recipientAccount": "1903...",
+      "recipientBank": "Techcombank",
+      "note": "Báo giá chuyển tiền Wise tại quầy"
+    }
+    ```
