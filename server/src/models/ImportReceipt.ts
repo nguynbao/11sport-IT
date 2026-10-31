@@ -20,6 +20,8 @@ export interface IImportReceiptItem {
   actualQuantity: number;
   /** Giá gốc (đơn giá nhập, VND) do thủ kho nhập */
   costPrice: number;
+  /** Giá bán niêm yết (VND) do thủ kho / quản lý nhập */
+  sellingPrice?: number;
   /** Số chiếc đã quét tag ở bước kiểm thực tế */
   scannedQuantity: number;
   /** Người quét kiểm gần nhất (do server ghi, không nhận từ client) */
@@ -64,6 +66,7 @@ const ImportReceiptItemSchema = new Schema<IImportReceiptItem>(
     expectedQuantity: { type: Number, required: true, default: 0 },
     actualQuantity: { type: Number, required: true, default: 0 },
     costPrice: { type: Number, default: 0, min: 0 },
+    sellingPrice: { type: Number, default: 0, min: 0 },
     scannedQuantity: { type: Number, default: 0, min: 0 },
     checkedBy: { type: String, default: '' },
     checkedByName: { type: String, default: '' },

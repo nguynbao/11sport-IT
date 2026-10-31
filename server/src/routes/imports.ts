@@ -33,6 +33,18 @@ function parseCostPrice(raw: any, stt: number): number {
   return value;
 }
 
+// Giá bán niêm yết do thủ kho / quản lý nhập — số nguyên VND >= 0
+function parseSellingPrice(raw: any, stt: number): number {
+  if (raw === undefined || raw === null || raw === '') return 0;
+  const value = Math.round(Number(raw));
+  if (isNaN(value) || value < 0) {
+    throw new ApiError(400, 'INVALID_SELLING_PRICE', `Giá bán dòng #${stt} phải là số nguyên không âm`, {
+      sellingPrice: 'Giá bán không hợp lệ',
+    });
+  }
+  return value;
+}
+
 function normalizeImportItems(rawItems: any[], defaultCategoryId = ''): IImportReceiptItem[] {
   if (!Array.isArray(rawItems)) return [];
   return rawItems
@@ -59,6 +71,7 @@ function normalizeImportItems(rawItems: any[], defaultCategoryId = ''): IImportR
         expectedQuantity,
         actualQuantity,
         costPrice: parseCostPrice(item.costPrice, Number(item.stt) || idx + 1),
+        sellingPrice: parseSellingPrice(item.sellingPrice, Number(item.stt) || idx + 1),
         scannedQuantity: Math.max(0, Math.round(Number(item.scannedQuantity) || 0)),
         barcode: item.barcode ? sanitizeBarcode(item.barcode) : '',
         note: item.note ? String(item.note).trim() : '',
@@ -105,6 +118,7 @@ function rowsToImportItems(rows: OcrTableRow[], defaultCatId: string): IImportRe
     expectedQuantity: r.expectedQuantity,
     actualQuantity: r.expectedQuantity,
     costPrice: 0,
+    sellingPrice: 0,
     scannedQuantity: 0,
     barcode: '',
     note: r.note || '',
@@ -902,9 +916,8 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
         categories.find((c) => String(c._id) === String(item.categoryId)) ||
         defaultCategory;
 
-      // Nếu sản phẩm chưa có trên hệ thống -> Tự động tạo mới với sellingPrice = 0 (BR-04, BR-09)
-      // Giá bán do Quản lý/Admin cập nhật trên CMS; giá gốc lấy theo dòng nhập
       const itemCostPrice = Math.max(0, Math.round(Number(item.costPrice) || 0));
+      const itemSellingPrice = Math.max(0, Math.round(Number(item.sellingPrice) || 0));
       const itemBarcode = sanitizeBarcode(item.barcode);
       if (!product) {
         product = await productRepo.create({
@@ -914,7 +927,7 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
           categoryCode: itemCat ? itemCat.code : 'AO',
           categoryName: itemCat ? itemCat.name : 'Áo thể thao',
           unit: item.unit || 'Cái',
-          sellingPrice: 0,
+          sellingPrice: itemSellingPrice,
           costPrice: itemCostPrice,
           barcode: itemBarcode,
           stockFloor1: 0,
@@ -933,8 +946,9 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
       const productUpdate: Record<string, any> = {
         ...nextFloors,
       };
-      // Cập nhật giá gốc theo lần nhập gần nhất (bỏ qua nếu dòng không nhập giá)
+      // Cập nhật giá gốc và giá bán theo lần nhập gần nhất (bỏ qua nếu dòng không nhập giá)
       if (itemCostPrice > 0) productUpdate.costPrice = itemCostPrice;
+      if (itemSellingPrice > 0) productUpdate.sellingPrice = itemSellingPrice;
       // Ghi nhớ mã vạch lên sản phẩm nếu sản phẩm chưa có mã vạch
       if (itemBarcode && !product.barcode) productUpdate.barcode = itemBarcode;
       await productRepo.updateById(product._id, productUpdate);

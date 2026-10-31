@@ -6,8 +6,9 @@ import { normalizeFloor, floorLabel, getFloorStocks, applyFloorDelta } from '../
 
 export const productsInventoryRouter = Router();
 
-// Chỉ Quản lý/Admin (role ADMIN) được đặt giá bán và sửa giá gốc
+// Quản lý/Admin (role ADMIN) quản lý toàn bộ giá & tồn; Thủ kho (role WAREHOUSE) cũng được phép nhập/cập nhật giá bán
 const isPriceManager = (role?: string) => role === 'ADMIN';
+const canEditSellingPrice = (role?: string) => role === 'ADMIN' || role === 'WAREHOUSE';
 
 // POST /api/v1/products/generate-code
 productsInventoryRouter.post('/products/generate-code', async (req, res, next) => {
@@ -368,8 +369,8 @@ productsInventoryRouter.patch('/products/:id', async (req, res, next) => {
       if (isNaN(price) || price < 0) {
         throw new ApiError(400, 'INVALID_PRICE', 'Giá bán phải là số nguyên không âm');
       }
-      if (price !== product.sellingPrice && !isPriceManager(req.user?.role)) {
-        throw new ApiError(403, 'SELLING_PRICE_FORBIDDEN', 'Chỉ Quản lý/Admin mới được cập nhật giá bán');
+      if (price !== product.sellingPrice && !canEditSellingPrice(req.user?.role)) {
+        throw new ApiError(403, 'SELLING_PRICE_FORBIDDEN', 'Chỉ Quản lý/Admin hoặc Thủ kho mới được cập nhật giá bán');
       }
       updateData.sellingPrice = price;
     }

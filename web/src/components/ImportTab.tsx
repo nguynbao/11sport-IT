@@ -54,6 +54,8 @@ export default function ImportTab() {
       unit: "Cái",
       expectedQuantity: 1,
       actualQuantity: 1,
+      costPrice: 0,
+      sellingPrice: 0,
       note: "",
       isChecked: false,
       isConfirmed: false,
@@ -123,6 +125,7 @@ export default function ImportTab() {
         expectedQuantity: Number(it.expectedQuantity || 0),
         actualQuantity: Number(it.actualQuantity ?? it.expectedQuantity ?? 0),
         costPrice: Number(it.costPrice || 0),
+        sellingPrice: Number(it.sellingPrice || 0),
         scannedQuantity: Number(it.scannedQuantity || 0),
         note: it.note || "",
         isChecked: Boolean(it.isChecked),
@@ -188,6 +191,7 @@ export default function ImportTab() {
         expectedQuantity: 10,
         actualQuantity: 10,
         costPrice: 0,
+        sellingPrice: 0,
         note: "",
         isChecked: false,
         isConfirmed: false,
@@ -399,13 +403,20 @@ export default function ImportTab() {
   const surplusRows = items.filter(
     (i) => i.isChecked && i.actualQuantity > i.expectedQuantity
   ).length;
-  // Tổng giá trị nhập theo giá gốc (SL thực nhận × giá gốc)
+  // Tổng giá trị nhập theo giá gốc và giá bán (SL thực nhận × đơn giá)
   const totalCostValue = items.reduce(
     (sum, i) => sum + (Number(i.costPrice) || 0) * (Number(i.actualQuantity) || 0),
     0
   );
+  const totalSellingValue = items.reduce(
+    (sum, i) => sum + (Number(i.sellingPrice) || 0) * (Number(i.actualQuantity) || 0),
+    0
+  );
   const missingCostRows = items.filter(
     (i) => i.productName.trim() !== "" && !(Number(i.costPrice) > 0)
+  ).length;
+  const missingSellingRows = items.filter(
+    (i) => i.productName.trim() !== "" && !(Number(i.sellingPrice) > 0)
   ).length;
 
   const filteredItems = items.map((item, idx) => ({ item, idx })).filter(({ item }) => {
@@ -834,9 +845,17 @@ export default function ImportTab() {
             <span className="px-2.5 py-1 rounded-full bg-slate-900 text-white font-bold">
               Tổng giá gốc: {formatVND(totalCostValue)}
             </span>
+            <span className="px-2.5 py-1 rounded-full bg-emerald-700 text-white font-bold">
+              Tổng giá bán: {formatVND(totalSellingValue)}
+            </span>
             {missingCostRows > 0 && (
               <span className="px-2.5 py-1 rounded-full bg-orange-100 text-orange-800 font-bold">
                 Chưa nhập giá gốc: {missingCostRows} dòng
+              </span>
+            )}
+            {missingSellingRows > 0 && (
+              <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 font-bold">
+                Chưa nhập giá bán: {missingSellingRows} dòng
               </span>
             )}
           </div>
@@ -879,10 +898,16 @@ export default function ImportTab() {
                   SỐ LƯỢNG
                 </th>
                 <th
-                  className="py-3 px-2.5 w-40 min-w-[150px] text-right"
-                  title="Giá gốc (đơn giá nhập). Giá bán do Quản lý/Admin cập nhật trên CMS"
+                  className="py-3 px-2.5 w-36 min-w-[140px] text-right"
+                  title="Giá gốc (đơn giá nhập, VND)"
                 >
                   GIÁ GỐC (VND)
+                </th>
+                <th
+                  className="py-3 px-2.5 w-36 min-w-[140px] text-right text-emerald-300"
+                  title="Giá bán niêm yết (VND) do Thủ kho hoặc Quản lý nhập"
+                >
+                  GIÁ BÁN (VND)
                 </th>
                 <th className="py-3 px-2.5 min-w-[180px]">GHI CHÚ</th>
                 <th className="py-3 px-2.5 w-44 min-w-[170px] bg-slate-800 text-amber-300">
@@ -1013,6 +1038,48 @@ export default function ImportTab() {
                           ={" "}
                           {formatVND(
                             (Number(row.costPrice) || 0) *
+                              (Number(row.actualQuantity) || 0)
+                          )}
+                        </div>
+                      )}
+                    </td>
+
+                    {/* GIÁ BÁN: đơn giá bán niêm yết do thủ kho / quản lý nhập */}
+                    <td className="py-2.5 px-2.5 align-top bg-emerald-50/20">
+                      <div className="relative">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          disabled={isCompleted}
+                          value={
+                            Number(row.sellingPrice) > 0
+                              ? formatNumberDots(row.sellingPrice)
+                              : ""
+                          }
+                          onChange={(e) =>
+                            handleUpdateRow(
+                              idx,
+                              "sellingPrice",
+                              parseNumberDots(e.target.value)
+                            )
+                          }
+                          placeholder="0"
+                          className={`w-full pl-2 pr-10 py-1.5 rounded border text-right font-mono font-bold text-emerald-900 disabled:bg-slate-100 ${
+                            Number(row.sellingPrice) > 0 ||
+                            !row.productName.trim()
+                              ? "border-emerald-300 bg-white"
+                              : "border-amber-300 bg-amber-50/60"
+                          }`}
+                        />
+                        <span className="absolute right-2 top-2 text-[10px] font-mono font-bold text-slate-400 pointer-events-none">
+                          VND
+                        </span>
+                      </div>
+                      {Number(row.sellingPrice) > 0 && (
+                        <div className="mt-1 text-[11px] text-right font-semibold text-emerald-700 whitespace-nowrap">
+                          ={" "}
+                          {formatVND(
+                            (Number(row.sellingPrice) || 0) *
                               (Number(row.actualQuantity) || 0)
                           )}
                         </div>

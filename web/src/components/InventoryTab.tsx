@@ -1,8 +1,16 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { Product, Category, apiRequest, formatVND, getStoredUser } from "@/lib/api";
-import { Package, Layers, Search, Filter, RefreshCw } from "lucide-react";
+import {
+  Product,
+  Category,
+  apiRequest,
+  formatVND,
+  formatNumberDots,
+  parseNumberDots,
+  getStoredUser,
+} from "@/lib/api";
+import { Package, Layers, Search, Filter, RefreshCw, Save, CheckCircle2 } from "lucide-react";
 
 export default function InventoryTab() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -15,6 +23,9 @@ export default function InventoryTab() {
   const [activeWarehouse, setActiveWarehouse] = useState<"FLOOR_1" | "FLOOR_2" | "ALL">("FLOOR_1");
   const [floor1Codes, setFloor1Codes] = useState<Set<string>>(new Set());
   const [floor2Codes, setFloor2Codes] = useState<Set<string>>(new Set());
+  const [priceEdits, setPriceEdits] = useState<Record<string, number>>({});
+  const [savingPriceId, setSavingPriceId] = useState<string | null>(null);
+  const [priceStatusMsg, setPriceStatusMsg] = useState<string | null>(null);
 
   // Saler (role SALES) chỉ được thấy Giá bán & Số lượng ở Kho Tầng 1, KHÔNG được thấy Giá gốc hay Kho Tầng 2
   const currentUser = getStoredUser();
@@ -74,6 +85,33 @@ export default function InventoryTab() {
   useEffect(() => {
     loadInventory();
   }, [loadInventory]);
+
+  const handleSaveSellingPrice = async (p: Product) => {
+    const nextPrice = priceEdits[p._id] !== undefined ? priceEdits[p._id] : Number(p.sellingPrice || 0);
+    setSavingPriceId(p._id);
+    setPriceStatusMsg(null);
+    try {
+      const res = await apiRequest<Product>(`/products/${p._id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ sellingPrice: nextPrice }),
+      });
+      setProducts((prev) =>
+        prev.map((item) =>
+          item._id === p._id ? { ...item, sellingPrice: res.data?.sellingPrice ?? nextPrice } : item
+        )
+      );
+      setPriceEdits((prev) => {
+        const copy = { ...prev };
+        delete copy[p._id];
+        return copy;
+      });
+      setPriceStatusMsg(`Đã cập nhật giá bán "${p.name}" = ${formatVND(nextPrice)}`);
+    } catch (err: any) {
+      alert(err?.message || "Không thể cập nhật giá bán");
+    } finally {
+      setSavingPriceId(null);
+    }
+  };
 
   const totalStockFloor1 = products.reduce((s, p) => s + (Number(p.stockFloor1 ?? p.stock) || 0), 0);
   const totalStockFloor2 = products.reduce((s, p) => s + (Number(p.stockFloor2) || 0), 0);
@@ -270,6 +308,13 @@ export default function InventoryTab() {
           </button>
         </div>
 
+        {priceStatusMsg && (
+          <div className="mb-3 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+            <span>{priceStatusMsg}</span>
+          </div>
+        )}
+
         {/* Bảng tồn kho */}
         <div className="overflow-x-auto border border-slate-200 rounded-xl max-w-full">
           <table className="w-full min-w-[760px] text-sm text-left">
@@ -372,7 +417,61 @@ export default function InventoryTab() {
                         </td>
                       )}
                       <td className="py-3 px-4 text-right font-mono whitespace-nowrap">
-                        {p.sellingPrice > 0 ? (
+                        {canSeeCostPrice ? (
+                          <div className="flex items-center justify-end gap-1.5">
+                            <div className="relative w-36">
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                value={
+                                  (priceEdits[p._id] !== undefined
+                                    ? priceEdits[p._id]
+                                    : Number(p.sellingPrice || 0)) > 0
+                                    ? formatNumberDots(
+                                        priceEdits[p._id] !== undefined
+                                          ? priceEdits[p._id]
+                                          : p.sellingPrice
+                                      )
+                                    : ""
+                                }
+                                onChange={(e) =>
+                                  setPriceEdits((prev) => ({
+                                    ...prev,
+                                    [p._id]: parseNumberDots(e.target.value),
+                                  }))
+                                }
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    handleSaveSellingPrice(p);
+                                  }
+                                }}
+                                placeholder="Nhập giá bán..."
+                                className={`w-full pl-2 pr-9 py-1.5 rounded-lg border text-right text-xs font-mono font-bold focus:border-emerald-600 focus:outline-none ${
+                                  (priceEdits[p._id] ?? p.sellingPrice) > 0
+                                    ? "border-slate-300 bg-white text-slate-900"
+                                    : "border-amber-300 bg-amber-50 text-amber-900"
+                                }`}
+                              />
+                              <span className="absolute right-2 top-2 text-[10px] font-mono font-bold text-slate-400 pointer-events-none">
+                                VND
+                              </span>
+                            </div>
+                            {priceEdits[p._id] !== undefined &&
+                              priceEdits[p._id] !== Number(p.sellingPrice || 0) && (
+                                <button
+                                  type="button"
+                                  disabled={savingPriceId === p._id}
+                                  onClick={() => handleSaveSellingPrice(p)}
+                                  className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 shadow-sm"
+                                  title="Lưu giá bán"
+                                >
+                                  <Save className="w-3.5 h-3.5" />
+                                  Lưu
+                                </button>
+                              )}
+                          </div>
+                        ) : p.sellingPrice > 0 ? (
                           <span className="font-bold text-slate-900">
                             {formatVND(p.sellingPrice)}
                           </span>
