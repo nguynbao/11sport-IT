@@ -2436,13 +2436,18 @@ export default function RevenueDashboardModule({ onNavigateToInventory }: Props)
         )}
       </div>
 
-      {/* HÀNG 4: BẢNG 2 — SẢN PHẨM ĐANG CẦN ĐẨY MẠNH (SLOW-MOVING / ĐỌNG VỐN / CẦN CHUYỂN TẦNG) */}
-      <div className="bg-white rounded-2xl border-2 border-amber-200 shadow-sm p-5 space-y-4">
+      {/* HÀNG 4: BẢNG 2 — SẢN PHẨM ĐANG CẦN ĐẨY MẠNH (LÀM MỜ CONTENT - ĐANG PHÁT TRIỂN) */}
+      <div className="bg-white rounded-2xl border-2 border-amber-200 shadow-sm p-5 space-y-4 relative overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-amber-100 text-amber-900 mb-1">
-              <Rocket className="w-3.5 h-3.5 text-amber-600" />
-              CẦN ĐẨY MẠNH BÁN HÀNG / TỐI ƯU KHO
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-amber-100 text-amber-900">
+                <Rocket className="w-3.5 h-3.5 text-amber-600" />
+                CẦN ĐẨY MẠNH BÁN HÀNG / TỐI ƯU KHO
+              </div>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-slate-900 text-amber-300 border border-amber-400/40">
+                🚧 Chức năng đang trong quy trình phát triển
+              </span>
             </div>
             <h3 className="font-extrabold text-slate-900 text-base">
               Các Sản Phẩm Đang Cần Đẩy Mạnh ({filteredPushProducts.length} mặt hàng)
@@ -2451,74 +2456,86 @@ export default function RevenueDashboardModule({ onNavigateToInventory }: Props)
               Hệ thống tự động phát hiện các mặt hàng tồn kho cao nhưng bán chậm/chưa phát sinh đơn, đọng vốn lớn, đang nằm ở Kho Tầng 2 mà Tầng 1 = 0, hoặc chưa đặt giá bán.
             </p>
           </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative w-full sm:w-60">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
-              <input
-                type="text"
-                value={pushSearch}
-                onChange={(e) => setPushSearch(e.target.value)}
-                placeholder="Tìm mã hoặc tên SP cần đẩy mạnh..."
-                className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-300 text-xs"
-              />
-            </div>
-
-            <select
-              value={pushFilter}
-              onChange={(e) => setPushFilter(e.target.value as any)}
-              className="px-3 py-1.5 rounded-lg border border-amber-300 bg-amber-50/50 text-xs font-bold text-slate-900"
-            >
-              <option value="ALL">Tất cả SP cần đẩy mạnh ({data?.needsPushProducts.length || 0})</option>
-              <option value="ZERO_SALES">Chưa bán được chiếc nào (0 SP)</option>
-              <option value="HIGH_CAPITAL">Đọng vốn lớn (≥ 2.000.000đ)</option>
-              <option value="FLOOR2_ONLY">Tầng 1 hết hàng, còn ở Kho Tầng 2</option>
-              <option value="NO_PRICE">Chưa đặt giá bán (Giá bán = 0đ)</option>
-            </select>
-
-            <select
-              value={pushPageSize}
-              onChange={(e) => setPushPageSize(Number(e.target.value))}
-              className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs bg-white font-semibold"
-            >
-              <option value={10}>10 dòng / trang</option>
-              <option value={20}>20 dòng / trang</option>
-              <option value={50}>50 dòng / trang</option>
-            </select>
-          </div>
         </div>
 
-        <div className="overflow-x-auto border border-slate-200 rounded-xl">
-          <table className="w-full text-xs text-left">
-            <thead className="bg-slate-900 text-white uppercase">
-              <tr>
-                <th className="py-3 px-3 text-center w-14">STT</th>
-                <th className="py-3 px-3">Mã & Tên sản phẩm</th>
-                <th className="py-3 px-3">Category</th>
-                <th className="py-3 px-3 text-right">Tồn kho hiện tại</th>
-                <th className="py-3 px-3 text-right">Đã bán trong kỳ</th>
-                <th className="py-3 px-3 text-right">Giá gốc / Giá bán</th>
-                <th className="py-3 px-3 text-right bg-amber-950 text-amber-300">
-                  Vốn đang đọng
-                </th>
-                <th className="py-3 px-3">Lý do cần đẩy mạnh</th>
-                <th className="py-3 px-3">Đề xuất hành động</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {pagedPushProducts.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="py-8 text-center text-slate-400">
-                    Không có sản phẩm nào thuộc nhóm cần đẩy mạnh theo bộ lọc hiện tại.
-                  </td>
-                </tr>
-              ) : (
-                pagedPushProducts.map((p, idx) => {
-                  const stt = (pushPage - 1) * pushPageSize + idx + 1;
-                  return (
-                    <tr key={p.productId || p.productCode} className="hover:bg-slate-50">
+        {/* Vùng nội dung bên trong được làm mờ + Lớp thông báo Đang phát triển */}
+        <div className="relative">
+          {/* Lớp phủ thông báo chính giữa */}
+          <div className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-white/35 backdrop-blur-[2px] rounded-xl">
+            <div className="max-w-md w-full bg-slate-900/95 text-white rounded-2xl p-6 shadow-2xl border border-amber-400/40 text-center space-y-2">
+              <div className="w-11 h-11 rounded-2xl bg-amber-400/20 border border-amber-400/40 text-amber-300 flex items-center justify-center mx-auto">
+                <Rocket className="w-5 h-5" />
+              </div>
+              <div className="inline-block px-3 py-0.5 rounded-full bg-amber-400/20 text-amber-300 text-[11px] font-extrabold uppercase tracking-wider">
+                Coming Soon · In Development
+              </div>
+              <h4 className="text-base font-extrabold text-white">
+                Chức năng đang trong quy trình phát triển
+              </h4>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Mô-đun tự động chấm điểm hàng bán chậm, cảnh báo đọng vốn và đề xuất đẩy hàng / chuyển kho Tầng 1 ↔ Tầng 2 đang được hoàn thiện quy tắc nghiệp vụ và sẽ sớm ra mắt.
+              </p>
+            </div>
+          </div>
+
+          {/* Nội dung bảng được làm mờ (blur) và khóa tương tác */}
+          <div
+            aria-hidden="true"
+            className="space-y-4 filter blur-[4px] opacity-45 pointer-events-none select-none"
+          >
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <div className="relative w-full sm:w-60">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  readOnly
+                  value={pushSearch}
+                  placeholder="Tìm mã hoặc tên SP cần đẩy mạnh..."
+                  className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-300 text-xs"
+                />
+              </div>
+
+              <select
+                disabled
+                value={pushFilter}
+                className="px-3 py-1.5 rounded-lg border border-amber-300 bg-amber-50/50 text-xs font-bold text-slate-900"
+              >
+                <option value="ALL">
+                  Tất cả SP cần đẩy mạnh ({data?.needsPushProducts.length || 0})
+                </option>
+              </select>
+
+              <select
+                disabled
+                value={pushPageSize}
+                className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs bg-white font-semibold"
+              >
+                <option value={10}>10 dòng / trang</option>
+              </select>
+            </div>
+
+            <div className="overflow-x-auto border border-slate-200 rounded-xl">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-slate-900 text-white uppercase">
+                  <tr>
+                    <th className="py-3 px-3 text-center w-14">STT</th>
+                    <th className="py-3 px-3">Mã & Tên sản phẩm</th>
+                    <th className="py-3 px-3">Category</th>
+                    <th className="py-3 px-3 text-right">Tồn kho hiện tại</th>
+                    <th className="py-3 px-3 text-right">Đã bán trong kỳ</th>
+                    <th className="py-3 px-3 text-right">Giá gốc / Giá bán</th>
+                    <th className="py-3 px-3 text-right bg-amber-950 text-amber-300">
+                      Vốn đang đọng
+                    </th>
+                    <th className="py-3 px-3">Lý do cần đẩy mạnh</th>
+                    <th className="py-3 px-3">Đề xuất hành động</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {pagedPushProducts.slice(0, 6).map((p, idx) => (
+                    <tr key={p.productId || p.productCode}>
                       <td className="py-3 px-3 text-center font-mono font-bold text-slate-500">
-                        {stt}
+                        {idx + 1}
                       </td>
                       <td className="py-3 px-3">
                         <div className="font-bold text-slate-900">{p.productName}</div>
@@ -2543,11 +2560,7 @@ export default function RevenueDashboardModule({ onNavigateToInventory }: Props)
                       </td>
                       <td className="py-3 px-3 text-right font-mono whitespace-nowrap">
                         <div className="text-slate-600">Gốc: {formatVND(p.costPrice)}</div>
-                        <div
-                          className={`font-bold ${
-                            p.sellingPrice <= 0 ? "text-red-600" : "text-emerald-700"
-                          }`}
-                        >
+                        <div className="font-bold text-emerald-700">
                           Bán: {formatVND(p.sellingPrice)}
                         </div>
                       </td>
@@ -2567,61 +2580,17 @@ export default function RevenueDashboardModule({ onNavigateToInventory }: Props)
                         </div>
                       </td>
                       <td className="py-3 px-3">
-                        <div className="text-[11px] font-semibold text-slate-800 mb-1.5">
+                        <div className="text-[11px] font-semibold text-slate-800">
                           💡 {p.suggestedAction}
                         </div>
-                        {onNavigateToInventory && (
-                          <button
-                            type="button"
-                            onClick={() => onNavigateToInventory(p.productCode)}
-                            className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold inline-flex items-center gap-1"
-                          >
-                            Xử lý trong Kho <ArrowUpRight className="w-3 h-3" />
-                          </button>
-                        )}
                       </td>
                     </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Phân trang bảng Cần đẩy mạnh */}
-        {filteredPushProducts.length > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 pt-1">
-            <span>
-              Hiển thị{" "}
-              <strong>
-                {(pushPage - 1) * pushPageSize + 1}–
-                {Math.min(pushPage * pushPageSize, filteredPushProducts.length)}
-              </strong>{" "}
-              trên tổng <strong>{filteredPushProducts.length}</strong> sản phẩm cần đẩy mạnh
-            </span>
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                disabled={pushPage <= 1}
-                onClick={() => setPushPage((p) => Math.max(1, p - 1))}
-                className="px-3 py-1.5 rounded-lg border border-slate-300 disabled:opacity-40 hover:bg-slate-100 font-bold inline-flex items-center gap-1"
-              >
-                <ChevronLeft className="w-3.5 h-3.5" /> Trước
-              </button>
-              <span className="px-3 py-1.5 font-mono font-bold text-slate-900">
-                Trang {pushPage} / {pushTotalPages}
-              </span>
-              <button
-                type="button"
-                disabled={pushPage >= pushTotalPages}
-                onClick={() => setPushPage((p) => Math.min(pushTotalPages, p + 1))}
-                className="px-3 py-1.5 rounded-lg border border-slate-300 disabled:opacity-40 hover:bg-slate-100 font-bold inline-flex items-center gap-1"
-              >
-                Tiếp <ChevronRight className="w-3.5 h-3.5" />
-              </button>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
