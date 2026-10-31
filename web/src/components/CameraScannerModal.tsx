@@ -20,7 +20,14 @@ import {
   Sparkles,
   Images,
 } from "lucide-react";
-import { apiRequest, generateProductCode, ImportItem } from "@/lib/api";
+import {
+  apiRequest,
+  generateProductCode,
+  ImportItem,
+  Product,
+  filterAndRankBySearch,
+  formatVND,
+} from "@/lib/api";
 
 interface CameraScannerModalProps {
   mode: "OCR_TABLE" | "SCAN_TAG";
@@ -28,6 +35,8 @@ interface CameraScannerModalProps {
   expectedCodeHint?: string;
   /** Số dòng hàng hợp lệ hiện có ngoài Bảng 6 Cột của phiếu nhập */
   existingItemCount?: number;
+  /** Danh sách sản phẩm có trong kho để gợi ý khi gõ tên hàng */
+  catalogProducts?: Product[];
   /** modeAction = 'append' (cộng thêm vào phiếu) | 'replace' (thay thế bảng) */
   onConfirmOcrItems?: (items: ImportItem[], modeAction?: "append" | "replace") => void;
   onConfirmTagScan?: (query: string, actualQuantity?: number) => void;
@@ -198,6 +207,7 @@ export default function CameraScannerModal({
   title,
   expectedCodeHint,
   existingItemCount = 0,
+  catalogProducts = [],
   onConfirmOcrItems,
   onConfirmTagScan,
   onClose,
@@ -235,6 +245,40 @@ export default function CameraScannerModal({
 
   const [pasteText, setPasteText] = useState("");
   const [ocrItems, setOcrItems] = useState<ImportItem[]>([createEmptyOcrItem(1)]);
+  const [activeOcrSuggestIdx, setActiveOcrSuggestIdx] = useState<number | null>(null);
+  const [ocrSuggestHighlightIdx, setOcrSuggestHighlightIdx] = useState<number>(0);
+
+  const getOcrRowSuggestions = useCallback(
+    (query: string): Product[] => {
+      const q = (query || "").trim();
+      if (!q) return catalogProducts.slice(0, 8);
+      return filterAndRankBySearch(catalogProducts, q, (p) => [
+        p.name,
+        p.code,
+        p.categoryName,
+      ]).slice(0, 8);
+    },
+    [catalogProducts]
+  );
+
+  const handleSelectOcrSuggestion = (rowIdx: number, prod: Product) => {
+    setOcrItems((prev) => {
+      const next = [...prev];
+      const cur = next[rowIdx];
+      if (!cur) return prev;
+      next[rowIdx] = {
+        ...cur,
+        productName: prod.name,
+        productCode: prod.code || generateProductCode(prod.name),
+        unit: prod.unit || cur.unit || "Cái",
+        costPrice: Number(cur.costPrice) > 0 ? Number(cur.costPrice) : Number(prod.costPrice || 0),
+        sellingPrice:
+          Number(cur.sellingPrice) > 0 ? Number(cur.sellingPrice) : Number(prod.sellingPrice || 0),
+      };
+      return next;
+    });
+    setActiveOcrSuggestIdx(null);
+  };
 
   const [tagQuery, setTagQuery] = useState(expectedCodeHint || "");
   const [tagActualQty, setTagActualQty] = useState<number>(1);
@@ -1148,7 +1192,11 @@ export default function CameraScannerModal({
                 </div>
               </div>
 
-              <div className="overflow-x-auto border border-slate-200 rounded-xl max-w-full">
+              <div
+                className={`overflow-x-auto border border-slate-200 rounded-xl max-w-full ${
+                  activeOcrSuggestIdx !== null ? "pb-60" : ""
+                }`}
+              >
                 <table className="w-full min-w-[640px] text-xs text-left">
                   <thead className="bg-slate-900 text-white uppercase">
                     <tr>
@@ -1175,13 +1223,93 @@ export default function CameraScannerModal({
                           />
                         </td>
                         <td className="py-2 px-3 align-top">
-                          <textarea
-                            rows={Math.max(2, Math.ceil((row.productName?.length || 0) / 38))}
-                            value={row.productName}
-                            onChange={(e) => handleUpdateOcrRow(idx, "productName", e.target.value)}
-                            placeholder="Tên hàng kèm (mã trong ngoặc)..."
-                            className="w-full px-2 py-1.5 rounded border border-slate-300 focus:border-emerald-600 focus:outline-none whitespace-pre-wrap break-words leading-snug resize-y"
-                          />
+                          <div className="relative">
+                            <textarea
+                              rows={Math.max(2, Math.ceil((row.productName?.length || 0) / 38))}
+                              value={row.productName}
+                              onFocus={() => {
+                                setActiveOcrSuggestIdx(idx);
+                                setOcrSuggestHighlightIdx(0);
+                              }}
+                              onBlur={() => {
+                                setTimeout(() => {
+                                  setActiveOcrSuggestIdx((prev) => (prev === idx ? null : prev));
+                                }, 180);
+                              }}
+                              onChange={(e) => {
+                                handleUpdateOcrRow(idx, "productName", e.target.value);
+                                setActiveOcrSuggestIdx(idx);
+                                setOcrSuggestHighlightIdx(0);
+                              }}
+                              onKeyDown={(e) => {
+                                if (activeOcrSuggestIdx !== idx) return;
+                                const suggestions = getOcrRowSuggestions(row.productName);
+                                if (suggestions.length === 0) return;
+                                if (e.key === "ArrowDown") {
+                                  e.preventDefault();
+                                  setOcrSuggestHighlightIdx((prev) => (prev + 1) % suggestions.length);
+                                } else if (e.key === "ArrowUp") {
+                                  e.preventDefault();
+                                  setOcrSuggestHighlightIdx(
+                                    (prev) => (prev - 1 + suggestions.length) % suggestions.length
+                                  );
+                                } else if (e.key === "Enter" && !e.shiftKey) {
+                                  const picked =
+                                    suggestions[ocrSuggestHighlightIdx] || suggestions[0];
+                                  if (picked && picked.name !== row.productName) {
+                                    e.preventDefault();
+                                    handleSelectOcrSuggestion(idx, picked);
+                                  }
+                                } else if (e.key === "Escape") {
+                                  setActiveOcrSuggestIdx(null);
+                                }
+                              }}
+                              placeholder="Gõ tên hoặc mã hàng để tìm gợi ý SP trong kho..."
+                              className="w-full px-2 py-1.5 rounded border border-slate-300 focus:border-emerald-600 focus:outline-none whitespace-pre-wrap break-words leading-snug resize-y"
+                            />
+                            {activeOcrSuggestIdx === idx &&
+                              (() => {
+                                const suggestions = getOcrRowSuggestions(row.productName);
+                                if (suggestions.length === 0) return null;
+                                return (
+                                  <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-white rounded-xl border-2 border-emerald-500 shadow-2xl overflow-hidden min-w-[300px]">
+                                    <div className="px-3 py-1 bg-slate-900 text-white text-[10px] font-bold flex items-center justify-between">
+                                      <span>📦 Gợi ý SP trong kho ({suggestions.length})</span>
+                                      <span className="text-emerald-300 font-normal">Bấm chọn</span>
+                                    </div>
+                                    <div className="max-h-52 overflow-y-auto divide-y divide-slate-100">
+                                      {suggestions.map((p, sIdx) => (
+                                        <button
+                                          key={p._id}
+                                          type="button"
+                                          onMouseDown={(e) => {
+                                            e.preventDefault();
+                                            handleSelectOcrSuggestion(idx, p);
+                                          }}
+                                          onMouseEnter={() => setOcrSuggestHighlightIdx(sIdx)}
+                                          className={`w-full text-left px-3 py-1.5 transition ${
+                                            sIdx === ocrSuggestHighlightIdx
+                                              ? "bg-emerald-50"
+                                              : "hover:bg-slate-50"
+                                          }`}
+                                        >
+                                          <div className="font-bold text-xs text-slate-900 break-words">
+                                            {p.name}
+                                          </div>
+                                          <div className="flex items-center justify-between text-[10px] text-slate-500 mt-0.5">
+                                            <span className="font-mono font-bold">{p.code}</span>
+                                            <span className="text-emerald-700 font-bold">
+                                              Tồn: {p.stock} {p.unit || "Cái"} · Bán:{" "}
+                                              {formatVND(Number(p.sellingPrice || 0))}
+                                            </span>
+                                          </div>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+                          </div>
                         </td>
                         <td className="py-2 px-3">
                           <input
