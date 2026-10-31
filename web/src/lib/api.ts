@@ -27,6 +27,7 @@ export interface Product {
   code: string;
   name: string;
   categoryId: string | Category;
+  categoryCode?: string;
   categoryName?: string;
   unit: string;
   sellingPrice: number;
@@ -36,6 +37,13 @@ export interface Product {
   stockFloor1?: number;
   stockFloor2?: number;
   stock: number;
+}
+
+export interface ImportScanCount {
+  userId: string;
+  name: string;
+  role?: string;
+  quantity: number;
 }
 
 export interface ImportItem {
@@ -48,8 +56,14 @@ export interface ImportItem {
   actualQuantity: number;
   /** Giá gốc (đơn giá nhập, VND) do thủ kho nhập */
   costPrice?: number;
+  sellingPrice?: number;
   /** Số chiếc đã quét tag ở bước kiểm thực tế */
   scannedQuantity?: number;
+  checkedBy?: string;
+  checkedByName?: string;
+  checkedByRole?: string;
+  checkedAt?: string;
+  scanCounts?: ImportScanCount[];
   /** Mã vạch đã học được khi quét tag */
   barcode?: string;
   note: string;
@@ -69,6 +83,10 @@ export interface ImportReceipt {
   items: ImportItem[];
   createdBy?: string | { fullName?: string; username?: string };
   createdByName?: string;
+  createdByRole?: string;
+  completedBy?: string;
+  completedByName?: string;
+  completedByRole?: string;
   completedAt?: string;
   createdAt: string;
   updatedAt?: string;
@@ -111,10 +129,14 @@ export interface Order {
   cardFee: number;
   totalAmount: number;
   note: string;
-  status: "PAID" | "PARTIALLY_RETURNED" | "FULLY_RETURNED";
+  status: "DRAFT" | "PAID" | "PARTIALLY_RETURNED" | "FULLY_RETURNED";
   items: OrderItem[];
   soldBy?: string;
   soldByName?: string;
+  createdBy?: string;
+  confirmedBy?: string;
+  confirmedByName?: string;
+  confirmedAt?: string;
   createdByName?: string;
   createdAt: string;
 }
@@ -307,4 +329,81 @@ export const KEEP_ALIVE_INTERVAL_MS = 8 * 60 * 1000;
 
 export function pingServerHealth(): void {
   fetch(`${API_BASE_URL}/health`, { method: "GET", cache: "no-store" }).catch(() => {});
+}
+
+export {
+  useDebounce,
+  normalizeVietnamese,
+  compactAlphaNum,
+  normalizePhoneDigits,
+  scoreSearchMatch,
+  filterAndRankBySearch,
+  type SearchField,
+} from "./search";
+
+
+
+/* ---------------- Chương trình Khuyến mãi (GET /promotions?activeOnly=true) ---------------- */
+
+export type PromotionConditionType = "BUY_PRODUCTS" | "BUY_CATEGORY" | "ALL_PRODUCTS";
+export type PromotionDiscountType = "NONE" | "PERCENT" | "AMOUNT";
+export type EffectivePromotionStatus =
+  | "RUNNING_PERMANENT"
+  | "RUNNING"
+  | "UPCOMING"
+  | "EXPIRED"
+  | "PAUSED";
+
+export interface PromotionConditionProduct {
+  productId: string;
+  productCode: string;
+  productName: string;
+  unit: string;
+  sellingPrice?: number;
+  stockFloor1?: number;
+}
+
+export interface PromotionConditionCategory {
+  categoryId: string;
+  categoryCode: string;
+  categoryName: string;
+}
+
+export interface PromotionGiftItem {
+  productId: string;
+  productCode: string;
+  productName: string;
+  unit: string;
+  quantity: number;
+  sellingPrice?: number;
+  stockFloor1?: number;
+}
+
+export interface Promotion {
+  _id: string;
+  code: string;
+  name: string;
+  description: string;
+  status: "ACTIVE" | "PAUSED";
+  isPermanent: boolean;
+  startDate?: string | null;
+  endDate?: string | null;
+  conditionType: PromotionConditionType;
+  conditionProductIds: string[];
+  conditionProducts: PromotionConditionProduct[];
+  conditionCategoryIds: string[];
+  conditionCategories: PromotionConditionCategory[];
+  minQuantity: number;
+  minOrderAmount: number;
+  giftItems: PromotionGiftItem[];
+  multiplyGiftByConditionQty: boolean;
+  itemDiscountType: PromotionDiscountType;
+  itemDiscountValue: number;
+  billDiscountType: PromotionDiscountType;
+  billDiscountValue: number;
+  isCurrentlyActive?: boolean;
+  effectiveStatus?: EffectivePromotionStatus;
+  createdByName?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }

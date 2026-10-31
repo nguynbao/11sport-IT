@@ -33,6 +33,7 @@ const IMPORT_STATUS: Record<string, string> = {
   COMPLETED: "Hoàn thành",
 };
 const ORDER_STATUS: Record<string, string> = {
+  DRAFT: "Bản nháp",
   PAID: "Đã bán",
   PARTIALLY_RETURNED: "Trả 1 phần",
   FULLY_RETURNED: "Trả toàn bộ",
@@ -148,6 +149,10 @@ export function exportMovements(movements: StockMovement[], typeFilter?: string)
     { header: "Giá bán (VND)", value: (m) => Number(m.sellingPrice) || 0, format: "money" },
     { header: "Chứng từ", value: (m) => m.referenceCode || "" },
     { header: "Người thực hiện", value: (m) => m.performedByName || "" },
+    {
+      header: "Vai trò người thực hiện",
+      value: (m) => ROLE[String(m.performedByRole || "").toUpperCase()] || m.performedByRole || "",
+    },
     { header: "Ghi chú", value: (m) => m.note || "", width: 40 },
   ];
   downloadExcel(excelFileName("SoKho"), [
@@ -193,8 +198,16 @@ export function exportImports(imports: any[]) {
     { header: "Tổng giá gốc", value: receiptCostTotal, format: "money", total: true },
     { header: "Ghi chú", value: (r) => r.note || "", width: 40 },
     { header: "Người lập", value: (r) => r.createdByName || "" },
+    {
+      header: "Vai trò người lập",
+      value: (r) => ROLE[String(r.createdByRole || "").toUpperCase()] || r.createdByRole || "",
+    },
     { header: "Người kiểm (chiếc)", value: (r) => checkersOf(r.items || []), width: 30 },
     { header: "Người hoàn thành", value: (r) => r.completedByName || "" },
+    {
+      header: "Vai trò người hoàn thành",
+      value: (r) => ROLE[String(r.completedByRole || "").toUpperCase()] || r.completedByRole || "",
+    },
     { header: "Ngày tạo", value: (r) => toDate(r.createdAt), format: "datetime", width: 17 },
     { header: "Ngày hoàn thành", value: (r) => toDate(r.completedAt), format: "datetime", width: 17 },
   ];
@@ -282,7 +295,7 @@ export function exportOrders(orders: Order[]) {
       width: 45,
     },
     { header: "ĐVT", value: (l) => l.item.unit, width: 8 },
-    { header: "Đơn giá", value: (l) => Number(l.item.unitPrice) || 0, format: "money" },
+    { header: "Đơn giá", value: (l) => Number(l.item.originalUnitPrice || l.item.unitPrice) || 0, format: "money" },
     { header: "Số lượng", value: (l) => Number(l.item.quantity) || 0, format: "int", total: true },
     { header: "Đã trả lại", value: (l) => Number(l.item.returnedQuantity) || 0, format: "int", total: true },
     {

@@ -16,6 +16,7 @@ import CategoryModule from "@/components/CategoryModule";
 import OrdersReturnsModule from "@/components/OrdersReturnsModule";
 import StaffModule from "@/components/StaffModule";
 import StaffActivityModule from "@/components/StaffActivityModule";
+import PromotionModule from "@/components/PromotionModule";
 import InvoicePdfModal from "@/components/InvoicePdfModal";
 import {
   Boxes,
@@ -32,6 +33,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Activity,
+  Gift,
   X,
 } from "lucide-react";
 
@@ -41,7 +43,8 @@ type CmsModuleType =
   | "CATEGORIES"
   | "ORDERS"
   | "STAFF"
-  | "ACTIVITY";
+  | "ACTIVITY"
+  | "PROMOTIONS";
 
 export default function CmsDashboardPage() {
   const [activeModule, setActiveModule] = useState<CmsModuleType>("REVENUE");
@@ -240,9 +243,11 @@ export default function CmsDashboardPage() {
       <div className="min-h-screen flex items-center justify-center bg-slate-900 px-4 py-8">
         <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-800">
           <div className="bg-slate-950 text-white px-6 py-6 text-center border-b border-slate-800">
-            <div className="w-14 h-14 rounded-2xl bg-emerald-600 flex items-center justify-center font-black text-xl mx-auto mb-3 shadow-lg">
-              CMS
-            </div>
+            <img
+              src="/logo-11sport-white.svg"
+              alt="11Sport Logo"
+              className="h-16 w-auto object-contain mx-auto mb-3"
+            />
             <h1 className="text-xl font-extrabold tracking-tight">
               ĐĂNG NHẬP QUẢN TRỊ 11SPORT (CMS)
             </h1>
@@ -313,9 +318,11 @@ export default function CmsDashboardPage() {
       <header className="bg-slate-900 text-white shadow-lg print:hidden">
         <div className="max-w-[98vw] 2xl:max-w-[1880px] mx-auto px-3 sm:px-5 py-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center font-black text-lg">
-              CMS
-            </div>
+            <img
+              src="/logo-11sport-white.svg"
+              alt="11Sport Logo"
+              className="h-10 md:h-11 w-auto object-contain shrink-0"
+            />
             <div>
               <div className="font-extrabold text-base flex items-center gap-2">
                 11SPORT ADMIN CMS
@@ -449,6 +456,19 @@ export default function CmsDashboardPage() {
               <Activity className="w-4 h-4" />
               6. Hoạt động NV (Bán hàng / Kiểm kho)
             </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveModule("PROMOTIONS")}
+              className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 whitespace-nowrap transition ${
+                activeModule === "PROMOTIONS"
+                  ? "bg-emerald-600 text-white shadow"
+                  : "text-slate-300 hover:bg-slate-700/60 hover:text-white"
+              }`}
+            >
+              <Gift className="w-4 h-4" />
+              7. Chương trình Khuyến mãi
+            </button>
           </div>
         </div>
       </header>
@@ -467,6 +487,7 @@ export default function CmsDashboardPage() {
         )}
         {activeModule === "STAFF" && <StaffModule />}
         {activeModule === "ACTIVITY" && <StaffActivityModule />}
+        {activeModule === "PROMOTIONS" && <PromotionModule />}
       </main>
 
       {/* Modal Đổi mật khẩu Quản trị viên (Header CMS) */}

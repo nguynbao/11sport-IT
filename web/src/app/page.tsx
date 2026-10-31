@@ -18,6 +18,7 @@ import CustomerTab from "@/components/CustomerTab";
 import ReturnExchangeTab from "@/components/ReturnExchangeTab";
 import InvoicePdfModal from "@/components/InvoicePdfModal";
 import AccountProfileTab from "@/components/AccountProfileTab";
+import WiseCalculatorStash from "@/components/WiseCalculatorStash";
 import DrawerMenu, {
   TabType,
   TabConfig,
@@ -186,9 +187,11 @@ export default function WebPosHomePage() {
       <div className="min-h-screen flex items-center justify-center bg-slate-900 px-4 py-8">
         <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-800">
           <div className="bg-slate-950 text-white px-6 py-6 text-center border-b border-slate-800">
-            <div className="w-14 h-14 rounded-2xl bg-emerald-600 flex items-center justify-center font-black text-2xl tracking-tighter mx-auto mb-3 shadow-lg">
-              11S
-            </div>
+            <img
+              src="/logo-11sport-white.svg"
+              alt="11Sport Logo"
+              className="h-16 w-auto object-contain mx-auto mb-3"
+            />
             <h1 className="text-xl font-extrabold tracking-tight">
               ĐĂNG NHẬP 11SPORT POS & KHO
             </h1>
@@ -276,11 +279,13 @@ export default function WebPosHomePage() {
     <div className="min-h-screen flex flex-col bg-slate-100">
       {/* Header thương hiệu 11Sport & Thông tin người dùng */}
       <header className="sticky top-0 z-30 bg-slate-900 text-white shadow-lg print:hidden">
-        <div className="max-w-7xl mx-auto px-3 md:px-4 py-2.5 md:py-3 flex items-center justify-between gap-2 md:gap-3">
+        <div className="w-full mx-auto px-2 sm:px-3 lg:px-4 py-2.5 md:py-3 flex items-center justify-between gap-2 md:gap-3">
           <div className="flex items-center gap-2 md:gap-3 min-w-0">
-            <div className="w-9 h-9 md:w-10 md:h-10 shrink-0 rounded-xl bg-emerald-600 flex items-center justify-center font-black text-base md:text-lg tracking-tighter">
-              11S
-            </div>
+            <img
+              src="/logo-11sport-white.svg"
+              alt="11Sport Logo"
+              className="h-9 md:h-11 w-auto object-contain shrink-0"
+            />
             <div className="min-w-0">
               <div className="font-extrabold text-sm md:text-base tracking-tight flex items-center gap-2 truncate">
                 <span className="truncate">11SPORT POS & KHO VẬN</span>
@@ -327,7 +332,7 @@ export default function WebPosHomePage() {
 
         {/* Thanh 5 Tab chức năng phân quyền theo Role (mobile: cuộn ngang) */}
         <div className="bg-slate-800/90 border-t border-slate-800">
-          <div className="max-w-7xl mx-auto px-2 md:px-4 flex items-center gap-1 md:gap-1.5 overflow-x-auto no-scrollbar snap-x py-1.5">
+          <div className="w-full mx-auto px-2 sm:px-3 lg:px-4 flex items-center gap-1 md:gap-1.5 overflow-x-auto no-scrollbar snap-x py-1.5">
             {TABS_CONFIG.map((tab) => {
               const Icon = tab.icon;
               const isAllowed = tab.allowedRoles.includes(currentUser.role);
@@ -372,7 +377,7 @@ export default function WebPosHomePage() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 max-w-7xl w-full min-w-0 mx-auto px-3 py-3 md:px-4 md:py-6 print:p-0">
+      <main className="flex-1 w-full min-w-0 mx-auto px-2 py-2.5 sm:px-3 lg:px-4 md:py-4 print:p-0">
         {activeDrawerPage === "PROFILE" ? (
           <AccountProfileTab
             currentUser={currentUser}
@@ -457,6 +462,9 @@ export default function WebPosHomePage() {
         order={invoiceOrder}
         onClose={() => setInvoiceOrder(null)}
       />
+
+      {/* Nút Stash Tròn (Hình Máy Tính) mở Cửa sổ nhỏ Đổi tiền nhanh Wise */}
+      <WiseCalculatorStash />
     </div>
   );
 }

@@ -2,13 +2,14 @@ import { Router } from 'express';
 import { categoryRepo, productRepo } from '../config/db';
 import { normalizeToUpperCode } from '../utils/productCode';
 import { ApiError } from '../utils/errors';
+import { filterAndRankBySearch } from '../utils/search';
 
 export const categoriesRouter = Router();
 
 // GET /api/v1/categories
 categoriesRouter.get('/categories', async (req, res, next) => {
   try {
-    const { status } = req.query;
+    const { status, search } = req.query;
     const filter: Record<string, any> = {};
     if (status) {
       filter.status = String(status).toUpperCase();
@@ -17,7 +18,7 @@ categoriesRouter.get('/categories', async (req, res, next) => {
     const categories = await categoryRepo.find(filter, { createdAt: 1 });
     const allProducts = await productRepo.find({});
 
-    const data = categories.map((cat) => {
+    const mapped = categories.map((cat) => {
       const productCount = allProducts.filter(
         (p) => String(p.categoryId) === String(cat._id)
       ).length;
@@ -26,6 +27,13 @@ categoriesRouter.get('/categories', async (req, res, next) => {
         productCount,
       };
     });
+
+    const data = search
+      ? filterAndRankBySearch(mapped, String(search), (cat) => [
+          { text: cat.code, weight: 1.5 },
+          { text: cat.name, weight: 1.3 },
+        ])
+      : mapped;
 
     res.json({
       data,

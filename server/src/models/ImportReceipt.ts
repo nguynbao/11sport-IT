@@ -6,6 +6,7 @@ export type WarehouseFloor = 'FLOOR_1' | 'FLOOR_2';
 export interface IScanCount {
   userId: string;
   name: string;
+  role?: string;
   quantity: number;
 }
 
@@ -20,11 +21,14 @@ export interface IImportReceiptItem {
   actualQuantity: number;
   /** Giá gốc (đơn giá nhập, VND) do thủ kho nhập */
   costPrice: number;
+  /** Giá bán niêm yết (VND) do thủ kho / quản lý nhập */
+  sellingPrice?: number;
   /** Số chiếc đã quét tag ở bước kiểm thực tế */
   scannedQuantity: number;
   /** Người quét kiểm gần nhất (do server ghi, không nhận từ client) */
   checkedBy?: string;
   checkedByName?: string;
+  checkedByRole?: string;
   checkedAt?: Date;
   /** Số chiếc từng nhân viên đã quét kiểm */
   scanCounts?: IScanCount[];
@@ -46,8 +50,10 @@ export interface IImportReceipt extends Document {
   items: IImportReceiptItem[];
   createdBy: string;
   createdByName: string;
+  createdByRole?: string;
   completedBy?: string;
   completedByName?: string;
+  completedByRole?: string;
   completedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -64,15 +70,18 @@ const ImportReceiptItemSchema = new Schema<IImportReceiptItem>(
     expectedQuantity: { type: Number, required: true, default: 0 },
     actualQuantity: { type: Number, required: true, default: 0 },
     costPrice: { type: Number, default: 0, min: 0 },
+    sellingPrice: { type: Number, default: 0, min: 0 },
     scannedQuantity: { type: Number, default: 0, min: 0 },
     checkedBy: { type: String, default: '' },
     checkedByName: { type: String, default: '' },
+    checkedByRole: { type: String, default: '' },
     checkedAt: { type: Date },
     scanCounts: {
       type: [
         {
           userId: { type: String, default: '' },
           name: { type: String, default: '' },
+          role: { type: String, default: '' },
           quantity: { type: Number, default: 0 },
           _id: false,
         },
@@ -98,8 +107,10 @@ const ImportReceiptSchema = new Schema<IImportReceipt>(
     items: { type: [ImportReceiptItemSchema], default: [] },
     createdBy: { type: String, default: '' },
     createdByName: { type: String, default: '' },
+    createdByRole: { type: String, default: '' },
     completedBy: { type: String, default: '' },
     completedByName: { type: String, default: '' },
+    completedByRole: { type: String, default: '' },
     completedAt: { type: Date },
   },
   { timestamps: true }

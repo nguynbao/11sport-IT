@@ -1,8 +1,18 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
-import { Product, Category, apiRequest, formatVND, getStoredUser } from "@/lib/api";
-import { Package, Layers, Search, Filter, RefreshCw } from "lucide-react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import {
+  Product,
+  Category,
+  apiRequest,
+  formatVND,
+  formatNumberDots,
+  parseNumberDots,
+  getStoredUser,
+  useDebounce,
+  filterAndRankBySearch,
+} from "@/lib/api";
+import { Package, Layers, Search, Filter, RefreshCw, Save, CheckCircle2 } from "lucide-react";
 
 export default function InventoryTab() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -15,12 +25,18 @@ export default function InventoryTab() {
   const [activeWarehouse, setActiveWarehouse] = useState<"FLOOR_1" | "FLOOR_2" | "ALL">("FLOOR_1");
   const [floor1Codes, setFloor1Codes] = useState<Set<string>>(new Set());
   const [floor2Codes, setFloor2Codes] = useState<Set<string>>(new Set());
+  const [priceEdits, setPriceEdits] = useState<Record<string, number>>({});
+  const [savingBatch, setSavingBatch] = useState(false);
+  const [priceStatusMsg, setPriceStatusMsg] = useState<string | null>(null);
 
   // Saler (role SALES) chỉ được thấy Giá bán & Số lượng ở Kho Tầng 1, KHÔNG được thấy Giá gốc hay Kho Tầng 2
   const currentUser = getStoredUser();
   const isSales = currentUser?.role === "SALES";
   const canSeeCostPrice =
     currentUser?.role === "ADMIN" || currentUser?.role === "WAREHOUSE";
+
+  // Debounce từ khóa tìm kiếm (400ms) để tối ưu số lượng request API
+  const debouncedSearch = useDebounce(search, 400);
 
   const loadCategories = async () => {
     try {
@@ -31,23 +47,10 @@ export default function InventoryTab() {
     }
   };
 
-  const loadInventory = useCallback(async () => {
-    setLoading(true);
+  // Tách tải danh sách phiếu nhập (/imports) ra riêng để không gọi lại mỗi khi gõ tìm kiếm
+  const loadImportFloorCodes = useCallback(async () => {
     try {
-      const q = new URLSearchParams();
-      if (selectedCategory) q.set("categoryId", selectedCategory);
-      if (search.trim()) q.set("search", search.trim());
-      const [res, impRes] = await Promise.all([
-        apiRequest<Product[]>(`/products?${q.toString()}`),
-        apiRequest<any[]>("/imports").catch(() => ({ data: [] as any[] })),
-      ]);
-      const list = Array.isArray(res.data) ? res.data : [];
-      setProducts(list);
-      setTotalProducts(res.meta?.totalProducts ?? list.length);
-      setTotalStock(
-        res.meta?.totalStock ?? list.reduce((sum, p) => sum + Number(p.stock || 0), 0)
-      );
-
+      const impRes = await apiRequest<any[]>("/imports").catch(() => ({ data: [] as any[] }));
       const f1 = new Set<string>();
       const f2 = new Set<string>();
       (Array.isArray(impRes.data) ? impRes.data : []).forEach((imp: any) => {
@@ -61,40 +64,122 @@ export default function InventoryTab() {
       setFloor1Codes(f1);
       setFloor2Codes(f2);
     } catch {
+      // ignore
+    }
+  }, []);
+
+  const loadInventory = useCallback(async () => {
+    setLoading(true);
+    try {
+      const q = new URLSearchParams();
+      if (selectedCategory) q.set("categoryId", selectedCategory);
+      if (debouncedSearch.trim()) q.set("search", debouncedSearch.trim());
+      const res = await apiRequest<Product[]>(`/products?${q.toString()}`);
+      const list = Array.isArray(res.data) ? res.data : [];
+      setProducts(list);
+      setTotalProducts(res.meta?.totalProducts ?? list.length);
+      setTotalStock(
+        res.meta?.totalStock ?? list.reduce((sum, p) => sum + Number(p.stock || 0), 0)
+      );
+    } catch {
       setProducts([]);
     } finally {
       setLoading(false);
     }
-  }, [selectedCategory, search]);
+  }, [selectedCategory, debouncedSearch]);
 
   useEffect(() => {
     loadCategories();
-  }, []);
+    loadImportFloorCodes();
+  }, [loadImportFloorCodes]);
 
   useEffect(() => {
     loadInventory();
   }, [loadInventory]);
 
-  const totalStockFloor1 = products.reduce((s, p) => s + (Number(p.stockFloor1 ?? p.stock) || 0), 0);
+  const changedPriceProducts = useMemo(() => {
+    return products.filter(
+      (p) => priceEdits[p._id] !== undefined && priceEdits[p._id] !== Number(p.sellingPrice || 0)
+    );
+  }, [products, priceEdits]);
+
+  const handleSaveAllPriceChanges = async () => {
+    if (changedPriceProducts.length === 0 || savingBatch) return;
+    setSavingBatch(true);
+    setPriceStatusMsg(null);
+    try {
+      const updatedMap: Record<string, number> = {};
+      for (const p of changedPriceProducts) {
+        const nextPrice = priceEdits[p._id];
+        const res = await apiRequest<Product>(`/products/${p._id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ sellingPrice: nextPrice }),
+        });
+        updatedMap[p._id] = res.data?.sellingPrice ?? nextPrice;
+      }
+      setProducts((prev) =>
+        prev.map((item) =>
+          updatedMap[item._id] !== undefined ? { ...item, sellingPrice: updatedMap[item._id] } : item
+        )
+      );
+      setPriceEdits((prev) => {
+        const copy = { ...prev };
+        changedPriceProducts.forEach((p) => delete copy[p._id]);
+        return copy;
+      });
+      setPriceStatusMsg(`Đã lưu thành công giá bán của ${changedPriceProducts.length} mặt hàng.`);
+    } catch (err: any) {
+      alert(err?.message || "Không thể cập nhật giá bán");
+    } finally {
+      setSavingBatch(false);
+    }
+  };
+
+  const getFloor1Stock = (p: Product): number => {
+    const f1 = Number(p.stockFloor1);
+    const f2 = Number(p.stockFloor2 || 0);
+    const legacyStock = Number(p.stock || 0);
+    if (p.stockFloor1 === undefined || p.stockFloor1 === null || Number.isNaN(f1)) {
+      return Math.max(0, legacyStock - f2);
+    }
+    if (f1 === 0 && f2 === 0 && legacyStock > 0) {
+      return legacyStock;
+    }
+    return f1;
+  };
+
+  const totalStockFloor1 = products.reduce((s, p) => s + getFloor1Stock(p), 0);
   const totalStockFloor2 = products.reduce((s, p) => s + (Number(p.stockFloor2) || 0), 0);
 
   const effectiveWarehouse = isSales ? "FLOOR_1" : activeWarehouse;
 
-  const displayedProducts = products.filter((p) => {
-    const f1 = Number(p.stockFloor1 ?? p.stock) || 0;
-    const f2 = Number(p.stockFloor2) || 0;
-    if (isSales) {
-      // Saler chỉ hiển thị sản phẩm có ở Kho Tầng 1, không hiển thị sản phẩm của Kho Tầng 2
-      return f1 > 0;
-    }
-    if (effectiveWarehouse === "FLOOR_1") {
-      return f1 > 0 || floor1Codes.has(p.code) || !floor2Codes.has(p.code);
-    }
-    if (effectiveWarehouse === "FLOOR_2") {
-      return f2 > 0 || floor2Codes.has(p.code);
-    }
-    return true;
-  });
+  const displayedProducts = useMemo(() => {
+    const byFloor = products.filter((p) => {
+      const f1 = getFloor1Stock(p);
+      const f2 = Number(p.stockFloor2) || 0;
+      if (isSales) {
+        // Saler chỉ hiển thị sản phẩm có ở Kho Tầng 1, không hiển thị sản phẩm của Kho Tầng 2
+        return f1 > 0;
+      }
+      if (effectiveWarehouse === "FLOOR_1") {
+        return f1 > 0 || floor1Codes.has(p.code) || !floor2Codes.has(p.code);
+      }
+      if (effectiveWarehouse === "FLOOR_2") {
+        return f2 > 0 || floor2Codes.has(p.code);
+      }
+      return true;
+    });
+
+    if (!search.trim()) return byFloor;
+    return filterAndRankBySearch(byFloor, search, (p) => [
+      { text: p.code, weight: 1.5 },
+      { text: p.barcode, weight: 1.5 },
+      { text: p.name, weight: 1.3 },
+      { text: p.categoryName, weight: 0.9 },
+      { text: p.categoryCode, weight: 0.9 },
+      { text: p.unit, weight: 0.6 },
+    ]);
+  }, [products, isSales, effectiveWarehouse, floor1Codes, floor2Codes, search]);
 
   const colCount = (canSeeCostPrice ? 8 : 7) + (effectiveWarehouse === "ALL" ? 2 : 0);
 
@@ -261,14 +346,59 @@ export default function InventoryTab() {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={loadInventory}
-            className="min-h-[40px] px-3.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center justify-center gap-1.5 self-stretch sm:self-start md:self-auto"
-          >
-            <RefreshCw className="w-4 h-4" /> Làm mới dữ liệu
-          </button>
+          <div className="flex flex-wrap items-center gap-2 self-stretch sm:self-start md:self-auto">
+            {canSeeCostPrice && (
+              <>
+                {changedPriceProducts.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setPriceEdits({})}
+                    disabled={savingBatch}
+                    className="min-h-[40px] px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold transition"
+                  >
+                    Hoàn tác ({changedPriceProducts.length})
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={changedPriceProducts.length === 0 || savingBatch}
+                  onClick={handleSaveAllPriceChanges}
+                  className={`min-h-[40px] px-4 py-2 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1.5 transition shadow-sm ${
+                    changedPriceProducts.length > 0
+                      ? "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                      : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                  }`}
+                  title={
+                    changedPriceProducts.length > 0
+                      ? `Lưu thay đổi giá của ${changedPriceProducts.length} mặt hàng`
+                      : "Chưa có thay đổi nào để lưu"
+                  }
+                >
+                  <Save className="w-4 h-4" />
+                  {savingBatch
+                    ? "Đang lưu..."
+                    : changedPriceProducts.length > 0
+                    ? `Lưu thay đổi (${changedPriceProducts.length})`
+                    : "Lưu thay đổi"}
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={loadInventory}
+              className="min-h-[40px] px-3.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center justify-center gap-1.5"
+            >
+              <RefreshCw className="w-4 h-4" /> Làm mới dữ liệu
+            </button>
+          </div>
         </div>
+
+        {priceStatusMsg && (
+          <div className="mb-3 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+            <span>{priceStatusMsg}</span>
+          </div>
+        )}
 
         {/* Bảng tồn kho */}
         <div className="overflow-x-auto border border-slate-200 rounded-xl max-w-full">
@@ -314,7 +444,7 @@ export default function InventoryTab() {
                     p.categoryName ||
                     (typeof p.categoryId === "object" && p.categoryId?.name) ||
                     "Mặc định";
-                  const f1 = Number(p.stockFloor1 ?? p.stock) || 0;
+                  const f1 = getFloor1Stock(p);
                   const f2 = Number(p.stockFloor2) || 0;
                   return (
                     <tr key={p._id} className="hover:bg-slate-50">
@@ -372,7 +502,51 @@ export default function InventoryTab() {
                         </td>
                       )}
                       <td className="py-3 px-4 text-right font-mono whitespace-nowrap">
-                        {p.sellingPrice > 0 ? (
+                        {canSeeCostPrice ? (
+                          <div className="flex items-center justify-end gap-1.5">
+                            <div className="relative w-40">
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                value={
+                                  (priceEdits[p._id] !== undefined
+                                    ? priceEdits[p._id]
+                                    : Number(p.sellingPrice || 0)) > 0
+                                    ? formatNumberDots(
+                                        priceEdits[p._id] !== undefined
+                                          ? priceEdits[p._id]
+                                          : p.sellingPrice
+                                      )
+                                    : ""
+                                }
+                                onChange={(e) =>
+                                  setPriceEdits((prev) => ({
+                                    ...prev,
+                                    [p._id]: parseNumberDots(e.target.value),
+                                  }))
+                                }
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    handleSaveAllPriceChanges();
+                                  }
+                                }}
+                                placeholder="Nhập giá bán..."
+                                className={`w-full pl-2 pr-9 py-1.5 rounded-lg border text-right text-xs font-mono font-bold focus:border-emerald-600 focus:outline-none ${
+                                  priceEdits[p._id] !== undefined &&
+                                  priceEdits[p._id] !== Number(p.sellingPrice || 0)
+                                    ? "border-emerald-500 bg-emerald-50/70 text-emerald-950 ring-1 ring-emerald-400"
+                                    : (priceEdits[p._id] ?? p.sellingPrice) > 0
+                                    ? "border-slate-300 bg-white text-slate-900"
+                                    : "border-amber-300 bg-amber-50 text-amber-900"
+                                }`}
+                              />
+                              <span className="absolute right-2 top-2 text-[10px] font-mono font-bold text-slate-400 pointer-events-none">
+                                VND
+                              </span>
+                            </div>
+                          </div>
+                        ) : p.sellingPrice > 0 ? (
                           <span className="font-bold text-slate-900">
                             {formatVND(p.sellingPrice)}
                           </span>

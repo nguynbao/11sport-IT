@@ -5,6 +5,14 @@ export const metadata: Metadata = {
   title: "11Sport POS & Kho Vận — Hệ thống Quản lý Bán hàng & Kiểm kho",
   description:
     "Hệ thống POS bán hàng tại quầy, xuất hóa đơn PDF K80/A4, kiểm hàng Camera OCR và quản lý kho 11Sport.",
+  icons: {
+    icon: [
+      { url: "/logo-11sport-icon.svg", type: "image/svg+xml" },
+      { url: "/logo-11sport.svg", type: "image/svg+xml" },
+    ],
+    shortcut: "/logo-11sport-icon.svg",
+    apple: "/logo-11sport-icon.svg",
+  },
 };
 
 // Viewport cho thiết bị di động (Next 14 tách khỏi metadata)

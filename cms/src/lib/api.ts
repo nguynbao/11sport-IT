@@ -57,6 +57,7 @@ export interface StockMovement {
   referenceCode?: string;
   performedBy?: string;
   performedByName?: string;
+  performedByRole?: string;
   note?: string;
   createdAt: string;
 }
@@ -114,10 +115,14 @@ export interface Order {
   cardFee: number;
   totalAmount: number;
   note: string;
-  status: "PAID" | "PARTIALLY_RETURNED" | "FULLY_RETURNED";
+  status: "DRAFT" | "PAID" | "PARTIALLY_RETURNED" | "FULLY_RETURNED";
   items: OrderItem[];
   soldBy?: string;
   soldByName?: string;
+  createdBy?: string;
+  confirmedBy?: string;
+  confirmedByName?: string;
+  confirmedAt?: string;
   createdByName?: string;
   createdAt: string;
 }
@@ -439,4 +444,81 @@ export async function apiRequest<T = any>(
     throw error;
   }
   return json;
+}
+
+export {
+  useDebounce,
+  normalizeVietnamese,
+  compactAlphaNum,
+  normalizePhoneDigits,
+  scoreSearchMatch,
+  filterAndRankBySearch,
+  type SearchField,
+} from "./search";
+
+
+
+/* ---------------- Chương trình Khuyến mãi (GET / POST / PATCH / DELETE /promotions) ---------------- */
+
+export type PromotionConditionType = "BUY_PRODUCTS" | "BUY_CATEGORY" | "ALL_PRODUCTS";
+export type PromotionDiscountType = "NONE" | "PERCENT" | "AMOUNT";
+export type EffectivePromotionStatus =
+  | "RUNNING_PERMANENT"
+  | "RUNNING"
+  | "UPCOMING"
+  | "EXPIRED"
+  | "PAUSED";
+
+export interface PromotionConditionProduct {
+  productId: string;
+  productCode: string;
+  productName: string;
+  unit: string;
+  sellingPrice?: number;
+  stockFloor1?: number;
+}
+
+export interface PromotionConditionCategory {
+  categoryId: string;
+  categoryCode: string;
+  categoryName: string;
+}
+
+export interface PromotionGiftItem {
+  productId: string;
+  productCode: string;
+  productName: string;
+  unit: string;
+  quantity: number;
+  sellingPrice?: number;
+  stockFloor1?: number;
+}
+
+export interface Promotion {
+  _id: string;
+  code: string;
+  name: string;
+  description: string;
+  status: "ACTIVE" | "PAUSED";
+  isPermanent: boolean;
+  startDate?: string | null;
+  endDate?: string | null;
+  conditionType: PromotionConditionType;
+  conditionProductIds: string[];
+  conditionProducts: PromotionConditionProduct[];
+  conditionCategoryIds: string[];
+  conditionCategories: PromotionConditionCategory[];
+  minQuantity: number;
+  minOrderAmount: number;
+  giftItems: PromotionGiftItem[];
+  multiplyGiftByConditionQty: boolean;
+  itemDiscountType: PromotionDiscountType;
+  itemDiscountValue: number;
+  billDiscountType: PromotionDiscountType;
+  billDiscountValue: number;
+  isCurrentlyActive?: boolean;
+  effectiveStatus?: EffectivePromotionStatus;
+  createdByName?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }

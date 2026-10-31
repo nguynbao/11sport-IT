@@ -61,6 +61,7 @@
   - Response: `{ "data": { "code": "AO_POLO_THE_THAO_UNISEX_V1_KMAP262510_DO_SIZE_L" } }`
 - `GET /api/v1/products`
   - Query: `?categoryId=...&search=...&onlySellable=true|false`
+  - *(v2.5 — Smart Search & Relevance Ranking)* Tham số `search` hỗ trợ tìm kiếm thông minh tiếng Việt không dấu/có dấu, tách đa từ khóa không liền kề (multi-token), khớp mã SKU/barcode/category/đơn vị, chữ cái đầu (acronym) và chịu lỗi chính tả nhẹ (fuzzy/typo-tolerant), đồng thời sắp xếp kết quả theo điểm độ liên quan giảm dần.
   - Response: `{ "data": [...], "meta": { "totalProducts": 12, "totalStock": 350 } }`
 - `POST /api/v1/products`
   - Body: `{ "name": "string", "categoryId": "string", "unit": "Cái | Đôi | Bộ", "quantity"?: 0, "targetWarehouse"?: "FLOOR_1 | FLOOR_2", "sellingPrice": 0, "costPrice": 0, "upsertIfExists"?: boolean }`
@@ -69,8 +70,8 @@
   - `sellingPrice` > 0, `costPrice` > 0 hoặc `quantity` > 0 chỉ được phép khi người gọi có role `ADMIN` (Quản lý/Admin); role khác gửi `sellingPrice > 0` → `403 SELLING_PRICE_FORBIDDEN`, gửi `costPrice > 0` → `403 COST_PRICE_FORBIDDEN`, gửi `quantity > 0` → `403 DIRECT_STOCK_FORBIDDEN`.
 - `PATCH /api/v1/products/:id`
   - Body: `{ "name": "string", "categoryId": "string", "unit": "string", "sellingPrice": 250000, "costPrice": 180000, "stock"?: 20, "stockFloor1"?: 12, "stockFloor2"?: 8, "allowDirectStock"?: boolean }`
-  - Lưu ý: Không cho phép sửa `code`. Sửa `stock` / `stockFloor1` / `stockFloor2` trực tiếp mặc định bị chặn (`400 STOCK_DIRECT_EDIT_FORBIDDEN`), trừ khi `ADMIN` gửi kèm `allowDirectStock: true` từ CMS (hệ thống sẽ cập nhật tồn kho tầng + tổng tồn kho và tự động ghi `StockMovement` loại `IMPORT` nếu tăng hoặc `ADJUSTMENT` nếu giảm để cân bằng Sổ kho).
-  - *(v1.1)* Chỉ role `ADMIN` được đổi `sellingPrice` / `costPrice` / `stock` (`allowDirectStock: true`); role khác → `403 SELLING_PRICE_FORBIDDEN` / `403 COST_PRICE_FORBIDDEN` / `403 DIRECT_STOCK_FORBIDDEN`.
+  - Lưu ý: Không cho phép sửa `code`. Sửa `stock` / `stockFloor1` / `stockFloor2` trực tiếp mặc định bị chặn (`400 STOCK_DIRECT_EDIT_FORBIDDEN`), trừ khi `ADMIN` gửi kèm `allowDirectStock: true` từ CMS (hệ thống sẽ cập nhật tồn kho tầng + tổng tồn kho và tự động ghi `StockMovement` loại `IMPORT` nếu tăng hoặc `ADJUSTMENT` nếu giảm cho từng kho tầng `FLOOR_1` / `FLOOR_2` tương ứng, kèm `performedBy`, `performedByName`, `performedByRole` để cân bằng Sổ kho).
+  - *(v1.1 & v2.4)* Role `ADMIN` và `WAREHOUSE` được phép cập nhật `sellingPrice`; chỉ role `ADMIN` được đổi `costPrice` / `stock` (`allowDirectStock: true`); role khác → `403 SELLING_PRICE_FORBIDDEN` / `403 COST_PRICE_FORBIDDEN` / `403 DIRECT_STOCK_FORBIDDEN`.
 - `DELETE /api/v1/products/:id` *(v1.8)*
   - Chỉ role `ADMIN` được xóa sản phẩm (`403 PRODUCT_DELETE_FORBIDDEN` nếu role khác).
   - Xóa sản phẩm theo `id` và dọn các bút toán `StockMovement` liên quan để Báo cáo tồn kho luôn đồng nhất.
@@ -82,7 +83,7 @@
   - `stock`: tổng tồn kho toàn cửa hàng (`stock = stockFloor1 + stockFloor2`).
 - `GET /api/v1/inventory/movements`
   - Query: `?productId=...&type=IMPORT|SALE|RETURN|EXCHANGE_IN|EXCHANGE_OUT|ADJUSTMENT|TRANSFER&from=...&to=...`
-  - Response: Lịch sử sổ kho (`StockMovement`) kèm `sellingPrice`, `stock` hiện tại và `costPrice` (ẩn `costPrice` nếu role `SALES`).
+  - Response: Lịch sử sổ kho (`StockMovement`) kèm `sellingPrice`, `stock` hiện tại, `costPrice` (ẩn `costPrice` nếu role `SALES`) và thông tin người thực hiện (`performedBy`, `performedByName`, `performedByRole`: `"ADMIN" | "WAREHOUSE" | "SALES"`).
 - `GET /api/v1/inventory/report`
   - Query: `?from=YYYY-MM-DD&to=YYYY-MM-DD&categoryId=...`
   - Response: Báo cáo kế toán kho theo công thức:
@@ -112,8 +113,8 @@
     - Ghi nhận vào **Báo cáo hoạt động nhân viên** (`GET /api/v1/reports/staff-activity`) với loại hoạt động kho `EXPORT_TRANSFER`.
 
 ### 2.4 Nhập kho (`/imports`)
-- `GET /api/v1/imports` — Danh sách phiếu nhập kho (`DRAFT`, `CHECKING`, `COMPLETED`)
-- `GET /api/v1/imports/:id` — Chi tiết phiếu nhập kho
+- `GET /api/v1/imports` — Danh sách phiếu nhập kho (`DRAFT`, `CHECKING`, `COMPLETED`), kèm thông tin người lập (`createdBy`, `createdByName`, `createdByRole`: `"ADMIN" | "WAREHOUSE"`), người hoàn thành (`completedBy`, `completedByName`, `completedByRole`: `"ADMIN" | "WAREHOUSE"`), và trên từng dòng hàng có người kiểm (`checkedBy`, `checkedByName`, `checkedByRole`, `scanCounts: [{ "userId", "name", "role", "quantity" }]`).
+- `GET /api/v1/imports/:id` — Chi tiết phiếu nhập kho (bao gồm toàn bộ thông tin người lập, người kiểm, người hoàn thành kèm vai trò `ADMIN` hoặc `WAREHOUSE`).
 - `POST /api/v1/imports/ocr-preview`
   - Body: `{ "imageText": "string" }` (mỗi dòng: `Tên hàng | ĐVT | Số lượng | Ghi chú`)
   - Tách văn bản thành danh sách 6 cột (`stt`, `productCode`, `productName`, `unit`, `expectedQuantity`, `note`) để người dùng xem lại và chỉnh sửa. Không còn trả dữ liệu mẫu.
@@ -158,7 +159,7 @@
       ]
     }
     ```
-  - *(v1.1)* `costPrice`: **giá gốc (đơn giá nhập)** do thủ kho nhập, VND, số nguyên ≥ 0 (không bắt buộc, mặc định `0`). Giá trị âm/không hợp lệ → `400 INVALID_COST_PRICE`. Thủ kho **không** nhập giá bán; giá bán do Quản lý/Admin cập nhật trên CMS.
+  - *(v1.1 & v2.4)* `costPrice`: **giá gốc (đơn giá nhập)** do thủ kho nhập, VND, số nguyên ≥ 0 (không bắt buộc, mặc định `0`, âm → `400 INVALID_COST_PRICE`). `sellingPrice`: **giá bán niêm yết** do thủ kho (`WAREHOUSE`) hoặc Quản lý (`ADMIN`) nhập khi lập phiếu nhập kho, VND, số nguyên ≥ 0 (không bắt buộc, mặc định `0`, âm → `400 INVALID_SELLING_PRICE`).
 - `PUT /api/v1/imports/:id`
   - Lưu nháp hoặc cập nhật danh sách dòng hàng, trạng thái kiểm hàng (`DRAFT` hoặc `CHECKING`). Chặn sửa nếu phiếu đã `COMPLETED`.
 - `DELETE /api/v1/imports/:id` *(v1.8)*
@@ -198,13 +199,13 @@
 - `POST /api/v1/imports/:id/complete`
   - Bước 7 ("Hoàn thành" nhập kho):
   - Chỉ các dòng có `isConfirmed === true` mới được cộng `actualQuantity` vào tồn kho (tự tạo sản phẩm mới nếu `productCode` chưa có trong hệ thống), ghi `StockMovement` loại `IMPORT`, và khóa phiếu (`status = "COMPLETED"`).
-  - *(v1.1)* Với mỗi dòng xác nhận có `costPrice > 0`: cập nhật `Product.costPrice = costPrice` (giá nhập gần nhất). Sản phẩm tự tạo mới có `costPrice` theo dòng nhập và `sellingPrice = 0` (chờ Quản lý/Admin đặt giá bán).
+  - *(v1.1 & v2.4)* Với mỗi dòng xác nhận có `costPrice > 0`: cập nhật `Product.costPrice = costPrice` (giá nhập gần nhất). Với mỗi dòng xác nhận có `sellingPrice > 0`: cập nhật `Product.sellingPrice = sellingPrice` (giá bán niêm yết). Sản phẩm tự tạo mới nhận `costPrice` và `sellingPrice` theo dòng nhập (mặc định `0` nếu không nhập).
 
 ### 2.5 Bán hàng POS & Khách hàng (`/orders`, `/customers`)
 - `GET /api/v1/customers/lookup?phone=...`
-  - Tra cứu khách hàng theo SĐT, trả về thông tin khách hàng và lịch sử đơn hàng + phiếu trả/đổi.
-- `GET /api/v1/customers` — Danh sách khách hàng
-- `GET /api/v1/orders` — Danh sách đơn hàng (lọc theo `search`, `phone`, `status`, `paymentMethod`)
+  - Tra cứu khách hàng theo SĐT (tự động chuẩn hóa khoảng trắng, dấu chấm/gạch và đầu số `+84`/`84` về `0`), trả về thông tin khách hàng và lịch sử đơn hàng + phiếu trả/đổi.
+- `GET /api/v1/customers` — Danh sách khách hàng (hỗ trợ `?search=...` tìm thông minh theo SĐT chuẩn hóa hoặc tên tiếng Việt không dấu/đa từ khóa, sắp xếp theo độ liên quan).
+- `GET /api/v1/orders` — Danh sách đơn hàng (lọc theo `search`, `phone`, `status`, `paymentMethod`; `search` hỗ trợ tìm không dấu/đa từ khóa trên mã đơn, tên/SĐT khách, mã/tên sản phẩm trong đơn, nhân viên bán, ghi chú).
 - `GET /api/v1/orders/:id` — Chi tiết đơn hàng (hoặc tra theo `orderCode` qua `GET /api/v1/orders/by-code/:code`)
 - `POST /api/v1/orders` *(Cập nhật v2.2 — Chỉ bán tồn Kho Tầng 1 + Giảm giá Sản phẩm, Tặng hàng 0đ & Giảm giá Bill)*
   - Body:
@@ -252,7 +253,13 @@
     - **Phí quẹt thẻ 3% & Tổng thanh toán**:
       - Nếu `paymentMethod === "CARD"` và `hasCardFee === true`: `cardFee = Math.round(afterBillDiscount * 0.03)`, ngược lại `cardFee = 0`.
       - `totalAmount = afterBillDiscount + cardFee`.
-    - Trừ trực tiếp `stockFloor1` (và `stock`) của sản phẩm, ghi `StockMovement` loại `SALE` (`warehouseLocation: "FLOOR_1"`), cập nhật/tạo `Customer` theo SĐT.
+    - **Lưu Bản Nháp Hóa Đơn (`status === "DRAFT"` hoặc `isDraft === true`) *(v2.8)***:
+      - Mọi nhân viên Sales và Admin đều nhìn thấy toàn bộ danh sách hóa đơn nháp (`GET /api/v1/orders?status=DRAFT`) để phối hợp phục vụ khách.
+      - Khi lưu bản nháp (`DRAFT`), hệ thống bắt buộc nhập đầy đủ thông tin khách hàng (`customerName`, `customerPhone`), ghi nhận **Người tạo nháp** (`createdBy`, `createdByName`), lưu hóa đơn vào CSDL nhưng **chưa trừ tồn kho** (`stockFloor1` giữ nguyên), chưa ghi `StockMovement`, chưa cộng doanh thu.
+      - Khi chốt thanh toán (`status === "PAID"`), hệ thống ghi nhận thêm **Người chốt thanh toán** (`confirmedBy`, `confirmedByName`, `confirmedAt`), kiểm tra lại tồn kho thực tế tại thời điểm thanh toán (`stockFloor1 >= requestedQty` — nếu lúc tạo nháp còn hàng nhưng đến lúc thanh toán kho đã hết/thiếu thì chặn ngay với lỗi `400 INSUFFICIENT_STOCK` và giữ nguyên trạng thái `DRAFT`), trừ trực tiếp `stockFloor1` (và `stock`), ghi `StockMovement` loại `SALE` (`warehouseLocation: "FLOOR_1"`), cập nhật/tạo `Customer` theo SĐT.
+- `PUT /api/v1/orders/:id` *(v2.8)* — Cập nhật nội dung hóa đơn nháp (`status === "DRAFT"`), chưa trừ kho (hoặc truyền `status: "PAID"` để chốt thanh toán và trừ kho Tầng 1).
+- `POST /api/v1/orders/:id/confirm` *(v2.8)* — Xác nhận thanh toán cho hóa đơn nháp (`DRAFT` → `PAID`), thực hiện kiểm tra và trừ tồn Kho Tầng 1, ghi `StockMovement` loại `SALE` và cập nhật `Customer`.
+- `DELETE /api/v1/orders/:id` *(v2.8)* — Xóa hóa đơn đang ở trạng thái `DRAFT` (chặn xóa nếu đơn đã `PAID` → `400 ORDER_ALREADY_PAID`).
 
 ### 2.6 Trả / Đổi hàng (`/returns`)
 - `GET /api/v1/returns` — Danh sách phiếu trả/đổi (CMS & POS)
@@ -320,3 +327,112 @@
     - `hourlyTrend`: Chuỗi doanh thu & lợi nhuận theo từng khung giờ (`00:00` – `23:00`) của các giao dịch trong kỳ.
     - `topSellingProducts`: Danh sách sản phẩm bán chạy nhất trong kỳ kèm tồn kho hiện tại (`stockFloor1`, `stockFloor2`, `stock`) và cảnh báo cần nhập thêm / dời từ Tầng 2 xuống Tầng 1 (`restockAlert`).
     - `needsPushProducts`: Danh sách sản phẩm đang cần đẩy mạnh (tồn kho cao nhưng bán chậm/chưa bán được, vốn tồn đọng lớn, hàng nằm ở Kho Tầng 2 nhưng Kho Tầng 1 hết hàng trưng bày, hoặc chưa đặt giá bán), kèm lý do (`pushReasons`) và gợi ý hành động (`suggestedAction`).
+
+
+### 2.9 Tích hợp Wise API — Máy tính Quy đổi Ngoại tệ & Chuyển tiền nhanh (`/wise`) *(v2.6)*
+- `GET /api/v1/wise/currencies`
+  - Trả về danh sách các đồng tiền hỗ trợ quy đổi nhanh trên POS (`VND`, `USD`, `EUR`, `GBP`, `AUD`, `SGD`, `CAD`, `JPY`, `KRW`, `THB`, `CHF`, `CNY`, `HKD`, `MYR`, `TWD`) kèm thông tin chế độ kết nối Wise (`mode`: `"LIVE_AUTHENTICATED" | "LIVE_PUBLIC" | "SANDBOX"`).
+- `POST /api/v1/wise/quote`
+  - Body:
+    ```json
+    {
+      "sourceCurrency": "USD",
+      "targetCurrency": "VND",
+      "sourceAmount": 100,
+      "targetAmount": null
+    }
+    ```
+  - Nghiệp vụ:
+    - Gọi trực tiếp Wise API `POST /v3/quotes` (kèm `Authorization: Bearer <WISE_API_TOKEN>` nếu có cấu hình trong `.env`, hoặc sử dụng Unauthenticated Quote trực tiếp từ `https://api.wise.com/v3/quotes`).
+    - **Xử lý thông minh chiều `VND -> Ngoại tệ`**: Vì Wise không cho phép `sourceCurrency = "VND"` trực tiếp (trả về `422`), khi người dùng chọn đổi từ `VND` sang ngoại tệ (VD: khách hỏi `10,000,000 VND` tương đương bao nhiêu `USD` trên Wise), server tự động truy vấn chiều đối ứng (`targetCurrency -> VND`) trên Wise để lấy chính xác tỷ giá mid-market thực tế (`rate`), phí dịch vụ Wise (`fee`) theo từng phương thức (`BANK_TRANSFER`, `DEBIT`, `CREDIT`, `BALANCE`...) và tính ra số tiền ngoại tệ cần gửi / thực nhận để nhân viên báo ngay cho khách.
+    - Nếu kết nối mạng tới Wise gặp sự cố, tự động fallback về tỷ giá tham chiếu dự phòng kèm cờ `isFallback: true`.
+  - Response:
+    ```json
+    {
+      "data": {
+        "sourceCurrency": "USD",
+        "targetCurrency": "VND",
+        "sourceAmount": 100,
+        "targetAmount": 2532355,
+        "rate": 25803.5,
+        "inverseRate": 0.00003875,
+        "rateTimestamp": "2026-10-31T10:49:01Z",
+        "isReversedCorridor": false,
+        "isFallback": false,
+        "mode": "LIVE_PUBLIC",
+        "selectedOption": {
+          "payIn": "DEBIT",
+          "payOut": "BANK_TRANSFER",
+          "sourceAmount": 100,
+          "targetAmount": 2489006,
+          "feeTotal": 3.54,
+          "feeTransferwise": 2.31,
+          "feePayIn": 1.23,
+          "feeCurrency": "USD",
+          "feePercentage": 3.54,
+          "formattedEstimatedDelivery": "in 30 minutes"
+        },
+        "paymentOptions": []
+      },
+      "meta": {}
+    }
+    ```
+- `POST /api/v1/wise/transfers`
+  - Tạo lệnh chuyển tiền nhanh qua Wise (nếu cấu hình `WISE_API_TOKEN` thật sẽ gọi luồng `Profile -> Quote -> Transfer` của Wise; nếu chưa cấu hình token sẽ tạo phiếu mô phỏng Sandbox/Quote Ticket để lưu/copy báo giá gửi khách).
+  - Body:
+    ```json
+    {
+      "sourceCurrency": "USD",
+      "targetCurrency": "VND",
+      "sourceAmount": 100,
+      "recipientName": "Nguyen Van A",
+      "recipientAccount": "1903...",
+      "recipientBank": "Techcombank",
+      "note": "Báo giá chuyển tiền Wise tại quầy"
+    }
+    ```
+
+
+### 2.10 Chương trình Khuyến mãi (`/promotions`) *(v2.7)*
+- `GET /api/v1/promotions`
+  - Query: `?activeOnly=true|false&search=...`
+  - Trả về danh sách chương trình khuyến mãi kèm trạng thái hiệu lực thực tế (`isCurrentlyActive: boolean`, `effectiveStatus: "RUNNING_PERMANENT" | "RUNNING" | "UPCOMING" | "EXPIRED" | "PAUSED"`). Khi `activeOnly=true`, chỉ trả về các chương trình đang bật (`status === "ACTIVE"`) và đang trong thời gian hiệu lực (hoặc `isPermanent === true`).
+- `POST /api/v1/promotions`
+  - Chỉ role `ADMIN` được phép tạo (`403 FORBIDDEN` nếu role khác).
+  - Body:
+    ```json
+    {
+      "name": "Mua Vợt Pickleball tặng kèm Quấn cán & Dán viền",
+      "description": "Áp dụng tự động khi thêm vợt vào giỏ hàng POS",
+      "status": "ACTIVE",
+      "isPermanent": true,
+      "startDate": null,
+      "endDate": null,
+      "conditionType": "BUY_PRODUCTS | BUY_CATEGORY | ALL_PRODUCTS",
+      "conditionProductIds": ["..."],
+      "conditionCategoryIds": ["..."],
+      "minQuantity": 1,
+      "minOrderAmount": 0,
+      "giftItems": [
+        { "productId": "...", "quantity": 1 }
+      ],
+      "multiplyGiftByConditionQty": true,
+      "itemDiscountType": "NONE | PERCENT | AMOUNT",
+      "itemDiscountValue": 0,
+      "billDiscountType": "NONE | PERCENT | AMOUNT",
+      "billDiscountValue": 0
+    }
+    ```
+  - Quy tắc:
+    - `name` bắt buộc (`400 VALIDATION_ERROR`).
+    - Phải có ít nhất 1 ưu đãi: `giftItems.length > 0` hoặc `itemDiscountType !== "NONE"` (`itemDiscountValue > 0`) hoặc `billDiscountType !== "NONE"` (`billDiscountValue > 0`).
+    - Nếu `isPermanent === false`: kiểm tra `startDate` / `endDate` hợp lệ (nếu có cả 2 thì `endDate >= startDate`).
+- `PATCH /api/v1/promotions/:id`
+  - Chỉ role `ADMIN` được phép cập nhật thông tin chương trình, thời gian, điều kiện, quà tặng/giảm giá hoặc bật/tắt (`status: "ACTIVE" | "PAUSED"`).
+- `DELETE /api/v1/promotions/:id`
+  - Chỉ role `ADMIN` được phép xóa chương trình khuyến mãi.
+- `POST /api/v1/promotions/evaluate`
+  - Kiểm tra giỏ hàng POS hiện tại khớp với các chương trình khuyến mãi đang hiệu lực và trả về:
+    - Danh sách chương trình được kích hoạt (`appliedPromotions`).
+    - Danh sách sản phẩm/phụ kiện tặng kèm tự động (`autoGiftItems`).
+    - Mức giảm giá tự động cho từng dòng sản phẩm (`itemDiscounts`) và giảm giá tổng Bill (`billDiscount`).
