@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Product,
+  ProductVariant,
   Category,
   Order,
   Promotion,
@@ -17,6 +18,7 @@ import {
   getStoredUser,
   useDebounce,
   filterAndRankBySearch,
+  formatVariantLabel,
 } from "@/lib/api";
 import {
   Search,
@@ -48,6 +50,8 @@ const PINNED_GIFTS_STORAGE_KEY = "11sport_pos_pinned_gift_ids";
 interface GiftCartItem {
   product: Product;
   quantity: number;
+  color?: string;
+  size?: string;
   isAutoPromo?: boolean;
   promoName?: string;
 }
@@ -58,12 +62,17 @@ interface PosTabProps {
 
 interface CartItem {
   product: Product;
+  color?: string;
+  size?: string;
   quantity: number;
   discountType: DiscountType;
   discountValue: number;
   isManualDiscount?: boolean;
   autoPromoName?: string;
 }
+
+const getCartLineKey = (productId: string, color?: string, size?: string): string =>
+  `${productId}__${String(color || "").trim().toLowerCase()}__${String(size || "").trim().toUpperCase()}`;
 
 type SortByOption = "CATEGORY" | "NAME_ASC" | "PRICE_ASC" | "PRICE_DESC" | "STOCK_DESC";
 type SplitMethodType = "CASH" | "BANKING" | "CARD";
@@ -80,8 +89,6 @@ const SPLIT_METHOD_OPTIONS: { value: SplitMethodType; label: string }[] = [
 ];
 
 // ===== Nhiều đơn hàng song song (đơn nháp) =====
-// Nhiều khách tới mua cùng lúc: Sales mở nhiều tab đơn, chuyển qua lại, mỗi tab giữ giỏ hàng/khách/thanh toán riêng.
-// Lưu sessionStorage để không mất khi chuyển tab Kho/Khách hàng hoặc reload; xóa khi đăng xuất / đóng trình duyệt.
 const POS_DRAFTS_STORAGE_KEY = "11sport_pos_drafts_v1";
 const MAX_DRAFTS = 10;
 const DEFAULT_NOTE = "Giá đã bao gồm thuế";
@@ -158,7 +165,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [giftCart, setGiftCart] = useState<GiftCartItem[]>([]);
 
-  // Popup chọn sản phẩm tặng (chỉ có tìm kiếm, dropdown category & ghim sản phẩm trong popup này)
+  // Popup chọn Size & Màu sắc khi bán sản phẩm có nhiều phân loại
+  const [variantPickerProduct, setVariantPickerProduct] = useState<Product | null>(null);
+
+  // Popup chọn sản phẩm tặng
   const [showGiftModal, setShowGiftModal] = useState(false);
   const [giftSearch, setGiftSearch] = useState("");
   const [giftCategoryId, setGiftCategoryId] = useState("");
@@ -190,8 +200,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
   const [loadingSavedDrafts, setLoadingSavedDrafts] = useState(false);
   const [editingServerDraftOrder, setEditingServerDraftOrder] = useState<Order | null>(null);
 
-  // Danh sách đơn nháp (nhiều khách cùng lúc). State bên trên luôn là dữ liệu của đơn đang mở (activeDraftId);
-  // các đơn khác được lưu trong `drafts` và nạp lại khi chuyển tab.
   const [drafts, setDrafts] = useState<DraftOrder[]>(() => [
     { id: INITIAL_DRAFT_ID, seq: 1, ...createEmptyDraftData() },
   ]);
@@ -237,26 +245,25 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     setSuccessMsg("");
   };
 
-  // Danh sách đơn với dữ liệu mới nhất của đơn đang mở (dùng để hiển thị tab & lưu sessionStorage)
   const liveDrafts = useMemo<DraftOrder[]>(
     () =>
       drafts.map((d) =>
         d.id === activeDraftId
           ? {
-            ...d,
-            cart,
-            giftCart,
-            billDiscountType,
-            billDiscountValue,
-            customerPhone,
-            customerName,
-            isExistingCustomer,
-            customerOrders,
-            paymentMethod,
-            splitPayments,
-            hasCardFee,
-            note,
-          }
+              ...d,
+              cart,
+              giftCart,
+              billDiscountType,
+              billDiscountValue,
+              customerPhone,
+              customerName,
+              isExistingCustomer,
+              customerOrders,
+              paymentMethod,
+              splitPayments,
+              hasCardFee,
+              note,
+            }
           : d
       ),
     [
@@ -277,7 +284,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     ]
   );
 
-  // Nạp lại đơn nháp từ sessionStorage (chỉ của đúng nhân viên đang đăng nhập)
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -316,7 +322,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Lưu đơn nháp vào sessionStorage mỗi khi thay đổi
   useEffect(() => {
     if (!draftsHydrated || typeof window === "undefined") return;
     try {
@@ -329,7 +334,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
         })
       );
     } catch {
-      // ignore (quota...)
+      // ignore
     }
   }, [draftsHydrated, liveDrafts, activeDraftId]);
 
@@ -366,7 +371,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     activeDraftIdRef.current = newDraft.id;
   };
 
-  // Xóa 1 đơn khỏi danh sách; nếu là đơn đang mở thì chuyển sang đơn kế bên (hoặc tạo đơn trống mới)
   const removeDraft = (draftId: string) => {
     const idx = liveDrafts.findIndex((d) => d.id === draftId);
     const remaining = liveDrafts.filter((d) => d.id !== draftId);
@@ -405,7 +409,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     removeDraft(draftId);
   };
 
-  // Số lượng sản phẩm đang được giữ ở các đơn nháp KHÁC (để Sales biết, tránh bán trùng hàng cuối)
   const reservedInOtherDrafts = useMemo(() => {
     const map = new Map<string, number>();
     drafts.forEach((d) => {
@@ -420,7 +423,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     return map;
   }, [drafts, activeDraftId]);
 
-  // Khi danh sách sản phẩm tải lại (VD: sau khi chốt 1 đơn), cập nhật tồn kho mới nhất vào giỏ của mọi đơn nháp
   useEffect(() => {
     if (products.length === 0) return;
     const byId = new Map(products.map((p) => [p._id, p]));
@@ -452,8 +454,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     const f1 = Number(p.stockFloor1);
     const f2 = Number(p.stockFloor2);
     const total = Math.max(0, Number(p.stock) || 0);
-    // Tương thích ngược với data cũ chưa có field stockFloor1/stockFloor2
-    // (hoặc Mongoose trả default stockFloor1 = 0, stockFloor2 = 0 trong khi stock > 0)
     if (
       p.stockFloor1 === undefined ||
       p.stockFloor1 === null ||
@@ -462,6 +462,26 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       return total;
     }
     return Math.max(0, f1 || 0);
+  };
+
+  const getVariantFloor1Stock = (
+    p: Product,
+    color?: string,
+    size?: string
+  ): number => {
+    if (Array.isArray(p.variants) && p.variants.length > 0 && (color || size)) {
+      const cNorm = String(color || "").trim().toLowerCase();
+      const sNorm = String(size || "").trim().toUpperCase();
+      const matched = p.variants.find(
+        (v) =>
+          String(v.color || "").trim().toLowerCase() === cNorm &&
+          String(v.size || "").trim().toUpperCase() === sNorm
+      );
+      if (matched) {
+        return Math.max(0, Number(matched.stockFloor1 ?? matched.stock) || 0);
+      }
+    }
+    return getFloor1Stock(p);
   };
 
   const getCategoryName = (p: Product): string => {
@@ -487,7 +507,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     if (rawId && categories.some((c) => c._id === rawId)) {
       return rawId;
     }
-    // Tương thích data cũ nếu chưa có categoryId chuẩn mà chỉ có categoryCode / categoryName
     const byCodeOrName = categories.find(
       (c) =>
         (p.categoryCode && c.code?.toLowerCase() === p.categoryCode.toLowerCase()) ||
@@ -515,7 +534,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     }
   }, []);
 
-  // Debounce từ khóa tìm kiếm sản phẩm (400ms), quà tặng (300ms) và SĐT khách hàng (500ms) để tối ưu số lượng request API
   const debouncedSearch = useDebounce(search, 400);
   const debouncedGiftSearch = useDebounce(giftSearch, 300);
   const debouncedCustomerPhone = useDebounce(customerPhone, 500);
@@ -560,7 +578,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     fetchSellableProducts();
   }, [fetchSellableProducts]);
 
-  // Đọc danh sách sản phẩm ghim trong Popup Tặng hàng từ localStorage
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -591,12 +608,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     });
   };
 
-  // Chỉ lấy các sản phẩm có ở Kho Tầng 1 (stockFloor1 > 0), không hiển thị sản phẩm ở Kho Tầng 2
   const floor1Products = useMemo(() => {
     return products.filter((p) => getFloor1Stock(p) > 0);
   }, [products]);
 
-  // Lọc và sắp xếp sản phẩm theo Category + Smart Search tức thì trên client
   const filteredAndSortedProducts = useMemo(() => {
     const categoryFiltered = floor1Products.filter((p) => {
       if (selectedCategoryId && getCategoryId(p) !== selectedCategoryId) {
@@ -608,16 +623,17 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     const hasSearch = search.trim().length > 0;
     const searched = hasSearch
       ? filterAndRankBySearch(categoryFiltered, search, (p) => [
-        { text: p.code, weight: 1.5 },
-        { text: p.barcode, weight: 1.5 },
-        { text: p.name, weight: 1.3 },
-        { text: getCategoryName(p), weight: 0.9 },
-        { text: p.categoryCode, weight: 0.9 },
-        { text: p.unit, weight: 0.6 },
-      ])
+          { text: p.code, weight: 1.5 },
+          { text: p.barcode, weight: 1.5 },
+          { text: p.name, weight: 1.3 },
+          { text: p.brand, weight: 1.1 },
+          { text: getCategoryName(p), weight: 0.9 },
+          { text: p.categoryCode, weight: 0.9 },
+          { text: (p.variants || []).map((v) => `${v.color} ${v.size}`).join(" "), weight: 0.8 },
+          { text: p.unit, weight: 0.6 },
+        ])
       : categoryFiltered;
 
-    // Khi đang tìm kiếm và ở chế độ mặc định (CATEGORY), giữ thứ tự độ khớp (relevance) trong từng nhóm Category
     if (hasSearch && sortBy === "CATEGORY") {
       return searched;
     }
@@ -649,7 +665,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     return sorted;
   }, [floor1Products, selectedCategoryId, search, sortBy, categories]);
 
-  // Nhóm sản phẩm theo Category khi chọn chế độ sắp xếp theo Category
   const groupedByCategory = useMemo(() => {
     const groups = new Map<string, Product[]>();
     filteredAndSortedProducts.forEach((p) => {
@@ -661,7 +676,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     return Array.from(groups.entries());
   }, [filteredAndSortedProducts, categories]);
 
-  // Tự động tra cứu khách hàng theo SĐT
   const handleLookupPhone = async (phoneValue: string) => {
     const clean = cleanPhoneDigits(phoneValue);
     if (clean.length < 9) {
@@ -670,7 +684,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       return;
     }
     setLookingUp(true);
-    // Ghi nhớ đơn đang tra cứu: nếu Sales chuyển sang đơn khác trong lúc chờ thì bỏ qua kết quả
     const draftIdAtStart = activeDraftIdRef.current;
     try {
       const res = await apiRequest<any>(`/customers/lookup?phone=${encodeURIComponent(clean)}`);
@@ -693,7 +706,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     }
   };
 
-  // Tự động tra cứu SĐT khách hàng sau khi ngừng gõ 350ms (Debounce tối ưu request)
   useEffect(() => {
     if (!phoneTypedByUserRef.current) return;
     const clean = cleanPhoneDigits(debouncedCustomerPhone);
@@ -707,14 +719,24 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
   }, [debouncedCustomerPhone]);
 
   const getCartQty = (productId: string): number => {
-    return cart.find((c) => c.product._id === productId)?.quantity || 0;
+    return cart
+      .filter((c) => c.product._id === productId)
+      .reduce((sum, c) => sum + c.quantity, 0);
+  };
+
+  const getCartVariantQty = (productId: string, color?: string, size?: string): number => {
+    const key = getCartLineKey(productId, color, size);
+    return cart
+      .filter((c) => getCartLineKey(c.product._id, c.color, c.size) === key)
+      .reduce((sum, c) => sum + c.quantity, 0);
   };
 
   const getGiftQty = (productId: string): number => {
-    return giftCart.find((g) => g.product._id === productId)?.quantity || 0;
+    return giftCart
+      .filter((g) => g.product._id === productId)
+      .reduce((sum, g) => sum + g.quantity, 0);
   };
 
-  // Kiểm tra chương trình khuyến mãi đang áp dụng cho 1 sản phẩm trên thẻ POS
   const getProductPromotions = useCallback(
     (p: Product): Promotion[] => {
       const catId = getCategoryId(p);
@@ -732,7 +754,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     [activePromotions, categories]
   );
 
-  // Tự động kiểm tra giỏ hàng theo các chương trình khuyến mãi đang chạy & cập nhật quà tặng / giảm giá
   const applyPromotionsForCart = useCallback(
     (
       rawNextCart: CartItem[],
@@ -817,7 +838,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
 
         const details: string[] = [];
 
-        // 1. Tặng kèm phụ kiện / sản phẩm
         for (const g of promo.giftItems || []) {
           const gid = String(g.productId);
           const addQty = Math.max(1, Number(g.quantity) || 1) * multiplier;
@@ -837,7 +857,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
           details.push(`🎁 Tặng ${addQty} ${g.unit || "Cái"} ${g.productName}`);
         }
 
-        // 2. Giảm giá từng sản phẩm mua
         if (
           promo.itemDiscountType &&
           promo.itemDiscountType !== "NONE" &&
@@ -862,14 +881,14 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
             }
           }
           details.push(
-            `🏷️ Giảm ${promo.itemDiscountType === "PERCENT"
-              ? `${promo.itemDiscountValue}%`
-              : `${formatVND(promo.itemDiscountValue)}/SP`
+            `🏷️ Giảm ${
+              promo.itemDiscountType === "PERCENT"
+                ? `${promo.itemDiscountValue}%`
+                : `${formatVND(promo.itemDiscountValue)}/SP`
             }`
           );
         }
 
-        // 3. Giảm giá tổng Bill
         if (
           promo.billDiscountType &&
           promo.billDiscountType !== "NONE" &&
@@ -888,9 +907,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
             };
           }
           details.push(
-            `🧾 Giảm Bill ${promo.billDiscountType === "PERCENT"
-              ? `${promo.billDiscountValue}%`
-              : formatVND(promo.billDiscountValue)
+            `🧾 Giảm Bill ${
+              promo.billDiscountType === "PERCENT"
+                ? `${promo.billDiscountValue}%`
+                : formatVND(promo.billDiscountValue)
             }`
           );
         }
@@ -904,7 +924,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
         });
       }
 
-      // Cập nhật giảm giá tự động cho từng dòng sản phẩm trong giỏ
       const nextCartWithDiscounts: CartItem[] = rawNextCart.map((c) => {
         if (c.isManualDiscount) return c;
         const autoDisc = itemDiscMap.get(c.product._id);
@@ -927,13 +946,12 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
         return c;
       });
 
-      // Cập nhật giỏ quà tặng tự động (giữ nguyên các món tặng chọn tay !g.isAutoPromo)
       const manualGifts = currentGiftCart
         .filter((g) => !g.isAutoPromo)
         .map((g) => {
-          const inSale =
-            nextCartWithDiscounts.find((c) => c.product._id === g.product._id)
-              ?.quantity || 0;
+          const inSale = nextCartWithDiscounts
+            .filter((c) => c.product._id === g.product._id)
+            .reduce((s, c) => s + c.quantity, 0);
           const maxGift = Math.max(0, getFloor1Stock(g.product) - inSale);
           return maxGift > 0
             ? { ...g, quantity: Math.min(g.quantity, maxGift) }
@@ -957,8 +975,9 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
           } as Product);
 
         const floor1Stock = getFloor1Stock(foundProd);
-        const inSale =
-          nextCartWithDiscounts.find((c) => c.product._id === gid)?.quantity || 0;
+        const inSale = nextCartWithDiscounts
+          .filter((c) => c.product._id === gid)
+          .reduce((s, c) => s + c.quantity, 0);
         const inManual =
           manualGifts.find((m) => m.product._id === gid)?.quantity || 0;
         const available = Math.max(0, floor1Stock - inSale - inManual);
@@ -999,67 +1018,136 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     ]
   );
 
-  const handleAddToCart = (product: Product) => {
+  // Mở popup chọn Size/Màu nếu sản phẩm có nhiều phân loại, hoặc thêm thẳng nếu chỉ có 1 phân loại
+  const handleSelectProductForPos = (product: Product) => {
+    const namedVariants = (product.variants || []).filter(
+      (v) => (v.color || v.size) && (Number(v.stockFloor1 ?? v.stock) || 0) > 0
+    );
+    if (namedVariants.length > 1) {
+      setVariantPickerProduct(product);
+      return;
+    }
+    if (namedVariants.length === 1) {
+      handleAddToCart(product, namedVariants[0].color, namedVariants[0].size);
+      return;
+    }
+    const allNamed = (product.variants || []).filter((v) => v.color || v.size);
+    if (allNamed.length > 0) {
+      setVariantPickerProduct(product);
+      return;
+    }
+    handleAddToCart(product, product.color || "", product.size || "");
+  };
+
+  const handleAddToCart = (
+    product: Product,
+    colorParam?: string,
+    sizeParam?: string
+  ) => {
     setErrorMsg("");
+    const color = String(colorParam ?? product.color ?? "").trim();
+    const size = String(sizeParam ?? product.size ?? "").trim().toUpperCase();
+
     const floor1Stock = getFloor1Stock(product);
+    const variantStock = getVariantFloor1Stock(product, color, size);
+    const variantLabel = formatVariantLabel(color, size);
+
     if (product.sellingPrice <= 0) {
       setErrorMsg(
         `Sản phẩm "${product.name}" chưa có giá bán lẻ (> 0). Vui lòng cập nhật giá trên CMS trước khi bán.`
       );
       return;
     }
-    if (floor1Stock <= 0) {
+    if (floor1Stock <= 0 || variantStock <= 0) {
       setErrorMsg(
-        `Sản phẩm "${product.name}" đã hết hàng tại Kho Tầng 1 (Tồn Tầng 1: 0). Nhân viên bán hàng chỉ được phép bán số lượng có tại Kho Tầng 1.`
+        `Sản phẩm "${product.name}"${variantLabel ? ` (${variantLabel})` : ""} đã hết hàng tại Kho Tầng 1.`
       );
       return;
     }
 
-    const manualGiftedQty =
-      giftCart.find((g) => !g.isAutoPromo && g.product._id === product._id)
-        ?.quantity || 0;
-    const existing = cart.find((c) => c.product._id === product._id);
-    const currentSaleQty = existing ? existing.quantity : 0;
+    const manualGiftedQty = giftCart
+      .filter((g) => !g.isAutoPromo && g.product._id === product._id)
+      .reduce((s, g) => s + g.quantity, 0);
+    const totalSaleForProd = getCartQty(product._id);
 
-    if (currentSaleQty + manualGiftedQty + 1 > floor1Stock) {
+    if (totalSaleForProd + manualGiftedQty + 1 > floor1Stock) {
       setErrorMsg(
-        `Không được vượt số lượng Kho Tầng 1 (${floor1Stock} ${product.unit}) của "${product.name}" (đang bán ${currentSaleQty}, tặng ${manualGiftedQty}).`
+        `Không được vượt tổng số lượng Kho Tầng 1 (${floor1Stock} ${product.unit}) của "${product.name}".`
+      );
+      return;
+    }
+
+    const lineKey = getCartLineKey(product._id, color, size);
+    const existing = cart.find(
+      (c) => getCartLineKey(c.product._id, c.color, c.size) === lineKey
+    );
+    const currentVariantQty = existing ? existing.quantity : 0;
+
+    if ((color || size) && currentVariantQty + 1 > variantStock) {
+      setErrorMsg(
+        `Phân loại "${variantLabel}" của "${product.name}" chỉ còn ${variantStock} ${product.unit} tại Kho Tầng 1.`
       );
       return;
     }
 
     const nextCart: CartItem[] = existing
       ? cart.map((c) =>
-        c.product._id === product._id ? { ...c, quantity: c.quantity + 1 } : c
-      )
+          getCartLineKey(c.product._id, c.color, c.size) === lineKey
+            ? { ...c, quantity: c.quantity + 1 }
+            : c
+        )
       : [
-        ...cart,
-        {
-          product,
-          quantity: 1,
-          discountType: "NONE",
-          discountValue: 0,
-        },
-      ];
+          ...cart,
+          {
+            product,
+            color,
+            size,
+            quantity: 1,
+            discountType: "NONE",
+            discountValue: 0,
+          },
+        ];
 
     applyPromotionsForCart(nextCart, giftCart);
   };
 
-  const handleChangeQty = (productId: string, newQty: number) => {
+  const handleChangeQty = (
+    productId: string,
+    newQty: number,
+    color?: string,
+    size?: string
+  ) => {
     setErrorMsg("");
-    const manualGiftedQty =
-      giftCart.find((g) => !g.isAutoPromo && g.product._id === productId)
-        ?.quantity || 0;
+    const lineKey = getCartLineKey(productId, color, size);
+    const manualGiftedQty = giftCart
+      .filter((g) => !g.isAutoPromo && g.product._id === productId)
+      .reduce((s, g) => s + g.quantity, 0);
+
+    const otherVariantsQty = cart
+      .filter(
+        (c) =>
+          c.product._id === productId &&
+          getCartLineKey(c.product._id, c.color, c.size) !== lineKey
+      )
+      .reduce((s, c) => s + c.quantity, 0);
 
     const nextCart = cart
       .map((c) => {
-        if (c.product._id !== productId) return c;
+        if (getCartLineKey(c.product._id, c.color, c.size) !== lineKey) return c;
         if (newQty <= 0) return null;
         const floor1Stock = getFloor1Stock(c.product);
-        const maxAllowedForSale = Math.max(0, floor1Stock - manualGiftedQty);
+        const variantStock = getVariantFloor1Stock(c.product, c.color, c.size);
+        const maxByTotal = Math.max(
+          0,
+          floor1Stock - manualGiftedQty - otherVariantsQty
+        );
+        const maxAllowedForSale =
+          c.color || c.size ? Math.min(maxByTotal, variantStock) : maxByTotal;
+
         if (newQty > maxAllowedForSale) {
+          const vLabel = formatVariantLabel(c.color, c.size);
           setErrorMsg(
-            `Không được vượt số lượng Kho Tầng 1 của "${c.product.name}" (Tồn T1: ${floor1Stock}, đang tặng: ${manualGiftedQty}).`
+            `Không được vượt tồn Kho Tầng 1 của "${c.product.name}"${vLabel ? ` (${vLabel})` : ""} (Tối đa: ${maxAllowedForSale} ${c.product.unit}).`
           );
           return maxAllowedForSale > 0
             ? { ...c, quantity: maxAllowedForSale }
@@ -1072,7 +1160,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     applyPromotionsForCart(nextCart, giftCart);
   };
 
-  // Thêm / chỉnh số lượng sản phẩm tặng (0 VND - trừ Kho Tầng 1)
   const handleAddGiftProduct = (product: Product) => {
     setErrorMsg("");
     const floor1Stock = getFloor1Stock(product);
@@ -1124,13 +1211,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     );
   };
 
-  // Danh sách sản phẩm trong Popup Tặng hàng:
-  // - Mặc định hiển thị toàn bộ sản phẩm có tồn Kho Tầng 1 (bao gồm cả data cũ chưa được ghim),
-  //   ưu tiên đẩy các sản phẩm ĐÃ GHIM lên đầu danh sách.
-  // - Hỗ trợ lọc riêng "Chỉ sản phẩm đã ghim" (PINNED) hoặc lọc theo từng Category / tìm kiếm.
-  const isSearchingOrFilteringGift =
-    giftSearch.trim().length > 0 || giftCategoryId !== "";
-
   const pinnedFloor1Count = useMemo(
     () => floor1Products.filter((p) => pinnedGiftIds.includes(p._id)).length,
     [floor1Products, pinnedGiftIds]
@@ -1176,11 +1256,14 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
   const handleChangeItemDiscount = (
     productId: string,
     discountType: DiscountType,
-    rawVal: number
+    rawVal: number,
+    color?: string,
+    size?: string
   ) => {
+    const lineKey = getCartLineKey(productId, color, size);
     setCart((prev) =>
       prev.map((c) => {
-        if (c.product._id !== productId) return c;
+        if (getCartLineKey(c.product._id, c.color, c.size) !== lineKey) return c;
         const origPrice = Math.round(Number(c.product.sellingPrice) || 0);
         let cleanVal = Math.max(0, rawVal);
         if (discountType === "PERCENT") {
@@ -1201,7 +1284,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     );
   };
 
-  // Tính toán giảm giá từng sản phẩm & giảm giá Bill
   const getItemPricing = (item: CartItem) => {
     const originalUnitPrice = Math.round(Number(item.product.sellingPrice) || 0);
     const discountPerUnit =
@@ -1275,7 +1357,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       return;
     }
 
-    // Kiểm tra lại tổng tồn kho Tầng 1 (hàng bán + hàng tặng) trước khi gửi
     const combinedQtyByProd = new Map<string, { prod: Product; qty: number }>();
     for (const c of cart) {
       const cur = combinedQtyByProd.get(c.product._id)?.qty || 0;
@@ -1303,13 +1384,13 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     const formattedSplitDetail =
       paymentMethod === "OTHER"
         ? splitPayments
-          .map((sp) => {
-            const label =
-              SPLIT_METHOD_OPTIONS.find((o) => o.value === sp.method)?.label ||
-              sp.method;
-            return `${label}: ${formatNumberDots(sp.amount || 0)}`;
-          })
-          .join(" + ")
+            .map((sp) => {
+              const label =
+                SPLIT_METHOD_OPTIONS.find((o) => o.value === sp.method)?.label ||
+                sp.method;
+              return `${label}: ${formatNumberDots(sp.amount || 0)}`;
+            })
+            .join(" + ")
         : "";
 
     setSubmitting(true);
@@ -1326,6 +1407,8 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
         items: [
           ...cart.map((c) => ({
             productId: c.product._id,
+            color: c.color || "",
+            size: c.size || "",
             quantity: c.quantity,
             isGift: false,
             discountType: c.discountValue > 0 ? c.discountType : "NONE",
@@ -1333,6 +1416,8 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
           })),
           ...giftCart.map((g) => ({
             productId: g.product._id,
+            color: g.color || "",
+            size: g.size || "",
             quantity: g.quantity,
             isGift: true,
             discountType: "GIFT" as DiscountType,
@@ -1351,7 +1436,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
 
       const createdOrder = res.data;
       const createdMsg = `Tạo đơn hàng ${createdOrder.orderCode || createdOrder.code || ""} thành công!`;
-      // Đóng đơn vừa thanh toán xong; nếu còn đơn khác đang chờ thì tự chuyển sang đơn đó
       const hasOtherDrafts = drafts.length > 1;
       removeDraft(activeDraftId);
       setSuccessMsg(
@@ -1359,8 +1443,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
           ? `${createdMsg} Đã chuyển sang đơn đang chờ tiếp theo.`
           : createdMsg
       );
-      fetchSellableProducts();
-      fetchActivePromotions();
       setEditingServerDraftOrder(null);
       fetchSellableProducts();
       fetchActivePromotions();
@@ -1373,7 +1455,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     }
   };
 
-  // Lưu bản nháp hóa đơn lên hệ thống (status = DRAFT: chỉ lưu lại, chưa trừ tồn kho Tầng 1)
   const handleSaveOrderAsDraft = async (e: React.MouseEvent<HTMLButtonElement>) => {
     setErrorMsg("");
     setSuccessMsg("");
@@ -1400,13 +1481,13 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     const formattedSplitDetail =
       paymentMethod === "OTHER"
         ? splitPayments
-          .map((sp) => {
-            const label =
-              SPLIT_METHOD_OPTIONS.find((o) => o.value === sp.method)?.label ||
-              sp.method;
-            return `${label}: ${formatNumberDots(sp.amount || 0)}`;
-          })
-          .join(" + ")
+            .map((sp) => {
+              const label =
+                SPLIT_METHOD_OPTIONS.find((o) => o.value === sp.method)?.label ||
+                sp.method;
+              return `${label}: ${formatNumberDots(sp.amount || 0)}`;
+            })
+            .join(" + ")
         : "";
 
     setSavingDraft(true);
@@ -1425,6 +1506,8 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
         items: [
           ...cart.map((c) => ({
             productId: c.product._id,
+            color: c.color || "",
+            size: c.size || "",
             quantity: c.quantity,
             isGift: false,
             discountType: c.discountValue > 0 ? c.discountType : "NONE",
@@ -1432,6 +1515,8 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
           })),
           ...giftCart.map((g) => ({
             productId: g.product._id,
+            color: g.color || "",
+            size: g.size || "",
             quantity: g.quantity,
             isGift: true,
             discountType: "GIFT" as DiscountType,
@@ -1442,21 +1527,19 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
 
       const res = editingServerDraftOrder
         ? await apiRequest<Order>(`/orders/${editingServerDraftOrder._id}`, {
-          method: "PUT",
-          body: JSON.stringify(payload),
-        })
+            method: "PUT",
+            body: JSON.stringify(payload),
+          })
         : await apiRequest<Order>("/orders", {
-          method: "POST",
-          body: JSON.stringify(payload),
-        });
+            method: "POST",
+            body: JSON.stringify(payload),
+          });
 
       const savedOrder = res.data;
       const code = savedOrder.orderCode || savedOrder.code || "";
       setEditingServerDraftOrder(null);
       removeDraft(activeDraftId);
-      setSuccessMsg(
-        `Đã lưu bản nháp hóa đơn ${code}`
-      );
+      setSuccessMsg(`Đã lưu bản nháp hóa đơn ${code}`);
       fetchSavedDraftOrders();
       onOpenInvoice(savedOrder);
     } catch (err: any) {
@@ -1466,8 +1549,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     }
   };
 
-  // Nạp hóa đơn nháp đã lưu từ server lên màn hình POS để chỉnh sửa hoặc thanh toán
-  // Kiểm tra các sản phẩm trong bản nháp có còn đủ tồn tại Kho Tầng 1 hay đã hết/thiếu
   const getDraftOrderStockShortages = (ord: Order) => {
     if (products.length === 0) return [];
     const reqMap = new Map<
@@ -1531,11 +1612,15 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       if (it.isGift || it.discountType === "GIFT") {
         giftItems.push({
           product: foundProd,
+          color: it.color || "",
+          size: it.size || "",
           quantity: Number(it.quantity) || 1,
         });
       } else {
         saleItems.push({
           product: foundProd,
+          color: it.color || "",
+          size: it.size || "",
           quantity: Number(it.quantity) || 1,
           discountType: (it.discountType as DiscountType) || "NONE",
           discountValue: Number(it.discountValue) || 0,
@@ -1570,8 +1655,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
           .join("; ")}. Vui lòng chỉnh lại số lượng hoặc xuất thêm hàng xuống Tầng 1 trước khi chốt thanh toán.`
       );
     }
-    String(
-    );
   };
 
   const handleQuickConfirmServerDraft = async (ord: Order) => {
@@ -1635,15 +1718,17 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     const canSell = p.sellingPrice > 0 && floor1Stock > 0;
     const catName = getCategoryName(p);
     const matchedPromos = getProductPromotions(p);
+    const namedVariants = (p.variants || []).filter((v) => v.color || v.size);
 
     return (
       <div
         key={p._id}
-        onClick={() => canSell && handleAddToCart(p)}
-        className={`p-3.5 rounded-xl border transition flex flex-col justify-between ${canSell
-          ? "border-slate-200 hover:border-emerald-500 hover:shadow-md cursor-pointer bg-white"
-          : "border-slate-200 bg-slate-50 opacity-70 cursor-not-allowed"
-          }`}
+        onClick={() => canSell && handleSelectProductForPos(p)}
+        className={`p-3.5 rounded-xl border transition flex flex-col justify-between ${
+          canSell
+            ? "border-slate-200 hover:border-emerald-500 hover:shadow-md cursor-pointer bg-white"
+            : "border-slate-200 bg-slate-50 opacity-70 cursor-not-allowed"
+        }`}
       >
         <div className="min-w-0">
           <div className="flex items-start justify-between gap-2 min-w-0">
@@ -1652,10 +1737,11 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
             </span>
             <div className="text-right shrink-0">
               <span
-                className={`text-xs font-extrabold px-2 py-0.5 rounded whitespace-nowrap ${floor1Stock > 0
-                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                  : "bg-red-50 text-red-600 border border-red-200"
-                  }`}
+                className={`text-xs font-extrabold px-2 py-0.5 rounded whitespace-nowrap ${
+                  floor1Stock > 0
+                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                    : "bg-red-50 text-red-600 border border-red-200"
+                }`}
               >
                 🏢 Kho Tầng 1: {floor1Stock} {p.unit}
               </span>
@@ -1664,9 +1750,45 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
           <h3 className="font-semibold text-slate-900 text-sm mt-2 break-words">
             {p.name}
           </h3>
-          <div className="font-mono text-[10px] text-slate-400 mt-0.5 break-all">
+          <div className="font-mono text-[10px] font-bold text-slate-500 mt-0.5 break-all">
             Mã: {p.code}
           </div>
+
+          {/* Hiển thị nhanh các nút Chọn trực tiếp Size / Màu sắc trên thẻ sản phẩm */}
+          {namedVariants.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {namedVariants.map((v, idx) => {
+                const vStock = Math.max(0, Number(v.stockFloor1 ?? v.stock) || 0);
+                const inCart = getCartVariantQty(p._id, v.color, v.size);
+                return (
+                  <button
+                    key={`${v.color}-${v.size}-${idx}`}
+                    type="button"
+                    disabled={!canSell || vStock <= 0}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleAddToCart(p, v.color, v.size);
+                    }}
+                    title={`Bấm để thêm nhanh ${formatVariantLabel(v.color, v.size)}`}
+                    className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md border transition ${
+                      vStock <= 0
+                        ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
+                        : inCart > 0
+                          ? "bg-indigo-600 text-white border-indigo-700 shadow-xs"
+                          : "bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border-indigo-200"
+                    }`}
+                  >
+                    <span>
+                      {v.color || "Mặc định"}
+                      {v.size ? ` • ${v.size}` : ""}
+                    </span>
+                    <span className="font-mono font-extrabold">({vStock})</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {matchedPromos.length > 0 && (
             <div className="mt-1.5 flex flex-wrap gap-1">
               {matchedPromos.map((mp) => (
@@ -1703,14 +1825,16 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
             disabled={!canSell}
             onClick={(e) => {
               e.stopPropagation();
-              handleAddToCart(p);
+              handleSelectProductForPos(p);
             }}
-            className={`min-h-[38px] px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 shrink-0 ${canSell
-              ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-              : "bg-slate-200 text-slate-500"
-              }`}
+            className={`min-h-[38px] px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 shrink-0 ${
+              canSell
+                ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                : "bg-slate-200 text-slate-500"
+            }`}
           >
-            <Plus className="w-3.5 h-3.5" /> Chọn bán
+            <Plus className="w-3.5 h-3.5" />{" "}
+            {namedVariants.length > 1 ? "Chọn Size/Màu" : "Chọn bán"}
           </button>
         </div>
       </div>
@@ -1719,7 +1843,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6">
-      {/* Thanh tab: Nhiều đơn hàng song song (nhiều khách mua cùng lúc) */}
+      {/* Thanh tab: Nhiều đơn hàng song song */}
       <div className="lg:col-span-12 bg-white rounded-xl shadow-sm border border-slate-200 p-2.5 md:p-3">
         <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
           <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-extrabold uppercase text-slate-500 shrink-0 pr-1">
@@ -1740,23 +1864,26 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                 aria-selected={isActive}
                 onClick={() => handleSwitchDraft(d.id)}
                 title={submitting ? "Đang tạo đơn, vui lòng chờ..." : `Chuyển sang Đơn ${d.seq}`}
-                className={`group flex items-center gap-2 pl-3 pr-1.5 py-1.5 rounded-lg border text-xs shrink-0 transition select-none ${isActive
-                  ? "bg-emerald-600 border-emerald-700 text-white shadow-sm"
-                  : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-emerald-50 hover:border-emerald-300"
-                  } ${submitting && !isActive ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                className={`group flex items-center gap-2 pl-3 pr-1.5 py-1.5 rounded-lg border text-xs shrink-0 transition select-none ${
+                  isActive
+                    ? "bg-emerald-600 border-emerald-700 text-white shadow-sm"
+                    : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-emerald-50 hover:border-emerald-300"
+                } ${submitting && !isActive ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
               >
                 <div className="flex flex-col leading-tight min-w-0">
                   <span className="font-extrabold">Đơn {d.seq}</span>
                   <span
-                    className={`text-[10px] truncate max-w-[120px] ${isActive ? "text-emerald-50" : "text-slate-500"
-                      }`}
+                    className={`text-[10px] truncate max-w-[120px] ${
+                      isActive ? "text-emerald-50" : "text-slate-500"
+                    }`}
                   >
                     {customerLabel}
                   </span>
                 </div>
                 <span
-                  className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isActive ? "bg-white/20 text-white" : "bg-emerald-100 text-emerald-800"
-                    }`}
+                  className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                    isActive ? "bg-white/20 text-white" : "bg-emerald-100 text-emerald-800"
+                  }`}
                 >
                   {qty} SP
                 </span>
@@ -1769,8 +1896,11 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                   }}
                   title={`Hủy Đơn ${d.seq}`}
                   aria-label={`Hủy Đơn ${d.seq}`}
-                  className={`p-1 rounded-md transition disabled:cursor-not-allowed ${isActive ? "hover:bg-white/20 text-white" : "hover:bg-red-100 text-slate-400 hover:text-red-600"
-                    }`}
+                  className={`p-1 rounded-md transition disabled:cursor-not-allowed ${
+                    isActive
+                      ? "hover:bg-white/20 text-white"
+                      : "hover:bg-red-100 text-slate-400 hover:text-red-600"
+                  }`}
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -1787,6 +1917,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
           </button>
         </div>
       </div>
+
       {/* Cột trái (7 phần): Tìm kiếm, Lọc/Sắp xếp theo Category & Chọn sản phẩm */}
       <div className="lg:col-span-7 lg:relative">
         <div className="flex flex-col gap-4 lg:absolute lg:inset-0">
@@ -1798,7 +1929,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                     Danh mục Hàng hóa tại Quầy POS (Kho Tầng 1)
                   </h2>
                   <p className="text-xs text-slate-500">
-                    Nhân viên bán hàng <strong>chỉ bán số lượng tại Kho Tầng 1</strong> (không vượt tồn Kho Tầng 1).
+                    Quét mã vạch (HOALIỀN) hoặc bấm chọn Size/Màu. <strong>Chỉ bán tồn Kho Tầng 1</strong>.
                   </p>
                 </div>
                 <div className="relative w-full sm:w-64">
@@ -1807,22 +1938,41 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                     type="text"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Quét mã / tìm tên sản phẩm..."
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && search.trim()) {
+                        e.preventDefault();
+                        const q = search.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+                        const exact = floor1Products.find(
+                          (p) =>
+                            p.code?.toUpperCase() === q ||
+                            p.barcode?.toUpperCase() === search.trim().toUpperCase()
+                        );
+                        if (exact) {
+                          handleSelectProductForPos(exact);
+                          setSearch("");
+                        } else if (filteredAndSortedProducts.length === 1) {
+                          handleSelectProductForPos(filteredAndSortedProducts[0]);
+                          setSearch("");
+                        }
+                      }
+                    }}
+                    placeholder="Quét mã vạch / tìm tên, size, màu..."
                     className="w-full min-h-[40px] pl-9 pr-3 py-2 rounded-lg border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
                   />
                 </div>
               </div>
 
-              {/* Thanh chọn nhanh Category & Sắp xếp theo Category */}
+              {/* Thanh chọn nhanh Category & Sắp xếp */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2 border-t border-slate-100">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <button
                     type="button"
                     onClick={() => setSelectedCategoryId("")}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${selectedCategoryId === ""
-                      ? "bg-slate-900 text-white border-slate-900 shadow-sm"
-                      : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200"
-                      }`}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${
+                      selectedCategoryId === ""
+                        ? "bg-slate-900 text-white border-slate-900 shadow-sm"
+                        : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200"
+                    }`}
                   >
                     Tất cả ({floor1Products.length})
                   </button>
@@ -1833,10 +1983,11 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                         key={cat._id}
                         type="button"
                         onClick={() => setSelectedCategoryId(cat._id)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${selectedCategoryId === cat._id
-                          ? "bg-emerald-600 text-white border-emerald-700 shadow-sm"
-                          : "bg-white text-slate-700 border-slate-200 hover:bg-emerald-50"
-                          }`}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${
+                          selectedCategoryId === cat._id
+                            ? "bg-emerald-600 text-white border-emerald-700 shadow-sm"
+                            : "bg-white text-slate-700 border-slate-200 hover:bg-emerald-50"
+                        }`}
                       >
                         {cat.name} ({count})
                       </button>
@@ -1896,7 +2047,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
             </div>
           </div>
 
-          {/* Danh sách Hóa đơn nháp đã lưu trên hệ thống (status = DRAFT */}
+          {/* Danh sách Hóa đơn nháp đã lưu trên hệ thống */}
           <div className="bg-white rounded-xl shadow-sm border border-amber-200 p-3.5 sm:p-4 space-y-2.5 shrink-0">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
@@ -1927,10 +2078,11 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                   return (
                     <div
                       key={ord._id}
-                      className={`p-2.5 rounded-xl border text-xs space-y-1.5 transition ${isBeingEdited
-                        ? "border-amber-500 bg-amber-50/70"
-                        : "border-slate-200 bg-slate-50/70 hover:border-amber-300"
-                        }`}
+                      className={`p-2.5 rounded-xl border text-xs space-y-1.5 transition ${
+                        isBeingEdited
+                          ? "border-amber-500 bg-amber-50/70"
+                          : "border-slate-200 bg-slate-50/70 hover:border-amber-300"
+                      }`}
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
@@ -1982,10 +2134,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                           );
                         })()}
                       </div>
-                      <div className="hidden">
-                        <span>
-                        </span>
-                      </div>
 
                       <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-200/80">
                         <button
@@ -2027,7 +2175,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
         </div>
       </div>
 
-      {/* Cột phải (5 phần): Thông tin Khách hàng, Giỏ hàng (Giảm giá SP), Giảm giá Bill & Thanh toán */}
+      {/* Cột phải (5 phần): Thông tin Khách hàng, Giỏ hàng, Giảm giá Bill & Thanh toán */}
       <div className="lg:col-span-5 space-y-4">
         <form
           onSubmit={handleCreateOrder}
@@ -2134,7 +2282,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
               </div>
             </div>
 
-            {/* Lịch sử mua nhanh của khách quen */}
             {customerOrders.length > 0 && (
               <div className="pt-2 border-t border-slate-200">
                 <div className="text-[11px] font-semibold text-slate-600 flex items-center gap-1 mb-1.5">
@@ -2168,7 +2315,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
             )}
           </div>
 
-          {/* 2. Danh sách Giỏ hàng + Giảm giá từng sản phẩm (% hoặc VND) */}
+          {/* 2. Danh sách Giỏ hàng + Giảm giá từng sản phẩm */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold uppercase text-slate-700">
@@ -2179,7 +2326,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
               </span>
             </div>
 
-            {/* Hộp thông báo Chương trình Khuyến mãi đang được kích hoạt tự động */}
             {appliedPromosSummary.length > 0 && (
               <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 space-y-1.5">
                 <div className="text-xs font-extrabold text-emerald-900 flex items-center gap-1.5">
@@ -2219,14 +2365,29 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
             ) : (
               <div className="divide-y divide-slate-200 border border-slate-200 rounded-xl max-h-80 overflow-y-auto">
                 {cart.map((item) => {
-                  const floor1Max = getFloor1Stock(item.product);
+                  const floor1Max = getVariantFloor1Stock(
+                    item.product,
+                    item.color,
+                    item.size
+                  );
                   const pricing = getItemPricing(item);
+                  const vLabel = formatVariantLabel(item.color, item.size);
+                  const lineKey = getCartLineKey(
+                    item.product._id,
+                    item.color,
+                    item.size
+                  );
                   return (
-                    <div key={item.product._id} className="p-3 space-y-2 text-xs">
+                    <div key={lineKey} className="p-3 space-y-2 text-xs">
                       <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2">
                         <div className="min-w-0 basis-full sm:basis-auto sm:flex-1">
                           <div className="font-semibold text-slate-900 break-words flex items-center gap-1.5 flex-wrap">
                             <span>{item.product.name}</span>
+                            {vLabel && (
+                              <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 border border-indigo-300">
+                                {vLabel}
+                              </span>
+                            )}
                             {item.autoPromoName && (
                               <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300">
                                 🎉 KM: {item.autoPromoName}
@@ -2246,7 +2407,9 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                             ) : (
                               <span>{formatVND(pricing.originalUnitPrice)}</span>
                             )}
-                            <span>× {item.quantity} {item.product.unit}</span>
+                            <span>
+                              × {item.quantity} {item.product.unit}
+                            </span>
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-bold">
                               Tồn T1: {floor1Max}
                             </span>
@@ -2257,7 +2420,12 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                           <button
                             type="button"
                             onClick={() =>
-                              handleChangeQty(item.product._id, item.quantity - 1)
+                              handleChangeQty(
+                                item.product._id,
+                                item.quantity - 1,
+                                item.color,
+                                item.size
+                              )
                             }
                             className="w-8 h-8 rounded bg-slate-100 hover:bg-slate-200 flex items-center justify-center"
                           >
@@ -2271,7 +2439,9 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                             onChange={(e) =>
                               handleChangeQty(
                                 item.product._id,
-                                Math.max(1, Number(e.target.value))
+                                Math.max(1, Number(e.target.value)),
+                                item.color,
+                                item.size
                               )
                             }
                             className="w-12 text-center font-mono font-bold border border-slate-300 rounded py-1"
@@ -2279,7 +2449,12 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                           <button
                             type="button"
                             onClick={() =>
-                              handleChangeQty(item.product._id, item.quantity + 1)
+                              handleChangeQty(
+                                item.product._id,
+                                item.quantity + 1,
+                                item.color,
+                                item.size
+                              )
                             }
                             className="w-8 h-8 rounded bg-slate-100 hover:bg-slate-200 flex items-center justify-center"
                           >
@@ -2293,7 +2468,14 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
 
                         <button
                           type="button"
-                          onClick={() => handleChangeQty(item.product._id, 0)}
+                          onClick={() =>
+                            handleChangeQty(
+                              item.product._id,
+                              0,
+                              item.color,
+                              item.size
+                            )
+                          }
                           className="w-8 h-8 shrink-0 flex items-center justify-center text-red-500 hover:bg-red-50 rounded"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -2313,7 +2495,9 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                               handleChangeItemDiscount(
                                 item.product._id,
                                 e.target.value as DiscountType,
-                                0
+                                0,
+                                item.color,
+                                item.size
                               )
                             }
                             className="px-2 py-1 rounded border border-slate-300 bg-white text-[11px] font-semibold"
@@ -2335,7 +2519,9 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                                 handleChangeItemDiscount(
                                   item.product._id,
                                   "PERCENT",
-                                  Number(e.target.value)
+                                  Number(e.target.value),
+                                  item.color,
+                                  item.size
                                 )
                               }
                               placeholder="0"
@@ -2364,7 +2550,9 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                                 handleChangeItemDiscount(
                                   item.product._id,
                                   "AMOUNT",
-                                  parseNumberDots(e.target.value)
+                                  parseNumberDots(e.target.value),
+                                  item.color,
+                                  item.size
                                 )
                               }
                               placeholder="0"
@@ -2388,7 +2576,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
             )}
           </div>
 
-          {/* Box Tặng sản phẩm (Không tính tiền, hiện trên Bill & trừ Kho Tầng 1) */}
+          {/* Box Tặng sản phẩm */}
           <div className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200 space-y-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <label className="text-xs font-bold uppercase text-amber-900 flex items-center gap-1.5">
@@ -2404,8 +2592,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                 }}
                 className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition"
               >
-                <Gift className="w-3.5 h-3.5" />
-                + Tặng sản phẩm
+                <Gift className="w-3.5 h-3.5" />+ Tặng sản phẩm
               </button>
             </div>
 
@@ -2509,7 +2696,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
             )}
           </div>
 
-          {/* 3. Giảm giá tổng Bill (Hóa đơn) — Có thể áp dụng cùng lúc với giảm giá SP */}
+          {/* 3. Giảm giá tổng Bill */}
           <div className="p-3.5 rounded-xl bg-rose-50/60 border border-rose-200 space-y-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <label className="text-xs font-bold uppercase text-rose-900 flex items-center gap-1.5">
@@ -2530,10 +2717,11 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                   setBillDiscountType("NONE");
                   setBillDiscountValue(0);
                 }}
-                className={`py-2 px-2 rounded-lg border text-xs font-bold transition ${billDiscountType === "NONE"
-                  ? "bg-slate-900 text-white border-slate-900"
-                  : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
-                  }`}
+                className={`py-2 px-2 rounded-lg border text-xs font-bold transition ${
+                  billDiscountType === "NONE"
+                    ? "bg-slate-900 text-white border-slate-900"
+                    : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
+                }`}
               >
                 Không giảm Bill
               </button>
@@ -2543,10 +2731,11 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                   setBillDiscountType("PERCENT");
                   setBillDiscountValue(0);
                 }}
-                className={`py-2 px-2 rounded-lg border text-xs font-bold transition ${billDiscountType === "PERCENT"
-                  ? "bg-rose-600 text-white border-rose-700"
-                  : "bg-white text-slate-700 border-slate-300 hover:bg-rose-50"
-                  }`}
+                className={`py-2 px-2 rounded-lg border text-xs font-bold transition ${
+                  billDiscountType === "PERCENT"
+                    ? "bg-rose-600 text-white border-rose-700"
+                    : "bg-white text-slate-700 border-slate-300 hover:bg-rose-50"
+                }`}
               >
                 Giảm Bill theo %
               </button>
@@ -2556,10 +2745,11 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                   setBillDiscountType("AMOUNT");
                   setBillDiscountValue(0);
                 }}
-                className={`py-2 px-2 rounded-lg border text-xs font-bold transition ${billDiscountType === "AMOUNT"
-                  ? "bg-rose-600 text-white border-rose-700"
-                  : "bg-white text-slate-700 border-slate-300 hover:bg-rose-50"
-                  }`}
+                className={`py-2 px-2 rounded-lg border text-xs font-bold transition ${
+                  billDiscountType === "AMOUNT"
+                    ? "bg-rose-600 text-white border-rose-700"
+                    : "bg-white text-slate-700 border-slate-300 hover:bg-rose-50"
+                }`}
               >
                 Giảm Bill số tiền
               </button>
@@ -2617,7 +2807,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
             )}
           </div>
 
-          {/* 4. Phương thức thanh toán (Grid 2x2) & Phí quẹt thẻ 3% */}
+          {/* 4. Phương thức thanh toán */}
           <div className="space-y-3">
             <label className="text-xs font-bold uppercase text-slate-700">
               4. Phương thức thanh toán
@@ -2626,10 +2816,11 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
               <button
                 type="button"
                 onClick={() => setPaymentMethod("CASH")}
-                className={`min-h-[52px] py-2.5 px-3 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1 text-center transition ${paymentMethod === "CASH"
-                  ? "border-emerald-600 bg-emerald-50 text-emerald-800 shadow-sm"
-                  : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                  }`}
+                className={`min-h-[52px] py-2.5 px-3 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1 text-center transition ${
+                  paymentMethod === "CASH"
+                    ? "border-emerald-600 bg-emerald-50 text-emerald-800 shadow-sm"
+                    : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                }`}
               >
                 <Banknote className="w-4 h-4" />
                 Tiền mặt
@@ -2638,10 +2829,11 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
               <button
                 type="button"
                 onClick={() => setPaymentMethod("BANKING")}
-                className={`min-h-[52px] py-2.5 px-3 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1 text-center transition ${paymentMethod === "BANKING"
-                  ? "border-emerald-600 bg-emerald-50 text-emerald-800 shadow-sm"
-                  : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                  }`}
+                className={`min-h-[52px] py-2.5 px-3 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1 text-center transition ${
+                  paymentMethod === "BANKING"
+                    ? "border-emerald-600 bg-emerald-50 text-emerald-800 shadow-sm"
+                    : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                }`}
               >
                 <Landmark className="w-4 h-4" />
                 Chuyển khoản
@@ -2650,10 +2842,11 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
               <button
                 type="button"
                 onClick={() => setPaymentMethod("CARD")}
-                className={`min-h-[52px] py-2.5 px-3 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1 text-center transition ${paymentMethod === "CARD"
-                  ? "border-emerald-600 bg-emerald-50 text-emerald-800 shadow-sm"
-                  : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                  }`}
+                className={`min-h-[52px] py-2.5 px-3 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1 text-center transition ${
+                  paymentMethod === "CARD"
+                    ? "border-emerald-600 bg-emerald-50 text-emerald-800 shadow-sm"
+                    : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                }`}
               >
                 <CreditCard className="w-4 h-4" />
                 Quẹt Thẻ
@@ -2662,92 +2855,27 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
               <button
                 type="button"
                 onClick={() => setPaymentMethod("OTHER")}
-                className={`min-h-[52px] py-2.5 px-3 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1 text-center transition ${paymentMethod === "OTHER"
-                  ? "border-emerald-600 bg-emerald-50 text-emerald-800 shadow-sm"
-                  : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                  }`}
+                className={`min-h-[52px] py-2.5 px-3 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1 text-center transition ${
+                  paymentMethod === "OTHER"
+                    ? "border-emerald-600 bg-emerald-50 text-emerald-800 shadow-sm"
+                    : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                }`}
               >
                 <Layers className="w-4 h-4" />
                 <span>Khác (Tùy chọn)</span>
               </button>
             </div>
 
-            {paymentMethod === "OTHER" && (() => {
-              const selectedMethods = splitPayments.map((s) => s.method);
-              const remainingOptions = SPLIT_METHOD_OPTIONS.filter(
-                (opt) => !selectedMethods.includes(opt.value)
-              );
+            {paymentMethod === "OTHER" &&
+              (() => {
+                const selectedMethods = splitPayments.map((s) => s.method);
+                const remainingOptions = SPLIT_METHOD_OPTIONS.filter(
+                  (opt) => !selectedMethods.includes(opt.value)
+                );
 
-              return (
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
-                  {/* Hàng các Box phương thức đã chọn + Box (+) thêm tiếp */}
-                  <div className="flex flex-wrap items-center gap-2">
-                    {splitPayments.map((sp) => {
-                      const label =
-                        SPLIT_METHOD_OPTIONS.find((o) => o.value === sp.method)?.label ||
-                        sp.method;
-                      return (
-                        <div
-                          key={sp.method}
-                          className="h-9 px-3 rounded-lg bg-emerald-600 text-white text-xs font-bold flex items-center gap-2 shadow-xs"
-                        >
-                          <span>{label}</span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSplitPayments((prev) =>
-                                prev.filter((item) => item.method !== sp.method)
-                              );
-                            }}
-                            className="w-4 h-4 rounded-full bg-emerald-700 hover:bg-emerald-800 flex items-center justify-center text-white"
-                            title="Xóa phương thức này"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      );
-                    })}
-
-                    {/* Box (+) hiển thị khi vẫn còn phương thức chưa chọn */}
-                    {remainingOptions.length > 0 && (
-                      <div className="relative">
-                        <button
-                          type="button"
-                          onClick={() => setShowSplitDropdown((prev) => !prev)}
-                          className="h-9 min-w-[44px] px-3 rounded-lg border-2 border-dashed border-emerald-500 bg-white hover:bg-emerald-50 text-emerald-700 font-extrabold text-sm flex items-center justify-center gap-1 transition"
-                          title="Thêm phương thức thanh toán"
-                        >
-                          <Plus className="w-4 h-4" />
-                        </button>
-
-                        {showSplitDropdown && (
-                          <div className="absolute left-0 top-10 z-20 w-44 rounded-xl bg-white border border-slate-200 shadow-lg py-1 overflow-hidden">
-                            {remainingOptions.map((opt) => (
-                              <button
-                                key={opt.value}
-                                type="button"
-                                onClick={() => {
-                                  setSplitPayments((prev) => [
-                                    ...prev,
-                                    { method: opt.value, amount: 0 },
-                                  ]);
-                                  setShowSplitDropdown(false);
-                                }}
-                                className="w-full px-3 py-2 text-left text-xs font-bold text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 flex items-center justify-between transition"
-                              >
-                                <span>{opt.label}</span>
-                                <Plus className="w-3.5 h-3.5 text-emerald-600" />
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Danh sách ô nhập tiền trả cho từng phần */}
-                  {splitPayments.length > 0 && (
-                    <div className="space-y-2 pt-1 border-t border-slate-200/80">
+                return (
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                    <div className="flex flex-wrap items-center gap-2">
                       {splitPayments.map((sp) => {
                         const label =
                           SPLIT_METHOD_OPTIONS.find((o) => o.value === sp.method)?.label ||
@@ -2755,41 +2883,105 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                         return (
                           <div
                             key={sp.method}
-                            className="flex items-center justify-between gap-3"
+                            className="h-9 px-3 rounded-lg bg-emerald-600 text-white text-xs font-bold flex items-center gap-2 shadow-xs"
                           >
-                            <span className="text-xs font-bold text-slate-800 w-28 shrink-0">
-                              {label} :
-                            </span>
-                            <div className="relative flex-1">
-                              <input
-                                type="text"
-                                inputMode="numeric"
-                                value={sp.amount > 0 ? formatNumberDots(sp.amount) : ""}
-                                onChange={(e) => {
-                                  const val = parseNumberDots(e.target.value);
-                                  setSplitPayments((prev) =>
-                                    prev.map((item) =>
-                                      item.method === sp.method
-                                        ? { ...item, amount: val }
-                                        : item
-                                    )
-                                  );
-                                }}
-                                placeholder="0"
-                                className="w-full pl-3 pr-12 py-1.5 rounded-lg border border-slate-300 bg-white font-mono font-bold text-right text-xs text-slate-900 focus:border-emerald-600 focus:outline-none"
-                              />
-                              <span className="absolute right-3 top-1.5 text-[11px] font-bold text-slate-400">
-                                VND
-                              </span>
-                            </div>
+                            <span>{label}</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSplitPayments((prev) =>
+                                  prev.filter((item) => item.method !== sp.method)
+                                );
+                              }}
+                              className="w-4 h-4 rounded-full bg-emerald-700 hover:bg-emerald-800 flex items-center justify-center text-white"
+                              title="Xóa phương thức này"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
                           </div>
                         );
                       })}
+
+                      {remainingOptions.length > 0 && (
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setShowSplitDropdown((prev) => !prev)}
+                            className="h-9 min-w-[44px] px-3 rounded-lg border-2 border-dashed border-emerald-500 bg-white hover:bg-emerald-50 text-emerald-700 font-extrabold text-sm flex items-center justify-center gap-1 transition"
+                            title="Thêm phương thức thanh toán"
+                          >
+                            <Plus className="w-4 h-4" />
+                          </button>
+
+                          {showSplitDropdown && (
+                            <div className="absolute left-0 top-10 z-20 w-44 rounded-xl bg-white border border-slate-200 shadow-lg py-1 overflow-hidden">
+                              {remainingOptions.map((opt) => (
+                                <button
+                                  key={opt.value}
+                                  type="button"
+                                  onClick={() => {
+                                    setSplitPayments((prev) => [
+                                      ...prev,
+                                      { method: opt.value, amount: 0 },
+                                    ]);
+                                    setShowSplitDropdown(false);
+                                  }}
+                                  className="w-full px-3 py-2 text-left text-xs font-bold text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 flex items-center justify-between transition"
+                                >
+                                  <span>{opt.label}</span>
+                                  <Plus className="w-3.5 h-3.5 text-emerald-600" />
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              );
-            })()}
+
+                    {splitPayments.length > 0 && (
+                      <div className="space-y-2 pt-1 border-t border-slate-200/80">
+                        {splitPayments.map((sp) => {
+                          const label =
+                            SPLIT_METHOD_OPTIONS.find((o) => o.value === sp.method)?.label ||
+                            sp.method;
+                          return (
+                            <div
+                              key={sp.method}
+                              className="flex items-center justify-between gap-3"
+                            >
+                              <span className="text-xs font-bold text-slate-800 w-28 shrink-0">
+                                {label} :
+                              </span>
+                              <div className="relative flex-1">
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={sp.amount > 0 ? formatNumberDots(sp.amount) : ""}
+                                  onChange={(e) => {
+                                    const val = parseNumberDots(e.target.value);
+                                    setSplitPayments((prev) =>
+                                      prev.map((item) =>
+                                        item.method === sp.method
+                                          ? { ...item, amount: val }
+                                          : item
+                                      )
+                                    );
+                                  }}
+                                  placeholder="0"
+                                  className="w-full pl-3 pr-12 py-1.5 rounded-lg border border-slate-300 bg-white font-mono font-bold text-right text-xs text-slate-900 focus:border-emerald-600 focus:outline-none"
+                                />
+                                <span className="absolute right-3 top-1.5 text-[11px] font-bold text-slate-400">
+                                  VND
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
             {paymentMethod === "CARD" && (
               <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 space-y-2">
@@ -2798,10 +2990,11 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <label
-                    className={`min-h-[40px] flex items-center gap-2 p-2 rounded-lg border cursor-pointer text-xs font-semibold ${hasCardFee
-                      ? "border-amber-600 bg-white text-amber-900"
-                      : "border-amber-200 text-slate-600"
-                      }`}
+                    className={`min-h-[40px] flex items-center gap-2 p-2 rounded-lg border cursor-pointer text-xs font-semibold ${
+                      hasCardFee
+                        ? "border-amber-600 bg-white text-amber-900"
+                        : "border-amber-200 text-slate-600"
+                    }`}
                   >
                     <input
                       type="radio"
@@ -2811,10 +3004,11 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                     Có phí 3% (+{formatVND(Math.round(afterBillDiscount * 0.03))})
                   </label>
                   <label
-                    className={`min-h-[40px] flex items-center gap-2 p-2 rounded-lg border cursor-pointer text-xs font-semibold ${!hasCardFee
-                      ? "border-amber-600 bg-white text-amber-900"
-                      : "border-amber-200 text-slate-600"
-                      }`}
+                    className={`min-h-[40px] flex items-center gap-2 p-2 rounded-lg border cursor-pointer text-xs font-semibold ${
+                      !hasCardFee
+                        ? "border-amber-600 bg-white text-amber-900"
+                        : "border-amber-200 text-slate-600"
+                    }`}
                   >
                     <input
                       type="radio"
@@ -2924,11 +3118,105 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
         </form>
       </div>
 
-      {/* POPUP CHỌN SẢN PHẨM TẶNG KÈM (Có Tìm kiếm, Dropdown Category & Ghim sản phẩm riêng trong Popup) */}
+      {/* POPUP CHỌN PHÂN LOẠI (MÀU SẮC & SIZE) KHI QUÉT MÃ CHUNG HOẶC BẤM CHỌN BÁN */}
+      {variantPickerProduct && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden">
+            <div className="px-5 py-4 bg-slate-900 text-white flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[11px] font-mono text-emerald-400 font-bold">
+                  Mã SP chung: {variantPickerProduct.code}
+                </div>
+                <h3 className="font-extrabold text-base mt-0.5">
+                  {variantPickerProduct.name}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setVariantPickerProduct(null)}
+                className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-4 sm:p-5 space-y-3 max-h-[65vh] overflow-y-auto">
+              <div className="flex items-center justify-between text-xs text-slate-600">
+                <span>Chọn <strong>Màu sắc &amp; Size</strong> để thêm vào đơn:</span>
+                <span className="font-mono font-extrabold text-emerald-700">
+                  Giá: {formatVND(variantPickerProduct.sellingPrice)}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {(variantPickerProduct.variants || []).map((v: ProductVariant, idx: number) => {
+                  const vFloor1 = Math.max(0, Number(v.stockFloor1 ?? v.stock) || 0);
+                  const inCartQty = getCartVariantQty(
+                    variantPickerProduct._id,
+                    v.color,
+                    v.size
+                  );
+                  const canPick = vFloor1 > 0 && inCartQty < vFloor1;
+
+                  return (
+                    <button
+                      key={`${v.color}-${v.size}-${idx}`}
+                      type="button"
+                      disabled={!canPick}
+                      onClick={() => {
+                        handleAddToCart(variantPickerProduct, v.color, v.size);
+                      }}
+                      className={`p-3 rounded-xl border text-left transition flex items-center justify-between gap-2 ${
+                        canPick
+                          ? "border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/40 bg-white cursor-pointer"
+                          : "border-slate-200 bg-slate-50 opacity-50 cursor-not-allowed"
+                      }`}
+                    >
+                      <div>
+                        <div className="font-extrabold text-xs text-slate-900">
+                          {v.color || "Mặc định"}
+                          {v.size ? ` • Size ${v.size}` : ""}
+                        </div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">
+                          Tồn Tầng 1:{" "}
+                          <strong className="font-mono text-emerald-700">
+                            {vFloor1} {variantPickerProduct.unit}
+                          </strong>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        {inCartQty > 0 && (
+                          <div className="text-[10px] font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded mb-1">
+                            Trong giỏ: {inCartQty}
+                          </div>
+                        )}
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-[11px] font-bold">
+                          <Plus className="w-3 h-3" /> Chọn
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setVariantPickerProduct(null)}
+                className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-extrabold"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* POPUP CHỌN SẢN PHẨM TẶNG KÈM */}
       {showGiftModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl max-h-[88vh] flex flex-col overflow-hidden">
-            {/* Header Popup */}
             <div className="px-4 py-3.5 sm:px-6 bg-amber-600 text-white flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
                 <Gift className="w-5 h-5 shrink-0" />
@@ -2950,7 +3238,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
               </button>
             </div>
 
-            {/* Thanh công cụ: Ô tìm kiếm + Dropdown Category */}
             <div className="p-3.5 sm:p-4 bg-slate-50 border-b border-slate-200 grid grid-cols-1 sm:grid-cols-12 gap-2.5">
               <div className="sm:col-span-7 relative">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
@@ -2988,7 +3275,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
               </div>
             </div>
 
-            {/* Danh sách sản phẩm trong Popup (Hiển thị đầy đủ cả data cũ, ưu tiên sản phẩm đã ghim lên đầu) */}
             <div className="flex-1 overflow-y-auto p-3.5 sm:p-4 space-y-2.5">
               {popupGiftProducts.length === 0 ? (
                 <div className="py-14 px-4 text-center space-y-2">
@@ -2998,11 +3284,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                       ? "Chưa có sản phẩm tặng nào được ghim"
                       : "Không tìm thấy sản phẩm phù hợp trong Kho Tầng 1"}
                   </div>
-                  <p className="text-xs text-slate-500 max-w-md mx-auto">
-                    {giftCategoryId === "PINNED" && !giftSearch.trim()
-                      ? "Hãy chọn 'Tất cả sản phẩm' hoặc chọn Category ở trên để tìm sản phẩm và bấm nút 📌 Ghim."
-                      : "Vui lòng thử từ khóa khác hoặc chọn danh mục khác."}
-                  </p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -3017,10 +3298,11 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                     return (
                       <div
                         key={p._id}
-                        className={`p-3 rounded-xl border transition flex flex-col justify-between gap-2 ${isPinned
-                          ? "border-amber-400 bg-amber-50/40 shadow-xs"
-                          : "border-slate-200 bg-white hover:border-amber-400"
-                          }`}
+                        className={`p-3 rounded-xl border transition flex flex-col justify-between gap-2 ${
+                          isPinned
+                            ? "border-amber-400 bg-amber-50/40 shadow-xs"
+                            : "border-slate-200 bg-white hover:border-amber-400"
+                        }`}
                       >
                         <div className="space-y-1.5">
                           <div className="flex items-start justify-between gap-2">
@@ -3033,19 +3315,14 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                               </span>
                             </div>
 
-                            {/* Nút Ghim sản phẩm (Chỉ có trong Popup này) */}
                             <button
                               type="button"
                               onClick={() => togglePinGiftProduct(p._id)}
-                              className={`px-2 py-1 rounded-md text-[11px] font-bold flex items-center gap-1 border transition shrink-0 ${isPinned
-                                ? "bg-amber-500 text-white border-amber-600 shadow-xs"
-                                : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-amber-50 hover:text-amber-700"
-                                }`}
-                              title={
+                              className={`px-2 py-1 rounded-md text-[11px] font-bold flex items-center gap-1 border transition shrink-0 ${
                                 isPinned
-                                  ? "Bỏ ghim sản phẩm này"
-                                  : "Ghim sản phẩm này lên đầu danh sách tặng"
-                              }
+                                  ? "bg-amber-500 text-white border-amber-600 shadow-xs"
+                                  : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-amber-50 hover:text-amber-700"
+                              }`}
                             >
                               <Pin className="w-3 h-3" />
                               {isPinned ? "Đã ghim" : "Ghim"}
@@ -3094,10 +3371,11 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                               type="button"
                               disabled={remainingForGift <= 0}
                               onClick={() => handleAddGiftProduct(p)}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition ${remainingForGift > 0
-                                ? "bg-amber-600 hover:bg-amber-700 text-white shadow-xs"
-                                : "bg-slate-200 text-slate-400 cursor-not-allowed"
-                                }`}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition ${
+                                remainingForGift > 0
+                                  ? "bg-amber-600 hover:bg-amber-700 text-white shadow-xs"
+                                  : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                              }`}
                             >
                               <Gift className="w-3.5 h-3.5" />
                               Chọn tặng
@@ -3111,7 +3389,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
               )}
             </div>
 
-            {/* Footer Popup */}
             <div className="px-4 py-3 sm:px-6 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2">
               <div className="text-xs text-slate-600">
                 Đã chọn tặng:{" "}

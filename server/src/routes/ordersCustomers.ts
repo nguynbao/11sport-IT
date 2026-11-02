@@ -8,7 +8,13 @@ import {
 } from '../config/db';
 import { ApiError } from '../utils/errors';
 import { DiscountType, IOrderItem, PaymentMethod } from '../models/Order';
-import { deductStockForSale, getFloorStocks } from '../utils/warehouseFloor';
+import {
+  deductStockForSale,
+  getFloorStocks,
+  getVariantFloorStocks,
+  formatProductWithVariant,
+} from '../utils/warehouseFloor';
+import { buildVariantKey } from '../utils/productCode';
 import { filterAndRankBySearch, normalizePhoneDigits } from '../utils/search';
 
 export const ordersCustomersRouter = Router();
@@ -116,6 +122,8 @@ ordersCustomersRouter.get('/orders', async (req, res, next) => {
           ...o.items.flatMap((i) => [
             { text: i.productCode, weight: 1.2 },
             { text: i.productName, weight: 1.1 },
+            { text: i.color || '', weight: 1.1 },
+            { text: i.size || '', weight: 1.0 },
           ]),
         ])
       : baseFiltered;
@@ -233,10 +241,10 @@ async function prepareOrderData(body: any, isDraft: boolean) {
       ? String(paymentMethodDetail || 'Hình thức khác').trim() || 'Hình thức khác'
       : '';
 
-  // Kiểm tra từng sản phẩm: tồn tại, sellingPrice > 0, và khi chốt thanh toán (!isDraft) thì tổng số lượng <= stockFloor1
   const orderItems: IOrderItem[] = [];
-  const productUpdates: { product: any; qty: number; isGift: boolean }[] = [];
+  const productUpdates: { product: any; qty: number; isGift: boolean; color: string; size: string }[] = [];
   const requestedQtyByProdId = new Map<string, number>();
+  const requestedQtyByVariant = new Map<string, number>();
 
   for (const rawItem of items) {
     const qty = Math.round(Number(rawItem.quantity));
@@ -251,6 +259,18 @@ async function prepareOrderData(body: any, isDraft: boolean) {
     if (!product) {
       throw new ApiError(404, 'PRODUCT_NOT_FOUND', `Không tìm thấy sản phẩm ID: ${rawItem.productId}`);
     }
+
+    let itemColor = rawItem.color ? String(rawItem.color).trim() : '';
+    let itemSize = rawItem.size ? String(rawItem.size).trim().toUpperCase() : '';
+    if (!itemColor && !itemSize && Array.isArray(product.variants) && product.variants.length > 0) {
+      const candidate =
+        product.variants.find((v: any) => Number(v.stockFloor1 || 0) >= qty) || product.variants[0];
+      if (candidate) {
+        itemColor = String(candidate.color || '').trim();
+        itemSize = String(candidate.size || '').trim().toUpperCase();
+      }
+    }
+    const displayProductName = formatProductWithVariant(product.name, itemColor, itemSize);
 
     const rawItemDiscType = String(rawItem.discountType || 'NONE').toUpperCase();
     const isGift = Boolean(rawItem.isGift) || rawItemDiscType === 'GIFT';
@@ -269,6 +289,10 @@ async function prepareOrderData(body: any, isDraft: boolean) {
     const totalRequestedForProduct = (requestedQtyByProdId.get(prodKey) || 0) + qty;
     requestedQtyByProdId.set(prodKey, totalRequestedForProduct);
 
+    const variantKey = `${prodKey}__${buildVariantKey(itemColor, itemSize)}`;
+    const totalRequestedForVariant = (requestedQtyByVariant.get(variantKey) || 0) + qty;
+    requestedQtyByVariant.set(variantKey, totalRequestedForVariant);
+
     // Khi chốt đơn thanh toán (!isDraft): bắt buộc kiểm tra đủ tồn tại Kho Tầng 1
     if (!isDraft) {
       const floors = getFloorStocks(product);
@@ -280,6 +304,18 @@ async function prepareOrderData(body: any, isDraft: boolean) {
           { productId: String(product._id), stockFloor1: String(floors.stockFloor1) }
         );
       }
+
+      if ((itemColor || itemSize) && floors.variants.length > 0) {
+        const vStocks = getVariantFloorStocks(product, itemColor, itemSize);
+        if (vStocks.stockFloor1 < totalRequestedForVariant) {
+          throw new ApiError(
+            400,
+            'INSUFFICIENT_STOCK',
+            `Sản phẩm "${displayProductName}" không đủ tồn tại Kho Tầng 1 (Tồn Kho Tầng 1: ${vStocks.stockFloor1}, Yêu cầu: ${totalRequestedForVariant})`,
+            { productId: String(product._id), stockFloor1: String(vStocks.stockFloor1) }
+          );
+        }
+      }
     }
 
     const originalUnitPrice = Math.round(Number(product.sellingPrice) || 0);
@@ -288,7 +324,9 @@ async function prepareOrderData(body: any, isDraft: boolean) {
       orderItems.push({
         productId: product._id,
         productCode: product.code,
-        productName: product.name,
+        productName: displayProductName,
+        color: itemColor,
+        size: itemSize,
         unit: product.unit,
         originalUnitPrice,
         isGift: true,
@@ -327,7 +365,9 @@ async function prepareOrderData(body: any, isDraft: boolean) {
       orderItems.push({
         productId: product._id,
         productCode: product.code,
-        productName: product.name,
+        productName: displayProductName,
+        color: itemColor,
+        size: itemSize,
         unit: product.unit,
         originalUnitPrice,
         isGift: false,
@@ -341,10 +381,9 @@ async function prepareOrderData(body: any, isDraft: boolean) {
       });
     }
 
-    productUpdates.push({ product, qty, isGift });
+    productUpdates.push({ product, qty, isGift, color: itemColor, size: itemSize });
   }
 
-  // Tính tiền hàng (không tính tiền hàng tặng), giảm giá sản phẩm, giảm giá Bill & Phí quẹt thẻ 3%
   const rawSubtotal = orderItems.reduce(
     (sum, i) =>
       i.isGift || i.discountType === 'GIFT'
@@ -430,20 +469,27 @@ async function applyPaidOrderSideEffects(
     });
   }
 
-  for (const { product, qty, isGift } of prepared.productUpdates) {
+  for (const { product, qty, isGift, color, size } of prepared.productUpdates) {
     const currentProd = (await productRepo.findById(product._id)) || product;
     const beforeFloors = getFloorStocks(currentProd);
     const balanceBefore = beforeFloors.stock;
-    const nextFloors = deductStockForSale(currentProd, qty);
+    const nextFloors = deductStockForSale(currentProd, qty, color, size);
     const balanceAfter = nextFloors.stock;
 
-    await productRepo.updateById(product._id, nextFloors);
+    await productRepo.updateById(product._id, {
+      variants: nextFloors.variants,
+      stockFloor1: nextFloors.stockFloor1,
+      stockFloor2: nextFloors.stockFloor2,
+      stock: nextFloors.stock,
+    });
 
     await stockMovementRepo.create({
       type: 'SALE',
       productId: product._id,
       productCode: product.code,
-      productName: product.name,
+      productName: formatProductWithVariant(product.name, color, size),
+      color,
+      size,
       categoryId: product.categoryId,
       unit: product.unit,
       quantityChange: -qty,
@@ -500,7 +546,6 @@ ordersCustomersRouter.post('/orders', async (req, res, next) => {
       confirmedAt: isDraft ? null : new Date(),
     });
 
-    // Nếu không phải bản nháp (PAID): trừ tồn kho Kho Tầng 1, ghi StockMovement loại SALE và cập nhật Customer
     if (!isDraft) {
       const customer = await applyPaidOrderSideEffects(
         createdOrder._id,
@@ -523,7 +568,7 @@ ordersCustomersRouter.post('/orders', async (req, res, next) => {
   }
 });
 
-// PUT /api/v1/orders/:id — Cập nhật hóa đơn nháp (hoặc truyền status='PAID' để chốt thanh toán)
+// PUT /api/v1/orders/:id
 ordersCustomersRouter.put('/orders/:id', async (req, res, next) => {
   try {
     const idOrCode = String(req.params.id || '').trim();
@@ -608,7 +653,7 @@ ordersCustomersRouter.put('/orders/:id', async (req, res, next) => {
   }
 });
 
-// POST /api/v1/orders/:id/confirm — Xác nhận thanh toán cho hóa đơn nháp (DRAFT -> PAID) & trừ kho Tầng 1
+// POST /api/v1/orders/:id/confirm
 ordersCustomersRouter.post('/orders/:id/confirm', async (req, res, next) => {
   try {
     const idOrCode = String(req.params.id || '').trim();
@@ -681,7 +726,7 @@ ordersCustomersRouter.post('/orders/:id/confirm', async (req, res, next) => {
   }
 });
 
-// DELETE /api/v1/orders/:id — Xóa hóa đơn nháp (DRAFT)
+// DELETE /api/v1/orders/:id
 ordersCustomersRouter.delete('/orders/:id', async (req, res, next) => {
   try {
     const idOrCode = String(req.params.id || '').trim();

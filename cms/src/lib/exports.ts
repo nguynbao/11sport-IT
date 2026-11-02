@@ -14,6 +14,7 @@ import {
   ProductSalesAnalysisRow,
   DailyRevenueTrend,
   RevenueByCategory,
+  formatVariantLabel,
 } from "./api";
 import { buildSheet, downloadExcel, excelFileName, ExcelColumn, toDate } from "./excel";
 
@@ -53,13 +54,25 @@ const ROLE: Record<string, string> = {
 const categoryNameOf = (p: Product) =>
   p.categoryName || (typeof p.categoryId === "object" ? p.categoryId?.name : "") || "";
 
+const variantsSummaryOf = (p: Product) => {
+  if (!Array.isArray(p.variants) || p.variants.length === 0) return "Mặc định";
+  return p.variants
+    .map((v) => {
+      const label = [v.color, v.size ? `Size ${v.size}` : ""].filter(Boolean).join(" - ") || "Mặc định";
+      return `${label}: ${v.stock} (T1:${v.stockFloor1}/T2:${v.stockFloor2})`;
+    })
+    .join(" | ");
+};
+
 /* ------------------------------- Sản phẩm ------------------------------- */
 
 export function exportProducts(products: Product[]) {
   const cols: ExcelColumn<Product>[] = [
     { header: "STT", value: (_, i) => i + 1, format: "int", width: 6 },
-    { header: "Mã hàng", value: (p) => p.code },
-    { header: "Tên sản phẩm", value: (p) => p.name, width: 50 },
+    { header: "Mã hàng (Chung)", value: (p) => p.code },
+    { header: "Tên sản phẩm", value: (p) => p.name, width: 42 },
+    { header: "Hãng", value: (p) => p.brand || "", width: 14 },
+    { header: "Chi tiết Màu - Size & Tồn", value: variantsSummaryOf, width: 45 },
     { header: "Category", value: categoryNameOf },
     { header: "ĐVT", value: (p) => p.unit, width: 8 },
     { header: "Tồn Kho Tầng 1", value: (p) => Number(p.stockFloor1 ?? p.stock) || 0, format: "int", total: true },
@@ -141,7 +154,8 @@ export function exportMovements(movements: StockMovement[], typeFilter?: string)
     { header: "Kho tầng", value: (m) => (m.warehouseLocation === "FLOOR_2" ? "Kho Tầng 2" : "Kho Tầng 1") },
     { header: "Loại giao dịch", value: (m) => MOVEMENT_LABEL[m.type] || m.type },
     { header: "Mã hàng", value: (m) => m.productCode },
-    { header: "Tên sản phẩm", value: (m) => m.productName, width: 45 },
+    { header: "Tên sản phẩm", value: (m) => m.productName, width: 42 },
+    { header: "Phân loại (Màu - Size)", value: (m) => formatVariantLabel(m.color, m.size), width: 18 },
     { header: "Số lượng biến động", value: (m) => m.quantityChange, format: "int" },
     { header: "Tồn trước GD", value: (m) => (m as any).balanceBefore ?? null, format: "int" },
     { header: "Số lượng tồn sau GD", value: (m) => m.balanceAfter, format: "int" },
@@ -164,7 +178,6 @@ export function exportMovements(movements: StockMovement[], typeFilter?: string)
 
 /* ----------------------------- Phiếu nhập kho ----------------------------- */
 
-/** "Nguyễn A (3), Trần B (1)" — số chiếc mỗi nhân viên đã quét kiểm */
 const checkersOf = (items: any[]) => {
   const byName = new Map<string, number>();
   items.forEach((it) =>
@@ -219,7 +232,9 @@ export function exportImports(imports: any[]) {
     { header: "Trạng thái phiếu", value: (l) => IMPORT_STATUS[l.receipt.status] || l.receipt.status },
     { header: "STT", value: (l) => l.item.stt, format: "int", width: 6 },
     { header: "Mã hàng", value: (l) => l.item.productCode },
-    { header: "Tên hàng", value: (l) => l.item.productName, width: 50 },
+    { header: "Tên hàng", value: (l) => l.item.productName, width: 42 },
+    { header: "Màu sắc", value: (l) => l.item.color || "", width: 12 },
+    { header: "Size", value: (l) => l.item.size || "", width: 8 },
     { header: "ĐVT", value: (l) => l.item.unit, width: 8 },
     { header: "SL dự kiến", value: (l) => Number(l.item.expectedQuantity) || 0, format: "int", total: true },
     { header: "SL thực nhận", value: (l) => Number(l.item.actualQuantity) || 0, format: "int", total: true },
@@ -292,8 +307,9 @@ export function exportOrders(orders: Order[]) {
         l.item.isGift || l.item.discountType === "GIFT"
           ? `${l.item.productName} (Hàng tặng)`
           : l.item.productName,
-      width: 45,
+      width: 42,
     },
+    { header: "Phân loại (Màu - Size)", value: (l) => formatVariantLabel(l.item.color, l.item.size), width: 18 },
     { header: "ĐVT", value: (l) => l.item.unit, width: 8 },
     { header: "Đơn giá", value: (l) => Number(l.item.originalUnitPrice || l.item.unitPrice) || 0, format: "money" },
     { header: "Số lượng", value: (l) => Number(l.item.quantity) || 0, format: "int", total: true },
@@ -366,7 +382,6 @@ export function exportStaff(staff: StaffUser[]) {
     { header: "Trạng thái", value: (s) => (s.status === "ACTIVE" ? "Đang hoạt động" : "Đã khóa") },
     { header: "Ngày tạo", value: (s) => toDate(s.createdAt), format: "datetime", width: 17 },
   ];
-  // Không xuất mật khẩu / token — chỉ thông tin hiển thị trên CMS
   downloadExcel(excelFileName("NhanVien"), [
     buildSheet("Nhan vien", cols, staff, { title: "DANH SÁCH NHÂN VIÊN" }),
   ]);

@@ -94,7 +94,7 @@ describe('OCR Tag Speed (<= 5s), Barcode Fast-Path & Keep-Alive (v1.5)', () => {
 
     expect(elapsed).toBeLessThan(800);
     expect(res.model).toBe('gemini-3.5-flash');
-    expect(res.productCode).toBe('PKP018SKWW26WH_L');
+    expect(res.productCode).toBe('PKP018SKWW26WH');
     expect(res.barcode).toBe('8935364316042');
     expect(calledModels.map((c) => c.model)).toEqual([
       'gemini-3.1-flash-lite',
@@ -230,7 +230,7 @@ describe('OCR Tag Speed (<= 5s), Barcode Fast-Path & Keep-Alive (v1.5)', () => {
       .send({});
     expect(completeRes.status).toBe(200);
 
-    const product = await productRepo.findOne({ code: 'PSH008MSW25GR_XL' });
+    const product = await productRepo.findOne({ code: 'PSH008MSW25GR' });
     expect(product).toBeTruthy();
     expect(product?.barcode).toBe('8935364308672');
     expect(product?.stock).toBe(2);

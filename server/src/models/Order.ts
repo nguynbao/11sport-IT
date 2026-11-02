@@ -8,6 +8,8 @@ export interface IOrderItem {
   productId: string;
   productCode: string;
   productName: string;
+  color?: string;
+  size?: string;
   unit: string;
   originalUnitPrice?: number;
   isGift?: boolean;
@@ -54,6 +56,8 @@ const OrderItemSchema = new Schema<IOrderItem>(
     productId: { type: String, required: true },
     productCode: { type: String, required: true },
     productName: { type: String, required: true },
+    color: { type: String, default: '' },
+    size: { type: String, default: '' },
     unit: { type: String, default: 'Cái' },
     originalUnitPrice: { type: Number, default: 0 },
     isGift: { type: Boolean, default: false },

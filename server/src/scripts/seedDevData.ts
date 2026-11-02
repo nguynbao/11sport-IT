@@ -58,19 +58,17 @@ async function main() {
     }
   }
 
-  // Cập nhật costPrice mẫu (~65% giá bán) & barcode mẫu cho các sản phẩm để test lợi nhuận và quét mã vạch
+  // Cập nhật costPrice mẫu (~65% giá bán) & barcode = chính mã sản phẩm viết HOA liền (code)
   const allProducts = await productRepo.find({});
-  let barcodeIndex = 8938505970001;
   for (const p of allProducts) {
     const sellingPrice = Number(p.sellingPrice) || 0;
     const sampleCost = sellingPrice > 0 ? Math.round((sellingPrice * 0.65) / 1000) * 1000 : 0;
-    const sampleBarcode = p.barcode || String(barcodeIndex++);
     await productRepo.updateById(p._id, {
       costPrice: sampleCost,
-      barcode: sampleBarcode,
+      barcode: p.code,
     });
   }
-  console.log(`[Seed Dev] Updated costPrice & barcode for ${allProducts.length} products.`);
+  console.log(`[Seed Dev] Updated costPrice & barcode (= code) for ${allProducts.length} products.`);
 
   const app = createApp();
   const server = http.createServer(app);
