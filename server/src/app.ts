@@ -11,6 +11,7 @@ import { returnsRouter } from './routes/returns';
 import { reportsRouter } from './routes/reports';
 import { wiseRouter } from './routes/wise';
 import { promotionsRouter } from './routes/promotions';
+import { printersRouter } from './routes/printers';
 
 export function createApp() {
   const app = express();
@@ -93,6 +94,7 @@ export function createApp() {
   app.use('/api/v1', reportsRouter);
   app.use('/api/v1', wiseRouter);
   app.use('/api/v1', promotionsRouter);
+  app.use('/api/v1', printersRouter);
 
   // 404 Not Found
   app.use((req, res) => {

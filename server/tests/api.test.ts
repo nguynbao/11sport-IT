@@ -13,6 +13,58 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
     await connectDatabase();
     await clearDatabase();
     await seedDatabaseIfNeeded();
+
+    const aoRes = await request(app)
+      .post('/api/v1/categories')
+      .set('x-user-id', 'admin')
+      .send({ code: 'AO', name: 'Áo thể thao' });
+    const giayRes = await request(app)
+      .post('/api/v1/categories')
+      .set('x-user-id', 'admin')
+      .send({ code: 'GIAY', name: 'Giày chạy bộ' });
+    const pkRes = await request(app)
+      .post('/api/v1/categories')
+      .set('x-user-id', 'admin')
+      .send({ code: 'PHUKIEN', name: 'Phụ kiện thể thao' });
+
+    await request(app)
+      .post('/api/v1/products')
+      .set('x-user-id', 'admin')
+      .send({
+        name: 'Áo Polo Thể thao Unisex V1 (Áo Polo Thể thao Unisex V1 KMAP262510 Xanh size M)',
+        categoryId: aoRes.body.data._id,
+        unit: 'Cái',
+        costPrice: 150000,
+        sellingPrice: 280000,
+        quantity: 25,
+        targetWarehouse: 'FLOOR_1',
+      });
+
+    await request(app)
+      .post('/api/v1/products')
+      .set('x-user-id', 'admin')
+      .send({
+        name: 'Giày Chạy Bộ 11Sport Pro (Giày Chạy Bộ 11Sport Pro GCB2026 Trắng size 42)',
+        categoryId: giayRes.body.data._id,
+        unit: 'Đôi',
+        costPrice: 480000,
+        sellingPrice: 850000,
+        quantity: 12,
+        targetWarehouse: 'FLOOR_1',
+      });
+
+    await request(app)
+      .post('/api/v1/products')
+      .set('x-user-id', 'admin')
+      .send({
+        name: 'Vớ Thể Thao Cổ Cao (Vớ Thể Thao Cổ Cao VTT01 Đen Freesize)',
+        categoryId: pkRes.body.data._id,
+        unit: 'Đôi',
+        costPrice: 22000,
+        sellingPrice: 45000,
+        quantity: 50,
+        targetWarehouse: 'FLOOR_1',
+      });
   });
 
   afterAll(async () => {
@@ -36,20 +88,18 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
     expect(staffRes.body.data.length).toBeGreaterThanOrEqual(3);
   });
 
-  it('AC-01: Sinh mã sản phẩm từ dấu ngoặc đơn và chặn sửa mã sau khi tạo', async () => {
+  it('AC-01: Sinh mã sản phẩm IN HOA VIẾT LIỀN từ dấu ngoặc đơn và chặn sửa mã sau khi tạo', async () => {
     const sampleName =
       'Áo Polo Thể thao Unisex V1 (Áo Polo Thể thao Unisex V1 KMAP262510 Đỏ size L)';
-    expect(generateProductCode(sampleName)).toBe(
-      'AO_POLO_THE_THAO_UNISEX_V1_KMAP262510_DO_SIZE_L'
-    );
+    expect(generateProductCode(sampleName)).toBe('AOPOLOTHETHAOUNISEXV1KMAP262510');
 
     const genRes = await request(app)
       .post('/api/v1/products/generate-code')
       .send({ name: sampleName });
     expect(genRes.status).toBe(200);
-    expect(genRes.body.data.code).toBe(
-      'AO_POLO_THE_THAO_UNISEX_V1_KMAP262510_DO_SIZE_L'
-    );
+    expect(genRes.body.data.code).toBe('AOPOLOTHETHAOUNISEXV1KMAP262510');
+    expect(genRes.body.data.color).toBe('Đỏ');
+    expect(genRes.body.data.size).toBe('L');
 
     // Lấy danh mục AO để tạo 1 sản phẩm mới
     const catRes = await request(app).get('/api/v1/categories');
@@ -65,15 +115,13 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
         sellingPrice: 450000,
       });
     expect(createProdRes.status).toBe(201);
-    expect(createProdRes.body.data.code).toBe(
-      'AO_KHOAC_GIO_11SPORT_AKG99_DEN_SIZE_XL'
-    );
+    expect(createProdRes.body.data.code).toBe('AOKHOACGIO11SPORTAKG99');
     expect(createProdRes.body.data.stock).toBe(0);
 
     // Thử sửa mã sản phẩm -> phải bị chặn 400 PRODUCT_CODE_IMMUTABLE
     const patchCodeRes = await request(app)
       .patch(`/api/v1/products/${createProdRes.body.data._id}`)
-      .send({ code: 'NEW_CODE_123' });
+      .send({ code: 'NEWCODE123' });
     expect(patchCodeRes.status).toBe(400);
     expect(patchCodeRes.body.code).toBe('PRODUCT_CODE_IMMUTABLE');
   });
@@ -101,7 +149,7 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
       .send({ status: 'ACTIVE' });
   });
 
-  it('AC-03: Luồng Nhập kho 7 bước & Sổ kho (chỉ cộng dòng isConfirmed=true, tự tạo SP mới giá 0, khóa phiếu)', async () => {
+  it('AC-03: Luồng Nhập kho & Sổ kho (chỉ cộng dòng isConfirmed=true, tự tạo SP mới giá 0, khóa phiếu)', async () => {
     const catRes = await request(app).get('/api/v1/categories');
     const aoCat = catRes.body.data.find((c: any) => c.code === 'AO');
 
@@ -109,12 +157,12 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
     const newProdNameConfirmed =
       'Áo Thun Tập Gym 11Sport (Áo Thun Tập Gym 11Sport ATTG01 Xám size L)';
     const newProdNameUnconfirmed =
-      'Áo Thun Tập Gym 11Sport (Áo Thun Tập Gym 11Sport ATTG01 Trắng size S)';
+      'Áo Thun Tập Gym 11Sport V2 (Áo Thun Tập Gym 11Sport ATTG02 Trắng size S)';
 
     const createImportRes = await request(app)
       .post('/api/v1/imports')
       .send({
-        note: 'Test luồng nhập kho 7 bước',
+        note: 'Test luồng nhập kho',
         defaultCategoryId: aoCat._id,
         items: [
           {
@@ -141,13 +189,11 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
     expect(createImportRes.body.data.status).toBe('DRAFT');
 
     // Bước 3: Bấm Hoàn tất danh sách dự kiến -> CHECKING
-    const finishRes = await request(app).post(
-      `/api/v1/imports/${importId}/finish-listing`
-    );
+    const finishRes = await request(app).post(`/api/v1/imports/${importId}/finish-listing`);
     expect(finishRes.status).toBe(200);
     expect(finishRes.body.data.status).toBe('CHECKING');
 
-    // Bước 4: Quét camera kiểm tra thực tế dòng 1 với số lượng thực nhận = 18 (thừa 3)
+    // Bước 4: Quét kiểm tra thực tế dòng 1 với số lượng thực nhận = 18 (thừa 3)
     const scanRes = await request(app)
       .post(`/api/v1/imports/${importId}/scan-check`)
       .send({
@@ -159,12 +205,10 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
     expect(scanRes.body.data.discrepancy).toBe(3);
 
     // Bước 5 & 7: Tick xác nhận dòng 1 (isConfirmed = true), dòng 2 để isConfirmed = false rồi bấm Hoàn thành
-    const updatedItems = scanRes.body.data.receipt.items.map(
-      (item: any, idx: number) => ({
-        ...item,
-        isConfirmed: idx === 0,
-      })
-    );
+    const updatedItems = scanRes.body.data.receipt.items.map((item: any, idx: number) => ({
+      ...item,
+      isConfirmed: idx === 0,
+    }));
 
     const completeRes = await request(app)
       .post(`/api/v1/imports/${importId}/complete`)
@@ -176,16 +220,19 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
     // Kiểm tra sản phẩm dòng 1 đã được tự động tạo mới với sellingPrice = 0 và stock = 18
     const productsRes = await request(app).get('/api/v1/products');
     const createdProd = productsRes.body.data.find(
-      (p: any) => p.code === 'AO_THUN_TAP_GYM_11SPORT_ATTG01_XAM_SIZE_L'
+      (p: any) => p.code === 'AOTHUNTAPGYM11SPORTATTG01'
     );
     expect(createdProd).toBeDefined();
     expect(createdProd.sellingPrice).toBe(0);
     expect(createdProd.costPrice).toBe(180000);
     expect(createdProd.stock).toBe(18);
+    expect(createdProd.variants).toEqual([
+      expect.objectContaining({ color: 'Xám', size: 'L', stockFloor1: 18, stock: 18 }),
+    ]);
 
     // Sản phẩm dòng 2 (isConfirmed = false) không được đẩy vào kho
     const unconfirmedProd = productsRes.body.data.find(
-      (p: any) => p.code === 'AO_THUN_TAP_GYM_11SPORT_ATTG01_TRANG_SIZE_S'
+      (p: any) => p.code === 'AOTHUNTAPGYM11SPORTATTG02'
     );
     expect(unconfirmedProd).toBeUndefined();
 
@@ -218,8 +265,7 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
 
     // Lấy sản phẩm Áo Polo Xanh (sellingPrice = 280000, stock = 25)
     const poloBlue = productsRes.body.data.find(
-      (p: any) =>
-        p.code === 'AO_POLO_THE_THAO_UNISEX_V1_KMAP262510_XANH_SIZE_M'
+      (p: any) => p.code === 'AOPOLOTHETHAOUNISEXV1KMAP262510'
     );
     expect(poloBlue).toBeDefined();
     const initialStock = poloBlue.stock;
@@ -232,7 +278,7 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
         customerPhone: '0988777666',
         paymentMethod: 'CARD',
         hasCardFee: true,
-        items: [{ productId: poloBlue._id, quantity: 3 }],
+        items: [{ productId: poloBlue._id, color: 'Xanh', size: 'M', quantity: 3 }],
       });
     expect(orderRes.status).toBe(201);
     const createdOrder = orderRes.body.data;
@@ -243,15 +289,11 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
 
     // Kiểm tra tồn kho đã trừ 3
     const afterProdRes = await request(app).get('/api/v1/products');
-    const poloBlueAfter = afterProdRes.body.data.find(
-      (p: any) => p._id === poloBlue._id
-    );
+    const poloBlueAfter = afterProdRes.body.data.find((p: any) => p._id === poloBlue._id);
     expect(poloBlueAfter.stock).toBe(initialStock - 3);
 
     // AC-05: Tra cứu khách hàng theo SĐT 0988777666
-    const lookupRes = await request(app).get(
-      '/api/v1/customers/lookup?phone=0988777666'
-    );
+    const lookupRes = await request(app).get('/api/v1/customers/lookup?phone=0988777666');
     expect(lookupRes.status).toBe(200);
     expect(lookupRes.body.data.found).toBe(true);
     expect(lookupRes.body.data.customer.name).toBe('Lê Hoàng Nam');
@@ -260,25 +302,21 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
   });
 
   it('AC-06: Trả/Đổi hàng - Cộng tồn nếu GOOD, không cộng nếu DAMAGED, trừ tồn hàng đổi, không hoàn phí thẻ 3%', async () => {
-    // Lấy đơn hàng của khách 0988777666 vừa mua 3 Áo Polo Xanh (đơn giá 280,000)
     const ordersRes = await request(app).get('/api/v1/orders?phone=0988777666');
     const order = ordersRes.body.data[0];
     expect(order).toBeDefined();
 
     const productsRes = await request(app).get('/api/v1/products');
     const poloBlue = productsRes.body.data.find(
-      (p: any) =>
-        p.code === 'AO_POLO_THE_THAO_UNISEX_V1_KMAP262510_XANH_SIZE_M'
+      (p: any) => p.code === 'AOPOLOTHETHAOUNISEXV1KMAP262510'
     );
     const shoes = productsRes.body.data.find(
-      (p: any) => p.code === 'GIAY_CHAY_BO_11SPORT_PRO_GCB2026_TRANG_SIZE_42'
+      (p: any) => p.code === 'GIAYCHAYBO11SPORTPROGCB2026'
     );
 
     const poloStockBefore = poloBlue.stock;
     const shoesStockBefore = shoes.stock;
 
-    // Trả 1 áo tình trạng GOOD, 1 áo tình trạng DAMAGED (tổng trả = 2 * 280,000 = 560,000)
-    // Đổi sang 1 đôi giày giá 850,000 -> khách trả thêm: 850,000 - 560,000 = 290,000
     const returnRes = await request(app)
       .post('/api/v1/returns')
       .send({
@@ -287,10 +325,10 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
         refundMethod: 'CASH',
         note: 'Trả 1 áo tốt, 1 áo lỗi, đổi sang 1 đôi giày',
         returnItems: [
-          { productId: poloBlue._id, quantity: 1, condition: 'GOOD' },
-          { productId: poloBlue._id, quantity: 1, condition: 'DAMAGED' },
+          { productId: poloBlue._id, color: 'Xanh', size: 'M', quantity: 1, condition: 'GOOD' },
+          { productId: poloBlue._id, color: 'Xanh', size: 'M', quantity: 1, condition: 'DAMAGED' },
         ],
-        exchangeItems: [{ productId: shoes._id, quantity: 1 }],
+        exchangeItems: [{ productId: shoes._id, color: 'Trắng', size: '42', quantity: 1 }],
       });
 
     expect(returnRes.status).toBe(201);
@@ -302,16 +340,9 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
     expect(retData.refundAmount).toBe(0);
     expect(returnRes.body.data.order.status).toBe('PARTIALLY_RETURNED');
 
-    // Kiểm tra tồn kho:
-    // - Áo Polo Xanh chỉ cộng 1 (do 1 GOOD, 1 DAMAGED)
-    // - Giày trừ 1
     const afterProds = await request(app).get('/api/v1/products');
-    const poloAfter = afterProds.body.data.find(
-      (p: any) => p._id === poloBlue._id
-    );
-    const shoesAfter = afterProds.body.data.find(
-      (p: any) => p._id === shoes._id
-    );
+    const poloAfter = afterProds.body.data.find((p: any) => p._id === poloBlue._id);
+    const shoesAfter = afterProds.body.data.find((p: any) => p._id === shoes._id);
     expect(poloAfter.stock).toBe(poloStockBefore + 1);
     expect(shoesAfter.stock).toBe(shoesStockBefore - 1);
   });
@@ -319,7 +350,7 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
   it('AC-07: Báo cáo Tồn đầu kỳ / Cuối kỳ & Phiếu điều chỉnh kho trên CMS', async () => {
     const productsRes = await request(app).get('/api/v1/products');
     const socks = productsRes.body.data.find(
-      (p: any) => p.code === 'VO_THE_THAO_CO_CAO_VTT01_DEN_FREESIZE'
+      (p: any) => p.code === 'VOTHETHAOCOCAOVTT01'
     );
     const stockBeforeAdj = socks.stock;
 
@@ -328,6 +359,8 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
       .post('/api/v1/inventory/adjustments')
       .send({
         productId: socks._id,
+        color: 'Đen',
+        size: 'FREESIZE',
         quantityChange: -2,
         reason: 'Kiểm kê cuối ngày phát hiện lệch 2 đôi',
       });
@@ -350,9 +383,9 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
   });
 
   it('Edge Cases & Business Rules Validation (BR-03 fallback, BR-05 chặn sửa tay tồn kho, BR-12 không phí thẻ, BR-14 chặn trả vượt số lượng, BR-16 FULLY_RETURNED)', async () => {
-    // 1. BR-03 Fallback: Tên hàng không có ngoặc đơn () -> chuẩn hóa toàn bộ chuỗi
+    // 1. BR-03 Fallback: Tên hàng không có ngoặc đơn () -> chuẩn hóa IN HOA VIẾT LIỀN toàn bộ chuỗi
     expect(generateProductCode('Bình Nước Thể Thao 11Sport 750ml')).toBe(
-      'BINH_NUOC_THE_THAO_11SPORT_750ML'
+      'BINHNUOCTHETHAO11SPORT750ML'
     );
 
     // 2. BR-05: Chặn sửa tay tồn kho trực tiếp qua PATCH /api/v1/products/:id

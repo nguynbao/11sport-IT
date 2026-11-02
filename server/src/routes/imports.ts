@@ -6,11 +6,23 @@ import {
   stockMovementRepo,
   staffRepo,
 } from '../config/db';
-import { generateProductCode } from '../utils/productCode';
+import { ensureStandardProductCodesMigrated } from '../config/seed';
+import {
+  generateProductCode,
+  extractVariantFromText,
+  buildVariantKey,
+  isStandardSixDigitProductCode,
+} from '../utils/productCode';
 import { matchTagToItems } from '../utils/tagMatch';
 import { ApiError } from '../utils/errors';
 import { IImportReceiptItem } from '../models/ImportReceipt';
-import { normalizeFloor, floorLabel, applyFloorDelta, getFloorStocks } from '../utils/warehouseFloor';
+import {
+  normalizeFloor,
+  floorLabel,
+  applyFloorDelta,
+  getFloorStocks,
+  formatProductWithVariant,
+} from '../utils/warehouseFloor';
 import { filterAndRankBySearch } from '../utils/search';
 import {
   OcrTableRow,
@@ -20,6 +32,14 @@ import {
   ocrScanTag,
   sanitizeBarcode,
 } from '../utils/ocr';
+import {
+  parseXlsxBufferToMatrix,
+  parseCsvTextToMatrix,
+  extractTextFromPdfBuffer,
+  convertMatrixToImportRows,
+  parseRawTextToImportRows,
+  ParsedImportFileRow,
+} from '../utils/fileImportParser';
 
 export const importsRouter = Router();
 
@@ -130,16 +150,48 @@ function parseSellingPrice(raw: any, stt: number): number {
   return value;
 }
 
-function normalizeImportItems(rawItems: any[], defaultCategoryId = ''): IImportReceiptItem[] {
+function normalizeImportItems(
+  rawItems: any[],
+  defaultCategoryId = '',
+  categories: any[] = []
+): IImportReceiptItem[] {
   if (!Array.isArray(rawItems)) return [];
+  const catMap = new Map(categories.map((c) => [String(c._id), c]));
   return rawItems
     .filter((item) => item && (item.productName || item.productCode))
     .map((item, idx) => {
-      const productName = String(item.productName || item.productCode || '').trim();
-      const autoCode = generateProductCode(productName);
-      const productCode = item.productCode
-        ? generateProductCode(String(item.productCode)) || autoCode
-        : autoCode;
+      const resolvedCatId = item.categoryId ? String(item.categoryId) : defaultCategoryId;
+      const cat = catMap.get(String(resolvedCatId));
+      const rawName = String(item.productName || item.productCode || '').trim();
+      const extracted = extractVariantFromText(rawName, {
+        categoryCode: cat?.code,
+        categoryName: cat?.name,
+        brand: item.brand ? String(item.brand).trim() : '',
+        existingCode: item.productCode ? String(item.productCode) : '',
+      });
+      const color = item.color !== undefined ? String(item.color).trim() : extracted.color;
+      const size =
+        item.size !== undefined ? String(item.size).trim().toUpperCase() : extracted.size;
+      const brand = item.brand !== undefined ? String(item.brand).trim() : extracted.brand;
+      const productName =
+        item.color !== undefined || item.size !== undefined
+          ? extracted.baseName || rawName
+          : rawName;
+      const autoCode =
+        extracted.code ||
+        generateProductCode(productName, {
+          categoryCode: cat?.code,
+          categoryName: cat?.name,
+          brand,
+          existingCode: item.productCode ? String(item.productCode) : '',
+        });
+      const explicitCleanCode = item.productCode
+        ? generateProductCode(String(item.productCode), { keepVariantInCode: true })
+        : '';
+      const productCode =
+        explicitCleanCode && isStandardSixDigitProductCode(explicitCleanCode)
+          ? explicitCleanCode
+          : autoCode || explicitCleanCode;
       const expectedQuantity = Math.max(0, Math.round(Number(item.expectedQuantity ?? item.quantity ?? 0)));
       const actualQuantity =
         item.actualQuantity !== undefined
@@ -151,7 +203,10 @@ function normalizeImportItems(rawItems: any[], defaultCategoryId = ''): IImportR
         productId: item.productId ? String(item.productId) : '',
         productCode,
         productName,
-        categoryId: item.categoryId ? String(item.categoryId) : defaultCategoryId,
+        brand,
+        color,
+        size,
+        categoryId: resolvedCatId,
         unit: item.unit ? String(item.unit).trim() : 'Cái',
         expectedQuantity,
         actualQuantity,
@@ -167,14 +222,15 @@ function normalizeImportItems(rawItems: any[], defaultCategoryId = ''): IImportR
     });
 }
 
-/**
- * Giữ các trường do server ghi (người quét kiểm + mã vạch đã học) khi client gửi lại danh sách items.
- * Không tin dữ liệu người kiểm từ client: luôn lấy từ bản ghi hiện có (khớp theo vị trí + mã hàng).
- */
 function keepCheckerFields(newItems: IImportReceiptItem[], oldItems: IImportReceiptItem[]): IImportReceiptItem[] {
   const used = new Set<number>();
   return newItems.map((item, idx) => {
-    let oi = oldItems[idx] && oldItems[idx].productCode === item.productCode && !used.has(idx) ? idx : -1;
+    const matchSameRow = (o: IImportReceiptItem) =>
+      o.productCode === item.productCode &&
+      buildVariantKey(o.color, o.size) === buildVariantKey(item.color, item.size);
+
+    let oi = oldItems[idx] && matchSameRow(oldItems[idx]) && !used.has(idx) ? idx : -1;
+    if (oi < 0) oi = oldItems.findIndex((o, j) => !used.has(j) && matchSameRow(o));
     if (oi < 0) oi = oldItems.findIndex((o, j) => !used.has(j) && o.productCode === item.productCode);
     if (oi < 0) {
       return {
@@ -202,24 +258,31 @@ function keepCheckerFields(newItems: IImportReceiptItem[], oldItems: IImportRece
 }
 
 function rowsToImportItems(rows: OcrTableRow[], defaultCatId: string): IImportReceiptItem[] {
-  return rows.map((r, index) => ({
-    stt: index + 1,
-    productId: '',
-    productCode: generateProductCode(r.productName),
-    productName: r.productName,
-    categoryId: defaultCatId,
-    unit: r.unit || 'Cái',
-    expectedQuantity: r.expectedQuantity,
-    actualQuantity: r.expectedQuantity,
-    costPrice: 0,
-    sellingPrice: 0,
-    scannedQuantity: 0,
-    barcode: '',
-    note: r.note || '',
-    isChecked: false,
-    isConfirmed: false,
-    discrepancyNote: '',
-  }));
+  return rows.map((r, index) => {
+    const extracted = extractVariantFromText(r.productName);
+    const code = extracted.code || generateProductCode(r.productName);
+    return {
+      stt: index + 1,
+      productId: '',
+      productCode: code,
+      productName: extracted.baseName || r.productName,
+      brand: extracted.brand,
+      color: extracted.color,
+      size: extracted.size,
+      categoryId: defaultCatId,
+      unit: r.unit || 'Cái',
+      expectedQuantity: r.expectedQuantity,
+      actualQuantity: r.expectedQuantity,
+      costPrice: 0,
+      sellingPrice: 0,
+      scannedQuantity: 0,
+      barcode: '',
+      note: r.note || '',
+      isChecked: false,
+      isConfirmed: false,
+      discrepancyNote: '',
+    };
+  });
 }
 
 const isFullItem = (it: IImportReceiptItem) =>
@@ -238,16 +301,16 @@ async function applyMatchedScan(params: {
   items: IImportReceiptItem[];
   matchedIndex: number;
   delta: 1 | -1;
+  explicitActualQuantity?: number;
   user?: { userId?: string; fullName?: string; role?: string };
   learnedBarcode?: string;
 }) {
-  const { id, receipt, items, matchedIndex, delta, user, learnedBarcode } = params;
+  const { id, receipt, items, matchedIndex, delta, explicitActualQuantity, user, learnedBarcode } = params;
   const current = items[matchedIndex];
   const expected = Number(current.expectedQuantity) || 0;
   const cleanBarcode = sanitizeBarcode(learnedBarcode);
 
-  // Đã đủ số lượng mà quét thêm => không cộng, chỉ cảnh báo (vẫn lưu mã vạch nếu mới học được)
-  if (delta === 1 && isFullItem(current)) {
+  if (explicitActualQuantity === undefined && delta === 1 && isFullItem(current)) {
     let latestReceipt = receipt;
     if (cleanBarcode && !current.barcode) {
       items[matchedIndex] = { ...current, barcode: cleanBarcode };
@@ -267,10 +330,12 @@ async function applyMatchedScan(params: {
     };
   }
 
-  const scanned = Math.max(0, current.scannedQuantity + delta);
+  const scanned =
+    explicitActualQuantity !== undefined && !isNaN(Number(explicitActualQuantity))
+      ? Math.max(0, Math.round(Number(explicitActualQuantity)))
+      : Math.max(0, current.scannedQuantity + delta);
   const full = scanned >= Math.max(1, expected);
 
-  // Ghi nhận nhân viên quét kiểm (theo user đăng nhập + role)
   const userId = String(user?.userId || '');
   const userName = user?.fullName || 'Không xác định';
   const userRole = inferRole(user?.role, userId, userName);
@@ -325,23 +390,25 @@ async function applyMatchedScan(params: {
     matchedItem,
     scannedQuantity: scanned,
     expectedQuantity: expected,
+    discrepancy: scanned - expected,
     progress: progressOfItems(items),
     receipt: updatedReceipt,
   };
 }
 
-/** Tìm dòng khớp theo mã vạch đã lưu trên phiếu hoặc trên danh mục sản phẩm (Product.barcode). */
 async function findRowByKnownBarcode(items: IImportReceiptItem[], barcode: string): Promise<number | null> {
   if (!barcode) return null;
   const direct = items
     .map((it, i) => ({ it, i }))
-    .filter(({ it }) => it.barcode && it.barcode === barcode);
+    .filter(({ it }) => (it.barcode && it.barcode === barcode) || it.productCode === barcode);
   if (direct.length > 0) {
     const unfull = direct.find(({ it }) => !isFullItem(it));
     return (unfull || direct[0]).i;
   }
 
-  const product = await productRepo.findOne({ barcode });
+  const product =
+    (await productRepo.findOne({ barcode })) ||
+    (await productRepo.findOne({ code: barcode.toUpperCase() }));
   if (product && product.code) {
     const byProduct = items
       .map((it, i) => ({ it, i }))
@@ -354,7 +421,190 @@ async function findRowByKnownBarcode(items: IImportReceiptItem[], barcode: strin
   return null;
 }
 
-// POST /api/v1/imports/ocr-preview — tách văn bản dán tay thành 6 cột
+// POST /api/v1/imports/parse-file — Bóc tách file Excel (.xlsx, .csv) hoặc PDF thành danh sách hàng nhập kho
+importsRouter.post('/imports/parse-file', async (req, res, next) => {
+  try {
+    const {
+      fileName = '',
+      fileType = '',
+      contentBase64 = '',
+      base64Data = '',
+      fileBase64 = '',
+      rawText = '',
+      rows = [],
+      defaultCategoryId = '',
+    } = req.body || {};
+    const effectiveBase64 = String(contentBase64 || base64Data || fileBase64 || '');
+
+    const [categories, catalogProducts] = await Promise.all([
+      categoryRepo.find({ status: 'ACTIVE' }),
+      productRepo.find({}),
+    ]);
+
+    const fallbackCatId = defaultCategoryId || categories[0]?._id || '';
+    const catByName = new Map(
+      categories.map((c) => [
+        c.name
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[đĐ]/g, 'd')
+          .trim(),
+        c,
+      ])
+    );
+    const catByCode = new Map(categories.map((c) => [String(c.code || '').toUpperCase(), c]));
+    const prodByCode = new Map(catalogProducts.map((p) => [String(p.code || '').toUpperCase(), p]));
+
+    let parsedRows: ParsedImportFileRow[] = [];
+    const ext = String(fileName || '').toLowerCase();
+    const cleanType = String(fileType || '').toUpperCase();
+    let detectedFileType = cleanType || 'TEXT';
+
+    if (Array.isArray(rows) && rows.length > 0) {
+      detectedFileType = 'EXCEL';
+      const matrix: string[][] = [
+        ['Loại', 'Hãng', 'Tên sản phẩm', 'Màu sắc', 'Size', 'ĐVT', 'Số lượng', 'Giá gốc', 'Giá bán', 'Ghi chú'],
+        ...rows.map((r: any) => [
+          String(r.category || r.categoryName || ''),
+          String(r.brand || ''),
+          String(r.productName || r.name || ''),
+          String(r.color || ''),
+          String(r.size || ''),
+          String(r.unit || 'Cái'),
+          String(r.expectedQuantity ?? r.quantity ?? 1),
+          String(r.costPrice ?? 0),
+          String(r.sellingPrice ?? 0),
+          String(r.note || ''),
+        ]),
+      ];
+      parsedRows = convertMatrixToImportRows(matrix);
+    } else if (effectiveBase64 && typeof effectiveBase64 === 'string') {
+      const cleanB64 = effectiveBase64.replace(/^data:[^;]+;base64,/, '').trim();
+      const buffer = Buffer.from(cleanB64, 'base64');
+
+      if (ext.endsWith('.xlsx') || cleanType === 'EXCEL' || cleanType === 'XLSX') {
+        detectedFileType = 'XLSX';
+        const matrix = parseXlsxBufferToMatrix(buffer);
+        parsedRows = convertMatrixToImportRows(matrix);
+      } else if (ext.endsWith('.csv') || ext.endsWith('.tsv') || cleanType === 'CSV') {
+        detectedFileType = 'CSV';
+        const matrix = parseCsvTextToMatrix(buffer.toString('utf8'));
+        parsedRows = convertMatrixToImportRows(matrix);
+      } else if (ext.endsWith('.pdf') || cleanType === 'PDF') {
+        detectedFileType = 'PDF';
+        const pdfText = extractTextFromPdfBuffer(buffer);
+        parsedRows = parseRawTextToImportRows(pdfText || rawText);
+      } else {
+        // Thử đọc như XLSX trước, nếu không phải ZIP thì đọc như CSV/Text
+        const matrix = parseXlsxBufferToMatrix(buffer);
+        if (matrix.length > 0) {
+          detectedFileType = 'XLSX';
+          parsedRows = convertMatrixToImportRows(matrix);
+        } else {
+          detectedFileType = 'CSV';
+          const textContent = buffer.toString('utf8');
+          const csvMatrix = parseCsvTextToMatrix(textContent);
+          parsedRows = convertMatrixToImportRows(csvMatrix);
+          if (parsedRows.length === 0) {
+            parsedRows = parseRawTextToImportRows(textContent);
+          }
+        }
+      }
+    } else if (rawText && typeof rawText === 'string') {
+      detectedFileType = 'TEXT';
+      parsedRows = parseRawTextToImportRows(rawText);
+    }
+
+    const finalItems: IImportReceiptItem[] = parsedRows.map((row, index) => {
+      let existingProd = prodByCode.get(row.productCode);
+      if (!existingProd && row.productName) {
+        const lowerName = row.productName.trim().toLowerCase();
+        existingProd = catalogProducts.find(
+          (p) => String(p.name || '').trim().toLowerCase() === lowerName
+        );
+      }
+      let resolvedCatId = existingProd?.categoryId || fallbackCatId;
+
+      if (row.categoryName) {
+        const normCat = row.categoryName
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[đĐ]/g, 'd')
+          .trim();
+        const matchedCat =
+          catByCode.get(row.categoryName.toUpperCase()) ||
+          catByName.get(normCat) ||
+          categories.find((c) =>
+            c.name
+              .toLowerCase()
+              .normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '')
+              .includes(normCat)
+          );
+        if (matchedCat) resolvedCatId = String(matchedCat._id);
+      }
+
+      const resolvedCat = categories.find((c) => String(c._id) === String(resolvedCatId));
+      const finalCode = existingProd?.code
+        ? existingProd.code
+        : generateProductCode(row.productName, {
+            categoryCode: resolvedCat?.code,
+            categoryName: resolvedCat?.name || row.categoryName,
+            brand: row.brand,
+            existingCode: row.productCode,
+          });
+
+      const costPrice =
+        row.costPrice > 0 ? row.costPrice : Number(existingProd?.costPrice || 0);
+      const sellingPrice =
+        row.sellingPrice > 0 ? row.sellingPrice : Number(existingProd?.sellingPrice || 0);
+
+      return {
+        stt: index + 1,
+        productId: existingProd ? String(existingProd._id) : '',
+        productCode: finalCode,
+        productName: existingProd ? existingProd.name : row.productName,
+        brand: row.brand || existingProd?.brand || '',
+        color: row.color || '',
+        size: row.size || '',
+        categoryId: resolvedCatId,
+        unit: row.unit || existingProd?.unit || 'Cái',
+        expectedQuantity: row.expectedQuantity,
+        actualQuantity: row.actualQuantity,
+        costPrice,
+        sellingPrice,
+        scannedQuantity: row.actualQuantity,
+        barcode: finalCode, // Mã vạch trên tem Label chỉ là Mã sản phẩm chung
+        note: row.note || '',
+        isChecked: true,
+        isConfirmed: false,
+        discrepancyNote: 'Khớp đủ',
+      };
+    });
+
+    const totalQuantity = finalItems.reduce((sum, i) => sum + (Number(i.actualQuantity) || 0), 0);
+
+    res.json({
+      data: {
+        fileType: detectedFileType,
+        items: finalItems,
+        totalRows: finalItems.length,
+        totalQuantity,
+      },
+      meta: {
+        fileName,
+        fileType: detectedFileType,
+        totalExtracted: finalItems.length,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/v1/imports/ocr-preview
 importsRouter.post('/imports/ocr-preview', async (req, res, next) => {
   try {
     const { imageText } = req.body || {};
@@ -371,7 +621,7 @@ importsRouter.post('/imports/ocr-preview', async (req, res, next) => {
   }
 });
 
-// POST /api/v1/imports/ocr-scan — quét ảnh camera / file tải lên (ảnh hoặc PDF)
+// POST /api/v1/imports/ocr-scan
 importsRouter.post('/imports/ocr-scan', async (req, res, next) => {
   try {
     const { mode, fileBase64, mimeType } = req.body || {};
@@ -400,6 +650,7 @@ importsRouter.post('/imports/ocr-scan', async (req, res, next) => {
 // GET /api/v1/imports
 importsRouter.get('/imports', async (req, res, next) => {
   try {
+    await ensureStandardProductCodesMigrated();
     const { status, search } = req.query;
     const [allReceipts, staffRoleMap] = await Promise.all([
       importReceiptRepo.find({}, { createdAt: -1 }),
@@ -422,6 +673,8 @@ importsRouter.get('/imports', async (req, res, next) => {
           ...r.items.flatMap((i: any) => [
             { text: i.productCode, weight: 1.3 },
             { text: i.productName, weight: 1.2 },
+            { text: i.color, weight: 0.9 },
+            { text: i.size, weight: 0.9 },
             { text: (i as any).barcode, weight: 1.2 },
           ]),
         ])
@@ -473,7 +726,7 @@ importsRouter.post('/imports', async (req, res, next) => {
     const categories = await categoryRepo.find({ status: 'ACTIVE' });
     const fallbackCatId = defaultCategoryId || categories[0]?._id || '';
 
-    const normalizedItems = normalizeImportItems(items || [], fallbackCatId);
+    const normalizedItems = normalizeImportItems(items || [], fallbackCatId, categories);
 
     const count = await importReceiptRepo.countDocuments({});
     const code = `PN-${String(count + 1).padStart(4, '0')}`;
@@ -505,7 +758,7 @@ importsRouter.post('/imports', async (req, res, next) => {
   }
 });
 
-// PUT /api/v1/imports/:id (Lưu nháp / cập nhật danh sách hoặc trạng thái kiểm)
+// PUT /api/v1/imports/:id
 importsRouter.put('/imports/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -514,7 +767,6 @@ importsRouter.put('/imports/:id', async (req, res, next) => {
       throw new ApiError(404, 'IMPORT_RECEIPT_NOT_FOUND', 'Không tìm thấy phiếu nhập kho');
     }
 
-    // BR-10: Khóa phiếu nhập đã COMPLETED
     if (receipt.status === 'COMPLETED') {
       throw new ApiError(
         400,
@@ -530,8 +782,9 @@ importsRouter.put('/imports/:id', async (req, res, next) => {
     if (defaultCategoryId !== undefined) updateData.defaultCategoryId = String(defaultCategoryId);
     if (targetWarehouse !== undefined) updateData.targetWarehouse = normalizeFloor(targetWarehouse);
     if (items !== undefined) {
+      const categories = await categoryRepo.find({});
       updateData.items = keepCheckerFields(
-        normalizeImportItems(items, defaultCategoryId || receipt.defaultCategoryId),
+        normalizeImportItems(items, defaultCategoryId || receipt.defaultCategoryId, categories),
         receipt.items
       );
     }
@@ -549,7 +802,7 @@ importsRouter.put('/imports/:id', async (req, res, next) => {
   }
 });
 
-// POST /api/v1/imports/:id/finish-listing (Bước 3: Chốt danh sách dự kiến -> CHECKING)
+// POST /api/v1/imports/:id/finish-listing
 importsRouter.post('/imports/:id/finish-listing', async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -562,8 +815,12 @@ importsRouter.post('/imports/:id/finish-listing', async (req, res, next) => {
       throw new ApiError(400, 'IMPORT_RECEIPT_LOCKED', 'Phiếu nhập đã hoàn thành');
     }
 
+    const categories = await categoryRepo.find({});
     const itemsToSave = req.body?.items
-      ? keepCheckerFields(normalizeImportItems(req.body.items, receipt.defaultCategoryId), receipt.items)
+      ? keepCheckerFields(
+          normalizeImportItems(req.body.items, receipt.defaultCategoryId, categories),
+          receipt.items
+        )
       : receipt.items;
 
     if (itemsToSave.length === 0) {
@@ -588,7 +845,7 @@ importsRouter.post('/imports/:id/finish-listing', async (req, res, next) => {
   }
 });
 
-// DELETE /api/v1/imports/:id — Xóa phiếu nhập kho
+// DELETE /api/v1/imports/:id
 importsRouter.delete('/imports/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -605,13 +862,18 @@ importsRouter.delete('/imports/:id', async (req, res, next) => {
           'Phiếu nhập đã hoàn thành và bị khóa; chỉ Quản lý/Admin mới có quyền xóa'
         );
       }
-      // Hoàn tác số lượng đã cộng vào kho và xóa các bút toán StockMovement của phiếu này
       const movements = await stockMovementRepo.find({ referenceId: String(receipt._id) });
       for (const m of movements) {
         const prod = await productRepo.findById(String(m.productId));
         if (prod) {
           const floor = normalizeFloor(m.warehouseLocation || receipt.targetWarehouse);
-          const nextFloors = applyFloorDelta(prod, floor, -(Number(m.quantityChange) || 0));
+          const nextFloors = applyFloorDelta(
+            prod,
+            floor,
+            -(Number(m.quantityChange) || 0),
+            m.color,
+            m.size
+          );
           await productRepo.updateById(prod._id, nextFloors);
         }
         await stockMovementRepo.deleteById(m._id);
@@ -633,8 +895,7 @@ importsRouter.delete('/imports/:id', async (req, res, next) => {
   }
 });
 
-// POST /api/v1/imports/:id/scan-check (Bước 4: Chụp tag kiểm thực tế — ĐẾM TỪNG CHIẾC)
-// Mỗi lần quét khớp = +1 chiếc; đủ số lượng dự kiến mới tick xác nhận. Không thêm dòng mới.
+// POST /api/v1/imports/:id/scan-check
 importsRouter.post('/imports/:id/scan-check', async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -735,6 +996,8 @@ importsRouter.post('/imports/:id/scan-check', async (req, res, next) => {
       items,
       matchedIndex,
       delta,
+      explicitActualQuantity:
+        req.body?.actualQuantity !== undefined ? Number(req.body.actualQuantity) : undefined,
       user: req.user,
       learnedBarcode: cleanBarcode,
     });
@@ -745,7 +1008,7 @@ importsRouter.post('/imports/:id/scan-check', async (req, res, next) => {
   }
 });
 
-// POST /api/v1/imports/:id/scan-tag (v1.5: Gộp OCR tag + đối chiếu + đếm chiếc trong 1 request <= 5s)
+// POST /api/v1/imports/:id/scan-tag
 importsRouter.post('/imports/:id/scan-tag', async (req, res, next) => {
   const startedAt = Date.now();
   let ocrMs = 0;
@@ -791,7 +1054,6 @@ importsRouter.post('/imports/:id/scan-tag', async (req, res, next) => {
       scannedQuantity: Math.max(0, Number(it.scannedQuantity) || 0),
     }));
 
-    // 1. Đường tắt (fast-path): trình duyệt đọc được barcode và mã này đã được ghi nhớ trên dòng/sản phẩm
     if (clientBarcode) {
       const fastRowIndex = await findRowByKnownBarcode(items, clientBarcode);
       if (fastRowIndex !== null) {
@@ -813,7 +1075,6 @@ importsRouter.post('/imports/:id/scan-tag', async (req, res, next) => {
         return;
       }
 
-      // Nếu không gửi ảnh (chỉ gửi barcode), thử so khớp trực tiếp mã barcode với mã hàng
       if (!hasFile) {
         const byCode = matchTagToItems(
           items.map((it) => ({
@@ -855,7 +1116,6 @@ importsRouter.post('/imports/:id/scan-tag', async (req, res, next) => {
       }
     }
 
-    // 2. Đường OCR (Gemini Vision tắt thinking + hedging + hạn chót <= 5s)
     const { data, mime } = validateOcrInput(fileBase64, mimeType || 'image/jpeg');
     const ocrStartedAt = Date.now();
     const tag = await ocrScanTag(data, mime);
@@ -883,7 +1143,6 @@ importsRouter.post('/imports/:id/scan-tag', async (req, res, next) => {
       return;
     }
 
-    // Nếu OCR đọc được số dưới mã vạch và số này đã có trên phiếu / Product -> khớp ngay
     let matchedIndex: number | null = null;
     if (finalBarcode) {
       matchedIndex = await findRowByKnownBarcode(items, finalBarcode);
@@ -944,7 +1203,6 @@ importsRouter.post('/imports/:id/scan-tag', async (req, res, next) => {
       return;
     }
 
-    // 3. Khớp thành công -> cộng số lượng và ghi nhớ barcode cho những chiếc tiếp theo
     const applied = await applyMatchedScan({
       id,
       receipt,
@@ -966,7 +1224,7 @@ importsRouter.post('/imports/:id/scan-tag', async (req, res, next) => {
   }
 });
 
-// POST /api/v1/imports/:id/complete (Bước 7: Hoàn thành nhập kho)
+// POST /api/v1/imports/:id/complete (Hoàn thành nhập kho — cộng dồn biến thể Size/Màu vào Mã sản phẩm chung)
 importsRouter.post('/imports/:id/complete', async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -983,9 +1241,16 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
       );
     }
 
-    // Cho phép gửi kèm danh sách items đã tick xác nhận ở bước cuối
+    const categories = await categoryRepo.find({});
+    const defaultCategory =
+      categories.find((c) => String(c._id) === String(receipt.defaultCategoryId)) ||
+      categories[0];
+
     const finalItems = req.body?.items
-      ? keepCheckerFields(normalizeImportItems(req.body.items, receipt.defaultCategoryId), receipt.items)
+      ? keepCheckerFields(
+          normalizeImportItems(req.body.items, receipt.defaultCategoryId, categories),
+          receipt.items
+        )
       : receipt.items;
 
     const confirmedItems = finalItems.filter((i) => i.isConfirmed);
@@ -997,11 +1262,6 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
       );
     }
 
-    const categories = await categoryRepo.find({});
-    const defaultCategory =
-      categories.find((c) => String(c._id) === String(receipt.defaultCategoryId)) ||
-      categories[0];
-
     const targetFloor = normalizeFloor(req.body?.targetWarehouse || receipt.targetWarehouse);
     const createdMovements: any[] = [];
     const updatedItems: IImportReceiptItem[] = [];
@@ -1012,35 +1272,64 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
         continue;
       }
 
+      const itemCat =
+        categories.find((c) => String(c._id) === String(item.categoryId)) ||
+        defaultCategory;
+
       const itemUnit = String(item.unit || 'Cái').trim() || 'Cái';
-      let code = item.productCode || generateProductCode(item.productName);
+      const extracted = extractVariantFromText(item.productName, {
+        categoryCode: itemCat?.code,
+        categoryName: itemCat?.name,
+        brand: item.brand,
+        existingCode: item.productCode,
+      });
+      const itemColor = item.color !== undefined ? String(item.color).trim() : extracted.color;
+      const itemSize =
+        item.size !== undefined ? String(item.size).trim().toUpperCase() : extracted.size;
+      const cleanBaseName = extracted.baseName || item.productName;
+
+      let code =
+        (item.productCode && isStandardSixDigitProductCode(item.productCode)
+          ? item.productCode
+          : '') ||
+        extracted.code ||
+        generateProductCode(cleanBaseName, {
+          categoryCode: itemCat?.code,
+          categoryName: itemCat?.name,
+          brand: item.brand || extracted.brand,
+        });
       let product = await productRepo.findOne({ code });
       if (
         product &&
         String(product.unit || 'Cái').trim().toLowerCase() !== itemUnit.toLowerCase()
       ) {
-        code = `${code}_${generateProductCode(itemUnit)}`;
+        code = generateProductCode(cleanBaseName, {
+          categoryCode: itemCat?.code,
+          categoryName: itemCat?.name,
+          brand: item.brand || extracted.brand,
+          seedSuffix: itemUnit,
+        });
         product = await productRepo.findOne({ code });
       }
 
-      const itemCat =
-        categories.find((c) => String(c._id) === String(item.categoryId)) ||
-        defaultCategory;
-
       const itemCostPrice = Math.max(0, Math.round(Number(item.costPrice) || 0));
       const itemSellingPrice = Math.max(0, Math.round(Number(item.sellingPrice) || 0));
-      const itemBarcode = sanitizeBarcode(item.barcode);
+      const itemBarcode = sanitizeBarcode(item.barcode) || code;
+
       if (!product) {
         product = await productRepo.create({
           code,
-          name: item.productName,
+          name: cleanBaseName,
+          brand: item.brand || extracted.brand || '',
+          modelName: extracted.modelName || '',
           categoryId: itemCat ? itemCat._id : '',
           categoryCode: itemCat ? itemCat.code : 'AO',
           categoryName: itemCat ? itemCat.name : 'Áo thể thao',
-          unit: item.unit || 'Cái',
+          unit: itemUnit,
           sellingPrice: itemSellingPrice,
           costPrice: itemCostPrice,
           barcode: itemBarcode,
+          variants: [],
           stockFloor1: 0,
           stockFloor2: 0,
           stock: 0,
@@ -1051,17 +1340,20 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
       const qtyToAdd = Math.max(0, Math.round(Number(item.actualQuantity)));
       const beforeFloors = getFloorStocks(product);
       const balanceBefore = beforeFloors.stock;
-      const nextFloors = applyFloorDelta(product, targetFloor, qtyToAdd);
+      const nextFloors = applyFloorDelta(product, targetFloor, qtyToAdd, itemColor, itemSize);
       const balanceAfter = nextFloors.stock;
 
       const productUpdate: Record<string, any> = {
-        ...nextFloors,
+        variants: nextFloors.variants,
+        stockFloor1: nextFloors.stockFloor1,
+        stockFloor2: nextFloors.stockFloor2,
+        stock: nextFloors.stock,
       };
-      // Cập nhật giá gốc và giá bán theo lần nhập gần nhất (bỏ qua nếu dòng không nhập giá)
       if (itemCostPrice > 0) productUpdate.costPrice = itemCostPrice;
       if (itemSellingPrice > 0) productUpdate.sellingPrice = itemSellingPrice;
-      // Ghi nhớ mã vạch lên sản phẩm nếu sản phẩm chưa có mã vạch
       if (itemBarcode && !product.barcode) productUpdate.barcode = itemBarcode;
+      if (item.brand && !product.brand) productUpdate.brand = item.brand;
+
       await productRepo.updateById(product._id, productUpdate);
 
       const actorId = req.user?.userId || receipt.createdBy || 'WAREHOUSE';
@@ -1072,7 +1364,9 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
         type: 'IMPORT',
         productId: product._id,
         productCode: product.code,
-        productName: product.name,
+        productName: formatProductWithVariant(product.name, itemColor, itemSize),
+        color: itemColor,
+        size: itemSize,
         categoryId: product.categoryId,
         unit: product.unit,
         quantityChange: qtyToAdd,
@@ -1093,6 +1387,9 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
         ...item,
         productId: product._id,
         productCode: product.code,
+        color: itemColor,
+        size: itemSize,
+        barcode: itemBarcode,
       });
     }
 

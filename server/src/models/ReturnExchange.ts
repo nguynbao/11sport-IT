@@ -8,6 +8,8 @@ export interface IReturnItem {
   productId: string;
   productCode: string;
   productName: string;
+  color?: string;
+  size?: string;
   unit: string;
   unitPrice: number;
   quantity: number;
@@ -20,6 +22,8 @@ export interface IExchangeItem {
   productId: string;
   productCode: string;
   productName: string;
+  color?: string;
+  size?: string;
   unit: string;
   unitPrice: number;
   quantity: number;
@@ -53,6 +57,8 @@ const ReturnItemSchema = new Schema<IReturnItem>(
     productId: { type: String, required: true },
     productCode: { type: String, required: true },
     productName: { type: String, required: true },
+    color: { type: String, default: '' },
+    size: { type: String, default: '' },
     unit: { type: String, default: 'Cái' },
     unitPrice: { type: Number, required: true },
     quantity: { type: Number, required: true },
@@ -68,6 +74,8 @@ const ExchangeItemSchema = new Schema<IExchangeItem>(
     productId: { type: String, required: true },
     productCode: { type: String, required: true },
     productName: { type: String, required: true },
+    color: { type: String, default: '' },
+    size: { type: String, default: '' },
     unit: { type: String, default: 'Cái' },
     unitPrice: { type: Number, required: true },
     quantity: { type: Number, required: true },

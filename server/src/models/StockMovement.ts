@@ -14,6 +14,8 @@ export interface IStockMovement extends Document {
   productId: string;
   productCode: string;
   productName: string;
+  color?: string;
+  size?: string;
   categoryId: string;
   unit: string;
   quantityChange: number;
@@ -47,6 +49,8 @@ const StockMovementSchema = new Schema<IStockMovement>(
     productId: { type: String, required: true, index: true },
     productCode: { type: String, required: true },
     productName: { type: String, required: true },
+    color: { type: String, default: '' },
+    size: { type: String, default: '' },
     categoryId: { type: String, default: '' },
     unit: { type: String, default: 'Cái' },
     quantityChange: { type: Number, required: true },
