@@ -43,7 +43,16 @@ import {
   Sparkles,
   FileText,
   Save,
+  ScanLine,
+  Zap,
 } from "lucide-react";
+import {
+  cleanBarcodeCode,
+  findProductByScannedBarcode,
+  getBarcodeCandidates,
+  playScannerBeep,
+  useHardwareBarcodeScanner,
+} from "@/lib/barcodeScanner";
 
 const PINNED_GIFTS_STORAGE_KEY = "11sport_pos_pinned_gift_ids";
 
@@ -149,6 +158,7 @@ const INITIAL_DRAFT_ID = "draft_initial";
 
 export default function PosTab({ onOpenInvoice }: PosTabProps) {
   const [products, setProducts] = useState<Product[]>([]);
+  const [allCatalogProducts, setAllCatalogProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [activePromotions, setActivePromotions] = useState<Promotion[]>([]);
   const [appliedPromosSummary, setAppliedPromosSummary] = useState<
@@ -160,6 +170,17 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
   const [sortBy, setSortBy] = useState<SortByOption>("CATEGORY");
   const [search, setSearch] = useState("");
   const [loadingProducts, setLoadingProducts] = useState(false);
+
+  // Máy quét mã vạch (Label Barcode Scanner) cho Bán hàng POS
+  const [scannerEnabled, setScannerEnabled] = useState<boolean>(true);
+  const [scannerInput, setScannerInput] = useState<string>("");
+  const [lastScanBanner, setLastScanBanner] = useState<{
+    type: "success" | "warning" | "error";
+    code: string;
+    message: string;
+    time: string;
+  } | null>(null);
+  const scannerInputRef = useRef<HTMLInputElement>(null);
 
   // Giỏ hàng bán & Giỏ hàng tặng (tách riêng)
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -545,7 +566,11 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       const q = new URLSearchParams();
       if (debouncedSearch.trim()) q.set("search", debouncedSearch.trim());
       const res = await apiRequest<Product[]>(`/products?${q.toString()}`);
-      setProducts(Array.isArray(res.data) ? res.data : []);
+      const list = Array.isArray(res.data) ? res.data : [];
+      setProducts(list);
+      if (!debouncedSearch.trim()) {
+        setAllCatalogProducts(list);
+      }
     } catch (err: any) {
       setErrorMsg(err?.message || "Không thể tải danh sách sản phẩm");
     } finally {
@@ -1043,7 +1068,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     product: Product,
     colorParam?: string,
     sizeParam?: string
-  ) => {
+  ): boolean => {
     setErrorMsg("");
     const color = String(colorParam ?? product.color ?? "").trim();
     const size = String(sizeParam ?? product.size ?? "").trim().toUpperCase();
@@ -1056,13 +1081,13 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       setErrorMsg(
         `Sản phẩm "${product.name}" chưa có giá bán lẻ (> 0). Vui lòng cập nhật giá trên CMS trước khi bán.`
       );
-      return;
+      return false;
     }
     if (floor1Stock <= 0 || variantStock <= 0) {
       setErrorMsg(
         `Sản phẩm "${product.name}"${variantLabel ? ` (${variantLabel})` : ""} đã hết hàng tại Kho Tầng 1.`
       );
-      return;
+      return false;
     }
 
     const manualGiftedQty = giftCart
@@ -1074,7 +1099,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       setErrorMsg(
         `Không được vượt tổng số lượng Kho Tầng 1 (${floor1Stock} ${product.unit}) của "${product.name}".`
       );
-      return;
+      return false;
     }
 
     const lineKey = getCartLineKey(product._id, color, size);
@@ -1087,7 +1112,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       setErrorMsg(
         `Phân loại "${variantLabel}" của "${product.name}" chỉ còn ${variantStock} ${product.unit} tại Kho Tầng 1.`
       );
-      return;
+      return false;
     }
 
     const nextCart: CartItem[] = existing
@@ -1109,7 +1134,217 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
         ];
 
     applyPromotionsForCart(nextCart, giftCart);
+    return true;
   };
+
+  /**
+   * Xử lý khi Máy Quét Label bắn mã sản phẩm vào màn hình POS (Quét bán hàng):
+   * - Tự động khử lỗi bộ gõ Tiếng Việt (Unikey Telex) & khớp Mã SP chung (hoặc kèm Size/Màu).
+   * - Nếu SP chỉ có 1 phân loại còn hàng ở Tầng 1: cộng ngay +1 vào Giỏ hàng + phát tiếng Bíp.
+   * - Nếu SP có nhiều Size/Màu ở Tầng 1: bật Popup chọn nhanh Size/Màu (hỗ trợ bấm phím số 1..9).
+   */
+  const handleBarcodeScanForPos = (rawInput: string) => {
+    const trimmed = String(rawInput || "").trim();
+    if (!trimmed) return;
+
+    const nowStr = new Date().toLocaleTimeString("vi-VN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+    const candidates = getBarcodeCandidates(trimmed);
+    const displayCode = candidates[1] || candidates[0] || cleanBarcodeCode(trimmed) || trimmed.toUpperCase();
+
+    const sourceCatalog = allCatalogProducts.length > 0 ? allCatalogProducts : products;
+    const matchedProduct = findProductByScannedBarcode(sourceCatalog, trimmed);
+
+    if (!matchedProduct) {
+      playScannerBeep("error");
+      const msg = `Không tìm thấy sản phẩm có mã "${displayCode}" trong danh mục kho!`;
+      setErrorMsg(msg);
+      setLastScanBanner({
+        type: "error",
+        code: displayCode,
+        message: msg,
+        time: nowStr,
+      });
+      return;
+    }
+
+    if (Number(matchedProduct.sellingPrice) <= 0) {
+      playScannerBeep("error");
+      const msg = `Mã ${matchedProduct.code} ("${matchedProduct.name}") chưa có giá bán lẻ (> 0đ). Vui lòng cập nhật giá trên CMS.`;
+      setErrorMsg(msg);
+      setLastScanBanner({
+        type: "error",
+        code: matchedProduct.code,
+        message: msg,
+        time: nowStr,
+      });
+      return;
+    }
+
+    const f1Stock = getFloor1Stock(matchedProduct);
+    const f2Stock = Number(matchedProduct.stockFloor2 || 0);
+    if (f1Stock <= 0) {
+      playScannerBeep("error");
+      const msg = `Mã ${matchedProduct.code} ("${matchedProduct.name}") đã HẾT HÀNG tại Kho Tầng 1${
+        f2Stock > 0 ? ` (Đang còn ${f2Stock} ${matchedProduct.unit} ở Kho Tầng 2)` : ""
+      }!`;
+      setErrorMsg(msg);
+      setLastScanBanner({
+        type: "error",
+        code: matchedProduct.code,
+        message: msg,
+        time: nowStr,
+      });
+      return;
+    }
+
+    const availableVariants = (matchedProduct.variants || []).filter(
+      (v) => (v.color || v.size) && (Number(v.stockFloor1 ?? v.stock) || 0) > 0
+    );
+
+    // Kiểm tra nếu chuỗi quét có hậu tố chỉ định rõ Size / Màu (VD: "GASIA221401 41" hoặc "GASIA221401-L")
+    const parts = trimmed.split(/[-_/:|\s]+/).slice(1);
+    if (parts.length > 0 && availableVariants.length > 0) {
+      const suffixNorm = cleanBarcodeCode(parts.join(""));
+      const matchedVariant = availableVariants.find((v) => {
+        const vSize = cleanBarcodeCode(v.size || "");
+        const vColor = cleanBarcodeCode(v.color || "");
+        const vCombo = cleanBarcodeCode(`${v.color || ""}${v.size || ""}`);
+        return (
+          suffixNorm === vSize ||
+          suffixNorm === vColor ||
+          suffixNorm === vCombo ||
+          cleanBarcodeCode(`${v.size || ""}${v.color || ""}`) === suffixNorm
+        );
+      });
+      if (matchedVariant) {
+        const added = handleAddToCart(matchedProduct, matchedVariant.color, matchedVariant.size);
+        if (added) {
+          playScannerBeep("success");
+          const vLabel = formatVariantLabel(matchedVariant.color, matchedVariant.size);
+          setLastScanBanner({
+            type: "success",
+            code: matchedProduct.code,
+            message: `Đã quét ${matchedProduct.code} → +1 "${matchedProduct.name}" (${vLabel}) • ${formatVND(matchedProduct.sellingPrice)}`,
+            time: nowStr,
+          });
+          setVariantPickerProduct(null);
+        } else {
+          playScannerBeep("error");
+        }
+        return;
+      }
+    }
+
+    // Nếu sản phẩm có từ 2 phân loại (Màu/Size) trở lên đang còn tồn ở Tầng 1 -> Mở Popup chọn nhanh
+    if (availableVariants.length > 1) {
+      playScannerBeep("warning");
+      setVariantPickerProduct(matchedProduct);
+      setLastScanBanner({
+        type: "warning",
+        code: matchedProduct.code,
+        message: `Đã quét ${matchedProduct.code} ("${matchedProduct.name}") — Bấm phím số [1..${availableVariants.length}] hoặc click chọn Màu/Size để thêm vào giỏ!`,
+        time: nowStr,
+      });
+      return;
+    }
+
+    // Nếu chỉ có 1 phân loại còn hàng hoặc sản phẩm không chia Size/Màu -> Thêm thẳng +1 vào giỏ
+    const targetColor =
+      availableVariants.length === 1
+        ? availableVariants[0].color
+        : matchedProduct.color || "";
+    const targetSize =
+      availableVariants.length === 1
+        ? availableVariants[0].size
+        : matchedProduct.size || "";
+
+    const added = handleAddToCart(matchedProduct, targetColor, targetSize);
+    if (added) {
+      playScannerBeep("success");
+      const vLabel = formatVariantLabel(targetColor, targetSize);
+      const newQtyInCart = getCartVariantQty(matchedProduct._id, targetColor, targetSize) + 1;
+      setLastScanBanner({
+        type: "success",
+        code: matchedProduct.code,
+        message: `Đã quét ${matchedProduct.code} → +1 "${matchedProduct.name}"${
+          vLabel ? ` (${vLabel})` : ""
+        } • ${formatVND(matchedProduct.sellingPrice)} (Trong giỏ: ${newQtyInCart} ${matchedProduct.unit})`,
+        time: nowStr,
+      });
+      setVariantPickerProduct(null);
+    } else {
+      playScannerBeep("error");
+      setLastScanBanner({
+        type: "error",
+        code: matchedProduct.code,
+        message: `Không thể thêm thêm "${matchedProduct.name}" (Đã chạm trần tồn Kho Tầng 1: ${f1Stock} ${matchedProduct.unit}).`,
+        time: nowStr,
+      });
+    }
+  };
+
+  // Lắng nghe máy quét mã vạch toàn cục (không cần đặt chuột vào ô input vẫn quét bán hàng được)
+  useHardwareBarcodeScanner({
+    enabled: scannerEnabled && !showGiftModal,
+    onScan: (scannedCode) => {
+      handleBarcodeScanForPos(scannedCode);
+    },
+  });
+
+  // Phím tắt chọn nhanh biến thể [1..9] hoặc Escape khi Popup chọn Size/Màu đang mở
+  useEffect(() => {
+    if (!variantPickerProduct || typeof window === "undefined") return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toUpperCase() || "";
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setVariantPickerProduct(null);
+        return;
+      }
+
+      if (/^[1-9]$/.test(e.key)) {
+        const idx = Number(e.key) - 1;
+        const variants = variantPickerProduct.variants || [];
+        const picked = variants[idx];
+        if (picked) {
+          const vFloor1 = Math.max(0, Number(picked.stockFloor1 ?? picked.stock) || 0);
+          const inCartQty = getCartVariantQty(
+            variantPickerProduct._id,
+            picked.color,
+            picked.size
+          );
+          if (vFloor1 > 0 && inCartQty < vFloor1) {
+            e.preventDefault();
+            const added = handleAddToCart(variantPickerProduct, picked.color, picked.size);
+            if (added) {
+              playScannerBeep("success");
+              const vLabel = formatVariantLabel(picked.color, picked.size);
+              setLastScanBanner({
+                type: "success",
+                code: variantPickerProduct.code,
+                message: `Đã chọn [${idx + 1}] ${vLabel} của "${variantPickerProduct.name}" (+1 vào giỏ hàng)`,
+                time: new Date().toLocaleTimeString("vi-VN", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  second: "2-digit",
+                }),
+              });
+              setVariantPickerProduct(null);
+            }
+          }
+        }
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  });
 
   const handleChangeQty = (
     productId: string,
@@ -1941,25 +2176,113 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && search.trim()) {
                         e.preventDefault();
-                        const q = search.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
-                        const exact = floor1Products.find(
-                          (p) =>
-                            p.code?.toUpperCase() === q ||
-                            p.barcode?.toUpperCase() === search.trim().toUpperCase()
-                        );
-                        if (exact) {
-                          handleSelectProductForPos(exact);
-                          setSearch("");
-                        } else if (filteredAndSortedProducts.length === 1) {
-                          handleSelectProductForPos(filteredAndSortedProducts[0]);
-                          setSearch("");
-                        }
+                        handleBarcodeScanForPos(search.trim());
+                        setSearch("");
                       }
                     }}
-                    placeholder="Quét mã vạch / tìm tên, size, màu..."
+                    placeholder="Tìm tên hàng, hãng, size, màu..."
                     className="w-full min-h-[40px] pl-9 pr-3 py-2 rounded-lg border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
                   />
                 </div>
+              </div>
+
+              {/* KHUNG ĐIỀU KHIỂN MÁY QUÉT LABEL — QUÉT BÁN HÀNG TỨC THÌ */}
+              <div className="rounded-xl border-2 border-emerald-500/80 bg-gradient-to-r from-slate-900 via-slate-900 to-emerald-950 text-white p-3 space-y-2 shadow-sm">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center shrink-0">
+                      <ScanLine className="w-4 h-4 text-emerald-400" />
+                    </span>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-xs font-extrabold uppercase tracking-wide text-emerald-300">
+                          Máy Quét Label — Quét Bán Hàng
+                        </span>
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                            scannerEnabled
+                              ? "bg-emerald-500 text-slate-950"
+                              : "bg-slate-700 text-slate-300"
+                          }`}
+                        >
+                          <Zap className="w-3 h-3" />
+                          {scannerEnabled
+                            ? "ĐANG BẬT (Bóp cò quét ở bất kỳ đâu)"
+                            : "ĐANG TẠM TẮT"}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-300">
+                        Cầm máy quét bắn thẳng vào tem mã vạch sản phẩm (Tự động khử lỗi bộ gõ Tiếng Việt Unikey &amp; cộng +1 vào giỏ).
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setScannerEnabled((prev) => !prev)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-extrabold border transition shrink-0 ${
+                      scannerEnabled
+                        ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-400"
+                        : "bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-600"
+                    }`}
+                  >
+                    {scannerEnabled ? "🟢 Đang nhận máy quét" : "⚪ Bật nhận máy quét"}
+                  </button>
+                </div>
+
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!scannerInput.trim()) return;
+                    handleBarcodeScanForPos(scannerInput.trim());
+                    setScannerInput("");
+                  }}
+                  className="flex flex-col sm:flex-row gap-2"
+                >
+                  <div className="relative flex-1">
+                    <ScanLine className="w-4 h-4 text-emerald-400 absolute left-3 top-2.5" />
+                    <input
+                      ref={scannerInputRef}
+                      type="text"
+                      data-barcode-input="true"
+                      value={scannerInput}
+                      onChange={(e) => setScannerInput(e.target.value)}
+                      placeholder="Quét mã sản phẩm vào đây (VD: GASIA221401) hoặc bóp cò máy quét..."
+                      className="w-full pl-9 pr-3 py-2 rounded-lg bg-slate-800/90 border border-slate-600 focus:border-emerald-400 text-white placeholder:text-slate-400 text-xs sm:text-sm font-mono font-bold focus:outline-none"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={!scannerInput.trim()}
+                    className="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-700 disabled:text-slate-400 text-slate-950 font-extrabold text-xs whitespace-nowrap transition"
+                  >
+                    + Thêm vào giỏ (Enter)
+                  </button>
+                </form>
+
+                {lastScanBanner && (
+                  <div
+                    className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center justify-between gap-2 border ${
+                      lastScanBanner.type === "success"
+                        ? "bg-emerald-950/90 border-emerald-500/60 text-emerald-200"
+                        : lastScanBanner.type === "warning"
+                        ? "bg-amber-950/90 border-amber-400/70 text-amber-200"
+                        : "bg-red-950/90 border-red-500/70 text-red-200"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      {lastScanBanner.type === "success" ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                      )}
+                      <span className="truncate">{lastScanBanner.message}</span>
+                    </div>
+                    <span className="text-[10px] font-mono opacity-75 shrink-0">
+                      {lastScanBanner.time}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Thanh chọn nhanh Category & Sắp xếp */}
@@ -3141,8 +3464,11 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
             </div>
 
             <div className="p-4 sm:p-5 space-y-3 max-h-[65vh] overflow-y-auto">
-              <div className="flex items-center justify-between text-xs text-slate-600">
-                <span>Chọn <strong>Màu sắc &amp; Size</strong> để thêm vào đơn:</span>
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+                <span>
+                  Chọn <strong>Màu sắc &amp; Size</strong> (hoặc bấm phím số{" "}
+                  <strong className="font-mono text-emerald-700">[1..9]</strong> trên bàn phím):
+                </span>
                 <span className="font-mono font-extrabold text-emerald-700">
                   Giá: {formatVND(variantPickerProduct.sellingPrice)}
                 </span>
@@ -3164,7 +3490,22 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                       type="button"
                       disabled={!canPick}
                       onClick={() => {
-                        handleAddToCart(variantPickerProduct, v.color, v.size);
+                        const added = handleAddToCart(variantPickerProduct, v.color, v.size);
+                        if (added) {
+                          playScannerBeep("success");
+                          const vLabel = formatVariantLabel(v.color, v.size);
+                          setLastScanBanner({
+                            type: "success",
+                            code: variantPickerProduct.code,
+                            message: `Đã chọn ${vLabel} của "${variantPickerProduct.name}" (+1 vào giỏ hàng)`,
+                            time: new Date().toLocaleTimeString("vi-VN", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              second: "2-digit",
+                            }),
+                          });
+                          setVariantPickerProduct(null);
+                        }
                       }}
                       className={`p-3 rounded-xl border text-left transition flex items-center justify-between gap-2 ${
                         canPick
@@ -3172,16 +3513,23 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                           : "border-slate-200 bg-slate-50 opacity-50 cursor-not-allowed"
                       }`}
                     >
-                      <div>
-                        <div className="font-extrabold text-xs text-slate-900">
-                          {v.color || "Mặc định"}
-                          {v.size ? ` • Size ${v.size}` : ""}
-                        </div>
-                        <div className="text-[11px] text-slate-500 mt-0.5">
-                          Tồn Tầng 1:{" "}
-                          <strong className="font-mono text-emerald-700">
-                            {vFloor1} {variantPickerProduct.unit}
-                          </strong>
+                      <div className="flex items-start gap-2">
+                        {idx < 9 && (
+                          <span className="mt-0.5 w-5 h-5 rounded bg-slate-900 text-amber-300 font-mono text-[10px] font-extrabold flex items-center justify-center shrink-0">
+                            {idx + 1}
+                          </span>
+                        )}
+                        <div>
+                          <div className="font-extrabold text-xs text-slate-900">
+                            {v.color || "Mặc định"}
+                            {v.size ? ` • Size ${v.size}` : ""}
+                          </div>
+                          <div className="text-[11px] text-slate-500 mt-0.5">
+                            Tồn Tầng 1:{" "}
+                            <strong className="font-mono text-emerald-700">
+                              {vFloor1} {variantPickerProduct.unit}
+                            </strong>
+                          </div>
                         </div>
                       </div>
                       <div className="text-right shrink-0">

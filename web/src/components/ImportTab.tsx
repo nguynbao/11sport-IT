@@ -40,7 +40,19 @@ import {
   Download,
   Printer,
   CopyPlus,
+  ScanLine,
+  Zap,
+  Undo2,
+  ScanBarcode,
 } from "lucide-react";
+import {
+  cleanBarcodeCode,
+  findProductByScannedBarcode,
+  getBarcodeCandidates,
+  isScannedCodeMatch,
+  playScannerBeep,
+  useHardwareBarcodeScanner,
+} from "@/lib/barcodeScanner";
 
 const COMMON_COLORS = [
   "Đỏ",
@@ -148,6 +160,20 @@ export default function ImportTab() {
 
   // Tìm kiếm nhanh trong phiếu
   const [quickCheckSearch, setQuickCheckSearch] = useState("");
+
+  // Máy quét mã vạch (Label Barcode Scanner) cho Quét Kiểm Hàng Nhập Kho
+  const [scannerEnabled, setScannerEnabled] = useState<boolean>(true);
+  const [scannerInput, setScannerInput] = useState<string>("");
+  const [multiRowScanMode, setMultiRowScanMode] = useState<"PICK" | "AUTO_NEXT">("PICK");
+  const [lastScannedRowIdx, setLastScannedRowIdx] = useState<number | null>(null);
+  const [lastUndoRowIdx, setLastUndoRowIdx] = useState<number | null>(null);
+  const [scanCandidateRowIndices, setScanCandidateRowIndices] = useState<number[] | null>(null);
+  const [lastScanFeedback, setLastScanFeedback] = useState<{
+    type: "success" | "warning" | "error";
+    code: string;
+    message: string;
+    time: string;
+  } | null>(null);
 
   // Modal & mục xem lại chi tiết khi nhập hàng vào kho
   const [detailModalReceipt, setDetailModalReceipt] = useState<ImportReceipt | null>(null);
@@ -418,6 +444,275 @@ export default function ImportTab() {
       return next.map((it, idx) => ({ ...it, stt: idx + 1 }));
     });
   };
+
+  /**
+   * Cộng (+1) hoặc hoàn tác (-1) SL Thực Nhận cho 1 dòng trong Phiếu Nhập Kho khi quét mã vạch.
+   */
+  const applyScanDeltaToRow = (targetIdx: number, delta: 1 | -1 = 1, _sourceNote?: string) => {
+    if (isCompleted) return;
+    const targetRow = items[targetIdx];
+    if (!targetRow) return;
+
+    const nowStr = new Date().toLocaleTimeString("vi-VN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+    const exp = Math.max(0, Math.round(Number(targetRow.expectedQuantity) || 0));
+    const curActual = Math.max(0, Math.round(Number(targetRow.actualQuantity) || 0));
+    const nextActual = Math.max(0, curActual + delta);
+    const diff = nextActual - exp;
+    const discNote =
+      diff === 0
+        ? "Khớp đủ"
+        : diff > 0
+          ? `Thừa ${diff} ${targetRow.unit || "Cái"}`
+          : `Thiếu ${Math.abs(diff)} ${targetRow.unit || "Cái"}`;
+
+    setItems((prev) => {
+      const next = [...prev];
+      const row = next[targetIdx];
+      if (!row) return prev;
+      next[targetIdx] = {
+        ...row,
+        actualQuantity: nextActual,
+        scannedQuantity: nextActual,
+        isChecked: nextActual > 0,
+        isConfirmed: nextActual > 0 ? true : row.isConfirmed,
+        discrepancyNote: discNote,
+      };
+      return next;
+    });
+
+    setLastScannedRowIdx(targetIdx);
+    if (delta === 1) {
+      setLastUndoRowIdx(targetIdx);
+    } else {
+      setLastUndoRowIdx(null);
+    }
+    setScanCandidateRowIndices(null);
+
+    const variantDesc = [targetRow.color, targetRow.size ? `Size ${targetRow.size}` : ""]
+      .filter(Boolean)
+      .join(" • ");
+
+    if (delta === -1) {
+      playScannerBeep("warning");
+      setLastScanFeedback({
+        type: "warning",
+        code: targetRow.productCode,
+        message: `Đã hoàn tác (-1) dòng #${targetIdx + 1} "${targetRow.productName}"${
+          variantDesc ? ` (${variantDesc})` : ""
+        } → SL Thực nhận: ${nextActual}/${exp}`,
+        time: nowStr,
+      });
+      return;
+    }
+
+    if (exp > 0 && nextActual > exp) {
+      playScannerBeep("warning");
+      setLastScanFeedback({
+        type: "warning",
+        code: targetRow.productCode,
+        message: `⚠️ Vượt SL Dự kiến! Dòng #${targetIdx + 1} "${targetRow.productName}"${
+          variantDesc ? ` (${variantDesc})` : ""
+        } → SL Thực nhận: ${nextActual}/${exp} (${discNote})`,
+        time: nowStr,
+      });
+    } else {
+      playScannerBeep("success");
+      setLastScanFeedback({
+        type: "success",
+        code: targetRow.productCode,
+        message: `✅ +1 Dòng #${targetIdx + 1} "${targetRow.productName}"${
+          variantDesc ? ` (${variantDesc})` : ""
+        } → SL Thực nhận: ${nextActual}/${exp} (${
+          nextActual === exp ? "ĐÃ KHỚP ĐỦ" : `Còn thiếu ${exp - nextActual}`
+        })`,
+        time: nowStr,
+      });
+    }
+  };
+
+  /**
+   * Xử lý khi Máy Quét Label bắn mã sản phẩm trong màn hình Nhập Kho (Quét kiểm hàng):
+   * - Khử lỗi bộ gõ Tiếng Việt (Unikey Telex).
+   * - Tìm tất cả các dòng trong phiếu nhập khớp với Mã SP vừa quét.
+   * - Nếu khớp 1 dòng: tự động cộng +1 vào SL Thực Nhận & Tick xác nhận.
+   * - Nếu khớp nhiều dòng (nhiều Màu/Size): mở khung chọn nhanh dòng (bấm phím 1..9) hoặc tự cộng vào dòng chưa đủ.
+   * - Nếu mã chưa có trong phiếu nhưng có trong Danh mục Kho: tự động thêm dòng sản phẩm đó vào phiếu với SL Thực nhận = 1.
+   */
+  const handleBarcodeScanForImportCheck = (rawInput: string) => {
+    if (isCompleted) return;
+    const trimmed = String(rawInput || "").trim();
+    if (!trimmed) return;
+
+    const nowStr = new Date().toLocaleTimeString("vi-VN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+    const candidates = getBarcodeCandidates(trimmed);
+    const displayCode =
+      candidates[1] || candidates[0] || cleanBarcodeCode(trimmed) || trimmed.toUpperCase();
+
+    // 1. Tìm các dòng trong phiếu nhập hiện tại khớp với mã vừa quét
+    const matchedIndices: number[] = [];
+    items.forEach((it, idx) => {
+      if (
+        it.productName.trim() !== "" &&
+        isScannedCodeMatch(trimmed, it.productCode, it.barcode)
+      ) {
+        matchedIndices.push(idx);
+      }
+    });
+
+    // Kiểm tra hậu tố Màu/Size nếu có (VD: GASIA221401-41)
+    const parts = trimmed.split(/[-_/:|\s]+/);
+    if (matchedIndices.length === 0 && parts.length > 1 && parts[0].length >= 4) {
+      const basePart = parts[0];
+      const suffixNorm = cleanBarcodeCode(parts.slice(1).join(""));
+      items.forEach((it, idx) => {
+        if (
+          it.productName.trim() !== "" &&
+          isScannedCodeMatch(basePart, it.productCode, it.barcode)
+        ) {
+          const rowSize = cleanBarcodeCode(it.size || "");
+          const rowColor = cleanBarcodeCode(it.color || "");
+          if (
+            !suffixNorm ||
+            suffixNorm === rowSize ||
+            suffixNorm === rowColor ||
+            suffixNorm === cleanBarcodeCode(`${it.color || ""}${it.size || ""}`)
+          ) {
+            matchedIndices.push(idx);
+          }
+        }
+      });
+    }
+
+    if (matchedIndices.length === 1) {
+      applyScanDeltaToRow(matchedIndices[0], 1);
+      return;
+    }
+
+    if (matchedIndices.length > 1) {
+      if (multiRowScanMode === "AUTO_NEXT") {
+        const firstUnfull = matchedIndices.find(
+          (idx) =>
+            (Number(items[idx].actualQuantity) || 0) <
+            Math.max(1, Number(items[idx].expectedQuantity) || 1)
+        );
+        const chosenIdx = firstUnfull !== undefined ? firstUnfull : matchedIndices[0];
+        applyScanDeltaToRow(chosenIdx, 1);
+        return;
+      }
+
+      playScannerBeep("warning");
+      setScanCandidateRowIndices(matchedIndices);
+      setLastScanFeedback({
+        type: "warning",
+        code: items[matchedIndices[0]]?.productCode || displayCode,
+        message: `Mã ${
+          items[matchedIndices[0]]?.productCode || displayCode
+        } có ${matchedIndices.length} dòng phân loại (Màu/Size) trong phiếu — Bấm phím số [1..${matchedIndices.length}] hoặc click chọn dòng vừa kiểm!`,
+        time: nowStr,
+      });
+      return;
+    }
+
+    // 2. Nếu chưa có trong phiếu nhập, thử tìm trong Danh mục sản phẩm kho để tự động thêm vào phiếu
+    const catalogProd = findProductByScannedBarcode(catalogProducts, trimmed);
+    if (catalogProd) {
+      const catId =
+        typeof catalogProd.categoryId === "object"
+          ? catalogProd.categoryId?._id || defaultCategoryId
+          : String(catalogProd.categoryId || defaultCategoryId);
+      const firstVariant = (catalogProd.variants || [])[0];
+      const newRow: ImportItem = {
+        stt: 1,
+        productCode: catalogProd.code,
+        productName: catalogProd.name,
+        brand: catalogProd.brand || "",
+        categoryId: catId,
+        color: firstVariant?.color || catalogProd.color || "",
+        size: firstVariant?.size || catalogProd.size || "",
+        unit: catalogProd.unit || "Cái",
+        expectedQuantity: 1,
+        actualQuantity: 1,
+        scannedQuantity: 1,
+        costPrice: Number(catalogProd.costPrice || 0),
+        sellingPrice: Number(catalogProd.sellingPrice || 0),
+        barcode: catalogProd.code,
+        note: "",
+        isChecked: true,
+        isConfirmed: true,
+        discrepancyNote: "Khớp đủ",
+      };
+
+      setItems((prev) => {
+        const hasOnlyEmptyFirst =
+          prev.length === 1 && prev[0].productName.trim() === "" && !prev[0].productCode.trim();
+        const next = hasOnlyEmptyFirst ? [newRow] : [...prev, newRow];
+        const finalNext = next.map((it, i) => ({ ...it, stt: i + 1 }));
+        setLastScannedRowIdx(finalNext.length - 1);
+        setLastUndoRowIdx(finalNext.length - 1);
+        return finalNext;
+      });
+
+      playScannerBeep("success");
+      setLastScanFeedback({
+        type: "success",
+        code: catalogProd.code,
+        message: `✅ Đã quét mã ${catalogProd.code} ("${catalogProd.name}") — Tự động thêm vào phiếu nhập với SL Thực nhận = 1!`,
+        time: nowStr,
+      });
+      return;
+    }
+
+    // 3. Không có trong phiếu nhập và cũng không có trong Danh mục kho
+    playScannerBeep("error");
+    setLastScanFeedback({
+      type: "error",
+      code: displayCode,
+      message: `❌ Mã "${displayCode}" không có trong Phiếu nhập hiện tại và chưa có trong Danh mục Kho!`,
+      time: nowStr,
+    });
+  };
+
+  useHardwareBarcodeScanner({
+    enabled: scannerEnabled && !isCompleted && !Boolean(labelModalItems) && !Boolean(detailModalReceipt),
+    onScan: (scannedCode) => {
+      handleBarcodeScanForImportCheck(scannedCode);
+    },
+  });
+
+  // Phím tắt [1..9] khi đang mở bảng chọn dòng trùng Mã SP trong phiếu nhập
+  useEffect(() => {
+    if (!scanCandidateRowIndices || scanCandidateRowIndices.length === 0 || typeof window === "undefined") {
+      return;
+    }
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toUpperCase() || "";
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setScanCandidateRowIndices(null);
+        return;
+      }
+      if (/^[1-9]$/.test(e.key)) {
+        const pickPos = Number(e.key) - 1;
+        const rowIdx = scanCandidateRowIndices[pickPos];
+        if (rowIdx !== undefined) {
+          e.preventDefault();
+          applyScanDeltaToRow(rowIdx, 1);
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   // Tải file Excel/CSV mẫu để nhập kho
   const handleDownloadSampleCsv = () => {
@@ -1306,6 +1601,132 @@ export default function ImportTab() {
           </div>
         </div>
 
+        {/* KHUNG ĐIỀU KHIỂN MÁY QUÉT LABEL — QUÉT KIỂM HÀNG NHẬP KHO */}
+        {!isCompleted && (
+          <div className="rounded-xl border-2 border-emerald-500/80 bg-gradient-to-r from-slate-900 via-slate-900 to-emerald-950 text-white p-3.5 space-y-2.5 shadow-sm">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+              <div className="flex items-start sm:items-center gap-2.5 min-w-0">
+                <span className="w-9 h-9 rounded-lg bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center shrink-0">
+                  <ScanLine className="w-5 h-5 text-emerald-400" />
+                </span>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs sm:text-sm font-extrabold uppercase tracking-wide text-emerald-300">
+                      Máy Quét Label — Quét Kiểm Hàng Nhập Kho
+                    </span>
+                    <span
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                        scannerEnabled
+                          ? "bg-emerald-500 text-slate-950"
+                          : "bg-slate-700 text-slate-300"
+                      }`}
+                    >
+                      <Zap className="w-3 h-3" />
+                      {scannerEnabled
+                        ? "ĐANG BẬT (Bóp cò quét ở bất kỳ đâu)"
+                        : "ĐANG TẠM TẮT"}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 mt-0.5">
+                    Bắn mã vạch trên sản phẩm để tự động <strong>+1 SL Thực nhận</strong> &amp; <strong>Tick Xác nhận nhập</strong> (Khử lỗi bộ gõ Tiếng Việt Unikey).
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <select
+                  value={multiRowScanMode}
+                  onChange={(e) =>
+                    setMultiRowScanMode(e.target.value === "AUTO_NEXT" ? "AUTO_NEXT" : "PICK")
+                  }
+                  className="px-2.5 py-1.5 rounded-lg bg-slate-800 border border-slate-600 text-slate-200 text-xs font-bold focus:outline-none"
+                  title="Cách xử lý khi 1 Mã SP có nhiều dòng Màu/Size trong phiếu"
+                >
+                  <option value="PICK">🎨 Trùng Mã SP: Hỏi chọn Size/Màu (Phím 1..9)</option>
+                  <option value="AUTO_NEXT">⚡ Trùng Mã SP: Tự cộng dòng chưa đủ</option>
+                </select>
+
+                {lastUndoRowIdx !== null && items[lastUndoRowIdx] && (
+                  <button
+                    type="button"
+                    onClick={() => applyScanDeltaToRow(lastUndoRowIdx, -1)}
+                    className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/50 text-amber-200 text-xs font-extrabold flex items-center gap-1.5 transition"
+                    title="Trừ lại 1 chiếc của lần quét gần nhất"
+                  >
+                    <Undo2 className="w-3.5 h-3.5" />
+                    <span>Hoàn tác (-1)</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setScannerEnabled((prev) => !prev)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-extrabold border transition ${
+                    scannerEnabled
+                      ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-400"
+                      : "bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-600"
+                  }`}
+                >
+                  {scannerEnabled ? "🟢 Đang nhận máy quét" : "⚪ Bật nhận máy quét"}
+                </button>
+              </div>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!scannerInput.trim()) return;
+                handleBarcodeScanForImportCheck(scannerInput.trim());
+                setScannerInput("");
+              }}
+              className="flex flex-col sm:flex-row gap-2"
+            >
+              <div className="relative flex-1">
+                <ScanLine className="w-4 h-4 text-emerald-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  data-barcode-input="true"
+                  value={scannerInput}
+                  onChange={(e) => setScannerInput(e.target.value)}
+                  placeholder="Quét mã vạch sản phẩm vào đây (VD: GASIA221401) hoặc bóp cò máy quét..."
+                  className="w-full pl-9 pr-3 py-2 rounded-lg bg-slate-800/90 border border-slate-600 focus:border-emerald-400 text-white placeholder:text-slate-400 text-xs sm:text-sm font-mono font-bold focus:outline-none"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={!scannerInput.trim()}
+                className="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-700 disabled:text-slate-400 text-slate-950 font-extrabold text-xs whitespace-nowrap transition"
+              >
+                +1 Kiểm hàng (Enter)
+              </button>
+            </form>
+
+            {lastScanFeedback && (
+              <div
+                className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center justify-between gap-2 border ${
+                  lastScanFeedback.type === "success"
+                    ? "bg-emerald-950/90 border-emerald-500/60 text-emerald-200"
+                    : lastScanFeedback.type === "warning"
+                    ? "bg-amber-950/90 border-amber-400/70 text-amber-200"
+                    : "bg-red-950/90 border-red-500/70 text-red-200"
+                }`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  {lastScanFeedback.type === "success" ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  ) : (
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                  )}
+                  <span className="truncate">{lastScanFeedback.message}</span>
+                </div>
+                <span className="text-[10px] font-mono opacity-75 shrink-0">
+                  {lastScanFeedback.time}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Thanh Thống kê */}
         <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 flex flex-wrap items-center justify-between gap-2.5">
           <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 text-xs">
@@ -1419,8 +1840,13 @@ export default function ImportTab() {
                 return (
                   <tr
                     key={idx}
-                    className={`hover:bg-slate-50 ${row.isConfirmed ? "bg-emerald-50/20" : ""
-                      }`}
+                    className={`hover:bg-slate-50 transition-colors ${
+                      lastScannedRowIdx === idx
+                        ? "bg-emerald-100/80 ring-2 ring-inset ring-emerald-500"
+                        : row.isConfirmed
+                          ? "bg-emerald-50/20"
+                          : ""
+                    }`}
                   >
                     {/* STT */}
                     <td className="py-2.5 px-2 text-center font-mono font-bold text-slate-700 align-top pt-3.5">
@@ -2277,6 +2703,113 @@ export default function ImportTab() {
                 className="px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold"
               >
                 Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Chọn Dòng Màu / Size Khi Quét Mã Sản Phẩm Có Nhiều Dòng Trong Phiếu Nhập */}
+      {scanCandidateRowIndices && scanCandidateRowIndices.length > 0 && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4"
+          onClick={() => setScanCandidateRowIndices(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-emerald-700 text-white px-5 py-3.5 flex items-center justify-between">
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-200 flex items-center gap-1.5">
+                  <ScanBarcode className="w-3.5 h-3.5" />
+                  Máy Quét Kiểm Hàng • Phím tắt [1..9] để cộng nhanh
+                </div>
+                <h4 className="font-extrabold text-sm">
+                  Mã [{items[scanCandidateRowIndices[0]]?.productCode}] có {scanCandidateRowIndices.length} dòng phân loại — Chọn dòng vừa quét
+                </h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setScanCandidateRowIndices(null)}
+                className="text-white/80 hover:text-white p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 max-h-[65vh] overflow-y-auto space-y-2">
+              {scanCandidateRowIndices.map((rowIdx, idx) => {
+                const row = items[rowIdx];
+                if (!row) return null;
+                const isEnough =
+                  row.expectedQuantity > 0 && row.actualQuantity >= row.expectedQuantity;
+                return (
+                  <button
+                    key={rowIdx}
+                    type="button"
+                    onClick={() => {
+                      applyScanDeltaToRow(rowIdx, 1, "máy quét (chọn phân loại)");
+                      setScanCandidateRowIndices(null);
+                    }}
+                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl border text-left transition-all ${
+                      isEnough
+                        ? "border-emerald-300 bg-emerald-50/60 hover:bg-emerald-100/70"
+                        : "border-amber-300 bg-amber-50/40 hover:bg-amber-100/60"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      {idx < 9 && (
+                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-slate-900 text-white text-xs font-extrabold font-mono">
+                          {idx + 1}
+                        </span>
+                      )}
+                      <div>
+                        <div className="text-xs font-extrabold text-slate-900">
+                          Dòng #{rowIdx + 1}: {row.productName || row.productCode}
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          {row.color ? (
+                            <span className="px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 text-[11px] font-bold">
+                              Màu: {row.color}
+                            </span>
+                          ) : null}
+                          {row.size ? (
+                            <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-bold">
+                              Size: {row.size}
+                            </span>
+                          ) : null}
+                          {!row.color && !row.size && (
+                            <span className="text-[11px] text-slate-500">Mặc định</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div
+                        className={`text-xs font-extrabold ${
+                          isEnough ? "text-emerald-700" : "text-amber-700"
+                        }`}
+                      >
+                        Đã kiểm: {row.actualQuantity} / {row.expectedQuantity} {row.unit}
+                      </div>
+                      <span className="inline-block mt-0.5 px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-extrabold">
+                        +1 Thực nhận
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+              <span className="text-[11px] text-slate-500">
+                Mẹo: Chuyển sang chế độ <b>&quot;Tự động cộng dòng chưa đủ SL&quot;</b> nếu muốn quét liên tục không cần chọn.
+              </span>
+              <button
+                type="button"
+                onClick={() => setScanCandidateRowIndices(null)}
+                className="px-3.5 py-1.5 rounded-lg border border-slate-300 text-xs font-bold text-slate-600 hover:bg-slate-100"
+              >
+                Đóng (Esc)
               </button>
             </div>
           </div>
