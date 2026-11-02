@@ -4,6 +4,13 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import ExportExcelButton from "./ExportExcelButton";
 import BarcodeLabelModal, { BarcodeLabelItem } from "./BarcodeLabelModal";
 import {
+  cleanBarcodeCode,
+  findProductByScannedBarcode,
+  isScannedCodeMatch,
+  playScannerBeep,
+  useHardwareBarcodeScanner,
+} from "@/lib/barcodeScanner";
+import {
   exportProducts,
   exportInventoryReport,
   exportMovements,
@@ -56,6 +63,7 @@ import {
   Download,
   CopyPlus,
   CheckSquare,
+  ScanBarcode,
 } from "lucide-react";
 
 interface AdminImportRow {
@@ -212,6 +220,19 @@ export default function InventoryModule() {
   const [savingVariantsProdId, setSavingVariantsProdId] = useState<string | null>(null);
   const [showLabelModal, setShowLabelModal] = useState(false);
   const [labelItems, setLabelItems] = useState<BarcodeLabelItem[]>([]);
+
+  // ===== MÁY QUÉT LABEL — QUÉT KIỂM HÀNG & NHẬP KHO TRÊN CMS =====
+  const [scannerEnabled, setScannerEnabled] = useState(true);
+  const [scannerInput, setScannerInput] = useState("");
+  const [scannedCheckCounts, setScannedCheckCounts] = useState<Record<string, number>>({});
+  const [lastScannedProdId, setLastScannedProdId] = useState<string | null>(null);
+  const [onlyShowScanned, setOnlyShowScanned] = useState(false);
+  const [lastScanFeedback, setLastScanFeedback] = useState<{
+    type: "success" | "warning" | "error";
+    code: string;
+    message: string;
+    time: string;
+  } | null>(null);
 
   // Lập phiếu điều chỉnh kho
   const [adjProductId, setAdjProductId] = useState("");
@@ -1342,14 +1363,17 @@ export default function InventoryModule() {
   // Lọc sản phẩm theo Kho đang chọn (Kho Tầng 1 / Kho Tầng 2 / Xem gộp cả 2 Kho) + Smart Search tức thì
   const displayedProducts = useMemo(() => {
     const byFloor = products.filter((p) => {
+      if (onlyShowScanned && !scannedCheckCounts[p._id]) {
+        return false;
+      }
       const f1 = Number(p.stockFloor1 ?? p.stock ?? 0);
       const f2 = Number(p.stockFloor2 ?? 0);
       if (activeWarehouse === "FLOOR_1") {
-        if (showZeroFloorItems) return true;
+        if (showZeroFloorItems || scannedCheckCounts[p._id]) return true;
         return f1 > 0 || floor1ImportedCodes.has(p.code) || !floor2ImportedCodes.has(p.code);
       }
       if (activeWarehouse === "FLOOR_2") {
-        if (showZeroFloorItems) return true;
+        if (showZeroFloorItems || scannedCheckCounts[p._id]) return true;
         return f2 > 0 || floor2ImportedCodes.has(p.code);
       }
       return true;
@@ -1361,7 +1385,7 @@ export default function InventoryModule() {
       { text: p.categoryName, weight: 0.9 },
       { text: p.unit, weight: 0.6 },
     ]);
-  }, [products, activeWarehouse, showZeroFloorItems, importsList, search]);
+  }, [products, activeWarehouse, showZeroFloorItems, importsList, search, onlyShowScanned, scannedCheckCounts]);
 
   // Thống kê tổng hợp riêng cho Kho Tầng 1, Kho Tầng 2 và Kho đang chọn
   const totalFloor1Qty = products.reduce(
@@ -1429,6 +1453,151 @@ export default function InventoryModule() {
           (safeProdPage - 1) * prodPageSize,
           safeProdPage * prodPageSize
         );
+
+  const handleBarcodeScanInCms = useCallback(
+    (rawInput: string) => {
+      const rawTrimmed = String(rawInput || "").trim();
+      if (!rawTrimmed) return;
+      const nowStr = new Date().toLocaleTimeString("vi-VN");
+      const pool = allCatalogProducts.length > 0 ? allCatalogProducts : products;
+
+      // Nếu đang mở Popup Nhập Kho Admin -> Quét mã để cộng SL hoặc thêm dòng vào bảng nhập kho
+      if (showAdminImportModal) {
+        const matchedRowIdx = adminImportRows.findIndex(
+          (r) => r.productCode && isScannedCodeMatch(rawTrimmed, r.productCode)
+        );
+        if (matchedRowIdx >= 0) {
+          setAdminImportRows((prev) =>
+            prev.map((r, i) =>
+              i === matchedRowIdx
+                ? { ...r, quantity: (Number(r.quantity) || 0) + 1, isConfirmed: true }
+                : r
+            )
+          );
+          const row = adminImportRows[matchedRowIdx];
+          playScannerBeep("success");
+          setLastScanFeedback({
+            type: "success",
+            code: row.productCode,
+            message: `Đã cộng +1 vào dòng #${matchedRowIdx + 1} [${row.productCode}] ${row.productName} (SL: ${(Number(row.quantity) || 0) + 1})`,
+            time: nowStr,
+          });
+          return;
+        }
+
+        const product = findProductByScannedBarcode(pool, rawTrimmed);
+        if (product) {
+          const catId =
+            typeof product.categoryId === "object"
+              ? product.categoryId?._id || ""
+              : String(product.categoryId || "");
+          setAdminImportRows((prev) => {
+            const isSingleBlank =
+              prev.length === 1 && !prev[0].productCode.trim() && !prev[0].productName.trim();
+            const newRow: AdminImportRow = {
+              stt: isSingleBlank ? 1 : prev.length + 1,
+              productCode: product.code,
+              productName: product.name,
+              categoryId: catId || newProdCatId || categories[0]?._id || "",
+              brand: product.brand || "",
+              color: "",
+              size: "",
+              unit: product.unit || "Cái",
+              quantity: 1,
+              costPrice: Number(product.costPrice || 0),
+              sellingPrice: Number(product.sellingPrice || 0),
+              note: "Quét từ máy quét label",
+              isConfirmed: true,
+            };
+            return isSingleBlank ? [newRow] : [...prev, newRow];
+          });
+          playScannerBeep("success");
+          setLastScanFeedback({
+            type: "success",
+            code: product.code,
+            message: `Đã thêm [${product.code}] ${product.name} vào bảng nhập kho (SL: 1)`,
+            time: nowStr,
+          });
+          return;
+        }
+
+        playScannerBeep("error");
+        setLastScanFeedback({
+          type: "error",
+          code: cleanBarcodeCode(rawTrimmed),
+          message: `Không tìm thấy mã "${rawTrimmed}" trong danh mục để thêm tự động.`,
+          time: nowStr,
+        });
+        return;
+      }
+
+      // Mặc định: Quét kiểm hàng & đối chiếu tồn kho trên tab PRODUCTS
+      const product = findProductByScannedBarcode(pool, rawTrimmed);
+      if (!product) {
+        playScannerBeep("error");
+        setLastScanFeedback({
+          type: "error",
+          code: cleanBarcodeCode(rawTrimmed),
+          message: `Không tìm thấy sản phẩm có mã "${rawTrimmed}" trong kho.`,
+          time: nowStr,
+        });
+        return;
+      }
+
+      setLastScannedProdId(product._id);
+      setExpandedVariantProdId(product._id);
+      const prevCount = scannedCheckCounts[product._id] || 0;
+      const nextCount = prevCount + 1;
+      setScannedCheckCounts((prev) => ({
+        ...prev,
+        [product._id]: nextCount,
+      }));
+
+      // Tự động chuyển tới trang có sản phẩm vừa quét nếu đang phân trang
+      const idxInDisplayed = displayedProducts.findIndex((p) => p._id === product._id);
+      if (idxInDisplayed >= 0 && prodPageSize > 0) {
+        const targetPage = Math.floor(idxInDisplayed / prodPageSize) + 1;
+        setProdPage(targetPage);
+      }
+
+      const f1 = Number(product.stockFloor1 ?? product.stock ?? 0);
+      const f2 = Number(product.stockFloor2 ?? 0);
+      const sysStock =
+        activeWarehouse === "FLOOR_1" ? f1 : activeWarehouse === "FLOOR_2" ? f2 : f1 + f2;
+      const isOver = sysStock > 0 && nextCount > sysStock;
+      const isExact = sysStock > 0 && nextCount === sysStock;
+      playScannerBeep(isOver ? "warning" : "success");
+
+      setLastScanFeedback({
+        type: isOver ? "warning" : "success",
+        code: product.code,
+        message: `[${product.code}] ${product.name} • Đã quét kiểm: ${nextCount} / Tồn ${activeWarehouseLabel}: ${sysStock} ${product.unit || "Cái"}${
+          isExact ? " (✓ ĐÃ KHỚP ĐỦ)" : isOver ? ` (⚠️ DƯ +${nextCount - sysStock})` : ""
+        }`,
+        time: nowStr,
+      });
+    },
+    [
+      allCatalogProducts,
+      products,
+      showAdminImportModal,
+      adminImportRows,
+      newProdCatId,
+      categories,
+      scannedCheckCounts,
+      displayedProducts,
+      prodPageSize,
+      activeWarehouse,
+      activeWarehouseLabel,
+    ]
+  );
+
+  useHardwareBarcodeScanner({
+    enabled: scannerEnabled && !showLabelModal && (subTab === "PRODUCTS" || showAdminImportModal),
+    onScan: (code) => {
+      handleBarcodeScanInCms(code);
+    },
+  });
 
   const filteredReportRows = reportRows.filter((r) => {
     if (activeWarehouse === "FLOOR_1") {
@@ -2256,6 +2425,136 @@ export default function InventoryModule() {
               </div>
             </div>
 
+            {/* THANH MÁY QUÉT LABEL — QUÉT KIỂM HÀNG & ĐỐI CHIẾU TỒN KHO TRÊN CMS */}
+            <div className="rounded-xl border-2 border-emerald-500/80 bg-gradient-to-r from-emerald-50/90 via-white to-teal-50/70 p-3 shadow-xs">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <ScanBarcode className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-extrabold uppercase tracking-wider text-emerald-900">
+                        Máy Quét Label — Quét Kiểm Hàng &amp; Đối Chiếu Tồn Kho (CMS)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setScannerEnabled((v) => !v)}
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold transition ${
+                          scannerEnabled
+                            ? "bg-emerald-600 text-white"
+                            : "bg-slate-200 text-slate-600"
+                        }`}
+                      >
+                        {scannerEnabled ? "● ĐANG BẬT MÁY QUÉT (TỰ ĐỘNG)" : "○ ĐÃ TẮT MÁY QUÉT"}
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-600 mt-0.5">
+                      Bắn trực tiếp mã vạch để <b>đếm số lượng thực tế (+1 mỗi lần quét)</b>, tự động chuyển trang &amp; bung phân loại Màu/Size (tự động khử lỗi bộ gõ Tiếng Việt Unikey).
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (!scannerInput.trim()) return;
+                      handleBarcodeScanInCms(scannerInput);
+                      setScannerInput("");
+                    }}
+                    className="flex items-center gap-1.5"
+                  >
+                    <input
+                      type="text"
+                      data-barcode-input="true"
+                      value={scannerInput}
+                      onChange={(e) => setScannerInput(e.target.value.toUpperCase())}
+                      placeholder="Quét hoặc gõ mã SP + Enter..."
+                      className="w-48 sm:w-56 px-3 py-1.5 rounded-lg border-2 border-emerald-400 bg-white text-xs font-mono font-extrabold text-slate-900 uppercase focus:border-emerald-600 focus:outline-none"
+                    />
+                    <button
+                      type="submit"
+                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold whitespace-nowrap"
+                    >
+                      +1 Kiểm
+                    </button>
+                  </form>
+
+                  {Object.keys(scannedCheckCounts).length > 0 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setOnlyShowScanned((v) => !v)}
+                        className={`px-2.5 py-1.5 rounded-lg border text-xs font-extrabold transition ${
+                          onlyShowScanned
+                            ? "bg-emerald-700 text-white border-emerald-700"
+                            : "bg-white text-emerald-800 border-emerald-300 hover:bg-emerald-50"
+                        }`}
+                      >
+                        {onlyShowScanned
+                          ? `Đang lọc mã đã quét (${Object.keys(scannedCheckCounts).length})`
+                          : `Chỉ hiện mã đã quét (${Object.keys(scannedCheckCounts).length})`}
+                      </button>
+                      {lastScannedProdId && (scannedCheckCounts[lastScannedProdId] || 0) > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setScannedCheckCounts((prev) => {
+                              const cur = prev[lastScannedProdId] || 0;
+                              const copy = { ...prev };
+                              if (cur <= 1) delete copy[lastScannedProdId];
+                              else copy[lastScannedProdId] = cur - 1;
+                              return copy;
+                            });
+                          }}
+                          className="px-2.5 py-1.5 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold inline-flex items-center gap-1"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" /> Hoàn tác -1
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setScannedCheckCounts({});
+                          setLastScannedProdId(null);
+                          setOnlyShowScanned(false);
+                          setLastScanFeedback(null);
+                        }}
+                        className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-600 text-xs font-bold"
+                      >
+                        Reset bộ đếm
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {lastScanFeedback && (
+                <div
+                  className={`mt-2.5 px-3 py-2 rounded-lg text-xs font-bold flex items-center justify-between gap-2 border ${
+                    lastScanFeedback.type === "success"
+                      ? "bg-emerald-100/90 border-emerald-300 text-emerald-950"
+                      : lastScanFeedback.type === "warning"
+                        ? "bg-amber-100/90 border-amber-300 text-amber-950"
+                        : "bg-red-100/90 border-red-300 text-red-900"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    {lastScanFeedback.type === "error" ? (
+                      <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+                    ) : (
+                      <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+                    )}
+                    <span className="truncate">{lastScanFeedback.message}</span>
+                  </div>
+                  <span className="text-[10px] font-mono opacity-75 shrink-0">
+                    {lastScanFeedback.time}
+                  </span>
+                </div>
+              )}
+            </div>
+
             <div className="overflow-x-auto border border-slate-200 rounded-xl">
               <table className="w-full text-xs text-left">
                 <thead className="bg-slate-900 text-white uppercase">
@@ -2320,22 +2619,46 @@ export default function InventoryModule() {
                       stockFloor1: activeWarehouse === "FLOOR_2" ? 0 : 1,
                       stockFloor2: activeWarehouse === "FLOOR_2" ? 1 : 0,
                     };
+                    const scannedQty = scannedCheckCounts[p._id] || 0;
                     return (
                       <React.Fragment key={p._id}>
-                      <tr className="hover:bg-slate-50">
+                      <tr
+                        className={`hover:bg-slate-50 transition-colors ${
+                          lastScannedProdId === p._id
+                            ? "bg-emerald-100/80 ring-2 ring-inset ring-emerald-500"
+                            : scannedQty > 0
+                              ? "bg-emerald-50/40"
+                              : ""
+                        }`}
+                      >
                         <td className="py-3 px-2 text-center font-mono font-bold text-slate-400 align-top">
                           {rowStt}
                         </td>
                         <td className="py-3 px-2.5 font-mono font-bold text-slate-800 align-top break-all max-w-[180px] text-[11px] leading-snug">
                           <div>{p.code}</div>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenPrintLabelForProduct(p)}
-                            className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-sans font-bold text-[10px]"
-                            title="In tem nhãn mã vạch (chỉ in mã sản phẩm chung)"
-                          >
-                            <Printer className="w-3 h-3" /> In tem
-                          </button>
+                          {scannedQty > 0 && (
+                            <span
+                              className={`mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-extrabold font-mono border ${
+                                scannedQty === activeQty
+                                  ? "bg-emerald-600 text-white border-emerald-700"
+                                  : scannedQty > activeQty
+                                    ? "bg-amber-500 text-white border-amber-600"
+                                    : "bg-teal-100 text-teal-900 border-teal-300"
+                              }`}
+                            >
+                              Đã quét: {scannedQty}/{activeQty}
+                            </span>
+                          )}
+                          <div>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenPrintLabelForProduct(p)}
+                              className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-sans font-bold text-[10px]"
+                              title="In tem nhãn mã vạch (chỉ in mã sản phẩm chung)"
+                            >
+                              <Printer className="w-3 h-3" /> In tem
+                            </button>
+                          </div>
                         </td>
                         <td className="py-3 px-2.5 align-top space-y-1.5">
                           <textarea

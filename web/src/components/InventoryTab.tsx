@@ -15,6 +15,12 @@ import {
 } from "@/lib/api";
 import BarcodeLabelModal, { BarcodeLabelItem } from "./BarcodeLabelModal";
 import {
+  cleanBarcodeCode,
+  findProductByScannedBarcode,
+  playScannerBeep,
+  useHardwareBarcodeScanner,
+} from "@/lib/barcodeScanner";
+import {
   Package,
   Layers,
   Search,
@@ -26,6 +32,9 @@ import {
   ChevronDown,
   ChevronRight,
   Plus,
+  ScanBarcode,
+  AlertCircle,
+  RotateCcw,
 } from "lucide-react";
 
 export default function InventoryTab() {
@@ -52,6 +61,20 @@ export default function InventoryTab() {
 
   // Modal in tem mã vạch (Label)
   const [labelModalItems, setLabelModalItems] = useState<BarcodeLabelItem[] | null>(null);
+
+  // ===== MÁY QUÉT LABEL — QUÉT KIỂM HÀNG & ĐỐI CHIẾU TỒN KHO =====
+  const [allCatalogProducts, setAllCatalogProducts] = useState<Product[]>([]);
+  const [scannerEnabled, setScannerEnabled] = useState(true);
+  const [scannerInput, setScannerInput] = useState("");
+  const [scannedCheckCounts, setScannedCheckCounts] = useState<Record<string, number>>({});
+  const [lastScannedProdId, setLastScannedProdId] = useState<string | null>(null);
+  const [onlyShowScanned, setOnlyShowScanned] = useState(false);
+  const [lastScanFeedback, setLastScanFeedback] = useState<{
+    type: "success" | "warning" | "error";
+    code: string;
+    message: string;
+    time: string;
+  } | null>(null);
 
   // Saler (role SALES) chỉ được thấy Giá bán & Số lượng ở Kho Tầng 1, KHÔNG được thấy Giá gốc hay Kho Tầng 2
   const currentUser = getStoredUser();
@@ -104,6 +127,9 @@ export default function InventoryTab() {
       setTotalStock(
         res.meta?.totalStock ?? list.reduce((sum, p) => sum + Number(p.stock || 0), 0)
       );
+      if (!selectedCategory && !debouncedSearch.trim()) {
+        setAllCatalogProducts(list);
+      }
     } catch {
       setProducts([]);
     } finally {
@@ -111,10 +137,22 @@ export default function InventoryTab() {
     }
   }, [selectedCategory, debouncedSearch]);
 
+  const loadAllCatalog = useCallback(async () => {
+    try {
+      const res = await apiRequest<Product[]>("/products");
+      if (Array.isArray(res.data)) {
+        setAllCatalogProducts(res.data);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
   useEffect(() => {
     loadCategories();
     loadImportFloorCodes();
-  }, [loadImportFloorCodes]);
+    loadAllCatalog();
+  }, [loadImportFloorCodes, loadAllCatalog]);
 
   useEffect(() => {
     loadInventory();
@@ -235,18 +273,86 @@ export default function InventoryTab() {
 
   const effectiveWarehouse = isSales ? "FLOOR_1" : activeWarehouse;
 
+  const handleBarcodeScanForInventoryCheck = useCallback(
+    (rawInput: string) => {
+      const rawTrimmed = String(rawInput || "").trim();
+      if (!rawTrimmed) return;
+      const nowStr = new Date().toLocaleTimeString("vi-VN");
+      const pool = allCatalogProducts.length > 0 ? allCatalogProducts : products;
+      const product = findProductByScannedBarcode(pool, rawTrimmed);
+
+      if (!product) {
+        playScannerBeep("error");
+        const cleaned = cleanBarcodeCode(rawTrimmed);
+        setLastScanFeedback({
+          type: "error",
+          code: cleaned || rawTrimmed,
+          message: `Không tìm thấy sản phẩm có mã "${rawTrimmed}" trong kho.`,
+          time: nowStr,
+        });
+        return;
+      }
+
+      // Tự động mở rộng bảng phân loại Màu/Size của sản phẩm vừa quét
+      setExpandedProdIds((prev) => {
+        const next = new Set(prev);
+        next.add(product._id);
+        return next;
+      });
+      setLastScannedProdId(product._id);
+
+      const prevCount = scannedCheckCounts[product._id] || 0;
+      const nextCount = prevCount + 1;
+      setScannedCheckCounts((prev) => ({
+        ...prev,
+        [product._id]: nextCount,
+      }));
+
+      const sysStock =
+        effectiveWarehouse === "FLOOR_1"
+          ? getFloor1Stock(product)
+          : effectiveWarehouse === "FLOOR_2"
+            ? Number(product.stockFloor2 || 0)
+            : Number(product.stock || 0);
+
+      const isOver = sysStock > 0 && nextCount > sysStock;
+      const isExact = sysStock > 0 && nextCount === sysStock;
+      playScannerBeep(isOver ? "warning" : "success");
+
+      setLastScanFeedback({
+        type: isOver ? "warning" : "success",
+        code: product.code,
+        message: `[${product.code}] ${product.name} • Đã quét kiểm: ${nextCount} / Tồn hệ thống: ${sysStock} ${product.unit}${
+          isExact ? " (✓ ĐÃ KHỚP ĐỦ)" : isOver ? ` (⚠️ DƯ +${nextCount - sysStock})` : ""
+        }`,
+        time: nowStr,
+      });
+    },
+    [allCatalogProducts, products, scannedCheckCounts, effectiveWarehouse]
+  );
+
+  useHardwareBarcodeScanner({
+    enabled: scannerEnabled && !labelModalItems,
+    onScan: (code) => {
+      handleBarcodeScanForInventoryCheck(code);
+    },
+  });
+
   const displayedProducts = useMemo(() => {
     const byFloor = products.filter((p) => {
+      if (onlyShowScanned && !scannedCheckCounts[p._id]) {
+        return false;
+      }
       const f1 = getFloor1Stock(p);
       const f2 = Number(p.stockFloor2) || 0;
       if (isSales) {
-        return f1 > 0;
+        return f1 > 0 || Boolean(scannedCheckCounts[p._id]);
       }
       if (effectiveWarehouse === "FLOOR_1") {
-        return f1 > 0 || floor1Codes.has(p.code) || !floor2Codes.has(p.code);
+        return f1 > 0 || floor1Codes.has(p.code) || !floor2Codes.has(p.code) || Boolean(scannedCheckCounts[p._id]);
       }
       if (effectiveWarehouse === "FLOOR_2") {
-        return f2 > 0 || floor2Codes.has(p.code);
+        return f2 > 0 || floor2Codes.has(p.code) || Boolean(scannedCheckCounts[p._id]);
       }
       return true;
     });
@@ -267,7 +373,7 @@ export default function InventoryTab() {
           }))
         : []),
     ]);
-  }, [products, isSales, effectiveWarehouse, floor1Codes, floor2Codes, search]);
+  }, [products, isSales, effectiveWarehouse, floor1Codes, floor2Codes, search, onlyShowScanned, scannedCheckCounts]);
 
   const colCount = (canSeeCostPrice ? 10 : 9) + (effectiveWarehouse === "ALL" ? 2 : 0);
 
@@ -408,6 +514,136 @@ export default function InventoryTab() {
 
       {/* Bộ lọc & Tìm kiếm */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 md:p-4">
+        {/* THANH MÁY QUÉT LABEL — QUÉT KIỂM HÀNG & ĐỐI CHIẾU TỒN KHO TRÊN KỆ */}
+        <div className="mb-4 rounded-xl border-2 border-emerald-500/80 bg-gradient-to-r from-emerald-50/90 via-white to-teal-50/70 p-3 shadow-sm">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                <ScanBarcode className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-extrabold uppercase tracking-wider text-emerald-900">
+                    Máy Quét Label — Quét Kiểm Hàng &amp; Đối Chiếu Tồn Kho
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setScannerEnabled((v) => !v)}
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold transition ${
+                      scannerEnabled
+                        ? "bg-emerald-600 text-white shadow-xs"
+                        : "bg-slate-200 text-slate-600"
+                    }`}
+                  >
+                    {scannerEnabled ? "● ĐANG BẬT MÁY QUÉT (TỰ ĐỘNG)" : "○ ĐÃ TẮT MÁY QUÉT"}
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-600 mt-0.5">
+                  Cầm máy quét bắn trực tiếp tem mã vạch trên kệ để <b>đếm số lượng thực tế (+1 mỗi lần quét)</b>, tự động bung phân loại Màu/Size và đối chiếu tồn kho (tự khử lỗi bộ gõ Tiếng Việt Unikey).
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!scannerInput.trim()) return;
+                  handleBarcodeScanForInventoryCheck(scannerInput);
+                  setScannerInput("");
+                }}
+                className="flex items-center gap-1.5"
+              >
+                <input
+                  type="text"
+                  data-barcode-input="true"
+                  value={scannerInput}
+                  onChange={(e) => setScannerInput(e.target.value.toUpperCase())}
+                  placeholder="Quét hoặc gõ mã SP + Enter..."
+                  className="w-48 sm:w-56 px-3 py-1.5 rounded-lg border-2 border-emerald-400 bg-white text-xs font-mono font-extrabold text-slate-900 uppercase focus:border-emerald-600 focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold whitespace-nowrap shadow-xs"
+                >
+                  +1 Kiểm
+                </button>
+              </form>
+
+              {Object.keys(scannedCheckCounts).length > 0 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setOnlyShowScanned((v) => !v)}
+                    className={`px-2.5 py-1.5 rounded-lg border text-xs font-extrabold transition ${
+                      onlyShowScanned
+                        ? "bg-emerald-700 text-white border-emerald-700"
+                        : "bg-white text-emerald-800 border-emerald-300 hover:bg-emerald-50"
+                    }`}
+                  >
+                    {onlyShowScanned
+                      ? `Đang lọc mã đã quét (${Object.keys(scannedCheckCounts).length})`
+                      : `Chỉ hiện mã đã quét (${Object.keys(scannedCheckCounts).length})`}
+                  </button>
+                  {lastScannedProdId && (scannedCheckCounts[lastScannedProdId] || 0) > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setScannedCheckCounts((prev) => {
+                          const cur = prev[lastScannedProdId] || 0;
+                          const copy = { ...prev };
+                          if (cur <= 1) delete copy[lastScannedProdId];
+                          else copy[lastScannedProdId] = cur - 1;
+                          return copy;
+                        });
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold flex items-center gap-1"
+                      title="Trừ 1 số lượng kiểm của mã vừa quét"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" /> Hoàn tác -1
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setScannedCheckCounts({});
+                      setLastScannedProdId(null);
+                      setOnlyShowScanned(false);
+                      setLastScanFeedback(null);
+                    }}
+                    className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-600 text-xs font-bold"
+                  >
+                    Reset bộ đếm
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {lastScanFeedback && (
+            <div
+              className={`mt-2.5 px-3 py-2 rounded-lg text-xs font-bold flex items-center justify-between gap-2 border ${
+                lastScanFeedback.type === "success"
+                  ? "bg-emerald-100/90 border-emerald-300 text-emerald-950"
+                  : lastScanFeedback.type === "warning"
+                    ? "bg-amber-100/90 border-amber-300 text-amber-950"
+                    : "bg-red-100/90 border-red-300 text-red-900"
+              }`}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                {lastScanFeedback.type === "error" ? (
+                  <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+                ) : (
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+                )}
+                <span className="truncate">{lastScanFeedback.message}</span>
+              </div>
+              <span className="text-[10px] font-mono opacity-75 shrink-0">
+                {lastScanFeedback.time}
+              </span>
+            </div>
+          )}
+        </div>
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
           <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-3 w-full md:w-auto">
             <div className="relative w-full sm:w-72">
@@ -566,16 +802,47 @@ export default function InventoryTab() {
                     floor: "FLOOR_1" as const,
                   };
 
+                  const scannedQty = scannedCheckCounts[p._id] || 0;
+                  const sysStockForCompare =
+                    effectiveWarehouse === "FLOOR_1"
+                      ? f1
+                      : effectiveWarehouse === "FLOOR_2"
+                        ? f2
+                        : Number(p.stock || 0);
+
                   return (
                     <React.Fragment key={p._id}>
-                      <tr className="hover:bg-slate-50">
+                      <tr
+                        className={`hover:bg-slate-50 transition-colors ${
+                          lastScannedProdId === p._id
+                            ? "bg-emerald-100/80 ring-2 ring-inset ring-emerald-500"
+                            : scannedQty > 0
+                              ? "bg-emerald-50/40"
+                              : ""
+                        }`}
+                      >
                         <td className="py-3 px-3 font-mono text-xs text-slate-500">
                           {idx + 1}
                         </td>
                         <td className="py-3 px-3">
-                          <span className="font-mono text-xs font-extrabold px-2.5 py-1 rounded bg-blue-50 text-blue-800 border border-blue-200 whitespace-nowrap">
-                            {p.code}
-                          </span>
+                          <div className="flex flex-col items-start gap-1">
+                            <span className="font-mono text-xs font-extrabold px-2.5 py-1 rounded bg-blue-50 text-blue-800 border border-blue-200 whitespace-nowrap">
+                              {p.code}
+                            </span>
+                            {scannedQty > 0 && (
+                              <span
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-extrabold font-mono border ${
+                                  scannedQty === sysStockForCompare
+                                    ? "bg-emerald-600 text-white border-emerald-700"
+                                    : scannedQty > sysStockForCompare
+                                      ? "bg-amber-500 text-white border-amber-600"
+                                      : "bg-teal-100 text-teal-900 border-teal-300"
+                                }`}
+                              >
+                                Đã quét: {scannedQty}/{sysStockForCompare}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3 px-3">
                           <div className="font-semibold text-slate-900">{p.name}</div>
