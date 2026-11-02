@@ -195,8 +195,8 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
                 type="button"
                 onClick={() => setPaperSize("K80")}
                 className={`min-h-[40px] px-3 py-1.5 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition ${paperSize === "K80"
-                    ? "bg-emerald-600 text-white shadow"
-                    : "text-slate-300 hover:text-white"
+                  ? "bg-emerald-600 text-white shadow"
+                  : "text-slate-300 hover:text-white"
                   }`}
               >
                 <Receipt className="w-4 h-4" />
@@ -206,8 +206,8 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
                 type="button"
                 onClick={() => setPaperSize("A4")}
                 className={`min-h-[40px] px-3 py-1.5 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition ${paperSize === "A4"
-                    ? "bg-emerald-600 text-white shadow"
-                    : "text-slate-300 hover:text-white"
+                  ? "bg-emerald-600 text-white shadow"
+                  : "text-slate-300 hover:text-white"
                   }`}
               >
                 <FileText className="w-4 h-4" />
@@ -241,8 +241,8 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
             ref={printAreaRef}
             id="printable-invoice"
             className={`mx-auto bg-white text-black shadow-md border border-slate-300 overflow-hidden ${paperSize === "K80"
-                ? "w-full max-w-[360px] p-3.5 sm:p-4 text-[11px]"
-                : "w-full min-w-[560px] max-w-[794px] p-6 sm:p-8 text-xs"
+              ? "w-full max-w-[360px] p-3.5 sm:p-4 text-[11px]"
+              : "w-full min-w-[560px] max-w-[794px] p-6 sm:p-8 text-xs"
               }`}
           >
             {/* Header cửa hàng 11Sport với Logo */}
@@ -340,23 +340,22 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
                           <div>
                             {idx + 1}. {item.productName}
                           </div>
-                          {isGift ? (
+                          {isGift && (
                             <div className="text-[10px] font-bold text-black mt-0.5">
                               (🎁 Hàng tặng - Không tính tiền)
                             </div>
-                          ) : (
-                            discAmt > 0 && (
-                              <div className="text-[10px] font-bold text-black mt-0.5">
-                                (Giảm SP: -{formatVND(discAmt)})
-                              </div>
-                            )
                           )}
                         </td>
                         <td className="border-r border-black py-1.5 px-1 text-center align-middle font-mono font-bold">
                           {qty}
                         </td>
                         <td className="border-r border-black py-1.5 px-1.5 text-center align-middle font-mono font-semibold whitespace-nowrap">
-                          {isGift ? "0 VND" : formatVND(origUnitPrice)}
+                          <div>{isGift ? "0 VND" : formatVND(origUnitPrice)}</div>
+                          {!isGift && discAmt > 0 && (
+                            <div className="text-[10px] font-bold text-black mt-0.5">
+                              (-{formatVND(discAmt)})
+                            </div>
+                          )}
                         </td>
                         <td className="py-1.5 px-1.5 text-center align-middle font-mono font-extrabold whitespace-nowrap">
                           {isGift ? "0 VND" : formatVND(netLineTotal)}
