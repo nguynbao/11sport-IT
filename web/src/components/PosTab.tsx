@@ -19,6 +19,7 @@ import {
   useDebounce,
   filterAndRankBySearch,
   formatVariantLabel,
+  generateVariantProductCode,
 } from "@/lib/api";
 import {
   Search,
@@ -48,6 +49,7 @@ import {
 } from "lucide-react";
 import {
   cleanBarcodeCode,
+  findProductAndVariantByScannedBarcode,
   findProductByScannedBarcode,
   getBarcodeCandidates,
   playScannerBeep,
@@ -654,7 +656,15 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
           { text: p.brand, weight: 1.1 },
           { text: getCategoryName(p), weight: 0.9 },
           { text: p.categoryCode, weight: 0.9 },
-          { text: (p.variants || []).map((v) => `${v.color} ${v.size}`).join(" "), weight: 0.8 },
+          {
+            text: (p.variants || [])
+              .map(
+                (v) =>
+                  `${v.variantCode || generateVariantProductCode(p.code, v.color, v.size)} ${v.color} ${v.size}`
+              )
+              .join(" "),
+            weight: 1.4,
+          },
           { text: p.unit, weight: 0.6 },
         ])
       : categoryFiltered;
@@ -1156,7 +1166,8 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     const displayCode = candidates[1] || candidates[0] || cleanBarcodeCode(trimmed) || trimmed.toUpperCase();
 
     const sourceCatalog = allCatalogProducts.length > 0 ? allCatalogProducts : products;
-    const matchedProduct = findProductByScannedBarcode(sourceCatalog, trimmed);
+    const scanRes = findProductAndVariantByScannedBarcode(sourceCatalog, trimmed);
+    const matchedProduct = scanRes?.product || null;
 
     if (!matchedProduct) {
       playScannerBeep("error");
@@ -1198,6 +1209,33 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
         message: msg,
         time: nowStr,
       });
+      return;
+    }
+
+    // Nếu quét trúng trực tiếp Mã con thuộc tính (VD: GASIA221401DO38) -> Cộng thẳng phân loại đó vào giỏ!
+    if (scanRes?.matchedVariant && scanRes.isVariantExactMatch) {
+      const exactVar = scanRes.matchedVariant;
+      const childCode =
+        exactVar.variantCode ||
+        generateVariantProductCode(matchedProduct.code, exactVar.color, exactVar.size);
+      const added = handleAddToCart(matchedProduct, exactVar.color, exactVar.size);
+      if (added) {
+        playScannerBeep("success");
+        const vLabel = formatVariantLabel(exactVar.color, exactVar.size);
+        const newQtyInCart =
+          getCartVariantQty(matchedProduct._id, exactVar.color, exactVar.size) + 1;
+        setLastScanBanner({
+          type: "success",
+          code: childCode,
+          message: `Đã quét mã con ${childCode} → +1 "${matchedProduct.name}"${
+            vLabel ? ` (${vLabel})` : ""
+          } • ${formatVND(matchedProduct.sellingPrice)} (Trong giỏ: ${newQtyInCart} ${matchedProduct.unit})`,
+          time: nowStr,
+        });
+        setVariantPickerProduct(null);
+      } else {
+        playScannerBeep("error");
+      }
       return;
     }
 
@@ -3523,6 +3561,15 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                           <div className="font-extrabold text-xs text-slate-900">
                             {v.color || "Mặc định"}
                             {v.size ? ` • Size ${v.size}` : ""}
+                          </div>
+                          <div className="font-mono text-[10px] font-bold text-indigo-700 mt-0.5">
+                            Mã con:{" "}
+                            {v.variantCode ||
+                              generateVariantProductCode(
+                                variantPickerProduct.code,
+                                v.color,
+                                v.size
+                              )}
                           </div>
                           <div className="text-[11px] text-slate-500 mt-0.5">
                             Tồn Tầng 1:{" "}

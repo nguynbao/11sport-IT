@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { generateVariantProductCode } from "./api";
 
 /**
  * Chuẩn hóa chuỗi mã vạch về dạng IN HOA VIẾT LIỀN (chỉ giữ A-Z và 0-9).
@@ -168,28 +169,125 @@ export function isScannedCodeMatch(
   return false;
 }
 
-export function findProductByScannedBarcode<
-  T extends { code?: string; barcode?: string }
->(products: T[], rawScanned: string): T | undefined {
+export interface ScannedProductVariantMatch<T> {
+  product: T;
+  matchedVariant?: {
+    variantKey?: string;
+    color: string;
+    size: string;
+    variantCode: string;
+    stockFloor1: number;
+    stockFloor2: number;
+    stock: number;
+  };
+  isVariantExactMatch: boolean;
+}
+
+/**
+ * Tìm sản phẩm VÀ biến thể (Màu, Size) tương ứng theo chuỗi mã vạch vừa quét.
+ * - Ưu tiên 1: Khớp chính xác Mã con theo thuộc tính (VD: GASIA221401DO38 -> Giày Asia Đỏ Size 38).
+ * - Ưu tiên 2: Khớp Mã gốc của sản phẩm (VD: GASIA221401).
+ */
+export function findProductAndVariantByScannedBarcode<
+  T extends {
+    code?: string;
+    barcode?: string;
+    variants?: Array<{
+      variantKey?: string;
+      color: string;
+      size: string;
+      variantCode?: string;
+      barcode?: string;
+      stockFloor1: number;
+      stockFloor2: number;
+      stock: number;
+    }>;
+  }
+>(products: T[], rawScanned: string): ScannedProductVariantMatch<T> | undefined {
   if (!rawScanned || !Array.isArray(products) || products.length === 0) {
     return undefined;
   }
 
-  const exact = products.find((p) =>
+  // 1. Ưu tiên khớp Mã con (variantCode) của từng thuộc tính (color, size)
+  for (const p of products) {
+    if (Array.isArray(p.variants) && p.variants.length > 0) {
+      for (const v of p.variants) {
+        const vCode =
+          v.variantCode || generateVariantProductCode(p.code, v.color, v.size);
+        if (vCode && isScannedCodeMatch(rawScanned, vCode, v.barcode || vCode)) {
+          return {
+            product: p,
+            matchedVariant: {
+              ...v,
+              variantCode: vCode,
+            },
+            isVariantExactMatch: Boolean(v.color || v.size),
+          };
+        }
+      }
+    }
+  }
+
+  // 2. Khớp Mã gốc của sản phẩm
+  const exactRoot = products.find((p) =>
     isScannedCodeMatch(rawScanned, p.code, p.barcode)
   );
-  if (exact) return exact;
+  if (exactRoot) {
+    const singleVariant =
+      Array.isArray(exactRoot.variants) && exactRoot.variants.length === 1
+        ? {
+            ...exactRoot.variants[0],
+            variantCode:
+              exactRoot.variants[0].variantCode ||
+              generateVariantProductCode(
+                exactRoot.code,
+                exactRoot.variants[0].color,
+                exactRoot.variants[0].size
+              ),
+          }
+        : undefined;
+    return {
+      product: exactRoot,
+      matchedVariant: singleVariant,
+      isVariantExactMatch: Boolean(singleVariant),
+    };
+  }
 
+  // 3. Nếu mã quét có dấu phân cách (VD: GASIA221401-DO-38)
   const parts = rawScanned.trim().split(/[-_/:|\s]+/);
   if (parts.length > 1 && parts[0].length >= 4) {
     const basePart = parts[0];
     const byBase = products.find((p) =>
       isScannedCodeMatch(basePart, p.code, p.barcode)
     );
-    if (byBase) return byBase;
+    if (byBase) {
+      return {
+        product: byBase,
+        isVariantExactMatch: false,
+      };
+    }
   }
 
   return undefined;
+}
+
+export function findProductByScannedBarcode<
+  T extends {
+    code?: string;
+    barcode?: string;
+    variants?: Array<{
+      variantKey?: string;
+      color: string;
+      size: string;
+      variantCode?: string;
+      barcode?: string;
+      stockFloor1: number;
+      stockFloor2: number;
+      stock: number;
+    }>;
+  }
+>(products: T[], rawScanned: string): T | undefined {
+  return findProductAndVariantByScannedBarcode(products, rawScanned)?.product;
 }
 
 export function playScannerBeep(kind: "success" | "warning" | "error" = "success") {

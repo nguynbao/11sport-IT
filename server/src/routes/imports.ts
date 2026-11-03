@@ -9,9 +9,11 @@ import {
 import { ensureStandardProductCodesMigrated } from '../config/seed';
 import {
   generateProductCode,
+  generateVariantProductCode,
   extractVariantFromText,
   buildVariantKey,
   isStandardSixDigitProductCode,
+  normalizeToCompactUpperCode,
 } from '../utils/productCode';
 import { matchTagToItems } from '../utils/tagMatch';
 import { ApiError } from '../utils/errors';
@@ -95,19 +97,26 @@ function enrichReceiptRoles(receipt: any, staffRoleMap: Map<string, string>) {
         )
       : '';
   const items = Array.isArray(receipt.items)
-    ? receipt.items.map((it: any) => ({
-        ...it,
-        checkedByRole:
-          it.checkedBy || it.checkedByName
-            ? inferReceiptActorRole(it.checkedByRole, it.checkedBy, it.checkedByName, staffRoleMap)
-            : '',
-        scanCounts: Array.isArray(it.scanCounts)
-          ? it.scanCounts.map((sc: any) => ({
-              ...sc,
-              role: inferReceiptActorRole(sc.role, sc.userId, sc.name, staffRoleMap),
-            }))
-          : [],
-      }))
+    ? receipt.items.map((it: any) => {
+        const computedVariantCode =
+          it.variantCode ||
+          generateVariantProductCode(it.productCode || '', it.color || '', it.size || '');
+        return {
+          ...it,
+          variantCode: computedVariantCode,
+          barcode: it.barcode || computedVariantCode || it.productCode || '',
+          checkedByRole:
+            it.checkedBy || it.checkedByName
+              ? inferReceiptActorRole(it.checkedByRole, it.checkedBy, it.checkedByName, staffRoleMap)
+              : '',
+          scanCounts: Array.isArray(it.scanCounts)
+            ? it.scanCounts.map((sc: any) => ({
+                ...sc,
+                role: inferReceiptActorRole(sc.role, sc.userId, sc.name, staffRoleMap),
+              }))
+            : [],
+        };
+      })
     : [];
   return {
     ...receipt,
@@ -192,16 +201,22 @@ function normalizeImportItems(
         explicitCleanCode && isStandardSixDigitProductCode(explicitCleanCode)
           ? explicitCleanCode
           : autoCode || explicitCleanCode;
+      const variantCode = generateVariantProductCode(productCode, color, size);
       const expectedQuantity = Math.max(0, Math.round(Number(item.expectedQuantity ?? item.quantity ?? 0)));
       const actualQuantity =
         item.actualQuantity !== undefined
           ? Math.max(0, Math.round(Number(item.actualQuantity)))
           : expectedQuantity;
 
+      const customBarcode = item.barcode ? sanitizeBarcode(item.barcode) : '';
+      const finalBarcode =
+        customBarcode && customBarcode !== productCode ? customBarcode : variantCode || productCode;
+
       return {
         stt: Number(item.stt) || idx + 1,
         productId: item.productId ? String(item.productId) : '',
         productCode,
+        variantCode,
         productName,
         brand,
         color,
@@ -213,7 +228,7 @@ function normalizeImportItems(
         costPrice: parseCostPrice(item.costPrice, Number(item.stt) || idx + 1),
         sellingPrice: parseSellingPrice(item.sellingPrice, Number(item.stt) || idx + 1),
         scannedQuantity: Math.max(0, Math.round(Number(item.scannedQuantity) || 0)),
-        barcode: item.barcode ? sanitizeBarcode(item.barcode) : '',
+        barcode: finalBarcode,
         note: item.note ? String(item.note).trim() : '',
         isChecked: Boolean(item.isChecked),
         isConfirmed: Boolean(item.isConfirmed),
@@ -240,14 +255,14 @@ function keepCheckerFields(newItems: IImportReceiptItem[], oldItems: IImportRece
         checkedByRole: '',
         checkedAt: undefined,
         scanCounts: [],
-        barcode: item.barcode || '',
+        barcode: item.barcode || item.variantCode || item.productCode || '',
       };
     }
     used.add(oi);
     const old = oldItems[oi];
     return {
       ...item,
-      barcode: old.barcode || item.barcode || '',
+      barcode: item.variantCode || old.barcode || item.barcode || '',
       checkedBy: old.checkedBy || '',
       checkedByName: old.checkedByName || '',
       checkedByRole: old.checkedByRole || '',
@@ -261,10 +276,13 @@ function rowsToImportItems(rows: OcrTableRow[], defaultCatId: string): IImportRe
   return rows.map((r, index) => {
     const extracted = extractVariantFromText(r.productName);
     const code = extracted.code || generateProductCode(r.productName);
+    const variantCode =
+      extracted.variantCode || generateVariantProductCode(code, extracted.color, extracted.size);
     return {
       stt: index + 1,
       productId: '',
       productCode: code,
+      variantCode,
       productName: extracted.baseName || r.productName,
       brand: extracted.brand,
       color: extracted.color,
@@ -276,7 +294,7 @@ function rowsToImportItems(rows: OcrTableRow[], defaultCatId: string): IImportRe
       costPrice: 0,
       sellingPrice: 0,
       scannedQuantity: 0,
-      barcode: '',
+      barcode: variantCode || code,
       note: r.note || '',
       isChecked: false,
       isConfirmed: false,
@@ -360,7 +378,7 @@ async function applyMatchedScan(params: {
 
   const matchedItem: IImportReceiptItem = {
     ...current,
-    barcode: cleanBarcode || current.barcode || '',
+    barcode: cleanBarcode || current.barcode || current.variantCode || current.productCode || '',
     scanCounts: scanCounts.filter((s) => s.quantity > 0),
     ...(delta === 1
       ? { checkedBy: userId, checkedByName: userName, checkedByRole: userRole, checkedAt: new Date() }
@@ -398,12 +416,59 @@ async function applyMatchedScan(params: {
 
 async function findRowByKnownBarcode(items: IImportReceiptItem[], barcode: string): Promise<number | null> {
   if (!barcode) return null;
-  const direct = items
+  const compactScan = normalizeToCompactUpperCode(barcode);
+
+  // 1. Ưu tiên khớp chính xác Mã con (variantCode) hoặc barcode riêng của dòng
+  const variantMatches = items
+    .map((it, i) => {
+      const vc = it.variantCode || generateVariantProductCode(it.productCode, it.color, it.size);
+      return { it, i, vc };
+    })
+    .filter(
+      ({ it, vc }) =>
+        (it.barcode && (it.barcode === barcode || normalizeToCompactUpperCode(it.barcode) === compactScan)) ||
+        (vc && normalizeToCompactUpperCode(vc) === compactScan)
+    );
+
+  if (variantMatches.length > 0) {
+    const unfull = variantMatches.find(({ it }) => !isFullItem(it));
+    return (unfull || variantMatches[0]).i;
+  }
+
+  // 2. Fallback khớp Mã gốc (productCode) nếu chỉ có 1 dòng mang mã gốc đó
+  const directRoot = items
     .map((it, i) => ({ it, i }))
-    .filter(({ it }) => (it.barcode && it.barcode === barcode) || it.productCode === barcode);
-  if (direct.length > 0) {
-    const unfull = direct.find(({ it }) => !isFullItem(it));
-    return (unfull || direct[0]).i;
+    .filter(({ it }) => normalizeToCompactUpperCode(it.productCode) === compactScan);
+  if (directRoot.length === 1) {
+    return directRoot[0].i;
+  }
+  if (directRoot.length > 1) {
+    const unfull = directRoot.find(({ it }) => !isFullItem(it));
+    return (unfull || directRoot[0]).i;
+  }
+
+  // 3. Tra cứu trong danh mục sản phẩm (khớp variantCode của biến thể hoặc mã gốc)
+  const allProducts = await productRepo.find({});
+  for (const prod of allProducts) {
+    const floors = getFloorStocks(prod);
+    const matchedVar = floors.variants.find(
+      (v) =>
+        normalizeToCompactUpperCode(v.variantCode || '') === compactScan ||
+        normalizeToCompactUpperCode(v.barcode || '') === compactScan
+    );
+    if (matchedVar) {
+      const byVar = items
+        .map((it, i) => ({ it, i }))
+        .filter(
+          ({ it }) =>
+            it.productCode === prod.code &&
+            buildVariantKey(it.color, it.size) === matchedVar.variantKey
+        );
+      if (byVar.length > 0) {
+        const unfull = byVar.find(({ it }) => !isFullItem(it));
+        return (unfull || byVar[0]).i;
+      }
+    }
   }
 
   const product =
@@ -555,6 +620,7 @@ importsRouter.post('/imports/parse-file', async (req, res, next) => {
             brand: row.brand,
             existingCode: row.productCode,
           });
+      const finalVariantCode = generateVariantProductCode(finalCode, row.color, row.size);
 
       const costPrice =
         row.costPrice > 0 ? row.costPrice : Number(existingProd?.costPrice || 0);
@@ -565,6 +631,7 @@ importsRouter.post('/imports/parse-file', async (req, res, next) => {
         stt: index + 1,
         productId: existingProd ? String(existingProd._id) : '',
         productCode: finalCode,
+        variantCode: finalVariantCode,
         productName: existingProd ? existingProd.name : row.productName,
         brand: row.brand || existingProd?.brand || '',
         color: row.color || '',
@@ -576,7 +643,7 @@ importsRouter.post('/imports/parse-file', async (req, res, next) => {
         costPrice,
         sellingPrice,
         scannedQuantity: row.actualQuantity,
-        barcode: finalCode, // Mã vạch trên tem Label chỉ là Mã sản phẩm chung
+        barcode: finalVariantCode, // Mã vạch trên tem Label in theo Mã con của từng thuộc tính (Màu, Size)
         note: row.note || '',
         isChecked: true,
         isConfirmed: false,
@@ -671,11 +738,12 @@ importsRouter.get('/imports', async (req, res, next) => {
           { text: r.createdByName, weight: 0.9 },
           { text: r.completedByName, weight: 0.9 },
           ...r.items.flatMap((i: any) => [
+            { text: i.variantCode, weight: 1.5 },
             { text: i.productCode, weight: 1.3 },
             { text: i.productName, weight: 1.2 },
             { text: i.color, weight: 0.9 },
             { text: i.size, weight: 0.9 },
-            { text: (i as any).barcode, weight: 1.2 },
+            { text: (i as any).barcode, weight: 1.4 },
           ]),
         ])
       : baseFiltered;
@@ -929,6 +997,7 @@ importsRouter.post('/imports/:id/scan-check', async (req, res, next) => {
 
     const items = receipt.items.map((it) => ({
       ...it,
+      variantCode: it.variantCode || generateVariantProductCode(it.productCode, it.color, it.size),
       scannedQuantity: Math.max(0, Number(it.scannedQuantity) || 0),
     }));
 
@@ -947,7 +1016,10 @@ importsRouter.post('/imports/:id/scan-check', async (req, res, next) => {
         const result = matchTagToItems(
           items.map((it) => ({
             productCode: it.productCode,
+            variantCode: it.variantCode,
             productName: it.productName,
+            color: it.color,
+            size: it.size,
             barcode: it.barcode,
             isChecked: isFullItem(it),
           })),
@@ -961,6 +1033,9 @@ importsRouter.post('/imports/:id/scan-check', async (req, res, next) => {
               candidates: result.candidates.map((i) => ({
                 index: i,
                 productCode: items[i].productCode,
+                variantCode: items[i].variantCode,
+                color: items[i].color,
+                size: items[i].size,
                 productName: items[i].productName,
                 scannedQuantity: items[i].scannedQuantity,
                 expectedQuantity: items[i].expectedQuantity,
@@ -1051,6 +1126,7 @@ importsRouter.post('/imports/:id/scan-tag', async (req, res, next) => {
 
     const items = receipt.items.map((it) => ({
       ...it,
+      variantCode: it.variantCode || generateVariantProductCode(it.productCode, it.color, it.size),
       scannedQuantity: Math.max(0, Number(it.scannedQuantity) || 0),
     }));
 
@@ -1079,7 +1155,10 @@ importsRouter.post('/imports/:id/scan-tag', async (req, res, next) => {
         const byCode = matchTagToItems(
           items.map((it) => ({
             productCode: it.productCode,
+            variantCode: it.variantCode,
             productName: it.productName,
+            color: it.color,
+            size: it.size,
             barcode: it.barcode,
             isChecked: isFullItem(it),
           })),
@@ -1152,7 +1231,10 @@ importsRouter.post('/imports/:id/scan-tag', async (req, res, next) => {
       const result = matchTagToItems(
         items.map((it) => ({
           productCode: it.productCode,
+          variantCode: it.variantCode,
           productName: it.productName,
+          color: it.color,
+          size: it.size,
           barcode: it.barcode,
           isChecked: isFullItem(it),
         })),
@@ -1176,6 +1258,9 @@ importsRouter.post('/imports/:id/scan-tag', async (req, res, next) => {
           candidates: result.candidates.map((i) => ({
             index: i,
             productCode: items[i].productCode,
+            variantCode: items[i].variantCode,
+            color: items[i].color,
+            size: items[i].size,
             productName: items[i].productName,
             scannedQuantity: items[i].scannedQuantity,
             expectedQuantity: items[i].expectedQuantity,
@@ -1224,7 +1309,7 @@ importsRouter.post('/imports/:id/scan-tag', async (req, res, next) => {
   }
 });
 
-// POST /api/v1/imports/:id/complete (Hoàn thành nhập kho — cộng dồn biến thể Size/Màu vào Mã sản phẩm chung)
+// POST /api/v1/imports/:id/complete (Hoàn thành nhập kho — cộng dồn biến thể Size/Màu kèm Mã con variantCode vào Mã sản phẩm chung)
 importsRouter.post('/imports/:id/complete', async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -1312,9 +1397,10 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
         product = await productRepo.findOne({ code });
       }
 
+      const childVariantCode = generateVariantProductCode(code, itemColor, itemSize);
       const itemCostPrice = Math.max(0, Math.round(Number(item.costPrice) || 0));
       const itemSellingPrice = Math.max(0, Math.round(Number(item.sellingPrice) || 0));
-      const itemBarcode = sanitizeBarcode(item.barcode) || code;
+      const itemBarcode = childVariantCode || sanitizeBarcode(item.barcode) || code;
 
       if (!product) {
         product = await productRepo.create({
@@ -1328,7 +1414,7 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
           unit: itemUnit,
           sellingPrice: itemSellingPrice,
           costPrice: itemCostPrice,
-          barcode: itemBarcode,
+          barcode: code,
           variants: [],
           stockFloor1: 0,
           stockFloor2: 0,
@@ -1351,7 +1437,7 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
       };
       if (itemCostPrice > 0) productUpdate.costPrice = itemCostPrice;
       if (itemSellingPrice > 0) productUpdate.sellingPrice = itemSellingPrice;
-      if (itemBarcode && !product.barcode) productUpdate.barcode = itemBarcode;
+      if (!product.barcode) productUpdate.barcode = code;
       if (item.brand && !product.brand) productUpdate.brand = item.brand;
 
       await productRepo.updateById(product._id, productUpdate);
@@ -1387,6 +1473,7 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
         ...item,
         productId: product._id,
         productCode: product.code,
+        variantCode: childVariantCode,
         color: itemColor,
         size: itemSize,
         barcode: itemBarcode,

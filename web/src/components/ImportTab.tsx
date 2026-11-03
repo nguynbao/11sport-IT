@@ -9,6 +9,7 @@ import {
   WarehouseFloor,
   apiRequest,
   generateProductCode,
+  generateVariantProductCode,
   extractVariantFromText,
   formatDateTime,
   formatVND,
@@ -47,6 +48,7 @@ import {
 } from "lucide-react";
 import {
   cleanBarcodeCode,
+  findProductAndVariantByScannedBarcode,
   findProductByScannedBarcode,
   getBarcodeCandidates,
   isScannedCodeMatch,
@@ -556,16 +558,31 @@ export default function ImportTab() {
     const displayCode =
       candidates[1] || candidates[0] || cleanBarcodeCode(trimmed) || trimmed.toUpperCase();
 
-    // 1. Tìm các dòng trong phiếu nhập hiện tại khớp với mã vừa quét
-    const matchedIndices: number[] = [];
+    // 1. Ưu tiên khớp chính xác theo Mã con thuộc tính (variantCode = Root + Màu + Size)
+    const exactChildIndices: number[] = [];
     items.forEach((it, idx) => {
+      if (it.productName.trim() === "") return;
+      const childCode =
+        it.variantCode || generateVariantProductCode(it.productCode, it.color, it.size);
       if (
-        it.productName.trim() !== "" &&
-        isScannedCodeMatch(trimmed, it.productCode, it.barcode)
+        (it.color || it.size) &&
+        isScannedCodeMatch(trimmed, childCode, it.barcode)
       ) {
-        matchedIndices.push(idx);
+        exactChildIndices.push(idx);
       }
     });
+
+    const matchedIndices: number[] = [...exactChildIndices];
+    if (matchedIndices.length === 0) {
+      items.forEach((it, idx) => {
+        if (
+          it.productName.trim() !== "" &&
+          isScannedCodeMatch(trimmed, it.productCode, it.barcode)
+        ) {
+          matchedIndices.push(idx);
+        }
+      });
+    }
 
     // Kiểm tra hậu tố Màu/Size nếu có (VD: GASIA221401-41)
     const parts = trimmed.split(/[-_/:|\s]+/);
@@ -621,29 +638,34 @@ export default function ImportTab() {
       return;
     }
 
-    // 2. Nếu chưa có trong phiếu nhập, thử tìm trong Danh mục sản phẩm kho để tự động thêm vào phiếu
-    const catalogProd = findProductByScannedBarcode(catalogProducts, trimmed);
-    if (catalogProd) {
+    // 2. Nếu chưa có trong phiếu nhập, thử tìm trong Danh mục sản phẩm kho (hỗ trợ cả Mã con & Mã gốc) để tự động thêm vào phiếu
+    const catalogScan = findProductAndVariantByScannedBarcode(catalogProducts, trimmed);
+    if (catalogScan) {
+      const { product: catalogProd, matchedVariant } = catalogScan;
       const catId =
         typeof catalogProd.categoryId === "object"
           ? catalogProd.categoryId?._id || defaultCategoryId
           : String(catalogProd.categoryId || defaultCategoryId);
-      const firstVariant = (catalogProd.variants || [])[0];
+      const pickedVariant = matchedVariant || (catalogProd.variants || [])[0];
+      const rowColor = pickedVariant?.color || catalogProd.color || "";
+      const rowSize = pickedVariant?.size || catalogProd.size || "";
+      const childCode = generateVariantProductCode(catalogProd.code, rowColor, rowSize);
       const newRow: ImportItem = {
         stt: 1,
         productCode: catalogProd.code,
+        variantCode: childCode,
         productName: catalogProd.name,
         brand: catalogProd.brand || "",
         categoryId: catId,
-        color: firstVariant?.color || catalogProd.color || "",
-        size: firstVariant?.size || catalogProd.size || "",
+        color: rowColor,
+        size: rowSize,
         unit: catalogProd.unit || "Cái",
         expectedQuantity: 1,
         actualQuantity: 1,
         scannedQuantity: 1,
         costPrice: Number(catalogProd.costPrice || 0),
         sellingPrice: Number(catalogProd.sellingPrice || 0),
-        barcode: catalogProd.code,
+        barcode: childCode,
         note: "",
         isChecked: true,
         isConfirmed: true,
@@ -1112,16 +1134,22 @@ export default function ImportTab() {
       return;
     }
     setLabelModalItems(
-      valid.map((it, idx) => ({
-        id: `${it.productCode}_${it.color || ""}_${it.size || ""}_${idx}`,
-        productCode: it.productCode || generateProductCode(it.productName),
-        productName: it.productName,
-        color: it.color,
-        size: it.size,
-        sellingPrice: it.sellingPrice,
-        unit: it.unit,
-        defaultQty: Math.max(1, Number(it.actualQuantity || it.expectedQuantity || 1)),
-      }))
+      valid.map((it, idx) => {
+        const baseCode = it.productCode || generateProductCode(it.productName);
+        const childCode =
+          it.variantCode || generateVariantProductCode(baseCode, it.color, it.size);
+        return {
+          id: `${childCode}_${idx}`,
+          code: childCode,
+          productCode: baseCode,
+          productName: it.productName,
+          color: it.color,
+          size: it.size,
+          sellingPrice: it.sellingPrice,
+          unit: it.unit,
+          defaultQty: Math.max(1, Number(it.actualQuantity || it.expectedQuantity || 1)),
+        };
+      })
     );
   };
 
@@ -1470,7 +1498,7 @@ export default function ImportTab() {
           <div className="p-2.5 rounded-lg border border-slate-700 bg-slate-800/60">
             <div className="font-bold text-purple-300">Bước 4: Xuất Mã Vạch (Máy In Label)</div>
             <div className="text-slate-300 text-[11px]">
-              In tem nhãn Code128 (chỉ chứa Mã SP chung IN HOA VIẾT LIỀN)
+              In tem nhãn Code128 theo <b>Mã con từng thuộc tính</b> (VD: GASIA221401DO38)
             </div>
           </div>
         </div>
@@ -1864,16 +1892,23 @@ export default function ImportTab() {
                         className="w-full bg-blue-50/70 text-blue-900 font-mono text-xs font-extrabold px-2.5 py-1.5 rounded border border-blue-300 uppercase focus:border-blue-600 focus:outline-none disabled:bg-slate-100"
                         title="Mã sản phẩm: Chữ đầu Cate + Tên Hãng (hoặc NN) + 6 chữ số (VD: GASIA221401)"
                       />
-                      <div className="mt-1 text-[10px] text-slate-500">
-                        {existingProd ? (
-                          <span className="text-emerald-700 font-bold">
-                            ✓ Đã có mã (Tồn: {existingProd.stock})
-                          </span>
-                        ) : row.productCode ? (
-                          <span>Cate + Hãng/NN + 6 số</span>
-                        ) : (
-                          <span>VD: GASIA221401 / GNN221401</span>
+                      <div className="mt-1 text-[10px] text-slate-500 space-y-0.5">
+                        {(row.color || row.size) && row.productCode && (
+                          <div className="font-mono font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded inline-block">
+                            Mã con in tem: {generateVariantProductCode(row.productCode, row.color, row.size)}
+                          </div>
                         )}
+                        <div>
+                          {existingProd ? (
+                            <span className="text-emerald-700 font-bold">
+                              ✓ Đã có mã gốc (Tồn: {existingProd.stock})
+                            </span>
+                          ) : row.productCode ? (
+                            <span>Mã gốc: Cate + Hãng/NN + 6 số</span>
+                          ) : (
+                            <span>VD: GASIA221401 / GNN221401</span>
+                          )}
+                        </div>
                       </div>
                     </td>
 
@@ -2551,7 +2586,19 @@ export default function ImportTab() {
                                       <tr key={i}>
                                         <td className="py-1.5 px-2 font-mono">{i + 1}</td>
                                         <td className="py-1.5 px-2 font-mono font-bold text-blue-700">
-                                          {it.productCode}
+                                          <div>
+                                            {it.variantCode ||
+                                              generateVariantProductCode(
+                                                it.productCode,
+                                                it.color,
+                                                it.size
+                                              )}
+                                          </div>
+                                          {(it.color || it.size) && (
+                                            <div className="text-[10px] text-slate-400 font-normal">
+                                              Gốc: {it.productCode}
+                                            </div>
+                                          )}
                                         </td>
                                         <td className="py-1.5 px-2 font-semibold text-slate-900">
                                           {it.productName}
@@ -2649,7 +2696,15 @@ export default function ImportTab() {
                       <tr key={idx} className="hover:bg-slate-50">
                         <td className="py-2.5 px-2.5 text-center font-mono">{idx + 1}</td>
                         <td className="py-2.5 px-3 font-mono font-bold text-blue-700">
-                          {it.productCode}
+                          <div>
+                            {it.variantCode ||
+                              generateVariantProductCode(it.productCode, it.color, it.size)}
+                          </div>
+                          {(it.color || it.size) && (
+                            <div className="text-[10px] text-slate-400 font-normal">
+                              Mã gốc: {it.productCode}
+                            </div>
+                          )}
                         </td>
                         <td className="py-2.5 px-3 font-semibold text-slate-900">
                           {it.productName}

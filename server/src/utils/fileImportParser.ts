@@ -2,6 +2,7 @@ import zlib from 'zlib';
 import {
   extractVariantFromText,
   generateProductCode,
+  generateVariantProductCode,
   isStandardSixDigitProductCode,
 } from './productCode';
 
@@ -11,6 +12,7 @@ export interface ParsedImportFileRow {
   brand: string;
   productName: string;
   productCode: string;
+  variantCode: string;
   color: string;
   size: string;
   unit: string;
@@ -268,7 +270,7 @@ function parseCleanInt(raw: any, fallback = 0): number {
 }
 
 /**
- * Chuyển ma trận dòng/cột (từ Excel/CSV) thành danh sách mặt hàng nhập kho đã chuẩn hóa Mã viết HOA liền + Màu + Size.
+ * Chuyển ma trận dòng/cột (từ Excel/CSV) thành danh sách mặt hàng nhập kho đã chuẩn hóa Mã viết HOA liền + Màu + Size + Mã con (variantCode).
  */
 export function convertMatrixToImportRows(matrix: string[][]): ParsedImportFileRow[] {
   if (!Array.isArray(matrix) || matrix.length === 0) return [];
@@ -450,12 +452,15 @@ export function convertMatrixToImportRows(matrix: string[][]): ParsedImportFileR
 
     if (!finalCode) continue;
 
+    const childVariantCode = generateVariantProductCode(finalCode, finalColor, finalSize);
+
     parsed.push({
       stt: parsed.length + 1,
       categoryName,
       brand: brand || extracted.brand,
       productName: cleanBaseName,
       productCode: finalCode,
+      variantCode: childVariantCode,
       color: finalColor,
       size: finalSize,
       unit: unit || 'Cái',
@@ -463,7 +468,7 @@ export function convertMatrixToImportRows(matrix: string[][]): ParsedImportFileR
       actualQuantity: Math.max(1, qty),
       costPrice,
       sellingPrice,
-      barcode: finalCode, // Mã vạch trên tem Label chỉ là Mã sản phẩm chung
+      barcode: childVariantCode, // Mã vạch trên tem Label in theo Mã con của từng thuộc tính
       note,
     });
   }
@@ -544,11 +549,16 @@ export function parseRawTextToImportRows(rawText: string): ParsedImportFileRow[]
     const extracted = extractVariantFromText(namePart);
     if (!extracted.code) continue;
 
+    const childVariantCode =
+      extracted.variantCode ||
+      generateVariantProductCode(extracted.code, extracted.color, extracted.size);
+
     results.push({
       stt: results.length + 1,
       brand: extracted.brand,
       productName: extracted.baseName,
       productCode: extracted.code,
+      variantCode: childVariantCode,
       color: extracted.color,
       size: extracted.size,
       unit,
@@ -556,7 +566,7 @@ export function parseRawTextToImportRows(rawText: string): ParsedImportFileRow[]
       actualQuantity: Math.max(1, qty),
       costPrice,
       sellingPrice,
-      barcode: extracted.code,
+      barcode: childVariantCode,
       note: '',
     });
   }

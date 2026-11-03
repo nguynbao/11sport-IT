@@ -1,9 +1,12 @@
 /**
- * Quy chuẩn Mã sản phẩm 11Sport (v3.0):
- * Công thức: [Chữ cái đầu tiên của Category] + [Tên Hãng IN HOA (không có hãng = NN)] + [6 chữ số bất kỳ (thể hiện version / size / màu)]
- * - Ví dụ có hãng: Category "Giày" (G) + Hãng "Asia" (ASIA) + 6 chữ số (221401) => GASIA221401
- * - Ví dụ không có hãng: Category "Giày" (G) + Không hãng (NN) + 6 chữ số (221401) => GNN221401
- * - Viết IN HOA liền nhau hoàn toàn, không chứa khoảng trắng hay ký tự đặc biệt.
+ * Quy chuẩn Mã sản phẩm 11Sport (v3.2):
+ * 1. Mã Gốc (Root Code): [Chữ cái đầu tiên của Category] + [Tên Hãng IN HOA (không có hãng = NN)] + [6 chữ số bất kỳ]
+ *    - Ví dụ có hãng: Category "Giày" (G) + Hãng "Asia" (ASIA) + 6 chữ số (221401) => GASIA221401
+ *    - Ví dụ không có hãng: Category "Giày" (G) + Không hãng (NN) + 6 chữ số (221401) => GNN221401
+ * 2. Mã Con theo thuộc tính Màu + Size (Variant Code / Child SKU):
+ *    - Công thức: [Mã Gốc IN HOA][MÀU IN HOA KHÔNG DẤU VIẾT LIỀN][SIZE IN HOA VIẾT LIỀN]
+ *    - Ví dụ: Giày đỏ size 38 => GASIA221401DO38, Giày đỏ size 39 => GASIA221401DO39
+ *    - In tem mã vạch và quét kiểm kho / bán hàng POS đều sử dụng Mã Con này.
  */
 
 export interface ProductCodeOptions {
@@ -23,6 +26,7 @@ export interface ProductCodeOptions {
 export interface ExtractedProductVariantInfo {
   baseName: string;
   code: string;
+  variantCode: string;
   brand: string;
   modelName: string;
   color: string;
@@ -201,6 +205,28 @@ export function buildVariantKey(color?: string, size?: string): string {
 }
 
 /**
+ * Sinh Mã Con (Variant Code / Child SKU) cho từng thuộc tính (Màu sắc + Size):
+ * Công thức: [Mã gốc IN HOA][MÀU IN HOA KHÔNG DẤU VIẾT LIỀN][SIZE IN HOA VIẾT LIỀN]
+ * - Ví dụ: baseCode = "GASIA221401", color = "Đỏ", size = "38" => "GASIA221401DO38"
+ * - Ví dụ: baseCode = "GASIA221401", color = "Đỏ", size = "39" => "GASIA221401DO39"
+ * - Nếu không có màu và không có size thì trả về baseCode.
+ */
+export function generateVariantProductCode(
+  baseCode: string,
+  color?: string,
+  size?: string
+): string {
+  const cleanBase = normalizeToCompactUpperCode(String(baseCode || '').trim());
+  if (!cleanBase) return '';
+  const cleanColor = normalizeToCompactUpperCode(String(color || '').trim());
+  const cleanSize = normalizeToCompactUpperCode(String(size || '').trim());
+  const suffix = `${cleanColor}${cleanSize}`;
+  if (!suffix) return cleanBase;
+  if (cleanBase.endsWith(suffix)) return cleanBase;
+  return `${cleanBase}${suffix}`;
+}
+
+/**
  * Kiểm tra mã đã đúng chuẩn [Chữ cái Cate][Tên Hãng/NN][6 chữ số] (VD: GASIA221401, GNN221401) hay chưa.
  */
 export function isStandardSixDigitProductCode(code?: string): boolean {
@@ -376,8 +402,8 @@ function stripColorAndSizeFromClause(clause: string): {
 
 /**
  * Tách thông tin Màu sắc, Size, Hãng và sinh Mã sản phẩm chuẩn:
- * [Chữ cái đầu tiên của Cate] + [Tên Hãng (không có hãng là NN)] + [6 chữ số]
- * Ví dụ: GASIA221401, GNN221401
+ * - code (Mã gốc): [Chữ cái đầu tiên của Cate] + [Tên Hãng (không có hãng là NN)] + [6 chữ số]
+ * - variantCode (Mã con): [code] + [MÀU IN HOA] + [SIZE IN HOA] (VD: GASIA221401DO38)
  */
 export function extractVariantFromText(
   rawName: string,
@@ -391,12 +417,31 @@ export function extractVariantFromText(
     return {
       baseName: '',
       code: '',
+      variantCode: '',
       brand: '',
       modelName: '',
       color: '',
       size: '',
       categoryInitial: '',
       brandCode: 'NN',
+      sixDigits: '',
+    };
+  }
+
+  // Nếu truyền object dạng { categoryCode: 'AO', brand: 'Kamito', modelName: 'Pro' } (không có rawName)
+  if (!raw && options?.categoryCode && explicitBrand && modelName && !options?.sixDigits && !options?.existingCode) {
+    const legacyCode = normalizeToCompactUpperCode(`${options.categoryCode}${explicitBrand}${modelName}`);
+    const vCode = generateVariantProductCode(legacyCode, options?.color, options?.size);
+    return {
+      baseName: `${explicitBrand} ${modelName}`.trim(),
+      code: legacyCode,
+      variantCode: vCode,
+      brand: explicitBrand,
+      modelName,
+      color: options?.color || '',
+      size: options?.size || '',
+      categoryInitial: normalizeToCompactUpperCode(options.categoryCode).charAt(0) || 'S',
+      brandCode: normalizeToCompactUpperCode(explicitBrand),
       sixDigits: '',
     };
   }
@@ -413,13 +458,16 @@ export function extractVariantFromText(
     const sixDigits = compactRaw.slice(-6);
     const catInit = compactRaw.charAt(0);
     const bCode = compactRaw.slice(1, -6) || 'NN';
+    const c = options?.color || '';
+    const s = options?.size || '';
     return {
       baseName: raw,
       code: compactRaw,
+      variantCode: generateVariantProductCode(compactRaw, c, s),
       brand: bCode === 'NN' ? '' : bCode,
       modelName,
-      color: options?.color || '',
-      size: options?.size || '',
+      color: c,
+      size: s,
       categoryInitial: catInit,
       brandCode: bCode,
       sixDigits,
@@ -466,13 +514,13 @@ export function extractVariantFromText(
   if (options?.sixDigits && /^\d{6}$/.test(options.sixDigits.trim())) {
     sixDigits = options.sixDigits.trim();
   } else if (options?.existingCode) {
-    const existingMatch = normalizeToCompactUpperCode(options.existingCode).match(/(\d{6})$/);
+    const existingMatch = normalizeToCompactUpperCode(options.existingCode).match(/(\d{6})/);
     if (existingMatch) {
       sixDigits = existingMatch[1];
     }
   }
   if (!sixDigits) {
-    const nameSixDigitsMatch = raw.match(/\b(\d{6})\b/) || compactRaw.match(/(\d{6})$/);
+    const nameSixDigitsMatch = raw.match(/\b(\d{6})\b/) || compactRaw.match(/(\d{6})/);
     if (nameSixDigitsMatch) {
       sixDigits = nameSixDigitsMatch[1];
     }
@@ -489,10 +537,12 @@ export function extractVariantFromText(
   }
 
   const code = `${categoryInitial}${brandCode}${sixDigits}`;
+  const variantCode = generateVariantProductCode(code, detectedColor, detectedSize);
 
   return {
     baseName,
     code,
+    variantCode,
     brand: brandDisplay,
     modelName,
     color: detectedColor,

@@ -3,6 +3,7 @@ import { categoryRepo, productRepo, stockMovementRepo, staffRepo } from '../conf
 import { ensureStandardProductCodesMigrated } from '../config/seed';
 import {
   generateProductCode,
+  generateVariantProductCode,
   extractVariantFromText,
   buildVariantKey,
   isStandardSixDigitProductCode,
@@ -67,7 +68,7 @@ async function buildStaffRoleMap(): Promise<Map<string, string>> {
 // POST /api/v1/products/generate-code
 productsInventoryRouter.post('/products/generate-code', async (req, res, next) => {
   try {
-    const { name, categoryCode, categoryName, brand, modelName } = req.body || {};
+    const { name, categoryCode, categoryName, brand, modelName, color, size } = req.body || {};
     if (!name && !brand && !modelName) {
       throw new ApiError(400, 'VALIDATION_ERROR', 'Tên sản phẩm là bắt buộc để sinh mã', {
         name: 'Bắt buộc',
@@ -80,19 +81,26 @@ productsInventoryRouter.post('/products/generate-code', async (req, res, next) =
       brand,
       modelName,
     });
-    const code = extracted.code || generateProductCode(String(name || ''), {
-      categoryCode,
-      categoryName,
-      brand,
-      modelName,
-    });
+    const code =
+      extracted.code ||
+      generateProductCode(String(name || ''), {
+        categoryCode,
+        categoryName,
+        brand,
+        modelName,
+      });
+
+    const finalColor = color !== undefined ? String(color).trim() : extracted.color;
+    const finalSize = size !== undefined ? String(size).trim().toUpperCase() : extracted.size;
+    const variantCode = generateVariantProductCode(code, finalColor, finalSize);
 
     res.json({
       data: {
         code,
+        variantCode,
         baseName: extracted.baseName,
-        color: extracted.color,
-        size: extracted.size,
+        color: finalColor,
+        size: finalSize,
       },
       meta: {},
     });
@@ -123,12 +131,17 @@ productsInventoryRouter.get('/products', async (req, res, next) => {
           (p.categoryName ? catByName.get(String(p.categoryName).trim().toLowerCase()) : undefined);
         const { costPrice, ...rest } = p as any;
         const floors = getFloorStocks(p);
-        const visibleVariants = floors.variants.map((v) => ({
-          ...v,
-          stockFloor1: v.stockFloor1,
-          stockFloor2: isSalesRole ? 0 : v.stockFloor2,
-          stock: isSalesRole ? v.stockFloor1 : v.stock,
-        }));
+        const visibleVariants = floors.variants.map((v) => {
+          const vCode = v.variantCode || generateVariantProductCode(p.code, v.color, v.size);
+          return {
+            ...v,
+            variantCode: vCode,
+            barcode: v.barcode || vCode,
+            stockFloor1: v.stockFloor1,
+            stockFloor2: isSalesRole ? 0 : v.stockFloor2,
+            stock: isSalesRole ? v.stockFloor1 : v.stock,
+          };
+        });
         return {
           ...rest,
           barcode: p.barcode || p.code,
@@ -164,6 +177,8 @@ productsInventoryRouter.get('/products', async (req, res, next) => {
           { text: p.unit, weight: 0.6 },
           ...(Array.isArray(p.variants)
             ? p.variants.flatMap((v: any) => [
+                { text: v.variantCode, weight: 1.6 },
+                { text: v.barcode, weight: 1.5 },
                 { text: v.color, weight: 0.8 },
                 { text: v.size, weight: 0.8 },
               ])
@@ -279,10 +294,12 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
       throw new ApiError(403, 'COST_PRICE_FORBIDDEN', 'Chỉ Quản lý/Admin mới được đặt giá gốc');
     }
 
-    // Nếu truyền mảng variants[] (nhập nhiều Size/Màu cùng lúc vào 1 Mã)
+    // Nếu truyền mảng variants[] (nhập nhiều Size/Màu cùng lúc vào 1 Mã gốc, mỗi biến thể có Mã con riêng)
     const inputVariantsList =
       Array.isArray(rawInputVariants) && rawInputVariants.length > 0
         ? rawInputVariants.map((rv: any) => {
+            const vColor = String(rv.color || '').trim();
+            const vSize = String(rv.size || '').trim().toUpperCase();
             const vQty = Math.max(0, Math.round(Number(rv.quantity ?? rv.stock ?? 0)));
             const vF1 =
               rv.stockFloor1 !== undefined
@@ -296,9 +313,12 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
                 : targetFloor === 'FLOOR_2'
                 ? vQty
                 : 0;
+            const childCode = generateVariantProductCode(code, vColor, vSize);
             return {
-              color: String(rv.color || '').trim(),
-              size: String(rv.size || '').trim().toUpperCase(),
+              color: vColor,
+              size: vSize,
+              variantCode: childCode,
+              barcode: childCode,
               stockFloor1: vF1,
               stockFloor2: vF2,
               stock: vF1 + vF2,
@@ -348,7 +368,7 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
 
         if (inputVariantsList) {
           const mergedVariants = [...getFloorStocks(existing).variants, ...inputVariantsList];
-          const sum = summarizeVariants(mergedVariants);
+          const sum = summarizeVariants(mergedVariants, existing.code);
           workingProd = {
             ...workingProd,
             variants: sum.variants,
@@ -422,14 +442,17 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
       );
     }
 
+    const singleVariantCode = generateVariantProductCode(code, finalColor, finalSize);
     const initialVariants = inputVariantsList
-      ? summarizeVariants(inputVariantsList).variants
+      ? summarizeVariants(inputVariantsList, code).variants
       : finalColor || finalSize
       ? [
           {
             variantKey: buildVariantKey(finalColor, finalSize),
             color: finalColor,
             size: finalSize,
+            variantCode: singleVariantCode,
+            barcode: singleVariantCode,
             stockFloor1: targetFloor === 'FLOOR_1' ? qty : 0,
             stockFloor2: targetFloor === 'FLOOR_2' ? qty : 0,
             stock: qty,
@@ -439,7 +462,7 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
 
     const initialSummary =
       initialVariants.length > 0
-        ? summarizeVariants(initialVariants)
+        ? summarizeVariants(initialVariants, code)
         : {
             variants: [],
             stockFloor1: targetFloor === 'FLOOR_1' ? qty : 0,
@@ -449,7 +472,7 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
 
     const created = await productRepo.create({
       code,
-      barcode: code, // Mã vạch trên tem Label chỉ là Mã sản phẩm chung
+      barcode: code, // Mã gốc sản phẩm; từng biến thể con lưu mã tem riêng tại variants[].variantCode
       name: cleanProductName,
       brand: brand ? String(brand).trim() : extracted.brand || '',
       modelName: modelName ? String(modelName).trim() : extracted.modelName || '',
@@ -568,7 +591,7 @@ productsInventoryRouter.patch('/products/:id', async (req, res, next) => {
       }
 
       if (hasVariantsEdit) {
-        const sum = summarizeVariants(rawVariants);
+        const sum = summarizeVariants(rawVariants, product.code);
         deltaFloor1 = sum.stockFloor1 - currentFloors.stockFloor1;
         deltaFloor2 = sum.stockFloor2 - currentFloors.stockFloor2;
         stockDelta = sum.stock - balanceBefore;
@@ -661,6 +684,10 @@ productsInventoryRouter.patch('/products/:id', async (req, res, next) => {
         if (!conflict || String(conflict._id) === String(product._id)) {
           updateData.code = nextCode;
           updateData.barcode = nextCode;
+          const variantsSource = updateData.variants || currentFloors.variants;
+          if (Array.isArray(variantsSource) && variantsSource.length > 0) {
+            updateData.variants = summarizeVariants(variantsSource, nextCode).variants;
+          }
         }
       }
     }

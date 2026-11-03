@@ -14,6 +14,8 @@ export interface IImportReceiptItem {
   stt: number;
   productId?: string;
   productCode: string;
+  /** Mã con riêng theo thuộc tính (Màu, Size): [Mã gốc][MÀU][SIZE] (VD: GASIA221401DO38) */
+  variantCode?: string;
   productName: string;
   brand?: string;
   color?: string;
@@ -35,7 +37,7 @@ export interface IImportReceiptItem {
   checkedAt?: Date;
   /** Số chiếc từng nhân viên đã quét kiểm */
   scanCounts?: IScanCount[];
-  /** Mã vạch EAN/Code128 được ghi nhớ khi quét tag thực tế (= productCode) */
+  /** Mã vạch EAN/Code128 trên tem của dòng hàng (= variantCode nếu có thuộc tính, ngược lại = productCode) */
   barcode?: string;
   note: string;
   isChecked: boolean;
@@ -67,6 +69,7 @@ const ImportReceiptItemSchema = new Schema<IImportReceiptItem>(
     stt: { type: Number, required: true },
     productId: { type: String, default: '' },
     productCode: { type: String, required: true },
+    variantCode: { type: String, default: '' },
     productName: { type: String, required: true },
     brand: { type: String, default: '' },
     color: { type: String, default: '' },

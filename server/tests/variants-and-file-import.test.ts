@@ -3,11 +3,11 @@ import request from 'supertest';
 import { createApp } from '../src/app';
 import { connectDatabase, clearDatabase, disconnectDatabase } from '../src/config/db';
 import { seedDatabaseIfNeeded } from '../src/config/seed';
-import { generateProductCode } from '../src/utils/productCode';
+import { generateProductCode, generateVariantProductCode } from '../src/utils/productCode';
 
 const app = createApp();
 
-describe('v2.8: Quy 1 loại SP = 1 Mã IN HOA VIẾT LIỀN, Quản lý biến thể (Màu + Size) & Import PDF/Excel', () => {
+describe('v2.8 & v3.2: Mã gốc + Mã con theo thuộc tính (variantCode = [RootCode][COLOR][SIZE]), Quản lý biến thể & Import PDF/Excel', () => {
   let aoCatId = '';
 
   beforeAll(async () => {
@@ -27,36 +27,29 @@ describe('v2.8: Quy 1 loại SP = 1 Mã IN HOA VIẾT LIỀN, Quản lý biến 
     await disconnectDatabase();
   });
 
-  it('Sinh mã chung IN HOA VIẾT LIỀN không chứa màu/size (VD: AOKAMITOPRO, GIAYASICSCOURTFF3)', () => {
-    expect(
-      generateProductCode({
-        categoryCode: 'AO',
-        brand: 'Kamito',
-        modelName: 'Pro',
-      })
-    ).toBe('AOKAMITOPRO');
+  it('Sinh mã gốc IN HOA VIẾT LIỀN và Mã con thuộc tính (VD: GASIA221401 -> GASIA221401DO38, GASIA221401DO39)', () => {
+    // Cùng dòng sản phẩm khác màu/size sinh ra cùng 1 Mã gốc 6 chữ số
+    const rootCode1 = generateProductCode('Áo Kamito Pro (Áo Kamito Pro Đỏ size L)');
+    const rootCode2 = generateProductCode('Áo Kamito Pro (Áo Kamito Pro Xanh Đen size XL)');
+    expect(rootCode1).toBe(rootCode2);
+    expect(rootCode1).toMatch(/^AKAMITO\d{6}$/);
 
-    expect(
-      generateProductCode({
-        categoryCode: 'GIAY',
-        brand: 'Asics',
-        modelName: 'Court FF3',
-      })
-    ).toBe('GIAYASICSCOURTFF3');
-
-    // Tự động bóc tách màu + size ở cuối chuỗi trong ngoặc và không đưa vào mã
-    expect(generateProductCode('Áo Kamito Pro (Áo Kamito Pro Đỏ size L)')).toBe('AOKAMITOPRO');
-    expect(generateProductCode('Áo Kamito Pro (Áo Kamito Pro Xanh Đen size XL)')).toBe(
-      'AOKAMITOPRO'
+    // Sinh mã con theo thuộc tính (Màu + Size)
+    expect(generateVariantProductCode('GASIA221401', 'Đỏ', '38')).toBe('GASIA221401DO38');
+    expect(generateVariantProductCode('GASIA221401', 'Đỏ', '39')).toBe('GASIA221401DO39');
+    expect(generateVariantProductCode('GASIA221401', 'Trắng Xanh', '41')).toBe(
+      'GASIA221401TRANGXANH41'
     );
+    expect(generateVariantProductCode('AKAMITO146857', 'Đỏ', 'L')).toBe('AKAMITO146857DOL');
+    expect(generateVariantProductCode('AKAMITO146857', '', '')).toBe('AKAMITO146857');
   });
 
-  it('POST /api/v1/imports/parse-file: bóc tách file CSV/Excel thành danh sách hàng có Mã SP, Màu sắc, Size, Số lượng, Giá gốc, Giá bán', async () => {
+  it('POST /api/v1/imports/parse-file: bóc tách file CSV/Excel thành danh sách hàng có Mã gốc, Mã con (variantCode / barcode), Màu sắc, Size, Số lượng', async () => {
     const csvContent = [
       'Mã SP,Tên sản phẩm,Hãng,Màu sắc,Size,ĐVT,Số lượng,Giá gốc,Giá bán',
-      'AOKAMITOPRO,Áo đấu Kamito Pro,Kamito,Đỏ,L,Cái,10,150000,290000',
-      'AOKAMITOPRO,Áo đấu Kamito Pro,Kamito,Đỏ,XL,Cái,8,150000,290000',
-      'AOKAMITOPRO,Áo đấu Kamito Pro,Kamito,Trắng,M,Cái,12,150000,290000',
+      'AKAMITO146857,Áo đấu Kamito Pro,Kamito,Đỏ,L,Cái,10,150000,290000',
+      'AKAMITO146857,Áo đấu Kamito Pro,Kamito,Đỏ,XL,Cái,8,150000,290000',
+      'AKAMITO146857,Áo đấu Kamito Pro,Kamito,Trắng,M,Cái,12,150000,290000',
     ].join('\n');
 
     const base64Data = Buffer.from(csvContent, 'utf-8').toString('base64');
@@ -73,7 +66,9 @@ describe('v2.8: Quy 1 loại SP = 1 Mã IN HOA VIẾT LIỀN, Quản lý biến 
     expect(parseRes.body.data.fileType).toBe('CSV');
     expect(parseRes.body.data.items.length).toBe(3);
     expect(parseRes.body.data.items[0]).toMatchObject({
-      productCode: 'AOKAMITOPRO',
+      productCode: 'AKAMITO146857',
+      variantCode: 'AKAMITO146857DOL',
+      barcode: 'AKAMITO146857DOL',
       productName: 'Áo đấu Kamito Pro',
       color: 'Đỏ',
       size: 'L',
@@ -81,15 +76,25 @@ describe('v2.8: Quy 1 loại SP = 1 Mã IN HOA VIẾT LIỀN, Quản lý biến 
       costPrice: 150000,
       sellingPrice: 290000,
     });
+    expect(parseRes.body.data.items[1]).toMatchObject({
+      productCode: 'AKAMITO146857',
+      variantCode: 'AKAMITO146857DOXL',
+      barcode: 'AKAMITO146857DOXL',
+      color: 'Đỏ',
+      size: 'XL',
+      expectedQuantity: 8,
+    });
     expect(parseRes.body.data.items[2]).toMatchObject({
-      productCode: 'AOKAMITOPRO',
+      productCode: 'AKAMITO146857',
+      variantCode: 'AKAMITO146857TRANGM',
+      barcode: 'AKAMITO146857TRANGM',
       color: 'Trắng',
       size: 'M',
       expectedQuantity: 12,
     });
   });
 
-  it('Hoàn thành phiếu nhập nhiều dòng cùng mã AOKAMITOPRO nhưng khác Màu/Size -> gộp thành 1 sản phẩm duy nhất với mảng variants[]', async () => {
+  it('Hoàn thành phiếu nhập nhiều dòng cùng mã AKAMITO146857 nhưng khác Màu/Size -> gộp thành 1 sản phẩm duy nhất với mảng variants[] có variantCode riêng cho từng thuộc tính', async () => {
     const createImp = await request(app)
       .post('/api/v1/imports')
       .set('x-user-id', 'warehouse1')
@@ -99,20 +104,20 @@ describe('v2.8: Quy 1 loại SP = 1 Mã IN HOA VIẾT LIỀN, Quản lý biến 
         note: 'Nhập lô Áo Kamito Pro 3 biến thể',
         items: [
           {
-            productCode: 'AOKAMITOPRO',
+            productCode: 'AKAMITO146857',
             productName: 'Áo đấu Kamito Pro',
             brand: 'Kamito',
             color: 'Đỏ',
             size: 'L',
             unit: 'Cái',
             expectedQuantity: 10,
-            actualQuantity: 10,
+            actualQuantity: 9,
             costPrice: 150000,
             sellingPrice: 290000,
             isConfirmed: true,
           },
           {
-            productCode: 'AOKAMITOPRO',
+            productCode: 'AKAMITO146857',
             productName: 'Áo đấu Kamito Pro',
             brand: 'Kamito',
             color: 'Đỏ',
@@ -125,7 +130,7 @@ describe('v2.8: Quy 1 loại SP = 1 Mã IN HOA VIẾT LIỀN, Quản lý biến 
             isConfirmed: true,
           },
           {
-            productCode: 'AOKAMITOPRO',
+            productCode: 'AKAMITO146857',
             productName: 'Áo đấu Kamito Pro',
             brand: 'Kamito',
             color: 'Trắng',
@@ -141,6 +146,22 @@ describe('v2.8: Quy 1 loại SP = 1 Mã IN HOA VIẾT LIỀN, Quản lý biến 
       });
     expect(createImp.status).toBe(201);
 
+    // Chuyển phiếu sang trạng thái CHECKING để quét kiểm hàng thực tế
+    await request(app)
+      .post(`/api/v1/imports/${createImp.body.data._id}/finish-listing`)
+      .set('x-user-id', 'warehouse1');
+
+    // Quét kiểm hàng bằng Mã con AKAMITO146857DOL -> khớp chính xác dòng Đỏ - L (scannedQuantity = 1)
+    const scanCheckRes = await request(app)
+      .post(`/api/v1/imports/${createImp.body.data._id}/scan-check`)
+      .set('x-user-id', 'warehouse1')
+      .send({ barcode: 'AKAMITO146857DOL', actualQuantity: 10 });
+    expect(scanCheckRes.status).toBe(200);
+    expect(scanCheckRes.body.data.matched).toBe(true);
+    expect(scanCheckRes.body.data.matchedIndex).toBe(0);
+    expect(scanCheckRes.body.data.receipt.items[0].variantCode).toBe('AKAMITO146857DOL');
+    expect(scanCheckRes.body.data.receipt.items[0].actualQuantity).toBe(10);
+
     const completeRes = await request(app)
       .post(`/api/v1/imports/${createImp.body.data._id}/complete`)
       .set('x-user-id', 'warehouse1')
@@ -148,7 +169,7 @@ describe('v2.8: Quy 1 loại SP = 1 Mã IN HOA VIẾT LIỀN, Quản lý biến 
     expect(completeRes.status).toBe(200);
 
     const prodsRes = await request(app).get('/api/v1/products').set('x-user-id', 'admin');
-    const kamitoProds = prodsRes.body.data.filter((p: any) => p.code === 'AOKAMITOPRO');
+    const kamitoProds = prodsRes.body.data.filter((p: any) => p.code === 'AKAMITO146857');
     expect(kamitoProds.length).toBe(1);
 
     const prod = kamitoProds[0];
@@ -159,11 +180,19 @@ describe('v2.8: Quy 1 loại SP = 1 Mã IN HOA VIẾT LIỀN, Quản lý biến 
     expect(prod.stockFloor2).toBe(0);
     expect(prod.stock).toBe(30);
     expect(prod.variants.length).toBe(3);
+
+    const varDoL = prod.variants.find((v: any) => v.color === 'Đỏ' && v.size === 'L');
+    const varDoXL = prod.variants.find((v: any) => v.color === 'Đỏ' && v.size === 'XL');
+    const varTrangM = prod.variants.find((v: any) => v.color === 'Trắng' && v.size === 'M');
+    expect(varDoL.variantCode).toBe('AKAMITO146857DOL');
+    expect(varDoL.barcode).toBe('AKAMITO146857DOL');
+    expect(varDoXL.variantCode).toBe('AKAMITO146857DOXL');
+    expect(varTrangM.variantCode).toBe('AKAMITO146857TRANGM');
   });
 
   it('Bán hàng POS chọn đúng Màu + Size, chuyển tầng theo Màu + Size và cập nhật biến thể từ CMS', async () => {
     const prodsRes = await request(app).get('/api/v1/products').set('x-user-id', 'admin');
-    const prod = prodsRes.body.data.find((p: any) => p.code === 'AOKAMITOPRO');
+    const prod = prodsRes.body.data.find((p: any) => p.code === 'AKAMITO146857');
 
     // 1. Bán 3 áo Đỏ - L trên POS
     const orderRes = await request(app)
@@ -238,7 +267,7 @@ describe('v2.8: Quy 1 loại SP = 1 Mã IN HOA VIẾT LIỀN, Quản lý biến 
       .post('/api/v1/products')
       .set('x-user-id', 'admin')
       .send({
-        code: 'AOKAMITOPRO',
+        code: 'AKAMITO146857',
         name: 'Áo đấu Kamito Pro',
         categoryId: aoCatId,
         color: 'Vàng',
@@ -250,5 +279,9 @@ describe('v2.8: Quy 1 loại SP = 1 Mã IN HOA VIẾT LIỀN, Quản lý biến 
     expect(addVariantRes.status).toBe(200);
     expect(addVariantRes.body.data.variants.length).toBe(4);
     expect(addVariantRes.body.data.stock).toBe(32); // 27 + 5
+    const yellowS = addVariantRes.body.data.variants.find(
+      (v: any) => v.color === 'Vàng' && v.size === 'S'
+    );
+    expect(yellowS.variantCode).toBe('AKAMITO146857VANGS');
   });
 });

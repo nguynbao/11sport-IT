@@ -5,6 +5,7 @@ import ExportExcelButton from "./ExportExcelButton";
 import BarcodeLabelModal, { BarcodeLabelItem } from "./BarcodeLabelModal";
 import {
   cleanBarcodeCode,
+  findProductAndVariantByScannedBarcode,
   findProductByScannedBarcode,
   isScannedCodeMatch,
   playScannerBeep,
@@ -29,6 +30,7 @@ import {
   parseNumberDots,
   formatDateTime,
   generateProductCode,
+  generateVariantProductCode,
   extractVariantFromText,
   useDebounce,
   filterAndRankBySearch,
@@ -225,7 +227,11 @@ export default function InventoryModule() {
   const [scannerEnabled, setScannerEnabled] = useState(true);
   const [scannerInput, setScannerInput] = useState("");
   const [scannedCheckCounts, setScannedCheckCounts] = useState<Record<string, number>>({});
+  const [scannedVariantCounts, setScannedVariantCounts] = useState<
+    Record<string, Record<string, number>>
+  >({});
   const [lastScannedProdId, setLastScannedProdId] = useState<string | null>(null);
+  const [lastScannedVariantCode, setLastScannedVariantCode] = useState<string | null>(null);
   const [onlyShowScanned, setOnlyShowScanned] = useState(false);
   const [lastScanFeedback, setLastScanFeedback] = useState<{
     type: "success" | "warning" | "error";
@@ -1134,27 +1140,91 @@ export default function InventoryModule() {
     await handleSaveProductVariants(prod, current);
   };
 
-  // Mở modal in tem mã vạch (chỉ in đúng mã sản phẩm chung p.code, không kèm màu/size)
-  const handleOpenPrintLabelForProduct = (prod: Product) => {
+  // Mở modal in tem mã vạch theo Mã con của từng thuộc tính (Màu sắc + Size), không in mã gốc khi có biến thể
+  const buildLabelItemsForProduct = (
+    prod: Product,
+    specificVariant?: ProductVariant
+  ): BarcodeLabelItem[] => {
+    const sellPrice = Number(editingPrices[prod._id] ?? prod.sellingPrice ?? 0);
+    const prodVariants = editingVariants[prod._id] ?? prod.variants ?? [];
+    const namedVars = prodVariants.filter((v) => v.color || v.size);
+
+    if (specificVariant) {
+      const childCode =
+        specificVariant.variantCode ||
+        generateVariantProductCode(prod.code, specificVariant.color, specificVariant.size);
+      const vQty =
+        activeWarehouse === "FLOOR_2"
+          ? Number(specificVariant.stockFloor2 || 0)
+          : activeWarehouse === "FLOOR_1"
+            ? Number(specificVariant.stockFloor1 || 0)
+            : (Number(specificVariant.stockFloor1) || 0) +
+              (Number(specificVariant.stockFloor2) || 0);
+      return [
+        {
+          id: `${prod._id}_${childCode}`,
+          code: childCode,
+          productCode: prod.code,
+          productName: prod.name,
+          color: specificVariant.color,
+          size: specificVariant.size,
+          sellingPrice: sellPrice,
+          unit: prod.unit,
+          defaultQty: Math.max(1, vQty || 1),
+        },
+      ];
+    }
+
+    if (namedVars.length > 0) {
+      return namedVars.map((v, idx) => {
+        const childCode =
+          v.variantCode || generateVariantProductCode(prod.code, v.color, v.size);
+        const vQty =
+          activeWarehouse === "FLOOR_2"
+            ? Number(v.stockFloor2 || 0)
+            : activeWarehouse === "FLOOR_1"
+              ? Number(v.stockFloor1 || 0)
+              : (Number(v.stockFloor1) || 0) + (Number(v.stockFloor2) || 0);
+        return {
+          id: `${prod._id}_${childCode}_${idx}`,
+          code: childCode,
+          productCode: prod.code,
+          productName: prod.name,
+          color: v.color,
+          size: v.size,
+          sellingPrice: sellPrice,
+          unit: prod.unit,
+          defaultQty: Math.max(1, vQty || 1),
+        };
+      });
+    }
+
     const qty = Math.max(1, getActiveQty(prod) || 1);
-    setLabelItems([
+    return [
       {
+        id: prod._id,
+        code: prod.code,
         productCode: prod.code,
         productName: prod.name,
-        sellingPrice: Number(editingPrices[prod._id] ?? prod.sellingPrice ?? 0),
+        sellingPrice: sellPrice,
+        unit: prod.unit,
         defaultQty: qty,
       },
-    ]);
+    ];
+  };
+
+  const handleOpenPrintLabelForProduct = (
+    prod: Product,
+    specificVariant?: ProductVariant
+  ) => {
+    setLabelItems(buildLabelItemsForProduct(prod, specificVariant));
     setShowLabelModal(true);
   };
 
   const handleOpenPrintLabelsForDisplayed = () => {
-    const list: BarcodeLabelItem[] = displayedProducts.slice(0, 50).map((prod) => ({
-      productCode: prod.code,
-      productName: prod.name,
-      sellingPrice: Number(editingPrices[prod._id] ?? prod.sellingPrice ?? 0),
-      defaultQty: Math.max(1, getActiveQty(prod) || 1),
-    }));
+    const list: BarcodeLabelItem[] = displayedProducts
+      .slice(0, 50)
+      .flatMap((prod) => buildLabelItemsForProduct(prod));
     setLabelItems(list);
     setShowLabelModal(true);
   };
@@ -1384,6 +1454,12 @@ export default function InventoryModule() {
       { text: p.name, weight: 1.3 },
       { text: p.categoryName, weight: 0.9 },
       { text: p.unit, weight: 0.6 },
+      ...(Array.isArray(p.variants)
+        ? p.variants.map((v) => ({
+            text: `${v.variantCode || generateVariantProductCode(p.code, v.color, v.size)} ${v.color || ""} ${v.size || ""} size ${v.size || ""}`,
+            weight: 1.4,
+          }))
+        : []),
     ]);
   }, [products, activeWarehouse, showZeroFloorItems, importsList, search, onlyShowScanned, scannedCheckCounts]);
 
@@ -1463,9 +1539,21 @@ export default function InventoryModule() {
 
       // Nếu đang mở Popup Nhập Kho Admin -> Quét mã để cộng SL hoặc thêm dòng vào bảng nhập kho
       if (showAdminImportModal) {
-        const matchedRowIdx = adminImportRows.findIndex(
-          (r) => r.productCode && isScannedCodeMatch(rawTrimmed, r.productCode)
+        const exactChildIdx = adminImportRows.findIndex(
+          (r) =>
+            r.productCode &&
+            (r.color || r.size) &&
+            isScannedCodeMatch(
+              rawTrimmed,
+              generateVariantProductCode(r.productCode, r.color, r.size)
+            )
         );
+        const matchedRowIdx =
+          exactChildIdx >= 0
+            ? exactChildIdx
+            : adminImportRows.findIndex(
+                (r) => r.productCode && isScannedCodeMatch(rawTrimmed, r.productCode)
+              );
         if (matchedRowIdx >= 0) {
           setAdminImportRows((prev) =>
             prev.map((r, i) =>
@@ -1475,22 +1563,27 @@ export default function InventoryModule() {
             )
           );
           const row = adminImportRows[matchedRowIdx];
+          const rowCode = generateVariantProductCode(row.productCode, row.color, row.size);
           playScannerBeep("success");
           setLastScanFeedback({
             type: "success",
-            code: row.productCode,
-            message: `Đã cộng +1 vào dòng #${matchedRowIdx + 1} [${row.productCode}] ${row.productName} (SL: ${(Number(row.quantity) || 0) + 1})`,
+            code: rowCode,
+            message: `Đã cộng +1 vào dòng #${matchedRowIdx + 1} [${rowCode}] ${row.productName} (SL: ${(Number(row.quantity) || 0) + 1})`,
             time: nowStr,
           });
           return;
         }
 
-        const product = findProductByScannedBarcode(pool, rawTrimmed);
-        if (product) {
+        const scanRes = findProductAndVariantByScannedBarcode(pool, rawTrimmed);
+        if (scanRes) {
+          const { product, matchedVariant } = scanRes;
           const catId =
             typeof product.categoryId === "object"
               ? product.categoryId?._id || ""
               : String(product.categoryId || "");
+          const vColor = matchedVariant?.color || "";
+          const vSize = matchedVariant?.size || "";
+          const childCode = generateVariantProductCode(product.code, vColor, vSize);
           setAdminImportRows((prev) => {
             const isSingleBlank =
               prev.length === 1 && !prev[0].productCode.trim() && !prev[0].productName.trim();
@@ -1500,8 +1593,8 @@ export default function InventoryModule() {
               productName: product.name,
               categoryId: catId || newProdCatId || categories[0]?._id || "",
               brand: product.brand || "",
-              color: "",
-              size: "",
+              color: vColor,
+              size: vSize,
               unit: product.unit || "Cái",
               quantity: 1,
               costPrice: Number(product.costPrice || 0),
@@ -1514,8 +1607,10 @@ export default function InventoryModule() {
           playScannerBeep("success");
           setLastScanFeedback({
             type: "success",
-            code: product.code,
-            message: `Đã thêm [${product.code}] ${product.name} vào bảng nhập kho (SL: 1)`,
+            code: childCode,
+            message: `Đã thêm [${childCode}] ${product.name}${
+              vColor || vSize ? ` (${[vColor, vSize].filter(Boolean).join(" - ")})` : ""
+            } vào bảng nhập kho (SL: 1)`,
             time: nowStr,
           });
           return;
@@ -1531,19 +1626,20 @@ export default function InventoryModule() {
         return;
       }
 
-      // Mặc định: Quét kiểm hàng & đối chiếu tồn kho trên tab PRODUCTS
-      const product = findProductByScannedBarcode(pool, rawTrimmed);
-      if (!product) {
+      // Mặc định: Quét kiểm hàng & đối chiếu tồn kho trên tab PRODUCTS (ưu tiên khớp chính xác Mã con thuộc tính)
+      const scanRes = findProductAndVariantByScannedBarcode(pool, rawTrimmed);
+      if (!scanRes) {
         playScannerBeep("error");
         setLastScanFeedback({
           type: "error",
           code: cleanBarcodeCode(rawTrimmed),
-          message: `Không tìm thấy sản phẩm có mã "${rawTrimmed}" trong kho.`,
+          message: `Không tìm thấy sản phẩm hoặc mã con "${rawTrimmed}" trong kho.`,
           time: nowStr,
         });
         return;
       }
 
+      const { product, matchedVariant } = scanRes;
       setLastScannedProdId(product._id);
       setExpandedVariantProdId(product._id);
       const prevCount = scannedCheckCounts[product._id] || 0;
@@ -1560,6 +1656,52 @@ export default function InventoryModule() {
         setProdPage(targetPage);
       }
 
+      if (matchedVariant && (matchedVariant.color || matchedVariant.size)) {
+        const childCode =
+          matchedVariant.variantCode ||
+          generateVariantProductCode(product.code, matchedVariant.color, matchedVariant.size);
+        setLastScannedVariantCode(childCode);
+        const prevVarCount = scannedVariantCounts[product._id]?.[childCode] || 0;
+        const nextVarCount = prevVarCount + 1;
+        setScannedVariantCounts((prev) => ({
+          ...prev,
+          [product._id]: {
+            ...(prev[product._id] || {}),
+            [childCode]: nextVarCount,
+          },
+        }));
+
+        const varF1 = Number(matchedVariant.stockFloor1 || 0);
+        const varF2 = Number(matchedVariant.stockFloor2 || 0);
+        const varSysStock =
+          activeWarehouse === "FLOOR_1"
+            ? varF1
+            : activeWarehouse === "FLOOR_2"
+              ? varF2
+              : varF1 + varF2;
+        const isOver = varSysStock > 0 && nextVarCount > varSysStock;
+        const isExact = varSysStock > 0 && nextVarCount === varSysStock;
+        playScannerBeep(isOver ? "warning" : "success");
+
+        const attrDesc = [
+          matchedVariant.color,
+          matchedVariant.size ? `Size ${matchedVariant.size}` : "",
+        ]
+          .filter(Boolean)
+          .join(" - ");
+
+        setLastScanFeedback({
+          type: isOver ? "warning" : "success",
+          code: childCode,
+          message: `[${childCode}] ${product.name} (${attrDesc}) • Đã quét mã con: ${nextVarCount} / Tồn biến thể (${activeWarehouseLabel}): ${varSysStock} ${product.unit || "Cái"}${
+            isExact ? " (✓ ĐÃ KHỚP ĐỦ)" : isOver ? ` (⚠️ DƯ +${nextVarCount - varSysStock})` : ""
+          }`,
+          time: nowStr,
+        });
+        return;
+      }
+
+      setLastScannedVariantCode(null);
       const f1 = Number(product.stockFloor1 ?? product.stock ?? 0);
       const f2 = Number(product.stockFloor2 ?? 0);
       const sysStock =
@@ -1585,6 +1727,7 @@ export default function InventoryModule() {
       newProdCatId,
       categories,
       scannedCheckCounts,
+      scannedVariantCounts,
       displayedProducts,
       prodPageSize,
       activeWarehouse,
@@ -2517,7 +2660,9 @@ export default function InventoryModule() {
                         type="button"
                         onClick={() => {
                           setScannedCheckCounts({});
+                          setScannedVariantCounts({});
                           setLastScannedProdId(null);
+                          setLastScannedVariantCode(null);
                           setOnlyShowScanned(false);
                           setLastScanFeedback(null);
                         }}
@@ -2654,9 +2799,9 @@ export default function InventoryModule() {
                               type="button"
                               onClick={() => handleOpenPrintLabelForProduct(p)}
                               className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-sans font-bold text-[10px]"
-                              title="In tem nhãn mã vạch (chỉ in mã sản phẩm chung)"
+                              title="In tem nhãn mã vạch theo từng Mã con (Màu + Size)"
                             >
-                              <Printer className="w-3 h-3" /> In tem
+                              <Printer className="w-3 h-3" /> In tem mã con
                             </button>
                           </div>
                         </td>
@@ -2673,20 +2818,43 @@ export default function InventoryModule() {
                             className="w-full px-2.5 py-1.5 rounded border border-slate-300 font-semibold text-slate-900 whitespace-pre-wrap break-words leading-snug resize-y"
                           />
                           <div className="flex flex-wrap items-center gap-1">
-                            {namedVars.map((v, vIdx) => (
-                              <span
-                                key={`${v.color}-${v.size}-${vIdx}`}
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-200 text-[10px] font-bold"
-                              >
-                                <span>
-                                  {v.color || "Mặc định"}
-                                  {v.size ? ` • ${v.size}` : ""}
+                            {namedVars.map((v, vIdx) => {
+                              const childCode =
+                                v.variantCode ||
+                                generateVariantProductCode(p.code, v.color, v.size);
+                              const vScanned = scannedVariantCounts[p._id]?.[childCode] || 0;
+                              return (
+                                <span
+                                  key={`${v.color}-${v.size}-${vIdx}`}
+                                  title={`Mã con in tem: ${childCode}`}
+                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-bold ${
+                                    lastScannedVariantCode === childCode
+                                      ? "bg-emerald-600 text-white border-emerald-700 ring-2 ring-emerald-300"
+                                      : "bg-indigo-50 text-indigo-800 border-indigo-200"
+                                  }`}
+                                >
+                                  <span className="font-mono text-[9px] opacity-85">[{childCode}]</span>
+                                  <span>
+                                    {v.color || "Mặc định"}
+                                    {v.size ? ` • ${v.size}` : ""}
+                                  </span>
+                                  <span
+                                    className={`font-mono font-extrabold ${
+                                      lastScannedVariantCode === childCode
+                                        ? "text-white"
+                                        : "text-emerald-700"
+                                    }`}
+                                  >
+                                    :{activeWarehouse === "FLOOR_2" ? v.stockFloor2 : activeWarehouse === "FLOOR_1" ? v.stockFloor1 : (v.stockFloor1 || 0) + (v.stockFloor2 || 0)}
+                                  </span>
+                                  {vScanned > 0 && (
+                                    <span className="ml-0.5 px-1 rounded bg-teal-700 text-white font-mono text-[9px]">
+                                      Quét:{vScanned}
+                                    </span>
+                                  )}
                                 </span>
-                                <span className="font-mono font-extrabold text-emerald-700">
-                                  :{activeWarehouse === "FLOOR_2" ? v.stockFloor2 : activeWarehouse === "FLOOR_1" ? v.stockFloor1 : (v.stockFloor1 || 0) + (v.stockFloor2 || 0)}
-                                </span>
-                              </span>
-                            ))}
+                              );
+                            })}
                             <button
                               type="button"
                               onClick={() =>
@@ -2916,11 +3084,11 @@ export default function InventoryModule() {
                               <div className="flex flex-wrap items-center justify-between gap-2">
                                 <div>
                                   <div className="text-xs font-extrabold text-indigo-950">
-                                    🎨 Quản lý Chi tiết Màu sắc • Size • Số lượng cho Mã chung:{" "}
+                                    🎨 Quản lý Chi tiết Màu sắc • Size • Mã con cho Mã gốc:{" "}
                                     <span className="font-mono text-indigo-700">{p.code}</span>
                                   </div>
                                   <div className="text-[11px] text-slate-500">
-                                    Các phân loại dưới đây dùng chung 1 Mã hàng ({p.code}), chung Giá gốc ({formatVND(costVal)}) và Giá bán ({formatVND(sellVal)}).
+                                    Mỗi thuộc tính (Màu + Size) có <b>Mã con riêng</b> để in tem &amp; quét kiểm kho chính xác, dùng chung Giá gốc ({formatVND(costVal)}) và Giá bán ({formatVND(sellVal)}).
                                   </div>
                                 </div>
                                 <button
@@ -2941,26 +3109,53 @@ export default function InventoryModule() {
                                   <thead className="bg-slate-800 text-white uppercase text-[10px]">
                                     <tr>
                                       <th className="py-2 px-2.5 w-10 text-center">#</th>
+                                      <th className="py-2 px-2.5">Mã con (Barcode In Tem)</th>
                                       <th className="py-2 px-2.5">Màu sắc</th>
                                       <th className="py-2 px-2.5">Size</th>
                                       <th className="py-2 px-2.5 text-right">🏢 Tồn Kho Tầng 1</th>
                                       <th className="py-2 px-2.5 text-right">🏬 Tồn Kho Tầng 2</th>
                                       <th className="py-2 px-2.5 text-right">Tổng SL</th>
+                                      <th className="py-2 px-2.5 text-center">In tem</th>
                                       <th className="py-2 px-2.5 text-center w-16">Xóa</th>
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-slate-200">
                                     {prodVariants.length === 0 ? (
                                       <tr>
-                                        <td colSpan={7} className="py-3 text-center text-slate-400">
+                                        <td colSpan={9} className="py-3 text-center text-slate-400">
                                           Chưa có phân loại Size/Màu. Hãy thêm ở dòng bên dưới.
                                         </td>
                                       </tr>
                                     ) : (
-                                      prodVariants.map((v, vIdx) => (
-                                        <tr key={vIdx} className="hover:bg-slate-50">
+                                      prodVariants.map((v, vIdx) => {
+                                        const childCode = generateVariantProductCode(
+                                          p.code,
+                                          v.color,
+                                          v.size
+                                        );
+                                        const vScanned =
+                                          scannedVariantCounts[p._id]?.[childCode] || 0;
+                                        return (
+                                        <tr
+                                          key={vIdx}
+                                          className={`hover:bg-slate-50 ${
+                                            lastScannedVariantCode === childCode
+                                              ? "bg-emerald-50"
+                                              : ""
+                                          }`}
+                                        >
                                           <td className="py-1.5 px-2.5 text-center font-mono text-slate-400">
                                             {vIdx + 1}
+                                          </td>
+                                          <td className="py-1.5 px-2.5">
+                                            <span className="font-mono font-extrabold text-indigo-800 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">
+                                              {childCode}
+                                            </span>
+                                            {vScanned > 0 && (
+                                              <span className="ml-1.5 px-1.5 py-0.5 rounded bg-emerald-600 text-white font-mono text-[10px] font-bold">
+                                                Quét: {vScanned}
+                                              </span>
+                                            )}
                                           </td>
                                           <td className="py-1.5 px-2.5">
                                             <input
@@ -3053,6 +3248,16 @@ export default function InventoryModule() {
                                           <td className="py-1.5 px-2.5 text-center">
                                             <button
                                               type="button"
+                                              onClick={() => handleOpenPrintLabelForProduct(p, v)}
+                                              className="inline-flex items-center gap-1 px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-bold"
+                                              title={`In tem mã con ${childCode}`}
+                                            >
+                                              <Printer className="w-3 h-3" /> In tem
+                                            </button>
+                                          </td>
+                                          <td className="py-1.5 px-2.5 text-center">
+                                            <button
+                                              type="button"
                                               onClick={() => {
                                                 const next = prodVariants.filter((_, i) => i !== vIdx);
                                                 setEditingVariants((prev) => ({
@@ -3067,7 +3272,8 @@ export default function InventoryModule() {
                                             </button>
                                           </td>
                                         </tr>
-                                      ))
+                                        );
+                                      })
                                     )}
                                   </tbody>
                                 </table>
@@ -4745,7 +4951,15 @@ export default function InventoryModule() {
                             {it.stt || idx + 1}
                           </td>
                           <td className="py-2 px-3 font-mono font-bold text-slate-900">
-                            {it.productCode}
+                            <div>
+                              {it.variantCode ||
+                                generateVariantProductCode(it.productCode, it.color, it.size)}
+                            </div>
+                            {(it.color || it.size) && (
+                              <div className="text-[10px] text-slate-400 font-normal">
+                                Gốc: {it.productCode}
+                              </div>
+                            )}
                           </td>
                           <td className="py-2 px-3 font-semibold text-slate-900">
                             {it.productName}
@@ -4969,16 +5183,25 @@ export default function InventoryModule() {
                         return;
                       }
                       setLabelItems(
-                        valid.map((it, idx) => ({
-                          id: `${it.productCode}_${it.color || ""}_${it.size || ""}_${idx}`,
-                          productCode: it.productCode || generateProductCode(it.productName),
-                          productName: it.productName,
-                          color: it.color,
-                          size: it.size,
-                          sellingPrice: it.sellingPrice,
-                          unit: it.unit,
-                          defaultQty: Math.max(1, Number(it.quantity || 1)),
-                        }))
+                        valid.map((it, idx) => {
+                          const baseCode = it.productCode || generateProductCode(it.productName);
+                          const childCode = generateVariantProductCode(
+                            baseCode,
+                            it.color,
+                            it.size
+                          );
+                          return {
+                            id: `${childCode}_${idx}`,
+                            code: childCode,
+                            productCode: baseCode,
+                            productName: it.productName,
+                            color: it.color,
+                            size: it.size,
+                            sellingPrice: it.sellingPrice,
+                            unit: it.unit,
+                            defaultQty: Math.max(1, Number(it.quantity || 1)),
+                          };
+                        })
                       );
                       setShowLabelModal(true);
                     }}
@@ -5089,14 +5312,21 @@ export default function InventoryModule() {
                               placeholder="VD: GASIA221401"
                               className="w-full bg-blue-50/70 text-blue-900 font-mono text-xs font-extrabold px-2.5 py-1.5 rounded border border-blue-300 uppercase focus:border-blue-600 focus:outline-none"
                             />
-                            <div className="mt-1 text-[10px] text-slate-500">
-                              {existingProd ? (
-                                <span className="text-emerald-700 font-bold">
-                                  ✓ Đã có mã (Tồn: {existingProd.stock})
-                                </span>
-                              ) : (
-                                <span>Cate + Hãng/NN + 6 số</span>
+                            <div className="mt-1 text-[10px] text-slate-500 space-y-0.5">
+                              {(row.color || row.size) && row.productCode && (
+                                <div className="font-mono font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded inline-block">
+                                  Mã con: {generateVariantProductCode(row.productCode, row.color, row.size)}
+                                </div>
                               )}
+                              <div>
+                                {existingProd ? (
+                                  <span className="text-emerald-700 font-bold">
+                                    ✓ Đã có mã gốc (Tồn: {existingProd.stock})
+                                  </span>
+                                ) : (
+                                  <span>Mã gốc: Cate + Hãng/NN + 6 số</span>
+                                )}
+                              </div>
                             </div>
                           </td>
 
