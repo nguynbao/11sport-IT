@@ -774,12 +774,17 @@ function Draw-SingleSticker($g, $sticker, [int]$cellX, [int]$cellW, [int]$cellH,
 
   # Reserve bottom for Code + Price
   $hasPrice = -not [string]::IsNullOrWhiteSpace($sticker.priceText)
-  $codeH = [int][Math]::Round(17 * $scaleY)
-  $priceH = if ($hasPrice) { [int][Math]::Round(26 * $scaleY) } else { [int][Math]::Round(2 * $scaleY) }
+  $codeH = [int][Math]::Round(16 * $scaleY)
+  $priceH = if ($hasPrice) { [int][Math]::Round(24 * $scaleY) } else { [int][Math]::Round(2 * $scaleY) }
+  $bottomPad = [int][Math]::Round(3 * $scaleY)
 
   # 3. Barcode 1D Code128 (lấp đầy ~93% chiều ngang tem 35x20mm, khớp chuẩn 203 DPI)
   $barTop = $y
-  $barHeight = [Math]::Max([int][Math]::Round(42 * $scaleY), $cellH - $barTop - $codeH - $priceH - 1)
+  $availBarH = $cellH - $barTop - $codeH - $priceH - $bottomPad - 1
+  $barHeight = [Math]::Max([int][Math]::Round(28 * $scaleY), $availBarH)
+  if (($barTop + $barHeight + $codeH + $priceH + $bottomPad) -gt $cellH) {
+    $barHeight = [Math]::Max([int][Math]::Round(22 * $scaleY), $cellH - $barTop - $codeH - $priceH - $bottomPad)
+  }
   $pattern = [string]$sticker.pattern
 
   if ($pattern.Length -gt 0) {
@@ -790,7 +795,7 @@ function Draw-SingleSticker($g, $sticker, [int]$cellX, [int]$cellW, [int]$cellH,
     if ($modulePx -gt 2) { $modulePx = 2 }
 
     $totalBarPx = $pattern.Length * $modulePx
-    $startX = $cellX + [int][Math]::Floor(($cellW - $totalBarPx) / 2.0)
+    $startX = [Math]::Max($cellX + 2, $cellX + [int][Math]::Floor(($cellW - $totalBarPx) / 2.0))
 
     $g.FillRectangle($brushWhite, $cellX, $barTop, $cellW, $barHeight)
 

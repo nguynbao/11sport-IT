@@ -23,6 +23,10 @@ import {
   KEEP_ALIVE_INTERVAL_MS,
   pingServerHealth,
 } from "@/lib/api";
+import {
+  cleanBarcodeCode,
+  useHardwareBarcodeScanner,
+} from "@/lib/barcodeScanner";
 
 /**
  * Bước 4 — Chụp tag kiểm tra thực tế (ĐẾM TỪNG CHIẾC, TỐI ĐA <= 5 GIÂY)
@@ -400,12 +404,13 @@ export default function TagCheckScannerModal({
     }
   };
 
-  // Phím Space / Enter để chụp nhanh (khi không gõ trong ô nhập)
+  // Phím Space để chụp nhanh (khi không gõ trong ô nhập); phím Enter dành cho súng quét mã vạch
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
-      if (e.code === "Space" || e.key === "Enter") {
+      if (e.code === "Space") {
         e.preventDefault();
         if (phase === "live") handleCapture();
         else if (phase === "result") backToLive();
@@ -427,13 +432,24 @@ export default function TagCheckScannerModal({
     }
   };
 
+  useHardwareBarcodeScanner({
+    enabled: !busy,
+    onScan: (scannedCode) => {
+      const cleaned = cleanBarcodeCode(scannedCode) || scannedCode.trim();
+      if (!cleaned) return;
+      setManualQuery("");
+      runRowAction({ query: cleaned, productCode: cleaned, barcode: cleaned });
+    },
+  });
+
   const handlePickCandidate = (index: number) => runRowAction({ rowIndex: index });
 
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const q = manualQuery.trim();
-    if (!q) return;
-    await runRowAction({ query: q, productName: q, barcode: q });
+    const raw = manualQuery.trim();
+    if (!raw) return;
+    const cleaned = !/\s/.test(raw) ? cleanBarcodeCode(raw) || raw : raw;
+    await runRowAction({ query: cleaned, productName: raw, productCode: cleaned, barcode: cleaned });
     setManualQuery("");
   };
 
@@ -632,9 +648,10 @@ export default function TagCheckScannerModal({
                   <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                   <input
                     type="text"
+                    data-barcode-input="true"
                     value={manualQuery}
                     onChange={(e) => setManualQuery(e.target.value)}
-                    placeholder="Tag mờ? Nhập mã SKU / mã vạch / tên hàng (+1)..."
+                    placeholder="Bắn súng mã vạch hoặc nhập mã SKU / tên hàng (+1)..."
                     className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 text-base sm:text-sm focus:border-emerald-600 focus:outline-none"
                   />
                 </div>

@@ -205,10 +205,49 @@ export function buildVariantKey(color?: string, size?: string): string {
 }
 
 /**
+ * Rút gọn chuỗi màu sắc dài (nhiều từ) khi tổng chiều dài Mã con vượt quá 19 ký tự
+ * để đảm bảo mã vạch Code128 luôn nằm gọn trong khổ tem nhiệt 35×20mm (203 DPI = 276 dots)
+ * mà không bị cắt mất vạch Start/Stop ở 2 mép tem.
+ */
+function buildCompactColorToken(rawColor: string, maxColorLen: number): string {
+  const words = tokenizeUpperAlphaNum(rawColor);
+  const filteredWords = words.length > 1 && words[0] === 'MAU' ? words.slice(1) : words;
+  const fullColor = filteredWords.join('');
+  if (!fullColor || fullColor.length <= maxColorLen) return fullColor;
+
+  const digits = filteredWords.filter((w) => /^\d+$/.test(w)).join('');
+  const alphaWords = filteredWords.filter((w) => !/^\d+$/.test(w));
+  if (alphaWords.length === 0) {
+    return fullColor.slice(0, maxColorLen);
+  }
+  if (alphaWords.length === 1) {
+    const take = Math.max(2, maxColorLen - digits.length);
+    return alphaWords[0].slice(0, take) + digits;
+  }
+
+  const budget = Math.max(4, maxColorLen - digits.length);
+  const firstWord = alphaWords[0];
+  const lastWord = alphaWords[alphaWords.length - 1];
+  const midInitials =
+    alphaWords.length > 2
+      ? alphaWords
+          .slice(1, -1)
+          .map((w) => w[0])
+          .join('')
+      : '';
+  const firstPart = firstWord.slice(0, Math.min(2, firstWord.length));
+  const remForLast = Math.max(1, budget - firstPart.length - midInitials.length);
+  const lastPart = lastWord.slice(0, Math.min(lastWord.length, Math.max(2, remForLast)));
+  const combined = (firstPart + midInitials + lastPart).slice(0, budget);
+  return combined + digits;
+}
+
+/**
  * Sinh Mã Con (Variant Code / Child SKU) cho từng thuộc tính (Màu sắc + Size):
  * Công thức: [Mã gốc IN HOA][MÀU IN HOA KHÔNG DẤU VIẾT LIỀN][SIZE IN HOA VIẾT LIỀN]
  * - Ví dụ: baseCode = "GASIA221401", color = "Đỏ", size = "38" => "GASIA221401DO38"
  * - Ví dụ: baseCode = "GASIA221401", color = "Đỏ", size = "39" => "GASIA221401DO39"
+ * - Nếu tổng chiều dài vượt quá 19 ký tự (khiến mã vạch Code128 tràn khổ tem 35mm), tự động rút gọn phần Màu sắc.
  * - Nếu không có màu và không có size thì trả về baseCode.
  */
 export function generateVariantProductCode(
@@ -218,12 +257,25 @@ export function generateVariantProductCode(
 ): string {
   const cleanBase = normalizeToCompactUpperCode(String(baseCode || '').trim());
   if (!cleanBase) return '';
-  const cleanColor = normalizeToCompactUpperCode(String(color || '').trim());
+  const rawColorStr = String(color || '').trim();
+  const cleanColor = normalizeToCompactUpperCode(rawColorStr);
   const cleanSize = normalizeToCompactUpperCode(String(size || '').trim());
-  const suffix = `${cleanColor}${cleanSize}`;
-  if (!suffix) return cleanBase;
-  if (cleanBase.endsWith(suffix)) return cleanBase;
-  return `${cleanBase}${suffix}`;
+  const fullSuffix = `${cleanColor}${cleanSize}`;
+  if (!fullSuffix) return cleanBase;
+  if (cleanBase.endsWith(fullSuffix) && cleanBase.length <= 22) return cleanBase;
+  const rootBase =
+    cleanBase.endsWith(fullSuffix) && cleanBase.length > fullSuffix.length
+      ? cleanBase.slice(0, cleanBase.length - fullSuffix.length)
+      : cleanBase;
+
+  const fullCode = `${rootBase}${fullSuffix}`;
+  if (fullCode.length <= 22) return fullCode;
+
+  const maxColorLen = Math.max(4, 20 - rootBase.length - cleanSize.length);
+  const shortColor = buildCompactColorToken(rawColorStr, maxColorLen);
+  const shortSuffix = `${shortColor}${cleanSize}`;
+  if (rootBase.endsWith(shortSuffix)) return rootBase;
+  return `${rootBase}${shortSuffix}`;
 }
 
 /**

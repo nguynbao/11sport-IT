@@ -1153,7 +1153,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
    * - Nếu SP chỉ có 1 phân loại còn hàng ở Tầng 1: cộng ngay +1 vào Giỏ hàng + phát tiếng Bíp.
    * - Nếu SP có nhiều Size/Màu ở Tầng 1: bật Popup chọn nhanh Size/Màu (hỗ trợ bấm phím số 1..9).
    */
-  const handleBarcodeScanForPos = (rawInput: string) => {
+  const handleBarcodeScanForPos = async (rawInput: string) => {
     const trimmed = String(rawInput || "").trim();
     if (!trimmed) return;
 
@@ -1166,7 +1166,19 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     const displayCode = candidates[1] || candidates[0] || cleanBarcodeCode(trimmed) || trimmed.toUpperCase();
 
     const sourceCatalog = allCatalogProducts.length > 0 ? allCatalogProducts : products;
-    const scanRes = findProductAndVariantByScannedBarcode(sourceCatalog, trimmed);
+    let scanRes = findProductAndVariantByScannedBarcode(sourceCatalog, trimmed);
+    if (!scanRes) {
+      try {
+        const freshRes = await apiRequest<Product[]>("/products");
+        const freshPool = Array.isArray(freshRes.data) ? freshRes.data : [];
+        if (freshPool.length > 0) {
+          setAllCatalogProducts(freshPool);
+          scanRes = findProductAndVariantByScannedBarcode(freshPool, trimmed);
+        }
+      } catch {
+        // ignore network error
+      }
+    }
     const matchedProduct = scanRes?.product || null;
 
     if (!matchedProduct) {

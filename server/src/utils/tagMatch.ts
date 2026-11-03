@@ -6,6 +6,181 @@ import {
   tokenizeUpperAlphaNum,
 } from './productCode';
 
+const TELEX_COMBINING_MARK_TO_KEY: Record<string, string> = {
+  '\u0300': 'F',
+  '\u0301': 'S',
+  '\u0303': 'X',
+  '\u0309': 'R',
+  '\u0323': 'J',
+  '\u0302': '__CIRCUMFLEX__',
+  '\u0306': 'W',
+  '\u031B': 'W',
+};
+
+function collapseUnikeyBackspaceStutter(rawInput: string): string {
+  if (!rawInput) return '';
+  interface DecomposedUnit {
+    base: string;
+    marks: string;
+    hasHornOrBreve: boolean;
+  }
+  const units: DecomposedUnit[] = [];
+  for (const ch of rawInput) {
+    if (ch === 'đ' || ch === 'Đ') {
+      units.push({ base: 'D', marks: 'D', hasHornOrBreve: false });
+      continue;
+    }
+    const nfd = ch.normalize('NFD');
+    let base = '';
+    let marks = '';
+    let hasHornOrBreve = false;
+    for (const c of nfd) {
+      if (c >= '\u0300' && c <= '\u036f') {
+        marks += c;
+        if (c === '\u031B' || c === '\u0306') hasHornOrBreve = true;
+      } else {
+        base += c.toUpperCase();
+      }
+    }
+    units.push({ base, marks, hasHornOrBreve });
+  }
+
+  let changed = true;
+  let guard = 0;
+  while (changed && guard < 12) {
+    changed = false;
+    guard++;
+    for (let i = 0; i < units.length; i++) {
+      for (let offset = 1; offset <= 5 && i + offset < units.length; offset++) {
+        const left = units[i];
+        const right = units[i + offset];
+        if (!left.base || left.base !== right.base) continue;
+        if (!/^[AEIOUYD]$/.test(left.base)) continue;
+
+        const rightIsStrictUpgrade =
+          (right.marks.length > left.marks.length && right.marks.startsWith(left.marks)) ||
+          (left.marks === '' && right.marks.length > 0);
+        if (!rightIsStrictUpgrade) continue;
+
+        let midSame = true;
+        for (let k = 1; k < offset; k++) {
+          if (i + k >= units.length || i + offset + k >= units.length) {
+            midSame = false;
+            break;
+          }
+          const m1 = units[i + k];
+          const m2 = units[i + offset + k];
+          if (m1.base !== m2.base) {
+            midSame = false;
+            break;
+          }
+          if (!(m2.marks === m1.marks || (m1.marks === '' && m2.marks.length > 0))) {
+            midSame = false;
+            break;
+          }
+        }
+        if (midSame) {
+          for (let k = 0; k < offset; k++) {
+            if (units[i + k].hasHornOrBreve && !units[i + offset + k].hasHornOrBreve) {
+              units[i + offset + k].marks = '\u031B' + units[i + offset + k].marks;
+              units[i + offset + k].hasHornOrBreve = true;
+            }
+          }
+          units.splice(i, offset);
+          changed = true;
+          break;
+        }
+      }
+      if (changed) break;
+    }
+  }
+
+  return units
+    .map((u) => {
+      if (u.base === 'D' && u.marks === 'D') return 'Đ';
+      return (u.base + u.marks).normalize('NFC');
+    })
+    .join('');
+}
+
+function reconstructTelexFromInput(rawInput: string, standaloneUAsW = false): string {
+  if (!rawInput) return '';
+  let out = '';
+  for (const ch of rawInput) {
+    if (ch === 'đ' || ch === 'Đ') {
+      out += 'DD';
+      continue;
+    }
+    const nfd = ch.normalize('NFD');
+    const base = nfd[0] ? nfd[0].toUpperCase() : '';
+    const marks = nfd.slice(1);
+    if (!marks) {
+      out += base;
+      continue;
+    }
+    if (standaloneUAsW && base === 'U' && marks === '\u031B') {
+      out += 'W';
+      continue;
+    }
+    let reconstructed = base;
+    for (const m of marks) {
+      const key = TELEX_COMBINING_MARK_TO_KEY[m];
+      if (key === '__CIRCUMFLEX__') {
+        reconstructed += base;
+      } else if (key) {
+        reconstructed += key;
+      }
+    }
+    out += reconstructed;
+  }
+  return out.replace(/[^A-Z0-9]/g, '');
+}
+
+export function getBarcodeCandidatesServer(rawInput: string): string[] {
+  const trimmed = String(rawInput || '').trim();
+  if (!trimmed) return [];
+  const collapsed = collapseUnikeyBackspaceStutter(trimmed);
+  const candidates = new Set<string>();
+  const hasToneMarks = /[\u0300\u0301\u0303\u0309\u0323]/.test(trimmed.normalize('NFD'));
+
+  for (const source of [collapsed, trimmed]) {
+    const telexRestored = reconstructTelexFromInput(source, false);
+    if (telexRestored) candidates.add(telexRestored);
+
+    const telexRestoredW = reconstructTelexFromInput(source, true);
+    if (telexRestoredW) candidates.add(telexRestoredW);
+
+    if (!hasToneMarks) {
+      const stripped = normalizeToCompactUpperCode(source);
+      if (stripped) candidates.add(stripped);
+
+      const rawW = source
+        .replace(/[ưƯ]/g, 'W')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[đĐ]/g, 'D')
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '');
+      if (rawW) candidates.add(rawW);
+    }
+  }
+
+  return Array.from(candidates);
+}
+
+export function decodeScannedBarcodeServer(rawInput: string): string {
+  const candidates = getBarcodeCandidatesServer(rawInput);
+  return candidates[0] || '';
+}
+
+export function isScannedCodeMatchServer(rawScanned: string, targetCode?: string | null): boolean {
+  if (!rawScanned || !targetCode) return false;
+  const cleanTarget = normalizeToCompactUpperCode(targetCode);
+  if (!cleanTarget) return false;
+  const candidates = getBarcodeCandidatesServer(rawScanned);
+  return candidates.includes(cleanTarget);
+}
+
 /**
   * So khớp kết quả quét tag với các dòng trong phiếu nhập.
   * - Ưu tiên khớp chính xác mã con (variantCode) hoặc mã vạch (barcode) đã được ghi nhớ trên dòng hàng.
@@ -48,9 +223,9 @@ const isSkuToken = (t: string) =>
 
 export function matchTagToItems(items: TagMatchItem[], scan: TagScanInput): TagMatchResult {
   const cleanBarcode = String(scan.barcode || scan.productCode || scan.query || '').trim();
-  const compactScan = normalizeToCompactUpperCode(cleanBarcode);
+  const scanCandidates = getBarcodeCandidatesServer(cleanBarcode);
 
-  if (cleanBarcode || compactScan) {
+  if (cleanBarcode || scanCandidates.length > 0) {
     // 1. Ưu tiên khớp chính xác Mã con (variantCode) hoặc Barcode riêng của dòng (chỉ khi dòng có thuộc tính hoặc barcode riêng)
     const variantCodeMatches = items
       .map((it, idx) => {
@@ -58,16 +233,17 @@ export function matchTagToItems(items: TagMatchItem[], scan: TagScanInput): TagM
         const expectedVariantCode = hasAttr
           ? it.variantCode || generateVariantProductCode(it.productCode, it.color, it.size)
           : '';
-        return { it, idx, expectedVariantCode };
+        const fullVariantCode = hasAttr
+          ? normalizeToCompactUpperCode(`${it.productCode || ''}${it.color || ''}${it.size || ''}`)
+          : '';
+        return { it, idx, expectedVariantCode, fullVariantCode };
       })
-      .filter(({ it, expectedVariantCode }) => {
+      .filter(({ it, expectedVariantCode, fullVariantCode }) => {
         const itemBc = String(it.barcode || '').trim();
-        const compactBc = normalizeToCompactUpperCode(itemBc);
-        const compactVar = normalizeToCompactUpperCode(expectedVariantCode);
         return (
-          (itemBc && itemBc === cleanBarcode) ||
-          (compactBc && compactScan && compactBc === compactScan) ||
-          (compactVar && compactScan && compactVar === compactScan)
+          (itemBc && (itemBc === cleanBarcode || isScannedCodeMatchServer(cleanBarcode, itemBc))) ||
+          (expectedVariantCode && isScannedCodeMatchServer(cleanBarcode, expectedVariantCode)) ||
+          (fullVariantCode && isScannedCodeMatchServer(cleanBarcode, fullVariantCode))
         );
       })
       .map(({ idx }) => idx);
@@ -94,6 +270,9 @@ export function matchTagToItems(items: TagMatchItem[], scan: TagScanInput): TagM
 
   const tagCodes = new Set<string>();
   for (const s of sources) {
+    for (const cand of getBarcodeCandidatesServer(s)) {
+      if (cand) tagCodes.add(cand);
+    }
     const c0 = normalizeToCompactUpperCode(s);
     const c1 = generateProductCode(s);
     const c2 = normalizeToUpperCode(s);

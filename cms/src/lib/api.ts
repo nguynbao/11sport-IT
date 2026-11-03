@@ -1,4 +1,20 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://one1sport-it.onrender.com/api/v1";
+const RENDER_API_BASE_URL = "https://one1sport-it.onrender.com/api/v1";
+const ENV_API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || RENDER_API_BASE_URL;
+
+function resolveApiBaseUrl(): string {
+  if (typeof window === "undefined") return ENV_API_BASE_URL;
+  const host = window.location.hostname;
+  const isEnvLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(ENV_API_BASE_URL);
+  if (!isEnvLocal) return ENV_API_BASE_URL;
+
+  if (host === "localhost" || host === "127.0.0.1") {
+    return ENV_API_BASE_URL;
+  }
+  if (/^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host)) {
+    return ENV_API_BASE_URL.replace(/localhost|127\.0\.0\.1/i, host);
+  }
+  return RENDER_API_BASE_URL;
+}
 
 export type UserRole = "SALES" | "WAREHOUSE" | "ADMIN";
 
@@ -454,10 +470,50 @@ export function isStandardSixDigitProductCode(code?: string): boolean {
   return /^[A-Z]{2,}[0-9]{6}$/.test(clean);
 }
 
+function buildCompactColorTokenFE(rawColor: string, maxColorLen: number): string {
+  const words = String(rawColor || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[đĐ]/g, "D")
+    .toUpperCase()
+    .split(/[^A-Z0-9]+/)
+    .filter(Boolean);
+  const filteredWords = words.length > 1 && words[0] === "MAU" ? words.slice(1) : words;
+  const fullColor = filteredWords.join("");
+  if (!fullColor || fullColor.length <= maxColorLen) return fullColor;
+
+  const digits = filteredWords.filter((w) => /^\d+$/.test(w)).join("");
+  const alphaWords = filteredWords.filter((w) => !/^\d+$/.test(w));
+  if (alphaWords.length === 0) {
+    return fullColor.slice(0, maxColorLen);
+  }
+  if (alphaWords.length === 1) {
+    const take = Math.max(2, maxColorLen - digits.length);
+    return alphaWords[0].slice(0, take) + digits;
+  }
+
+  const budget = Math.max(4, maxColorLen - digits.length);
+  const firstWord = alphaWords[0];
+  const lastWord = alphaWords[alphaWords.length - 1];
+  const midInitials =
+    alphaWords.length > 2
+      ? alphaWords
+          .slice(1, -1)
+          .map((w) => w[0])
+          .join("")
+      : "";
+  const firstPart = firstWord.slice(0, Math.min(2, firstWord.length));
+  const remForLast = Math.max(1, budget - firstPart.length - midInitials.length);
+  const lastPart = lastWord.slice(0, Math.min(lastWord.length, Math.max(2, remForLast)));
+  const combined = (firstPart + midInitials + lastPart).slice(0, budget);
+  return combined + digits;
+}
+
 /**
  * Sinh Mã con riêng cho từng thuộc tính biến thể (Màu, Size) từ Mã gốc.
  * Công thức: [Mã gốc IN HOA][MÀU BỎ DẤU IN HOA][SIZE IN HOA]
  * Ví dụ: GASIA221401 + Đỏ + 38 -> GASIA221401DO38
+ * Tự động rút gọn phần Màu nếu tổng chiều dài > 19 ký tự để vừa khít tem nhiệt 35×20mm (203 DPI).
  */
 export function generateVariantProductCode(
   baseCode?: string,
@@ -466,12 +522,25 @@ export function generateVariantProductCode(
 ): string {
   const root = toCompactUpperFE(String(baseCode || ""));
   if (!root) return "";
-  const cleanColor = toCompactUpperFE(String(color || ""));
+  const rawColorStr = String(color || "");
+  const cleanColor = toCompactUpperFE(rawColorStr);
   const cleanSize = toCompactUpperFE(String(size || ""));
   if (!cleanColor && !cleanSize) return root;
-  const suffix = `${cleanColor}${cleanSize}`;
-  if (suffix && root.endsWith(suffix)) return root;
-  return `${root}${suffix}`;
+  const fullSuffix = `${cleanColor}${cleanSize}`;
+  if (fullSuffix && root.endsWith(fullSuffix) && root.length <= 22) return root;
+  const rootBase =
+    fullSuffix && root.endsWith(fullSuffix) && root.length > fullSuffix.length
+      ? root.slice(0, root.length - fullSuffix.length)
+      : root;
+
+  const fullCode = `${rootBase}${fullSuffix}`;
+  if (fullCode.length <= 22) return fullCode;
+
+  const maxColorLen = Math.max(4, 20 - rootBase.length - cleanSize.length);
+  const shortColor = buildCompactColorTokenFE(rawColorStr, maxColorLen);
+  const shortSuffix = `${shortColor}${cleanSize}`;
+  if (shortSuffix && rootBase.endsWith(shortSuffix)) return rootBase;
+  return `${rootBase}${shortSuffix}`;
 }
 
 export function generateSixDigitsFromSeed(seed?: string): string {
@@ -862,10 +931,23 @@ export async function apiRequest<T = any>(
     headers["x-user-id"] = user._id;
   }
 
-  const res = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers,
-  });
+  const baseUrl = resolveApiBaseUrl();
+  let res: Response;
+  try {
+    res = await fetch(`${baseUrl}${endpoint}`, {
+      ...options,
+      headers,
+    });
+  } catch (netErr) {
+    if (baseUrl !== RENDER_API_BASE_URL) {
+      res = await fetch(`${RENDER_API_BASE_URL}${endpoint}`, {
+        ...options,
+        headers,
+      });
+    } else {
+      throw netErr;
+    }
+  }
 
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
