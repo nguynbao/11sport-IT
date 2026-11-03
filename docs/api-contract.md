@@ -542,17 +542,19 @@
     {
       "printerName": "Xprinter XP-350BM",
       "preset": {
-        "id": "35x22_2col",
+        "id": "70x20_2col",
         "widthMm": 35,
-        "heightMm": 22,
+        "heightMm": 20,
         "columns": 2,
-        "pageWidthMm": 72,
-        "pageHeightMm": 22
+        "pageWidthMm": 70,
+        "pageHeightMm": 20
       },
       "options": {
         "showShopName": true,
         "showProductName": true,
-        "showPrice": true
+        "showPrice": true,
+        "nameFontSizePx": 0,
+        "wrapProductName": true
       },
       "items": [
         {

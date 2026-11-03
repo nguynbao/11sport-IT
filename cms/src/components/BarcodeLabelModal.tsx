@@ -372,6 +372,22 @@ export default function BarcodeLabelModal({
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [showPrice, setShowPrice] = useState<boolean>(true);
   const [showShopName, setShowShopName] = useState<boolean>(true);
+  const [showProductName, setShowProductName] = useState<boolean>(true);
+  // 0 = Tự động co chữ theo độ dài tên; 10..28 = cỡ chữ cố định (px ở 203 DPI)
+  const [nameFontSizePx, setNameFontSizePx] = useState<number>(0);
+  const [wrapProductName, setWrapProductName] = useState<boolean>(true);
+
+  const getEffectiveNameFontPx = (text: string, customPx: number): number => {
+    if (customPx && customPx > 0) {
+      return Math.max(10, Math.min(28, customPx));
+    }
+    const len = (text || "").trim().length;
+    if (len <= 14) return 24;
+    if (len <= 18) return 21;
+    if (len <= 22) return 18;
+    if (len <= 28) return 16;
+    return 14;
+  };
 
   const [printers, setPrinters] = useState<SystemPrinterInfo[]>([]);
   const [selectedPrinter, setSelectedPrinter] = useState<string>("");
@@ -502,7 +518,7 @@ export default function BarcodeLabelModal({
           if (qty <= 0) return null;
           return {
             code: sanitizeAscii(item.code),
-            name: item.name,
+            name: showProductName ? item.name : "",
             priceText:
               showPrice && item.price > 0
                 ? `${item.price.toLocaleString("vi-VN")} đ`
@@ -529,8 +545,10 @@ export default function BarcodeLabelModal({
         },
         options: {
           showShopName,
-          showProductName: true,
-          showPrice
+          showProductName,
+          showPrice,
+          nameFontSizePx,
+          wrapProductName
         },
         items: payloadItems
       });
@@ -628,6 +646,14 @@ export default function BarcodeLabelModal({
           const shopHtml = showShopName
             ? `<div class="label-shop">${escapeHtml(shopName)}</div>`
             : "";
+          const effectiveNamePx = getEffectiveNameFontPx(item.name, nameFontSizePx);
+          const nameFontPt = (effectiveNamePx * 0.35).toFixed(1);
+          const nameWrapCss = wrapProductName
+            ? "white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word;"
+            : "white-space: nowrap; text-overflow: ellipsis;";
+          const nameHtml = showProductName
+            ? `<div class="label-name" style="font-size:${nameFontPt}pt;${nameWrapCss}">${escapeHtml(item.name)}</div>`
+            : "";
           const priceHtml =
             showPrice && item.price > 0
               ? `<div class="label-price">${item.price.toLocaleString("vi-VN")} đ</div>`
@@ -636,7 +662,7 @@ export default function BarcodeLabelModal({
           return `
             <div class="label-cell">
               ${shopHtml}
-              <div class="label-name">${escapeHtml(item.name)}</div>
+              ${nameHtml}
               <div class="label-barcode">
                 <img class="barcode-img" src="${pngDataUrl}" alt="${escapeHtml(item.code)}" />
               </div>
@@ -744,8 +770,8 @@ export default function BarcodeLabelModal({
     .label-barcode {
       width: 98%;
       flex: 1 1 auto;
-      min-height: 7.6mm;
-      max-height: 9.8mm;
+      min-height: 7.2mm;
+      max-height: ${showProductName ? "9.8mm" : "12.8mm"};
       display: flex;
       align-items: center;
       justify-content: center;
@@ -818,6 +844,12 @@ export default function BarcodeLabelModal({
   const renderSingleStickerPreview = (item: NormalizedLabelItem | undefined, indexLabel: string) => {
     if (!item) return null;
     const cleanCode = sanitizeAscii(item.code);
+    const effective203Px = getEffectiveNameFontPx(item.name, nameFontSizePx);
+    const previewNameFontPx = Math.round(effective203Px * 0.62 * 10) / 10;
+    const isTwoLinePreview =
+      showProductName && wrapProductName && (item.name || "").trim().length > 18;
+    const previewBarHeight = !showProductName ? 64 : isTwoLinePreview ? 40 : 48;
+
     return (
       <div
         style={{
@@ -868,30 +900,43 @@ export default function BarcodeLabelModal({
           </div>
         )}
 
-        <div
-          style={{
-            width: "100%",
-            fontSize: 13.5,
-            fontWeight: 800,
-            lineHeight: 1.08,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis"
-          }}
-        >
-          {item.name}
-        </div>
+        {showProductName && (
+          <div
+            style={{
+              width: "100%",
+              fontSize: previewNameFontPx,
+              fontWeight: 800,
+              lineHeight: 1.05,
+              ...(wrapProductName
+                ? {
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical" as const,
+                    whiteSpace: "normal",
+                    overflow: "hidden",
+                    wordBreak: "break-word" as const
+                  }
+                : {
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis"
+                  })
+            }}
+          >
+            {item.name}
+          </div>
+        )}
 
         <div
           style={{
             width: "96%",
-            height: 48,
+            height: previewBarHeight,
             display: "flex",
             alignItems: "center",
             justifyContent: "center"
           }}
           dangerouslySetInnerHTML={{
-            __html: renderCode128SvgString(item.code, 48)
+            __html: renderCode128SvgString(item.code, previewBarHeight)
           }}
         />
 
@@ -1137,7 +1182,7 @@ export default function BarcodeLabelModal({
               )}
             </div>
 
-            {/* 2. Tuỳ chọn hiển thị gọn gàng (Đã bỏ Phân loại / ĐVT) */}
+            {/* 2. Tuỳ chọn hiển thị & Cỡ chữ tên sản phẩm */}
             <div
               style={{
                 backgroundColor: "#f8fafc",
@@ -1145,66 +1190,234 @@ export default function BarcodeLabelModal({
                 borderRadius: 12,
                 padding: "10px 14px",
                 display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                flexWrap: "wrap",
-                gap: 12
+                flexDirection: "column",
+                gap: 10
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 7,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: "#1e293b",
-                    cursor: "pointer"
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={showShopName}
-                    onChange={(e) => setShowShopName(e.target.checked)}
-                    style={{ width: 15, height: 15, accentColor: "#0284c7" }}
-                  />
-                  In tên cửa hàng ({shopName})
-                </label>
-
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 7,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: "#1e293b",
-                    cursor: "pointer"
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={showPrice}
-                    onChange={(e) => setShowPrice(e.target.checked)}
-                    style={{ width: 15, height: 15, accentColor: "#0284c7" }}
-                  />
-                  In giá bán lẻ
-                </label>
-              </div>
-
-              <span
+              <div
                 style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: "#0284c7",
-                  backgroundColor: "#e0f2fe",
-                  padding: "3px 8px",
-                  borderRadius: 6
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  flexWrap: "wrap",
+                  gap: 10
                 }}
               >
-                2 tem / hàng (35×20mm)
-              </span>
+                <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 14 }}>
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: "#1e293b",
+                      cursor: "pointer"
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={showShopName}
+                      onChange={(e) => setShowShopName(e.target.checked)}
+                      style={{ width: 15, height: 15, accentColor: "#0284c7" }}
+                    />
+                    In tên cửa hàng ({shopName})
+                  </label>
+
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: "#1e293b",
+                      cursor: "pointer"
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={showProductName}
+                      onChange={(e) => setShowProductName(e.target.checked)}
+                      style={{ width: 15, height: 15, accentColor: "#0284c7" }}
+                    />
+                    In tên sản phẩm
+                  </label>
+
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: "#1e293b",
+                      cursor: "pointer"
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={showPrice}
+                      onChange={(e) => setShowPrice(e.target.checked)}
+                      style={{ width: 15, height: 15, accentColor: "#0284c7" }}
+                    />
+                    In giá bán lẻ
+                  </label>
+                </div>
+
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "#0284c7",
+                    backgroundColor: "#e0f2fe",
+                    padding: "3px 8px",
+                    borderRadius: 6
+                  }}
+                >
+                  2 tem / hàng (35×20mm)
+                </span>
+              </div>
+
+              {showProductName && (
+                <div
+                  style={{
+                    paddingTop: 9,
+                    borderTop: "1px dashed #cbd5e1",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    flexWrap: "wrap",
+                    gap: 8
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>
+                      Cỡ chữ tên SP:
+                    </span>
+                    {[
+                      { label: "Tự động", val: 0 },
+                      { label: "Nhỏ", val: 14 },
+                      { label: "Vừa", val: 18 },
+                      { label: "Lớn", val: 22 }
+                    ].map((opt) => {
+                      const active = nameFontSizePx === opt.val;
+                      return (
+                        <button
+                          key={opt.val}
+                          type="button"
+                          onClick={() => setNameFontSizePx(opt.val)}
+                          style={{
+                            padding: "3px 8px",
+                            fontSize: 11.5,
+                            fontWeight: 700,
+                            borderRadius: 6,
+                            border: active ? "1px solid #0284c7" : "1px solid #cbd5e1",
+                            backgroundColor: active ? "#0284c7" : "#ffffff",
+                            color: active ? "#ffffff" : "#334155",
+                            cursor: "pointer"
+                          }}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+
+                    <div
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 3,
+                        backgroundColor: "#ffffff",
+                        border: "1px solid #cbd5e1",
+                        borderRadius: 6,
+                        padding: "1px 4px",
+                        marginLeft: 2
+                      }}
+                    >
+                      <button
+                        type="button"
+                        title="Giảm cỡ chữ tên sản phẩm"
+                        onClick={() => {
+                          const cur =
+                            nameFontSizePx > 0
+                              ? nameFontSizePx
+                              : getEffectiveNameFontPx(previewItem?.name || "", 0);
+                          setNameFontSizePx(Math.max(10, cur - 1));
+                        }}
+                        style={{
+                          width: 20,
+                          height: 20,
+                          border: "none",
+                          background: "transparent",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: "#334155"
+                        }}
+                      >
+                        <Minus size={12} />
+                      </button>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 800,
+                          color: "#0f172a",
+                          minWidth: 36,
+                          textAlign: "center"
+                        }}
+                      >
+                        {nameFontSizePx === 0 ? "Auto" : `${nameFontSizePx}px`}
+                      </span>
+                      <button
+                        type="button"
+                        title="Tăng cỡ chữ tên sản phẩm"
+                        onClick={() => {
+                          const cur =
+                            nameFontSizePx > 0
+                              ? nameFontSizePx
+                              : getEffectiveNameFontPx(previewItem?.name || "", 0);
+                          setNameFontSizePx(Math.min(26, cur + 1));
+                        }}
+                        style={{
+                          width: 20,
+                          height: 20,
+                          border: "none",
+                          background: "transparent",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: "#334155"
+                        }}
+                      >
+                        <Plus size={12} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 5,
+                      fontSize: 11.5,
+                      fontWeight: 600,
+                      color: "#334155",
+                      cursor: "pointer"
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={wrapProductName}
+                      onChange={(e) => setWrapProductName(e.target.checked)}
+                      style={{ width: 14, height: 14, accentColor: "#0284c7" }}
+                    />
+                    Tự xuống 2 dòng khi tên dài
+                  </label>
+                </div>
+              )}
             </div>
 
             {/* 3. Danh sách sản phẩm & số lượng tem */}

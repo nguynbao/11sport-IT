@@ -392,19 +392,48 @@ function Draw-SingleSticker($g, $sticker, [int]$cellX, [int]$cellW, [int]$cellH,
     $y += [int][Math]::Round(2 * $scaleY)
   }
 
-  $nameH = [int][Math]::Round(26 * $scaleY)
-  $fontName = Get-FittedFontPx $g 'Arial' ([string]$sticker.name) ([float](26 * $scaleY)) ([float](15 * $scaleY)) $innerW
-  $rectName = New-Object System.Drawing.RectangleF($innerX, $y, $innerW, $nameH)
-  $g.DrawString([string]$sticker.name, $fontName, $brushBlack, $rectName, $sfCenter)
-  $fontName.Dispose()
-  $y += $nameH + 1
+  if (-not [string]::IsNullOrWhiteSpace($sticker.name)) {
+    $customPx = if ($null -ne $sticker.nameFontSizePx) { [float]$sticker.nameFontSizePx } else { 0.0 }
+    $wrapName = if ($null -ne $sticker.wrapProductName) { [bool]$sticker.wrapProductName } else { $true }
+
+    if ($customPx -gt 0) {
+      $fontName = New-Object System.Drawing.Font('Arial', [float]($customPx * $scaleY), [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
+    } else {
+      $fontName = Get-FittedFontPx $g 'Arial' ([string]$sticker.name) ([float](25 * $scaleY)) ([float](13 * $scaleY)) $innerW
+    }
+
+    $singleLineSz = $g.MeasureString([string]$sticker.name, $fontName)
+    $needsTwoLines = $wrapName -and ($singleLineSz.Width -gt ($innerW + 2))
+
+    if ($needsTwoLines) {
+      $sfWrap = New-Object System.Drawing.StringFormat
+      $sfWrap.Alignment = [System.Drawing.StringAlignment]::Center
+      $sfWrap.LineAlignment = [System.Drawing.StringAlignment]::Center
+      $sfWrap.Trimming = [System.Drawing.StringTrimming]::EllipsisCharacter
+      $lineHeightPx = [int][Math]::Ceiling($fontName.GetHeight($g))
+      $nameH = [Math]::Min([int][Math]::Round(36 * $scaleY), [Math]::Max([int][Math]::Round(26 * $scaleY), [int][Math]::Round($lineHeightPx * 2.05)))
+      $rectName = New-Object System.Drawing.RectangleF($innerX, $y, $innerW, $nameH)
+      $g.DrawString([string]$sticker.name, $fontName, $brushBlack, $rectName, $sfWrap)
+      $sfWrap.Dispose()
+      $y += $nameH + 1
+    } else {
+      $lineHeightPx = [int][Math]::Ceiling($fontName.GetHeight($g))
+      $nameH = [Math]::Max([int][Math]::Round(20 * $scaleY), [Math]::Min([int][Math]::Round(30 * $scaleY), $lineHeightPx + 2))
+      $rectName = New-Object System.Drawing.RectangleF($innerX, $y, $innerW, $nameH)
+      $g.DrawString([string]$sticker.name, $fontName, $brushBlack, $rectName, $sfCenter)
+      $y += $nameH + 1
+    }
+    $fontName.Dispose()
+  } else {
+    $y += [int][Math]::Round(2 * $scaleY)
+  }
 
   $hasPrice = -not [string]::IsNullOrWhiteSpace($sticker.priceText)
-  $codeH = [int][Math]::Round(18 * $scaleY)
-  $priceH = if ($hasPrice) { [int][Math]::Round(28 * $scaleY) } else { [int][Math]::Round(2 * $scaleY) }
+  $codeH = [int][Math]::Round(17 * $scaleY)
+  $priceH = if ($hasPrice) { [int][Math]::Round(26 * $scaleY) } else { [int][Math]::Round(2 * $scaleY) }
 
   $barTop = $y
-  $barHeight = [Math]::Max([int][Math]::Round(58 * $scaleY), $cellH - $barTop - $codeH - $priceH - 1)
+  $barHeight = [Math]::Max([int][Math]::Round(42 * $scaleY), $cellH - $barTop - $codeH - $priceH - 1)
   $pattern = [string]$sticker.pattern
 
   if ($pattern.Length -gt 0) {
@@ -535,19 +564,26 @@ while ($listener.IsListening) {
       $wMm = if ($body.paperWidthMm) { [double]$body.paperWidthMm } else { 70.0 }
       $hMm = if ($body.paperHeightMm) { [double]$body.paperHeightMm } else { 20.0 }
 
+      $showProductName = if ($null -ne $body.options -and $null -ne $body.options.showProductName) { [bool]$body.options.showProductName } else { $true }
+      $nameFontSizePx = if ($null -ne $body.options -and $null -ne $body.options.nameFontSizePx) { [float]$body.options.nameFontSizePx } else { 0.0 }
+      $wrapProductName = if ($null -ne $body.options -and $null -ne $body.options.wrapProductName) { [bool]$body.options.wrapProductName } else { $true }
+
       $stickers = @()
       foreach ($it in $body.items) {
         $qty = [int]$it.quantity
         $cleanCode = ($it.code -replace '[^\x20-\x7E]', '').Trim()
         if ([string]::IsNullOrEmpty($cleanCode)) { $cleanCode = "ITEM" }
         $pat = ConvertTo-Code128Pattern $cleanCode
+        $displayName = if ($showProductName) { [string]$it.name } else { "" }
         for ($k = 0; $k -lt $qty; $k++) {
           $stickers += [PSCustomObject]@{
             shopName = $shopName
-            name = [string]$it.name
+            name = $displayName
             code = $cleanCode
             priceText = [string]$it.priceText
             pattern = $pat
+            nameFontSizePx = $nameFontSizePx
+            wrapProductName = $wrapProductName
           }
         }
       }
