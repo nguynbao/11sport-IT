@@ -321,7 +321,10 @@ export async function POST(req: NextRequest) {
     }
 
     const showShopName = body?.options?.showShopName !== false;
+    const showProductName = body?.options?.showProductName !== false;
     const showPrice = body?.options?.showPrice !== false;
+    const nameFontSizePx = Math.max(0, Math.min(32, Number(body?.options?.nameFontSizePx) || 0));
+    const wrapProductName = body?.options?.wrapProductName !== false;
     const shopName = showShopName ? String(body?.shopName ?? "11SPORT").trim() : "";
 
     // Fixed standard for 2-column 70x20mm thermal roll (2 stickers 35x20mm per row)
@@ -340,13 +343,16 @@ export async function POST(req: NextRequest) {
       if (!priceText && showPrice && Number(item?.sellingPrice) > 0) {
         priceText = `${Number(item.sellingPrice).toLocaleString("vi-VN")} đ`;
       }
+      const displayName = showProductName ? String(item?.name || "").trim() : "";
       for (let i = 0; i < qty; i++) {
         expandedStickers.push({
           shopName,
-          name: String(item?.name || "Sản phẩm").trim(),
+          name: displayName,
           code: cleanCode,
           priceText,
-          pattern
+          pattern,
+          nameFontSizePx,
+          wrapProductName
         });
       }
     }
@@ -617,19 +623,48 @@ function Draw-SingleSticker($g, $sticker, [int]$cellX, [int]$cellW, [int]$cellH,
     $y += [int][Math]::Round(2 * $scaleY)
   }
 
-  $nameH = [int][Math]::Round(26 * $scaleY)
-  $fontName = Get-FittedFontPx $g 'Arial' ([string]$sticker.name) ([float](26 * $scaleY)) ([float](15 * $scaleY)) $innerW
-  $rectName = New-Object System.Drawing.RectangleF($innerX, $y, $innerW, $nameH)
-  $g.DrawString([string]$sticker.name, $fontName, $brushBlack, $rectName, $sfCenter)
-  $fontName.Dispose()
-  $y += $nameH + 1
+  if (-not [string]::IsNullOrWhiteSpace($sticker.name)) {
+    $customPx = if ($null -ne $sticker.nameFontSizePx) { [float]$sticker.nameFontSizePx } else { 0.0 }
+    $wrapName = if ($null -ne $sticker.wrapProductName) { [bool]$sticker.wrapProductName } else { $true }
+
+    if ($customPx -gt 0) {
+      $fontName = New-Object System.Drawing.Font('Arial', [float]($customPx * $scaleY), [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
+    } else {
+      $fontName = Get-FittedFontPx $g 'Arial' ([string]$sticker.name) ([float](25 * $scaleY)) ([float](13 * $scaleY)) $innerW
+    }
+
+    $singleLineSz = $g.MeasureString([string]$sticker.name, $fontName)
+    $needsTwoLines = $wrapName -and ($singleLineSz.Width -gt ($innerW + 2))
+
+    if ($needsTwoLines) {
+      $sfWrap = New-Object System.Drawing.StringFormat
+      $sfWrap.Alignment = [System.Drawing.StringAlignment]::Center
+      $sfWrap.LineAlignment = [System.Drawing.StringAlignment]::Center
+      $sfWrap.Trimming = [System.Drawing.StringTrimming]::EllipsisCharacter
+      $lineHeightPx = [int][Math]::Ceiling($fontName.GetHeight($g))
+      $nameH = [Math]::Min([int][Math]::Round(36 * $scaleY), [Math]::Max([int][Math]::Round(26 * $scaleY), [int][Math]::Round($lineHeightPx * 2.05)))
+      $rectName = New-Object System.Drawing.RectangleF($innerX, $y, $innerW, $nameH)
+      $g.DrawString([string]$sticker.name, $fontName, $brushBlack, $rectName, $sfWrap)
+      $sfWrap.Dispose()
+      $y += $nameH + 1
+    } else {
+      $lineHeightPx = [int][Math]::Ceiling($fontName.GetHeight($g))
+      $nameH = [Math]::Max([int][Math]::Round(20 * $scaleY), [Math]::Min([int][Math]::Round(30 * $scaleY), $lineHeightPx + 2))
+      $rectName = New-Object System.Drawing.RectangleF($innerX, $y, $innerW, $nameH)
+      $g.DrawString([string]$sticker.name, $fontName, $brushBlack, $rectName, $sfCenter)
+      $y += $nameH + 1
+    }
+    $fontName.Dispose()
+  } else {
+    $y += [int][Math]::Round(2 * $scaleY)
+  }
 
   $hasPrice = -not [string]::IsNullOrWhiteSpace($sticker.priceText)
-  $codeH = [int][Math]::Round(18 * $scaleY)
-  $priceH = if ($hasPrice) { [int][Math]::Round(28 * $scaleY) } else { [int][Math]::Round(2 * $scaleY) }
+  $codeH = [int][Math]::Round(17 * $scaleY)
+  $priceH = if ($hasPrice) { [int][Math]::Round(26 * $scaleY) } else { [int][Math]::Round(2 * $scaleY) }
 
   $barTop = $y
-  $barHeight = [Math]::Max([int][Math]::Round(58 * $scaleY), $cellH - $barTop - $codeH - $priceH - 1)
+  $barHeight = [Math]::Max([int][Math]::Round(42 * $scaleY), $cellH - $barTop - $codeH - $priceH - 1)
   $pattern = [string]$sticker.pattern
 
   if ($pattern.Length -gt 0) {
