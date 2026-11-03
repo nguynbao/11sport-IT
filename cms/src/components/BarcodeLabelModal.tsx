@@ -1,1118 +1,1612 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { formatVND } from "@/lib/api";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Printer,
+  X,
+  Plus,
+  Minus,
+  CheckCircle2,
+  Sparkles,
+  RefreshCw,
+  AlertTriangle,
+  Usb,
+  Layers,
+  MonitorCheck
+} from "lucide-react";
 
 export interface BarcodeLabelItem {
-  id?: string;
-  /** Mã sản phẩm chung (IN HOA VIẾT LIỀN, KHÔNG chứa màu/size) — dùng để in mã vạch */
-  productCode: string;
-  productName: string;
+  id?: string | number;
+  code?: string;
+  productCode?: string;
+  name?: string;
+  productName?: string;
+  price?: number;
+  sellingPrice?: number;
   color?: string;
   size?: string;
-  sellingPrice?: number;
   unit?: string;
-  /** Số lượng tem mặc định (theo SL nhập hoặc tồn kho) */
+  category?: string;
   defaultQty?: number;
 }
 
+interface NormalizedLabelItem {
+  id: string;
+  code: string;
+  name: string;
+  price: number;
+  defaultQty: number;
+}
+
 interface BarcodeLabelModalProps {
-  open: boolean;
+  open?: boolean;
+  isOpen?: boolean;
   onClose: () => void;
   items: BarcodeLabelItem[];
   title?: string;
+  shopName?: string;
 }
 
-type LabelPresetId = "50x30_1UP" | "40x30_1UP" | "35x22_2UP";
+type SystemPrinterInfo = {
+  Name: string;
+  DriverName: string;
+  PortName: string;
+  PrinterStatus: string;
+  Default: boolean;
+  WorkOffline: boolean;
+  IsOnline: boolean;
+  IsThermal: boolean;
+};
 
-interface LabelPreset {
-  id: LabelPresetId;
-  name: string;
-  desc: string;
-  widthMm: number;
-  heightMm: number;
-  columns: 1 | 2;
-  pageWidthMm: number;
-  pageHeightMm: number;
-}
+// Cấu hình cố định chuẩn máy in tem 2 cột 70 × 20 mm (2 tem 35 × 20 mm / hàng)
+const FIXED_LABEL_CONFIG = {
+  id: "70x20_2up",
+  name: "Tem đôi 2 cột 70 × 20 mm (2 tem 35×20mm / hàng)",
+  columns: 2 as const,
+  pageWidthMm: 70,
+  pageHeightMm: 20,
+  labelWidthMm: 34.5,
+  labelHeightMm: 20,
+  colGapMm: 1
+};
 
-interface DetectedPrinterInfo {
-  name: string;
-  driverName: string;
-  portName: string;
-  status: string;
-  isOnline: boolean;
-  isThermal: boolean;
-}
-
-const BROWSER_DIALOG_VALUE = "__BROWSER_DIALOG__";
-
-const LABEL_PRESETS: LabelPreset[] = [
-  {
-    id: "50x30_1UP",
-    name: "50 × 30 mm (1 tem/hàng)",
-    desc: "Chuẩn máy in nhiệt Xprinter / Godex / Zebra (Khuyên dùng)",
-    widthMm: 50,
-    heightMm: 30,
-    columns: 1,
-    pageWidthMm: 50,
-    pageHeightMm: 30,
-  },
-  {
-    id: "40x30_1UP",
-    name: "40 × 30 mm (1 tem/hàng)",
-    desc: "Khổ tem vừa cho tag treo quần áo, phụ kiện",
-    widthMm: 40,
-    heightMm: 30,
-    columns: 1,
-    pageWidthMm: 40,
-    pageHeightMm: 30,
-  },
-  {
-    id: "35x22_2UP",
-    name: "35 × 22 mm (2 tem/hàng - khổ 70×22)",
-    desc: "Giấy cuộn 2 tem ngang tiết kiệm giấy",
-    widthMm: 35,
-    heightMm: 22,
-    columns: 2,
-    pageWidthMm: 72,
-    pageHeightMm: 22,
-  },
-];
-
-/**
- * Bảng mã chuẩn Code128 (0..106) theo ISO/IEC 15417.
- */
 const CODE128_PATTERNS: string[] = [
-  "212222", "222122", "222221", "121223", "121322", "131222", "122213", "122312",
-  "132212", "221213", "221312", "231212", "112232", "122132", "122231", "113222",
-  "123122", "123221", "223211", "221132", "221231", "213212", "223112", "312131",
-  "311222", "321122", "321221", "312212", "322112", "322211", "212123", "212321",
-  "232121", "111323", "131123", "131321", "112313", "132113", "132311", "211313",
-  "231113", "231311", "112133", "112331", "132131", "113123", "113321", "133121",
-  "313121", "211331", "231131", "213113", "213311", "213131", "311123", "311321",
-  "331121", "312113", "312311", "332111", "314111", "221411", "431111", "111224",
-  "111422", "121124", "121421", "141122", "141221", "112214", "112412", "122114",
-  "122411", "142112", "142211", "241211", "221114", "413111", "241112", "134111",
-  "111242", "121142", "121241", "114212", "124112", "124211", "411212", "421112",
-  "421211", "212141", "214121", "412121", "111143", "111341", "131141", "114113",
-  "114311", "411113", "411311", "113141", "114131", "311141", "411131", "211412",
-  "211214", "211232", "2331112",
+  "11011001100", "11001101100", "11001100110", "10010011000", "10010001100",
+  "10001001100", "10011001000", "10011000100", "10001100100", "11001001000",
+  "11001000100", "11000100100", "10110011100", "10011011100", "10011001110",
+  "10111001100", "10011101100", "10011100110", "11001110010", "11001011100",
+  "11001001110", "11011100100", "11001110100", "11101101110", "11101001100",
+  "11100101100", "11100100110", "11101100100", "11100110100", "11100110010",
+  "11011011000", "11011000110", "11000110110", "10100011000", "10001011000",
+  "10001000110", "10110001000", "10001101000", "10001100010", "11010001000",
+  "11000101000", "11000100010", "10110111000", "10110001110", "10001101110",
+  "10111011000", "10111000110", "10001110110", "11101110110", "11010001110",
+  "11000101110", "11011101000", "11011100010", "11011101110", "11101011000",
+  "11101000110", "11100010110", "11101101000", "11101100010", "11100011010",
+  "11101111010", "11001000010", "11110001010", "10100110000", "10100001100",
+  "10010110000", "10010000110", "10000101100", "10000100110", "10110010000",
+  "10110000100", "10011010000", "10011000010", "10000110100", "10000110010",
+  "11000010010", "11001010000", "11110111010", "11000010100", "10001111010",
+  "10100111100", "10010111100", "10010011110", "10111100100", "10011110100",
+  "10011110010", "11110100100", "11110010100", "11110010010", "11011011110",
+  "11011110110", "11110110110", "10101111000", "10100011110", "10001011110",
+  "10111101000", "10111100010", "11110101000", "11110100010", "10111011110",
+  "10111101110", "11101011110", "11110101110", "11010000100", "11010010000",
+  "11010011100", "1100011101011"
 ];
 
-export function cleanMasterCodeForLabel(rawCode: string): string {
-  return String(rawCode || "")
+function sanitizeAscii(input: string): string {
+  const normalized = (input || "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[đĐ]/g, "D")
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "");
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .trim();
+  let out = "";
+  for (let i = 0; i < normalized.length; i++) {
+    const code = normalized.charCodeAt(i);
+    if (code >= 32 && code <= 126) {
+      out += normalized[i];
+    }
+  }
+  return out || "ITEM";
 }
 
-export function encodeCode128Bars(rawText: string): {
-  bars: { x: number; w: number }[];
-  totalUnits: number;
-} {
-  const text = cleanMasterCodeForLabel(rawText) || "11SPORT";
-  const codes: number[] = [104];
-  let checksum = 104;
+function encodeCode128RawPattern(rawText: string): string {
+  const text = sanitizeAscii(rawText);
+  const START_B = 104;
+  const START_C = 105;
+  const CODE_B = 100;
+  const CODE_C = 99;
+  const STOP_CODE = 106;
 
-  for (let i = 0; i < text.length; i++) {
-    const ascii = text.charCodeAt(i);
-    const val = ascii >= 32 && ascii <= 126 ? ascii - 32 : 0;
-    codes.push(val);
-    checksum += val * (i + 1);
-  }
+  const countConsecutiveDigits = (str: string, startIdx: number): number => {
+    let count = 0;
+    while (startIdx + count < str.length) {
+      const ch = str.charCodeAt(startIdx + count);
+      if (ch >= 48 && ch <= 57) count++;
+      else break;
+    }
+    return count;
+  };
 
-  codes.push(checksum % 103);
-  codes.push(106);
+  const codes: number[] = [];
+  let i = 0;
+  const initialDigits = countConsecutiveDigits(text, 0);
+  let mode: "B" | "C" = initialDigits >= 4 ? "C" : "B";
+  codes.push(mode === "C" ? START_C : START_B);
 
-  const quietZone = 10;
-  let cursor = quietZone;
-  const bars: { x: number; w: number }[] = [];
-
-  for (const code of codes) {
-    const pattern = CODE128_PATTERNS[code] || CODE128_PATTERNS[0];
-    for (let j = 0; j < pattern.length; j++) {
-      const width = Number(pattern[j]) || 1;
-      if (j % 2 === 0) {
-        bars.push({ x: cursor, w: width });
+  while (i < text.length) {
+    if (mode === "C") {
+      const dCount = countConsecutiveDigits(text, i);
+      if (dCount >= 2) {
+        codes.push(parseInt(text.slice(i, i + 2), 10));
+        i += 2;
+      } else {
+        codes.push(CODE_B);
+        mode = "B";
       }
-      cursor += width;
+    } else {
+      const dCount = countConsecutiveDigits(text, i);
+      if (dCount >= 4) {
+        if (dCount % 2 === 1) {
+          codes.push(text.charCodeAt(i) - 32);
+          i += 1;
+        }
+        codes.push(CODE_C);
+        mode = "C";
+      } else {
+        codes.push(text.charCodeAt(i) - 32);
+        i += 1;
+      }
     }
   }
 
-  return {
-    bars,
-    totalUnits: cursor + quietZone,
-  };
+  let checksum = codes[0];
+  for (let idx = 1; idx < codes.length; idx++) {
+    checksum += codes[idx] * idx;
+  }
+  const checkIndex = checksum % 103;
+  codes.push(checkIndex);
+  codes.push(STOP_CODE);
+
+  return codes.map((c) => CODE128_PATTERNS[c] || "").join("");
 }
 
-export function Code128Svg({
-  value,
-  height = 38,
-}: {
-  value: string;
-  height?: number;
-}) {
-  const cleanCode = cleanMasterCodeForLabel(value);
-  const { bars, totalUnits } = useMemo(() => encodeCode128Bars(cleanCode), [cleanCode]);
+function encodeCode128Bars(rawText: string, maxDots = 258): string {
+  const pat = encodeCode128RawPattern(rawText);
+  const numSymbols = Math.floor((pat.length - 2) / 11);
+  if (numSymbols <= 0) return pat;
 
-  return (
-    <svg
-      viewBox={`0 0 ${totalUnits} ${height}`}
-      className="w-full h-auto block"
-      preserveAspectRatio="none"
-      shapeRendering="crispEdges"
-    >
-      <rect x={0} y={0} width={totalUnits} height={height} fill="#FFFFFF" />
-      {bars.map((b, idx) => (
-        <rect key={idx} x={b.x} y={0} width={b.w} height={height} fill="#000000" />
-      ))}
-    </svg>
-  );
+  let symW = Math.floor((maxDots - 4) / numSymbols);
+  if (symW > 24) symW = 24;
+  if (symW < 16) symW = 11;
+
+  if (symW === 11) {
+    return pat;
+  }
+
+  let out = "";
+  for (let sIdx = 0; sIdx < numSymbols; sIdx++) {
+    const symPat = pat.slice(sIdx * 11, sIdx * 11 + 11);
+    const m: number[] = [];
+    let i = 0;
+    while (i < 11) {
+      const ch = symPat[i];
+      let r = 1;
+      while (i + r < 11 && symPat[i + r] === ch) r++;
+      m.push(r);
+      i += r;
+    }
+
+    if (symW === 22) {
+      for (let k = 0; k < 6; k++) {
+        out += (k % 2 === 0 ? "1" : "0").repeat(m[k] * 2);
+      }
+      continue;
+    }
+
+    const minR: number[] = [];
+    const maxR: number[] = [];
+    for (let k = 0; k < 6; k++) {
+      let lo = 1;
+      while (Math.round((lo * 11) / symW) < m[k]) lo++;
+      let hi = lo;
+      while (Math.round(((hi + 1) * 11) / symW) === m[k]) hi++;
+      minR.push(lo);
+      maxR.push(hi);
+    }
+
+    let bestR: number[] = m.map((v) => Math.max(1, Math.round((v * symW) / 11)));
+    let bestCost = 1e9;
+
+    for (let r0 = minR[0]; r0 <= maxR[0]; r0++) {
+      for (let r1 = minR[1]; r1 <= maxR[1]; r1++) {
+        for (let r2 = minR[2]; r2 <= maxR[2]; r2++) {
+          for (let r3 = minR[3]; r3 <= maxR[3]; r3++) {
+            for (let r4 = minR[4]; r4 <= maxR[4]; r4++) {
+              const r5 = symW - (r0 + r1 + r2 + r3 + r4);
+              if (r5 >= minR[5] && r5 <= maxR[5]) {
+                const rr = [r0, r1, r2, r3, r4, r5];
+                let ok = true;
+                for (let k = 0; k < 4; k++) {
+                  if (Math.round(((rr[k] + rr[k + 1]) * 11) / symW) !== m[k] + m[k + 1]) {
+                    ok = false;
+                    break;
+                  }
+                }
+                if (ok) {
+                  let cost = 0;
+                  for (let k = 0; k < 6; k++) {
+                    const diff = (rr[k] * 11) / symW - m[k];
+                    cost += diff * diff;
+                  }
+                  if (cost < bestCost) {
+                    bestCost = cost;
+                    bestR = rr;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    for (let k = 0; k < 6; k++) {
+      out += (k % 2 === 0 ? "1" : "0").repeat(bestR[k]);
+    }
+  }
+
+  const finalBarPx = Math.max(2, Math.round((2 * symW) / 11));
+  out += "1".repeat(finalBarPx);
+  return out;
 }
+
+function renderCode128SvgString(rawText: string, height = 46): string {
+  const pattern = encodeCode128Bars(rawText, 258);
+  const quietZoneUnits = 4;
+  const exactWidthPx = pattern.length + quietZoneUnits * 2;
+
+  const rects: string[] = [];
+  let i = 0;
+  while (i < pattern.length) {
+    if (pattern[i] === "1") {
+      let run = 1;
+      while (i + run < pattern.length && pattern[i + run] === "1") {
+        run++;
+      }
+      const x = quietZoneUnits + i;
+      const w = run;
+      rects.push(`<rect x="${x}" y="0" width="${w}" height="${height}" fill="#000000" shape-rendering="crispEdges" />`);
+      i += run;
+    } else {
+      i++;
+    }
+  }
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${exactWidthPx} ${height}" width="100%" height="${height}" preserveAspectRatio="none" shape-rendering="crispEdges" style="width:100%;height:100%;display:block;margin:0 auto;background:#ffffff;image-rendering:pixelated;image-rendering:crisp-edges;">
+    <rect x="0" y="0" width="${exactWidthPx}" height="${height}" fill="#ffffff" />
+    ${rects.join("")}
+  </svg>`;
+}
+
+/**
+ * Kết xuất ảnh PNG 1-bit khớp đúng độ phân giải đầu in 203 DPI cho khổ tem 35×20mm (lấp đầy ~93% chiều ngang tem)
+ */
+function renderCode128MonochromePngDataUrl(rawText: string, labelWidthMm = 34.5, barHeightPx = 68): string {
+  const canvasWidth = Math.round(labelWidthMm * 8); // 276 dots cho tem 34.5mm ở 203 DPI
+  const canvasHeight = barHeightPx;
+  const quietZonePx = 8; // ~1.0mm mỗi bên
+  const maxBarW = canvasWidth - quietZonePx * 2;
+  const pattern = encodeCode128Bars(rawText, maxBarW);
+  const dotsPerUnit = Math.max(1, Math.min(2, Math.floor(maxBarW / pattern.length) || 1));
+  const totalBarPx = pattern.length * dotsPerUnit;
+  const startX = Math.floor((canvasWidth - totalBarPx) / 2);
+
+  if (typeof document === "undefined") {
+    return "";
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = canvasWidth;
+  canvas.height = canvasHeight;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return "";
+
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+  ctx.fillStyle = "#000000";
+  let i = 0;
+  while (i < pattern.length) {
+    if (pattern[i] === "1") {
+      let run = 1;
+      while (i + run < pattern.length && pattern[i + run] === "1") {
+        run++;
+      }
+      const x = startX + i * dotsPerUnit;
+      const w = run * dotsPerUnit;
+      ctx.fillRect(x, 0, w, canvasHeight);
+      i += run;
+    } else {
+      i++;
+    }
+  }
+
+  return canvas.toDataURL("image/png");
+}
+
+function escapeHtml(str: string): string {
+  return (str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+const PRINTER_STORAGE_KEY = "11sport_preferred_thermal_printer";
 
 export default function BarcodeLabelModal({
   open,
+  isOpen,
   onClose,
   items,
-  title = "In Tem Nhãn Mã Vạch (Máy In Label)",
+  title = "In Tem Mã Vạch 2 Cột (70 × 20 mm)",
+  shopName = "11SPORT"
 }: BarcodeLabelModalProps) {
-  const [presetId, setPresetId] = useState<LabelPresetId>("50x30_1UP");
-  const [showShopName, setShowShopName] = useState(true);
-  const showProductName = false; // Bỏ phần in tên sản phẩm trên tem mã vạch theo yêu cầu
-  const [showPrice, setShowPrice] = useState(true);
-  const groupByMasterCode = true; // Mặc định luôn gộp các dòng cùng Mã SP thành 1 dòng tổng SL tem
+  const modalOpen = Boolean(isOpen ?? open);
 
-  const [printers, setPrinters] = useState<DetectedPrinterInfo[]>([]);
+  const normalizedItems = useMemo<NormalizedLabelItem[]>(() => {
+    return (items || []).map((item, idx) => {
+      const code = String(item.code || item.productCode || "ITEM").trim();
+      const name = String(item.name || item.productName || "Sản phẩm").trim();
+      const price = Number(item.price ?? item.sellingPrice ?? 0);
+      const id = String(item.id ?? `${code}_${idx}`);
+      const defaultQty = item.defaultQty && item.defaultQty > 0 ? item.defaultQty : 1;
+      return { id, code, name, price, defaultQty };
+    });
+  }, [items]);
+
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [showPrice, setShowPrice] = useState<boolean>(true);
+  const [showShopName, setShowShopName] = useState<boolean>(true);
+
+  const [printers, setPrinters] = useState<SystemPrinterInfo[]>([]);
   const [selectedPrinter, setSelectedPrinter] = useState<string>("");
-  const [scanningPrinters, setScanningPrinters] = useState(false);
-  const [printingDirect, setPrintingDirect] = useState(false);
+  const [isScanningPrinters, setIsScanningPrinters] = useState<boolean>(false);
+  const [isPrintingDirect, setIsPrintingDirect] = useState<boolean>(false);
   const [printStatusMsg, setPrintStatusMsg] = useState<{
     type: "success" | "error" | "info";
     text: string;
   } | null>(null);
 
-  const scanConnectedPrinters = useCallback(async () => {
-    setScanningPrinters(true);
+  const printIframeRef = useRef<HTMLIFrameElement | null>(null);
+
+  const fetchPrintersList = async () => {
+    setIsScanningPrinters(true);
     setPrintStatusMsg(null);
-    const endpoints = [
-      "/api/printers",
-      "http://localhost:4000/api/v1/printers",
-    ];
-
-    for (const url of endpoints) {
-      try {
-        const res = await fetch(url, { cache: "no-store" });
-        if (!res.ok) continue;
-        const json = await res.json();
-        const list: DetectedPrinterInfo[] = Array.isArray(json?.data?.printers)
-          ? json.data.printers
-          : [];
-        const recommended: string | null = json?.data?.recommendedPrinter || null;
-
-        if (list.length > 0) {
-          setPrinters(list);
-          setSelectedPrinter((prev) => {
-            if (prev && (prev === BROWSER_DIALOG_VALUE || list.some((p) => p.name === prev))) {
-              return prev;
-            }
-            return recommended || list[0].name;
-          });
-          setScanningPrinters(false);
-          return;
-        }
-      } catch {
-        // Thử endpoint tiếp theo
-      }
-    }
-
-    setPrinters([]);
-    setSelectedPrinter(BROWSER_DIALOG_VALUE);
-    setScanningPrinters(false);
-  }, []);
-
-  const syncThermalDriverPaperSize = useCallback(
-    async (targetPrinterName: string, preset: LabelPreset) => {
-      if (!targetPrinterName || targetPrinterName === BROWSER_DIALOG_VALUE) return;
-      const body = JSON.stringify({
-        printerName: targetPrinterName,
-        syncOnly: true,
-        preset: {
-          id: preset.id,
-          widthMm: preset.widthMm,
-          heightMm: preset.heightMm,
-          columns: preset.columns,
-          pageWidthMm: preset.pageWidthMm,
-          pageHeightMm: preset.pageHeightMm,
-        },
-      });
+    try {
       const endpoints = [
+        "http://localhost:4000/api/v1/printers",
         "/api/printers",
-        "http://localhost:4000/api/v1/printers/print-labels",
+        "/api/v1/printers"
       ];
-      for (const url of endpoints) {
+      let list: SystemPrinterInfo[] = [];
+
+      for (const ep of endpoints) {
         try {
-          const res = await fetch(url, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body,
-          });
-          if (res.ok) return;
+          const res = await fetch(ep, { cache: "no-store" });
+          if (res.ok) {
+            const json = await res.json();
+            if (Array.isArray(json?.data?.printers)) {
+              list = json.data.printers;
+              break;
+            }
+          }
         } catch {
-          // Thử endpoint tiếp theo
+          // try next endpoint
         }
       }
-    },
-    []
-  );
 
-  useEffect(() => {
-    if (open) {
-      scanConnectedPrinters();
-    }
-  }, [open, scanConnectedPrinters]);
+      setPrinters(list);
 
-  useEffect(() => {
-    if (!open) return;
-    const presetObj = LABEL_PRESETS.find((p) => p.id === presetId) || LABEL_PRESETS[0];
-    const thermalPrinter =
-      (selectedPrinter && selectedPrinter !== BROWSER_DIALOG_VALUE
-        ? selectedPrinter
-        : printers.find((p) => p.isThermal)?.name || printers[0]?.name) || "";
-    if (thermalPrinter) {
-      syncThermalDriverPaperSize(thermalPrinter, presetObj);
-    }
-  }, [open, presetId, selectedPrinter, printers, syncThermalDriverPaperSize]);
+      const savedPrinter =
+        typeof window !== "undefined" ? localStorage.getItem(PRINTER_STORAGE_KEY) : null;
 
-  const normalizedRows = useMemo(() => {
-    const base = items
-      .map((it, idx) => {
-        const cleanCode = cleanMasterCodeForLabel(it.productCode);
-        return {
-          key: it.id || `${cleanCode}_${it.color || ""}_${it.size || ""}_${idx}`,
-          productCode: cleanCode,
-          productName: it.productName || cleanCode,
-          color: it.color || "",
-          size: it.size || "",
-          sellingPrice: Number(it.sellingPrice || 0),
-          defaultQty: Math.max(1, Math.round(Number(it.defaultQty ?? 1))),
-        };
-      })
-      .filter((r) => Boolean(r.productCode));
-
-    if (!groupByMasterCode) return base;
-
-    const grouped = new Map<string, (typeof base)[number]>();
-    for (const r of base) {
-      const existing = grouped.get(r.productCode);
-      if (existing) {
-        existing.defaultQty += r.defaultQty;
-        if (!existing.sellingPrice && r.sellingPrice) existing.sellingPrice = r.sellingPrice;
+      if (savedPrinter && list.some((p) => p.Name === savedPrinter)) {
+        setSelectedPrinter(savedPrinter);
       } else {
-        grouped.set(r.productCode, {
-          ...r,
-          key: r.productCode,
-          color: "",
-          size: "",
-        });
+        const thermalOnline = list.find((p) => p.IsThermal && p.IsOnline);
+        const anyThermal = list.find((p) => p.IsThermal);
+        const defaultOnline = list.find((p) => p.Default && p.IsOnline);
+        const firstOnline = list.find((p) => p.IsOnline);
+        const chosen = thermalOnline || anyThermal || defaultOnline || firstOnline || list[0];
+        if (chosen) {
+          setSelectedPrinter(chosen.Name);
+        }
       }
+    } catch {
+      setPrinters([]);
+    } finally {
+      setIsScanningPrinters(false);
     }
-    return Array.from(grouped.values());
-  }, [items, groupByMasterCode]);
-
-  const [qtyOverrides, setQtyOverrides] = useState<Record<string, number>>({});
-
-  if (!open) return null;
-
-  const currentPreset = LABEL_PRESETS.find((p) => p.id === presetId) || LABEL_PRESETS[0];
-
-  const getRowQty = (rowKey: string, defaultQty: number) => {
-    if (qtyOverrides[rowKey] !== undefined) return qtyOverrides[rowKey];
-    return defaultQty;
   };
 
-  const setAllQtyMode = (mode: "DEFAULT" | "ONE" | "ZERO") => {
-    const next: Record<string, number> = {};
-    for (const r of normalizedRows) {
-      next[r.key] = mode === "DEFAULT" ? r.defaultQty : mode === "ONE" ? 1 : 0;
+  useEffect(() => {
+    if (modalOpen) {
+      const initial: Record<string, number> = {};
+      normalizedItems.forEach((item) => {
+        initial[item.id] = item.defaultQty;
+      });
+      setQuantities(initial);
+      fetchPrintersList();
     }
-    setQtyOverrides(next);
-  };
+  }, [modalOpen, normalizedItems]);
 
-  const totalLabelsToPrint = normalizedRows.reduce(
-    (sum, r) => sum + Math.max(0, getRowQty(r.key, r.defaultQty)),
-    0
+  const currentPrinterObj = useMemo(
+    () => printers.find((p) => p.Name === selectedPrinter) || null,
+    [printers, selectedPrinter]
   );
 
-  const sampleRow = normalizedRows[0] || {
-    key: "SAMPLE",
-    productCode: "AOKAMITOPRO",
-    productName: "Áo đấu Kamito Pro",
-    color: "",
-    size: "",
-    sellingPrice: 290000,
-    defaultQty: 1,
+  const totalLabels = useMemo(() => {
+    return normalizedItems.reduce((sum, item) => sum + (quantities[item.id] || 0), 0);
+  }, [normalizedItems, quantities]);
+
+  const totalRows = Math.ceil(totalLabels / FIXED_LABEL_CONFIG.columns);
+
+  if (!modalOpen) return null;
+
+  const updateQty = (id: string, delta: number) => {
+    setQuantities((prev) => ({
+      ...prev,
+      [id]: Math.max(0, (prev[id] || 0) + delta)
+    }));
   };
 
-  const activePrinterObj = printers.find((p) => p.name === selectedPrinter) || null;
-
-  const handleBrowserPrintDialog = () => {
-    const expandedLabels: {
-      productCode: string;
-      productName: string;
-      sellingPrice: number;
-    }[] = [];
-
-    for (const r of normalizedRows) {
-      const count = Math.max(0, getRowQty(r.key, r.defaultQty));
-      for (let i = 0; i < count; i++) {
-        expandedLabels.push({
-          productCode: r.productCode,
-          productName: r.productName,
-          sellingPrice: r.sellingPrice,
-        });
-      }
-    }
-
-    if (expandedLabels.length === 0) {
-      setPrintStatusMsg({
-        type: "error",
-        text: "Vui lòng chọn số lượng tem cần in lớn hơn 0!",
-      });
-      return;
-    }
-
-    const renderSingleStickerHtml = (lbl: {
-      productCode: string;
-      productName: string;
-      sellingPrice: number;
-    }) => {
-      const { bars, totalUnits } = encodeCode128Bars(lbl.productCode);
-      const rectsHtml = bars
-        .map((b) => `<rect x="${b.x}" y="0" width="${b.w}" height="40" fill="#000" />`)
-        .join("");
-
-      const priceText =
-        showPrice && lbl.sellingPrice > 0 ? formatVND(lbl.sellingPrice) : "";
-
-      return `
-        <div class="label-sticker">
-          ${showShopName ? `<div class="shop-title">11 SPORT</div>` : ""}
-          <div class="barcode-wrap">
-            <svg viewBox="0 0 ${totalUnits} 40" preserveAspectRatio="none" shape-rendering="crispEdges">
-              <rect x="0" y="0" width="${totalUnits}" height="40" fill="#fff" />
-              ${rectsHtml}
-            </svg>
-          </div>
-          <div class="prod-code">${lbl.productCode}</div>
-          ${priceText ? `<div class="prod-price">${priceText}</div>` : ""}
-        </div>
-      `;
-    };
-
-    let pagesHtml = "";
-    if (currentPreset.columns === 2) {
-      for (let i = 0; i < expandedLabels.length; i += 2) {
-        const left = renderSingleStickerHtml(expandedLabels[i]);
-        const right = expandedLabels[i + 1]
-          ? renderSingleStickerHtml(expandedLabels[i + 1])
-          : `<div class="label-sticker empty"></div>`;
-        pagesHtml += `<div class="label-page two-col">${left}${right}</div>`;
-      }
-    } else {
-      for (const lbl of expandedLabels) {
-        pagesHtml += `<div class="label-page one-col">${renderSingleStickerHtml(lbl)}</div>`;
-      }
-    }
-
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html lang="vi">
-      <head>
-        <meta charset="UTF-8" />
-        <title>In Tem Mã Vạch 11Sport (${expandedLabels.length} tem)</title>
-        <style>
-          @page {
-            size: ${currentPreset.pageWidthMm}mm ${currentPreset.pageHeightMm}mm;
-            margin: 0mm;
-          }
-          * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-          }
-          html, body {
-            width: ${currentPreset.pageWidthMm}mm;
-            margin: 0;
-            padding: 0;
-            background: #ffffff;
-            color: #000000;
-            font-family: Arial, Helvetica, sans-serif;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-          }
-          @media screen {
-            html, body {
-              width: 100%;
-              background: #f1f5f9;
-              padding: 16px;
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              gap: 10px;
-            }
-            .label-page {
-              background: #ffffff;
-              box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
-              border: 1px dashed #94a3b8;
-            }
-          }
-          @media print {
-            html, body {
-              width: ${currentPreset.pageWidthMm}mm !important;
-              margin: 0 !important;
-              padding: 0 !important;
-              background: #ffffff !important;
-              display: block !important;
-            }
-            .no-print {
-              display: none !important;
-            }
-          }
-          .no-print {
-            width: 100%;
-            max-width: 680px;
-            background: #0f172a;
-            color: #ffffff;
-            padding: 10px 14px;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            font-size: 12px;
-            margin-bottom: 6px;
-          }
-          .no-print button {
-            background: #2563eb;
-            color: #ffffff;
-            border: none;
-            padding: 7px 14px;
-            border-radius: 6px;
-            font-weight: 700;
-            cursor: pointer;
-            font-size: 12px;
-            white-space: nowrap;
-          }
-          .label-page {
-            width: ${currentPreset.pageWidthMm}mm;
-            height: ${currentPreset.pageHeightMm}mm;
-            page-break-after: always;
-            break-after: page;
-            display: flex;
-            flex-direction: row;
-            align-items: center;
-            overflow: hidden;
-          }
-          .label-page.one-col {
-            justify-content: center;
-          }
-          .label-page.two-col {
-            justify-content: space-between;
-          }
-          .label-page:last-child {
-            page-break-after: auto;
-            break-after: auto;
-          }
-          .label-sticker {
-            width: ${currentPreset.widthMm}mm;
-            height: ${currentPreset.heightMm}mm;
-            padding: 1.4mm 2mm;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            overflow: hidden;
-          }
-          .shop-title {
-            font-size: ${currentPreset.heightMm <= 24 ? "7pt" : "8pt"};
-            font-weight: 900;
-            letter-spacing: 0.6px;
-            line-height: 1.05;
-            margin-bottom: 0.6mm;
-          }
-          .barcode-wrap {
-            width: 96%;
-            height: ${currentPreset.heightMm <= 24 ? "10mm" : "14mm"};
-            display: flex;
-            align-items: center;
-            justify-content: center;
-          }
-          .barcode-wrap svg {
-            width: 100%;
-            height: 100%;
-            display: block;
-          }
-          .prod-code {
-            font-family: "Courier New", Courier, monospace;
-            font-size: ${currentPreset.heightMm <= 24 ? "7.5pt" : "9pt"};
-            font-weight: 900;
-            letter-spacing: 0.6px;
-            line-height: 1.1;
-            margin-top: 0.6mm;
-          }
-          .prod-price {
-            font-size: ${currentPreset.heightMm <= 24 ? "7pt" : "8.5pt"};
-            font-weight: 800;
-            line-height: 1.1;
-            margin-top: 0.5mm;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="no-print">
-          <span><b>Xem trước ${expandedLabels.length} tem (Khổ giấy trang in: ${currentPreset.pageWidthMm}×${currentPreset.pageHeightMm}mm)</b> — Chọn máy in <b>Xprinter XP-350BM</b> (Khổ giấy: <b>USER</b>).</span>
-          <button type="button" onclick="window.focus(); window.print();">🖨️ Bấm để In ngay (Ctrl+P)</button>
-        </div>
-        ${pagesHtml}
-      </body>
-      </html>
-    `;
-
-    const targetThermalPrinter =
-      (selectedPrinter && selectedPrinter !== BROWSER_DIALOG_VALUE
-        ? selectedPrinter
-        : printers.find((p) => p.isThermal)?.name || printers[0]?.name) || "";
-
-    const printWindow = window.open("", "_blank", "width=760,height=680");
-    if (printWindow) {
-      printWindow.document.open();
-      printWindow.document.write(htmlContent);
-      printWindow.document.close();
-
-      setPrintStatusMsg({
-        type: "info",
-        text: `Đang đồng bộ khổ giấy ${currentPreset.pageWidthMm}×${currentPreset.pageHeightMm}mm với driver máy in và mở hộp thoại in...`,
-      });
-
-      void (async () => {
-        if (targetThermalPrinter) {
-          await syncThermalDriverPaperSize(targetThermalPrinter, currentPreset);
-        }
-        setPrintStatusMsg({
-          type: "info",
-          text: `Đã đồng bộ khổ giấy USER (${currentPreset.pageWidthMm}×${currentPreset.pageHeightMm}mm)! Trong hộp thoại in trình duyệt, hãy chọn Xprinter XP-350BM.`,
-        });
-        setTimeout(() => {
-          try {
-            printWindow.focus();
-            printWindow.print();
-          } catch {
-            // Người dùng có thể bấm nút "🖨️ Bấm để In ngay" ngay trong cửa sổ vừa mở
-          }
-        }, 150);
-      })();
-      return;
-    }
-
-    const iframeId = "eleven-sport-barcode-print-iframe";
-    let printIframe = document.getElementById(iframeId) as HTMLIFrameElement | null;
-    if (printIframe) {
-      printIframe.remove();
-    }
-    printIframe = document.createElement("iframe");
-    printIframe.id = iframeId;
-    printIframe.style.position = "fixed";
-    printIframe.style.left = "-9999px";
-    printIframe.style.top = "0";
-    printIframe.style.width = "400px";
-    printIframe.style.height = "300px";
-    printIframe.style.border = "0";
-    document.body.appendChild(printIframe);
-
-    const frameDoc = printIframe.contentWindow?.document;
-    if (!frameDoc || !printIframe.contentWindow) {
-      setPrintStatusMsg({
-        type: "error",
-        text: "Không thể khởi tạo khung in trên trình duyệt này.",
-      });
-      return;
-    }
-
-    frameDoc.open();
-    frameDoc.write(htmlContent);
-    frameDoc.close();
-
-    setTimeout(() => {
-      try {
-        printIframe?.contentWindow?.focus();
-        printIframe?.contentWindow?.print();
-      } catch {
-        window.print();
-      }
-    }, 250);
+  const setExactQty = (id: string, val: number) => {
+    setQuantities((prev) => ({
+      ...prev,
+      [id]: Math.max(0, Math.min(500, isNaN(val) ? 0 : val))
+    }));
   };
 
-  const handlePrintLabels = async () => {
-    if (totalLabelsToPrint <= 0) {
-      setPrintStatusMsg({
-        type: "error",
-        text: "Vui lòng chọn số lượng tem cần in lớn hơn 0!",
-      });
-      return;
+  const handleSelectPrinter = (name: string) => {
+    setSelectedPrinter(name);
+    setPrintStatusMsg(null);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(PRINTER_STORAGE_KEY, name);
     }
+  };
 
-    if (!selectedPrinter || selectedPrinter === BROWSER_DIALOG_VALUE) {
+  // IN TRỰC TIẾP QUA WINDOWS SPOOLER (1-CLICK CHUẨN 2 CỘT 70x20mm)
+  const handleDirectWindowsPrint = async () => {
+    if (totalLabels <= 0) return;
+
+    if (!selectedPrinter) {
       handleBrowserPrintDialog();
       return;
     }
 
-    const itemsPayload = normalizedRows
-      .map((r) => ({
-        code: r.productCode,
-        name: r.productName,
-        sellingPrice: r.sellingPrice,
-        quantity: Math.max(0, getRowQty(r.key, r.defaultQty)),
-      }))
-      .filter((it) => it.quantity > 0);
-
-    setPrintingDirect(true);
+    setIsPrintingDirect(true);
     setPrintStatusMsg({
       type: "info",
-      text: `Đang gửi lệnh in ${totalLabelsToPrint} tem trực tiếp tới máy in "${selectedPrinter}"...`,
+      text: `Đang đồng bộ khổ 2 cột 70×20mm và gửi ${totalLabels} tem (${totalRows} hàng) tới "${selectedPrinter}"...`
     });
 
-    const requestBody = JSON.stringify({
-      printerName: selectedPrinter,
-      preset: {
-        id: currentPreset.id,
-        widthMm: currentPreset.widthMm,
-        heightMm: currentPreset.heightMm,
-        columns: currentPreset.columns,
-        pageWidthMm: currentPreset.pageWidthMm,
-        pageHeightMm: currentPreset.pageHeightMm,
-      },
-      options: {
-        showShopName,
-        showProductName,
-        showPrice,
-      },
-      items: itemsPayload,
-    });
+    try {
+      const payloadItems = normalizedItems
+        .map((item) => {
+          const qty = quantities[item.id] || 0;
+          if (qty <= 0) return null;
+          return {
+            code: sanitizeAscii(item.code),
+            name: item.name,
+            priceText:
+              showPrice && item.price > 0
+                ? `${item.price.toLocaleString("vi-VN")} đ`
+                : "",
+            sellingPrice: showPrice ? item.price : 0,
+            quantity: qty
+          };
+        })
+        .filter(Boolean);
 
-    const endpoints = [
-      "/api/printers",
-      "http://localhost:4000/api/v1/printers/print-labels",
-    ];
+      const bodyPayload = JSON.stringify({
+        printerName: selectedPrinter,
+        shopName: showShopName ? shopName : "",
+        columns: 2,
+        paperWidthMm: FIXED_LABEL_CONFIG.pageWidthMm,
+        paperHeightMm: FIXED_LABEL_CONFIG.pageHeightMm,
+        preset: {
+          id: FIXED_LABEL_CONFIG.id,
+          widthMm: FIXED_LABEL_CONFIG.labelWidthMm,
+          heightMm: FIXED_LABEL_CONFIG.labelHeightMm,
+          columns: 2,
+          pageWidthMm: FIXED_LABEL_CONFIG.pageWidthMm,
+          pageHeightMm: FIXED_LABEL_CONFIG.pageHeightMm
+        },
+        options: {
+          showShopName,
+          showProductName: true,
+          showPrice
+        },
+        items: payloadItems
+      });
 
-    let lastErr = "Không thể kết nối tới dịch vụ máy in.";
-    for (const url of endpoints) {
-      try {
-        const res = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: requestBody,
-        });
-        const json = await res.json().catch(() => ({}));
-        if (res.ok && json?.data?.printed) {
-          setPrintingDirect(false);
-          setPrintStatusMsg({
-            type: "success",
-            text:
-              json.data.message ||
-              `Đã gửi lệnh in ${totalLabelsToPrint} tem tới máy in "${selectedPrinter}" thành công!`,
+      const endpoints = [
+        "http://localhost:4000/api/v1/printers/print-labels",
+        "/api/printers",
+        "/api/v1/printers/print-labels"
+      ];
+
+      let lastErr = "Không kết nối được dịch vụ máy in.";
+      let printedOk = false;
+      let successMsg = "";
+
+      for (const ep of endpoints) {
+        try {
+          const res = await fetch(ep, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: bodyPayload
           });
-          return;
+          const json = await res.json();
+          if (res.ok && (json?.success || json?.data?.printedPages !== undefined)) {
+            printedOk = true;
+            successMsg =
+              json.message ||
+              `Đã in ${totalLabels} tem (${totalRows} hàng 70×20mm) ra máy in "${selectedPrinter}"!`;
+            break;
+          } else if (json?.message || json?.error?.message) {
+            lastErr = json?.message || json?.error?.message;
+          }
+        } catch (e: any) {
+          lastErr = e?.message || lastErr;
         }
-        if (json?.message) {
-          lastErr = json.message;
-        }
-      } catch (err: any) {
-        lastErr = err?.message || lastErr;
       }
+
+      if (!printedOk) {
+        throw new Error(lastErr);
+      }
+
+      setPrintStatusMsg({
+        type: "success",
+        text: successMsg
+      });
+    } catch (err: any) {
+      setPrintStatusMsg({
+        type: "error",
+        text: `${err?.message || "Lỗi khi in trực tiếp."} — Bạn có thể bấm "In qua trình duyệt (Ctrl+P)" bên dưới để in ngay.`
+      });
+    } finally {
+      setIsPrintingDirect(false);
+    }
+  };
+
+  // IN QUA HỘP THOẠI TRÌNH DUYỆT (CHUẨN 2 CỘT 70x20mm)
+  const handleBrowserPrintDialog = () => {
+    if (totalLabels <= 0) return;
+
+    const expandedLabels: {
+      code: string;
+      name: string;
+      price: number;
+    }[] = [];
+
+    normalizedItems.forEach((item) => {
+      const qty = quantities[item.id] || 0;
+      for (let i = 0; i < qty; i++) {
+        expandedLabels.push({
+          code: sanitizeAscii(item.code),
+          name: item.name,
+          price: item.price
+        });
+      }
+    });
+
+    const pagesHtml: string[] = [];
+    const cols = FIXED_LABEL_CONFIG.columns;
+
+    const pngCache = new Map<string, string>();
+    const getPngForCode = (code: string) => {
+      if (!pngCache.has(code)) {
+        pngCache.set(
+          code,
+          renderCode128MonochromePngDataUrl(code, FIXED_LABEL_CONFIG.labelWidthMm, 68)
+        );
+      }
+      return pngCache.get(code) || "";
+    };
+
+    for (let i = 0; i < expandedLabels.length; i += cols) {
+      const rowItems = expandedLabels.slice(i, i + cols);
+      const cellsHtml = rowItems
+        .map((item) => {
+          const pngDataUrl = getPngForCode(item.code);
+          const shopHtml = showShopName
+            ? `<div class="label-shop">${escapeHtml(shopName)}</div>`
+            : "";
+          const priceHtml =
+            showPrice && item.price > 0
+              ? `<div class="label-price">${item.price.toLocaleString("vi-VN")} đ</div>`
+              : "";
+
+          return `
+            <div class="label-cell">
+              ${shopHtml}
+              <div class="label-name">${escapeHtml(item.name)}</div>
+              <div class="label-barcode">
+                <img class="barcode-img" src="${pngDataUrl}" alt="${escapeHtml(item.code)}" />
+              </div>
+              <div class="label-code">${escapeHtml(item.code)}</div>
+              ${priceHtml}
+            </div>
+          `;
+        })
+        .join("");
+
+      const emptyCells =
+        rowItems.length < cols
+          ? Array.from({ length: cols - rowItems.length })
+            .map(() => `<div class="label-cell empty"></div>`)
+            .join("")
+          : "";
+
+      pagesHtml.push(`<div class="label-page">${cellsHtml}${emptyCells}</div>`);
     }
 
-    setPrintingDirect(false);
-    setPrintStatusMsg({
-      type: "error",
-      text: `${lastErr} — Đang chuyển sang hộp thoại in của trình duyệt...`,
-    });
-    handleBrowserPrintDialog();
+    const safePrintHeightMm = (FIXED_LABEL_CONFIG.pageHeightMm - 0.3).toFixed(1);
+
+    const htmlContent = `<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <title>In tem 2 cot 70x20mm - ${escapeHtml(shopName)}</title>
+  <style>
+    @page {
+      size: 70mm 20mm;
+      margin: 0mm !important;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    html, body {
+      width: 70mm;
+      margin: 0 !important;
+      padding: 0 !important;
+      background: #ffffff;
+      color: #000000;
+      font-family: Arial, Helvetica, sans-serif;
+      -webkit-font-smoothing: none;
+    }
+    .label-page {
+      width: 70mm;
+      height: ${safePrintHeightMm}mm;
+      max-height: ${safePrintHeightMm}mm;
+      display: grid;
+      grid-template-columns: 34.5mm 34.5mm;
+      column-gap: 1mm;
+      align-items: stretch;
+      justify-content: space-between;
+      page-break-after: always;
+      break-after: page;
+      overflow: hidden;
+      background: #ffffff;
+      filter: contrast(200%);
+    }
+    .label-page:last-child {
+      page-break-after: auto;
+      break-after: auto;
+    }
+    .label-cell {
+      width: 34.5mm;
+      height: ${safePrintHeightMm}mm;
+      padding: 0.15mm 0.4mm;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+      text-align: center;
+      overflow: hidden;
+      background: #ffffff;
+    }
+    .label-cell.empty {
+      visibility: hidden;
+    }
+    .label-shop {
+      width: 100%;
+      font-size: 7.2pt;
+      font-weight: 900;
+      line-height: 1.05;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      border-bottom: 0.35mm solid #000000;
+      padding-bottom: 0.15mm;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .label-name {
+      width: 100%;
+      font-size: 8.5pt;
+      font-weight: 800;
+      line-height: 1.05;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .label-barcode {
+      width: 98%;
+      flex: 1 1 auto;
+      min-height: 7.6mm;
+      max-height: 9.8mm;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #ffffff;
+      overflow: hidden;
+    }
+    .barcode-img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: fill;
+      image-rendering: -moz-crisp-edges;
+      image-rendering: crisp-edges;
+      image-rendering: pixelated;
+    }
+    .label-code {
+      width: 100%;
+      font-family: "Courier New", Consolas, monospace;
+      font-size: 6.8pt;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      line-height: 1.05;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    .label-price {
+      width: 100%;
+      font-size: 9.8pt;
+      font-weight: 900;
+      line-height: 1.05;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+  ${pagesHtml.join("\n")}
+</body>
+</html>`;
+
+    let iframe = printIframeRef.current;
+    if (!iframe) {
+      iframe = document.createElement("iframe");
+      iframe.style.position = "fixed";
+      iframe.style.right = "0";
+      iframe.style.bottom = "0";
+      iframe.style.width = "0";
+      iframe.style.height = "0";
+      iframe.style.border = "0";
+      iframe.setAttribute("aria-hidden", "true");
+      document.body.appendChild(iframe);
+      printIframeRef.current = iframe;
+    }
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc || !iframe.contentWindow) return;
+
+    doc.open();
+    doc.write(htmlContent);
+    doc.close();
+
+    setTimeout(() => {
+      iframe?.contentWindow?.focus();
+      iframe?.contentWindow?.print();
+    }, 220);
+  };
+
+  const previewItem =
+    normalizedItems.find((it) => (quantities[it.id] || 0) > 0) || normalizedItems[0];
+
+  const renderSingleStickerPreview = (item: NormalizedLabelItem | undefined, indexLabel: string) => {
+    if (!item) return null;
+    const cleanCode = sanitizeAscii(item.code);
+    return (
+      <div
+        style={{
+          flex: 1,
+          minWidth: 0,
+          height: 128,
+          backgroundColor: "#ffffff",
+          border: "1.5px dashed #64748b",
+          borderRadius: 6,
+          padding: "3px 5px",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "space-between",
+          alignItems: "center",
+          textAlign: "center",
+          boxShadow: "0 4px 10px rgba(0, 0, 0, 0.08)",
+          color: "#000000",
+          position: "relative"
+        }}
+      >
+        <span
+          style={{
+            position: "absolute",
+            top: 2,
+            right: 4,
+            fontSize: 8.5,
+            fontWeight: 700,
+            color: "#64748b"
+          }}
+        >
+          {indexLabel}
+        </span>
+
+        {showShopName && (
+          <div
+            style={{
+              width: "100%",
+              fontSize: 11,
+              fontWeight: 900,
+              lineHeight: 1.05,
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+              borderBottom: "2px solid #000000",
+              paddingBottom: 2
+            }}
+          >
+            {shopName}
+          </div>
+        )}
+
+        <div
+          style={{
+            width: "100%",
+            fontSize: 13.5,
+            fontWeight: 800,
+            lineHeight: 1.08,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis"
+          }}
+        >
+          {item.name}
+        </div>
+
+        <div
+          style={{
+            width: "96%",
+            height: 48,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center"
+          }}
+          dangerouslySetInnerHTML={{
+            __html: renderCode128SvgString(item.code, 48)
+          }}
+        />
+
+        <div
+          style={{
+            width: "100%",
+            fontFamily: "Consolas, 'Courier New', monospace",
+            fontSize: 10.5,
+            fontWeight: 800,
+            lineHeight: 1.05,
+            letterSpacing: "0.14em",
+            whiteSpace: "nowrap",
+            overflow: "hidden"
+          }}
+        >
+          {cleanCode}
+        </div>
+
+        {showPrice && item.price > 0 && (
+          <div style={{ width: "100%", fontSize: 15, fontWeight: 900, lineHeight: 1.05 }}>
+            {item.price.toLocaleString("vi-VN")} đ
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden">
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        backgroundColor: "rgba(15, 23, 42, 0.72)",
+        backdropFilter: "blur(4px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          backgroundColor: "#ffffff",
+          borderRadius: 16,
+          width: "100%",
+          maxWidth: 880,
+          maxHeight: "90vh",
+          display: "flex",
+          flexDirection: "column",
+          boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.35)",
+          overflow: "hidden",
+          border: "1px solid #e2e8f0"
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
-        <div className="px-5 py-4 bg-slate-900 text-white flex items-center justify-between">
-          <div>
-            <h3 className="text-base font-bold flex items-center gap-2">
-              <span>🖨️</span>
-              <span>{title}</span>
-            </h3>
-            <p className="text-xs text-slate-300 mt-0.5">
-              Mã vạch trên tem chỉ chứa <b>Mã sản phẩm chung IN HOA VIẾT LIỀN</b> (không kèm màu/size)
-            </p>
+        <div
+          style={{
+            padding: "14px 22px",
+            borderBottom: "1px solid #e2e8f0",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+            color: "#ffffff"
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 10,
+                backgroundColor: "rgba(56, 189, 248, 0.15)",
+                border: "1px solid rgba(56, 189, 248, 0.35)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#38bdf8"
+              }}
+            >
+              <Printer size={19} />
+            </div>
+            <div>
+              <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 700 }}>{title}</h3>
+              <p style={{ margin: "2px 0 0", fontSize: 12, color: "#94a3b8" }}>
+                Cấu hình cố định: Khổ 2 cột 70 × 20 mm (2 tem 35×20mm / hàng) • Chuẩn 203 DPI
+              </p>
+            </div>
           </div>
           <button
-            type="button"
             onClick={onClose}
-            className="text-slate-300 hover:text-white px-2.5 py-1 rounded-lg text-sm font-semibold"
+            style={{
+              background: "rgba(255,255,255,0.1)",
+              border: "none",
+              color: "#fff",
+              width: 32,
+              height: 32,
+              borderRadius: 8,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center"
+            }}
           >
-            ✕ Đóng
+            <X size={18} />
           </button>
         </div>
 
         {/* Body */}
-        <div className="p-5 overflow-y-auto space-y-4 flex-1">
-          {/* Khung chọn máy in nhiệt kết nối trực tiếp */}
-          <div
-            className={`p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${activePrinterObj?.isOnline
-                ? "bg-emerald-50/80 border-emerald-300"
-                : "bg-slate-50 border-slate-200"
-              }`}
-          >
-            <div className="space-y-1 min-w-0 flex-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-bold uppercase text-slate-800">
-                  Máy in kết nối (Thermal Label Printer):
-                </span>
-                {scanningPrinters ? (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-100 text-blue-700">
-                    ⏳ Đang dò máy in...
-                  </span>
-                ) : activePrinterObj ? (
-                  <span
-                    className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${activePrinterObj.isOnline
-                        ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
-                        : "bg-amber-100 text-amber-800 border border-amber-300"
-                      }`}
-                  >
-                    {activePrinterObj.isOnline ? "🟢 Sẵn sàng" : "🟡 Kiểm tra cáp/nguồn"} •{" "}
-                    {activePrinterObj.name} ({activePrinterObj.portName})
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-200 text-slate-700">
-                    🌐 Chế độ hộp thoại in trình duyệt
-                  </span>
-                )}
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 pt-1">
-                <select
-                  value={selectedPrinter}
-                  onChange={(e) => {
-                    setSelectedPrinter(e.target.value);
-                    setPrintStatusMsg(null);
+        <div
+          style={{
+            padding: 18,
+            overflowY: "auto",
+            display: "grid",
+            gridTemplateColumns: "1.1fr 0.9fr",
+            gap: 18
+          }}
+        >
+          {/* Left column: Printer + Options + Product list */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {/* 1. KẾT NỐI MÁY IN */}
+            <div
+              style={{
+                backgroundColor: "#f0fdf4",
+                border: "1.5px solid #86efac",
+                borderRadius: 12,
+                padding: 12
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 8
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 800,
+                    color: "#14532d",
+                    textTransform: "uppercase",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6
                   }}
-                  aria-label="Chọn máy in tem mã vạch"
-                  className="text-xs font-semibold text-slate-900 bg-white border border-slate-300 rounded-lg px-3 py-1.5 min-w-[260px] focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {printers.map((p) => (
-                    <option key={p.name} value={p.name}>
-                      {p.isThermal ? "🖨️ [Máy in nhiệt] " : "🖨️ "}
-                      {p.name} (Cổng {p.portName} — {p.isOnline ? "Sẵn sàng" : p.status})
-                    </option>
-                  ))}
-                  <option value={BROWSER_DIALOG_VALUE}>
-                    🌐 Mở hộp thoại In của trình duyệt (Chọn máy in thủ công / Lưu PDF)
-                  </option>
-                </select>
-
+                  <Usb size={14} color="#16a34a" />
+                  Máy in tem nhiệt (Khổ 2 cột 70 × 20 mm)
+                </div>
                 <button
                   type="button"
-                  onClick={scanConnectedPrinters}
-                  disabled={scanningPrinters}
-                  className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold text-slate-700 disabled:opacity-50"
+                  onClick={fetchPrintersList}
+                  disabled={isScanningPrinters}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "#15803d",
+                    backgroundColor: "#dcfce7",
+                    border: "1px solid #86efac",
+                    borderRadius: 6,
+                    padding: "3px 8px",
+                    cursor: isScanningPrinters ? "wait" : "pointer"
+                  }}
                 >
-                  🔄 {scanningPrinters ? "Đang quét..." : "Quét lại máy in"}
+                  <RefreshCw size={11} className={isScanningPrinters ? "animate-spin" : ""} />
+                  {isScanningPrinters ? "Đang quét..." : "Quét lại"}
                 </button>
               </div>
-            </div>
-          </div>
 
-          {/* Thông báo kết quả gửi lệnh in */}
-          {printStatusMsg && (
-            <div
-              className={`px-4 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between gap-2 ${printStatusMsg.type === "success"
-                  ? "bg-emerald-50 border-emerald-300 text-emerald-800"
-                  : printStatusMsg.type === "error"
-                    ? "bg-red-50 border-red-300 text-red-700"
-                    : "bg-blue-50 border-blue-300 text-blue-800"
-                }`}
-            >
-              <span>
-                {printStatusMsg.type === "success"
-                  ? "✅ "
-                  : printStatusMsg.type === "error"
-                    ? "⚠️ "
-                    : "ℹ️ "}
-                {printStatusMsg.text}
-              </span>
-              <button
-                type="button"
-                onClick={() => setPrintStatusMsg(null)}
-                className="text-slate-500 hover:text-slate-800 font-bold px-1"
-              >
-                ✕
-              </button>
-            </div>
-          )}
-
-          {/* Cấu hình khổ giấy & Xem trước */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-            <div className="lg:col-span-7 space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <div className="text-xs font-bold uppercase text-slate-700">
-                1. Chọn khổ giấy máy in tem nhiệt (Thermal Label)
-              </div>
-              <div className="space-y-2">
-                {LABEL_PRESETS.map((p) => (
-                  <label
-                    key={p.id}
-                    className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition ${presetId === p.id
-                        ? "border-blue-600 bg-blue-50/70"
-                        : "border-slate-200 bg-white hover:border-slate-300"
-                      }`}
+              {printers.length > 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <select
+                    value={selectedPrinter}
+                    onChange={(e) => handleSelectPrinter(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      border: "1.5px solid #22c55e",
+                      backgroundColor: "#ffffff",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: "#0f172a",
+                      outline: "none",
+                      cursor: "pointer"
+                    }}
                   >
-                    <input
-                      type="radio"
-                      name="labelPreset"
-                      checked={presetId === p.id}
-                      onChange={() => setPresetId(p.id)}
-                      className="mt-0.5 accent-blue-600"
-                    />
-                    <div>
-                      <div className="text-xs font-bold text-slate-800">{p.name}</div>
-                      <div className="text-[11px] text-slate-500">{p.desc}</div>
-                    </div>
-                  </label>
-                ))}
-              </div>
+                    {printers.map((p) => (
+                      <option key={p.Name} value={p.Name}>
+                        {p.IsOnline ? "🟢 [ĐANG BẬT]" : "⚪ [OFFLINE]"} {p.Name} ({p.PortName})
+                        {p.IsThermal ? " — Máy in tem nhiệt" : ""}
+                      </option>
+                    ))}
+                  </select>
 
-              <div className="pt-2 border-t border-slate-200 flex flex-wrap gap-4 text-xs">
-                <label className="inline-flex items-center gap-1.5 cursor-pointer font-medium text-slate-700">
+                  {currentPrinterObj && (
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        fontSize: 11,
+                        color: currentPrinterObj.IsOnline ? "#15803d" : "#b45309",
+                        backgroundColor: currentPrinterObj.IsOnline ? "#dcfce7" : "#fef3c7",
+                        padding: "5px 9px",
+                        borderRadius: 6,
+                        fontWeight: 600
+                      }}
+                    >
+                      <span>
+                        Cổng: <strong>{currentPrinterObj.PortName}</strong> • Khổ:{" "}
+                        <strong>70×20mm (2 cột)</strong>
+                      </span>
+                      <span>
+                        {currentPrinterObj.IsOnline ? "✓ Sẵn sàng in" : "⚠ Offline"}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "#475569",
+                    backgroundColor: "#ffffff",
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                    border: "1px dashed #cbd5e1"
+                  }}
+                >
+                  {isScanningPrinters
+                    ? "Đang tìm máy in Xprinter trên thiết bị..."
+                    : "Nếu dùng trên máy tính khác, hãy chạy file KetNoiMayInTem-11Sport.bat hoặc bấm 'In qua trình duyệt (Ctrl+P)'."}
+                </div>
+              )}
+            </div>
+
+            {/* 2. Tuỳ chọn hiển thị gọn gàng (Đã bỏ Phân loại / ĐVT) */}
+            <div
+              style={{
+                backgroundColor: "#f8fafc",
+                border: "1px solid #e2e8f0",
+                borderRadius: 12,
+                padding: "10px 14px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: 12
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 7,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: "#1e293b",
+                    cursor: "pointer"
+                  }}
+                >
                   <input
                     type="checkbox"
                     checked={showShopName}
                     onChange={(e) => setShowShopName(e.target.checked)}
-                    className="accent-blue-600"
+                    style={{ width: 15, height: 15, accentColor: "#0284c7" }}
                   />
-                  In tiêu đề &ldquo;11 SPORT&rdquo;
+                  In tên cửa hàng ({shopName})
                 </label>
-                <label className="inline-flex items-center gap-1.5 cursor-pointer font-medium text-slate-700">
+
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 7,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: "#1e293b",
+                    cursor: "pointer"
+                  }}
+                >
                   <input
                     type="checkbox"
                     checked={showPrice}
                     onChange={(e) => setShowPrice(e.target.checked)}
-                    className="accent-blue-600"
+                    style={{ width: 15, height: 15, accentColor: "#0284c7" }}
                   />
                   In giá bán lẻ
                 </label>
               </div>
+
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "#0284c7",
+                  backgroundColor: "#e0f2fe",
+                  padding: "3px 8px",
+                  borderRadius: 6
+                }}
+              >
+                2 tem / hàng (35×20mm)
+              </span>
             </div>
 
-            {/* Khung xem trước mẫu tem */}
-            <div className="lg:col-span-5 bg-slate-100 rounded-xl border border-slate-200 p-4 flex flex-col items-center justify-center">
-              <div className="text-[11px] font-semibold uppercase text-slate-500 mb-2">
-                Xem trước mẫu tem ({currentPreset.widthMm}×{currentPreset.heightMm}mm)
-              </div>
-              <div className="bg-white border-2 border-dashed border-slate-400 rounded-lg px-4 py-3 w-64 shadow-sm flex flex-col items-center text-center">
-                {showShopName && (
-                  <div className="text-[11px] font-black tracking-wider text-slate-900">
-                    11 SPORT
-                  </div>
-                )}
-                <div className="w-full my-1.5 px-2">
-                  <Code128Svg value={sampleRow.productCode} height={42} />
+            {/* 3. Danh sách sản phẩm & số lượng tem */}
+            <div
+              style={{
+                border: "1px solid #e2e8f0",
+                borderRadius: 12,
+                overflow: "hidden"
+              }}
+            >
+              <div
+                style={{
+                  padding: "9px 14px",
+                  backgroundColor: "#f1f5f9",
+                  borderBottom: "1px solid #e2e8f0",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: "#334155"
+                }}
+              >
+                <span>DANH SÁCH SẢN PHẨM ({normalizedItems.length})</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next: Record<string, number> = {};
+                      normalizedItems.forEach((it) => {
+                        next[it.id] = 2;
+                      });
+                      setQuantities(next);
+                    }}
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: "#0284c7",
+                      background: "#e0f2fe",
+                      border: "none",
+                      borderRadius: 6,
+                      padding: "3px 8px",
+                      cursor: "pointer"
+                    }}
+                  >
+                    Đặt tất cả = 2 (1 hàng)
+                  </button>
+                  <span>Tổng: {totalLabels} tem</span>
                 </div>
-                <div className="font-mono text-sm font-black tracking-widest text-slate-900">
-                  {sampleRow.productCode}
-                </div>
-                {showPrice && sampleRow.sellingPrice > 0 && (
-                  <div className="text-xs font-extrabold text-slate-900 mt-0.5">
-                    {formatVND(sampleRow.sellingPrice)}
-                  </div>
-                )}
               </div>
-              <div className="text-[11px] text-emerald-700 font-medium mt-2 text-center">
-                ✓ Mã vạch chuẩn Code128 — chỉ mã hóa <b>{sampleRow.productCode}</b>
+
+              <div style={{ maxHeight: 250, overflowY: "auto" }}>
+                {normalizedItems.map((item) => {
+                  const qty = quantities[item.id] || 0;
+                  return (
+                    <div
+                      key={item.id}
+                      style={{
+                        padding: "10px 14px",
+                        borderBottom: "1px solid #f1f5f9",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        backgroundColor: qty > 0 ? "#ffffff" : "#f8fafc"
+                      }}
+                    >
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div
+                          style={{
+                            fontSize: 13,
+                            fontWeight: 700,
+                            color: "#0f172a",
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis"
+                          }}
+                        >
+                          {item.name}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: "#64748b",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            marginTop: 2
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontFamily: "monospace",
+                              fontWeight: 700,
+                              color: "#0369a1",
+                              backgroundColor: "#e0f2fe",
+                              padding: "1px 6px",
+                              borderRadius: 4
+                            }}
+                          >
+                            {item.code}
+                          </span>
+                          {item.price > 0 && (
+                            <span style={{ fontWeight: 600, color: "#0f172a" }}>
+                              {item.price.toLocaleString("vi-VN")} đ
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <button
+                          type="button"
+                          onClick={() => updateQty(item.id, -1)}
+                          style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: 6,
+                            border: "1px solid #cbd5e1",
+                            background: "#fff",
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center"
+                          }}
+                        >
+                          <Minus size={14} />
+                        </button>
+                        <input
+                          type="number"
+                          min={0}
+                          max={500}
+                          value={qty}
+                          onChange={(e) => setExactQty(item.id, parseInt(e.target.value, 10))}
+                          style={{
+                            width: 52,
+                            height: 28,
+                            textAlign: "center",
+                            border: "1px solid #cbd5e1",
+                            borderRadius: 6,
+                            fontSize: 13,
+                            fontWeight: 700
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => updateQty(item.id, 1)}
+                          style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: 6,
+                            border: "1px solid #cbd5e1",
+                            background: "#fff",
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center"
+                          }}
+                        >
+                          <Plus size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
 
-          {/* Danh sách sản phẩm & số lượng tem cần in */}
-          <div className="border border-slate-200 rounded-xl overflow-hidden">
-            <div className="bg-slate-50 px-4 py-2.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
-              <div className="text-xs font-bold uppercase text-slate-700">
-                2. Danh sách Mã sản phẩm & Số lượng tem in ({normalizedRows.length} dòng — Tổng{" "}
-                <span className="text-blue-700">{totalLabelsToPrint}</span> tem)
+          {/* Right column: 2-Column 70x20mm Live Preview + Status */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div
+              style={{
+                backgroundColor: "#f8fafc",
+                border: "1px solid #e2e8f0",
+                borderRadius: 12,
+                padding: 14,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center"
+              }}
+            >
+              <div
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 10
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    color: "#475569",
+                    textTransform: "uppercase"
+                  }}
+                >
+                  Xem trước 1 hàng 2 cột (70 × 20 mm)
+                </span>
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: "#0284c7",
+                    fontWeight: 600,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4
+                  }}
+                >
+                  <Sparkles size={12} /> 2 tem 35×20mm
+                </span>
               </div>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setAllQtyMode("DEFAULT")}
-                  className="px-2.5 py-1 rounded bg-white border border-slate-300 hover:bg-slate-100 text-[11px] font-semibold text-slate-700"
+
+              {previewItem ? (
+                <div
+                  style={{
+                    width: "100%",
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 8,
+                    padding: "10px",
+                    backgroundColor: "#e2e8f0",
+                    borderRadius: 10
+                  }}
                 >
-                  Theo SL nhập/tồn
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAllQtyMode("ONE")}
-                  className="px-2.5 py-1 rounded bg-white border border-slate-300 hover:bg-slate-100 text-[11px] font-semibold text-slate-700"
-                >
-                  Mỗi dòng = 1 tem
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAllQtyMode("ZERO")}
-                  className="px-2.5 py-1 rounded bg-white border border-slate-300 hover:bg-slate-100 text-[11px] font-semibold text-slate-500"
-                >
-                  Đặt về 0
-                </button>
-              </div>
+                  {renderSingleStickerPreview(previewItem, "Cột 1")}
+                  {renderSingleStickerPreview(previewItem, "Cột 2")}
+                </div>
+              ) : (
+                <div style={{ padding: 24, color: "#94a3b8", fontSize: 13 }}>
+                  Chưa có sản phẩm để xem trước
+                </div>
+              )}
             </div>
 
-            <div className="max-h-56 overflow-y-auto">
-              <table className="w-full text-xs">
-                <thead className="bg-slate-100 text-slate-600 sticky top-0">
-                  <tr>
-                    <th className="py-2 px-3 text-left w-10">#</th>
-                    <th className="py-2 px-3 text-left">Mã vạch in trên Label</th>
-                    <th className="py-2 px-3 text-left">Tên sản phẩm</th>
-                    {!groupByMasterCode && (
-                      <th className="py-2 px-3 text-left">Phân loại (Màu / Size)</th>
-                    )}
-                    <th className="py-2 px-3 text-right">Giá bán</th>
-                    <th className="py-2 px-3 text-center w-36">Số tem cần in</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {normalizedRows.map((r, idx) => {
-                    const qty = getRowQty(r.key, r.defaultQty);
-                    return (
-                      <tr key={r.key} className="hover:bg-slate-50">
-                        <td className="py-2 px-3 text-slate-400 font-medium">{idx + 1}</td>
-                        <td className="py-2 px-3">
-                          <span className="font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded">
-                            {r.productCode}
-                          </span>
-                        </td>
-                        <td className="py-2 px-3 font-medium text-slate-800">{r.productName}</td>
-                        {!groupByMasterCode && (
-                          <td className="py-2 px-3 text-slate-600">
-                            {r.color || r.size ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-semibold text-[11px]">
-                                {[r.color, r.size ? `Size ${r.size}` : ""]
-                                  .filter(Boolean)
-                                  .join(" • ")}
-                              </span>
-                            ) : (
-                              <span className="text-slate-400">Mặc định</span>
-                            )}
-                          </td>
-                        )}
-                        <td className="py-2 px-3 text-right font-semibold text-slate-700">
-                          {r.sellingPrice > 0 ? formatVND(r.sellingPrice) : "Chưa đặt giá"}
-                        </td>
-                        <td className="py-2 px-3 text-center">
-                          <div className="inline-flex items-center border border-slate-300 rounded-lg overflow-hidden bg-white">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setQtyOverrides((prev) => ({
-                                  ...prev,
-                                  [r.key]: Math.max(0, qty - 1),
-                                }))
-                              }
-                              className="px-2 py-1 bg-slate-50 hover:bg-slate-100 font-bold text-slate-700"
-                            >
-                              -
-                            </button>
-                            <input
-                              type="number"
-                              min={0}
-                              aria-label={`Số tem cần in cho ${r.productCode}`}
-                              value={qty}
-                              onChange={(e) =>
-                                setQtyOverrides((prev) => ({
-                                  ...prev,
-                                  [r.key]: Math.max(0, Math.round(Number(e.target.value) || 0)),
-                                }))
-                              }
-                              className="w-14 text-center font-bold text-slate-900 py-1 focus:outline-none"
-                            />
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setQtyOverrides((prev) => ({
-                                  ...prev,
-                                  [r.key]: qty + 1,
-                                }))
-                              }
-                              className="px-2 py-1 bg-slate-50 hover:bg-slate-100 font-bold text-slate-700"
-                            >
-                              +
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            {/* Print Status Feedback */}
+            {printStatusMsg && (
+              <div
+                style={{
+                  padding: "11px 13px",
+                  borderRadius: 12,
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  lineHeight: 1.45,
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 10,
+                  backgroundColor:
+                    printStatusMsg.type === "success"
+                      ? "#dcfce7"
+                      : printStatusMsg.type === "error"
+                        ? "#fee2e2"
+                        : "#e0f2fe",
+                  border:
+                    printStatusMsg.type === "success"
+                      ? "1px solid #86efac"
+                      : printStatusMsg.type === "error"
+                        ? "1px solid #fca5a5"
+                        : "1px solid #7dd3fc",
+                  color:
+                    printStatusMsg.type === "success"
+                      ? "#14532d"
+                      : printStatusMsg.type === "error"
+                        ? "#7f1d1d"
+                        : "#0c4a6e"
+                }}
+              >
+                {printStatusMsg.type === "success" ? (
+                  <CheckCircle2 size={18} style={{ flexShrink: 0, marginTop: 1 }} />
+                ) : (
+                  <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: 1 }} />
+                )}
+                <span>{printStatusMsg.text}</span>
+              </div>
+            )}
+
+            {/* Info Box */}
+            <div
+              style={{
+                backgroundColor: "#eff6ff",
+                border: "1px solid #bfdbfe",
+                borderRadius: 12,
+                padding: 12,
+                fontSize: 11.5,
+                color: "#1e3a8a",
+                lineHeight: 1.5
+              }}
+            >
+              <div
+                style={{
+                  fontWeight: 800,
+                  marginBottom: 4,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  color: "#1d4ed8"
+                }}
+              >
+                <MonitorCheck size={14} />
+                Đã cố định chuẩn máy in 2 cột 70 × 20 mm:
+              </div>
+              <ul style={{ margin: 0, paddingLeft: 16 }}>
+                <li>
+                  Mỗi hàng giấy in song song <strong>2 tem (Trái & Phải, mỗi tem 35×20mm)</strong>, không còn bị lệch vào khe giữa 2 cột.
+                </li>
+                <li>
+                  Đã lược bỏ phần Phân loại/ĐVT để mã vạch 1D rộng và cao tối đa trên tem 35×20mm, giúp máy quét bắt nhạy ngay lập tức.
+                </li>
+              </ul>
             </div>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
-          <div className="text-xs text-slate-600">
-            Tổng cộng: <b className="text-slate-900">{totalLabelsToPrint} tem</b> trên khổ{" "}
-            <b>
-              {currentPreset.widthMm}×{currentPreset.heightMm}mm
-            </b>
-            {activePrinterObj && (
-              <span className="ml-1 text-emerald-700 font-semibold">
-                • Máy in: {activePrinterObj.name}
-              </span>
-            )}
+        <div
+          style={{
+            padding: "12px 22px",
+            borderTop: "1px solid #e2e8f0",
+            backgroundColor: "#f8fafc",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 12
+          }}
+        >
+          <div style={{ fontSize: 13, color: "#475569" }}>
+            Tổng số lượng in:{" "}
+            <strong style={{ color: "#0f172a", fontSize: 15 }}>{totalLabels} tem</strong> (
+            <strong>{totalRows} hàng</strong> giấy 70×20mm)
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <button
               type="button"
               onClick={onClose}
-              className="px-3.5 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold text-slate-700"
+              style={{
+                padding: "8px 15px",
+                borderRadius: 10,
+                border: "1px solid #cbd5e1",
+                backgroundColor: "#ffffff",
+                color: "#334155",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer"
+              }}
             >
               Đóng
             </button>
-            {selectedPrinter && selectedPrinter !== BROWSER_DIALOG_VALUE && (
-              <button
-                type="button"
-                onClick={handleBrowserPrintDialog}
-                disabled={totalLabelsToPrint <= 0 || printingDirect}
-                className="px-3.5 py-2 rounded-lg border border-blue-200 bg-blue-50 hover:bg-blue-100 disabled:opacity-50 text-blue-700 text-xs font-semibold"
-                title="Mở hộp thoại in của trình duyệt (Ctrl+P) để xem trước hoặc lưu PDF"
-              >
-                🌐 Hộp thoại In trình duyệt
-              </button>
-            )}
+
             <button
               type="button"
-              onClick={handlePrintLabels}
-              disabled={totalLabelsToPrint <= 0 || printingDirect}
-              className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white text-xs font-bold shadow-sm flex items-center gap-1.5"
+              disabled={totalLabels <= 0}
+              onClick={handleBrowserPrintDialog}
+              style={{
+                padding: "8px 14px",
+                borderRadius: 10,
+                border: "1px solid #0284c7",
+                backgroundColor: "#f0f9ff",
+                color: "#0369a1",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: totalLabels > 0 ? "pointer" : "not-allowed",
+                display: "flex",
+                alignItems: "center",
+                gap: 6
+              }}
             >
-              <span>🖨️</span>
-              <span>
-                {printingDirect
-                  ? "Đang gửi lệnh in..."
-                  : activePrinterObj
-                    ? `In ${totalLabelsToPrint} Tem Ra ${activePrinterObj.name}`
-                    : `In ${totalLabelsToPrint} Tem Mã Vạch Ngay`}
-              </span>
+              <Layers size={15} />
+              In qua trình duyệt (Ctrl+P)
+            </button>
+
+            <button
+              type="button"
+              disabled={totalLabels <= 0 || isPrintingDirect}
+              onClick={handleDirectWindowsPrint}
+              style={{
+                padding: "9px 18px",
+                borderRadius: 10,
+                border: "none",
+                background:
+                  totalLabels > 0
+                    ? "linear-gradient(135deg, #16a34a 0%, #15803d 100%)"
+                    : "#94a3b8",
+                color: "#ffffff",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: totalLabels > 0 && !isPrintingDirect ? "pointer" : "not-allowed",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                boxShadow:
+                  totalLabels > 0 ? "0 4px 12px rgba(22, 163, 74, 0.35)" : "none"
+              }}
+            >
+              <Printer size={16} />
+              {isPrintingDirect
+                ? "Đang gửi lệnh in..."
+                : selectedPrinter
+                  ? `In thẳng ra ${selectedPrinter} (${totalLabels} tem)`
+                  : `In ngay (${totalLabels} tem)`}
             </button>
           </div>
         </div>

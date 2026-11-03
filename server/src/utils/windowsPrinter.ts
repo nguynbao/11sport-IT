@@ -1,304 +1,505 @@
-import { execFile } from 'child_process';
-import fs from 'fs';
-import os from 'os';
-import path from 'path';
-import { promisify } from 'util';
-import { normalizeToCompactUpperCode } from './productCode';
+import { execFile } from "child_process";
+import { promisify } from "util";
+import fs from "fs/promises";
+import os from "os";
+import path from "path";
 
 const execFileAsync = promisify(execFile);
 
-export interface SystemPrinterInfo {
-  name: string;
-  driverName: string;
-  portName: string;
-  status: string;
-  isOnline: boolean;
-  isThermal: boolean;
-}
+export type SystemPrinterInfo = {
+  Name: string;
+  DriverName: string;
+  PortName: string;
+  PrinterStatus: string;
+  Default: boolean;
+  WorkOffline: boolean;
+  IsOnline: boolean;
+  IsThermal: boolean;
+};
 
-export interface DirectPrintLabelItem {
+export type LabelPrintItem = {
   code: string;
-  name?: string;
+  name: string;
+  priceText?: string;
   sellingPrice?: number;
   quantity: number;
-}
+};
 
-export interface DirectPrintPreset {
-  id?: string;
-  widthMm: number;
-  heightMm: number;
-  columns: 1 | 2;
-  pageWidthMm: number;
-  pageHeightMm: number;
-}
-
-export interface DirectPrintOptions {
-  showShopName?: boolean;
-  showProductName?: boolean;
-  showPrice?: boolean;
-  protocol?: 'TSPL' | 'ESCPOS';
-}
-
-export interface DirectPrintPayload {
+export type DirectPrintPayload = {
   printerName: string;
-  preset: DirectPrintPreset;
-  options?: DirectPrintOptions;
-  items?: DirectPrintLabelItem[];
   syncOnly?: boolean;
-}
+  shopName?: string;
+  paperWidthMm?: number;
+  paperHeightMm?: number;
+  columns?: 1 | 2;
+  preset?: {
+    id?: string;
+    widthMm?: number;
+    heightMm?: number;
+    columns?: 1 | 2;
+    pageWidthMm?: number;
+    pageHeightMm?: number;
+  };
+  options?: {
+    showShopName?: boolean;
+    showProductName?: boolean;
+    showPrice?: boolean;
+  };
+  items?: LabelPrintItem[];
+};
 
-// Bảng 107 mẫu vạch chuẩn Code128 (0..106)
+export type PrintLabelsPayload = DirectPrintPayload;
+
 const CODE128_PATTERNS: string[] = [
-  '11011001100', '11001101100', '11001100110', '10010011000', '10010001100',
-  '10001001100', '10011001000', '10011000100', '10001100100', '11001001000',
-  '11001000100', '11000100100', '10110011100', '10011011100', '10011001110',
-  '10111001100', '10011101100', '10011100110', '11001110010', '11001011100',
-  '11001001110', '11011100100', '11001110100', '11101101110', '11101001100',
-  '11100101100', '11100100110', '11101100100', '11100110100', '11100110010',
-  '11011011000', '11011000110', '11000110110', '10100011000', '10001011000',
-  '10001000110', '10110001000', '10001101000', '10001100010', '11010001000',
-  '11000101000', '11000100010', '10110111000', '10110001110', '10001101110',
-  '10111011000', '10111000110', '10001110110', '11101110110', '11010001110',
-  '11000101110', '11011101000', '11011100010', '11011101110', '11101011000',
-  '11101000110', '11100010110', '11101101000', '11101100010', '11100011010',
-  '11101111010', '11001000010', '11110001010', '10100110000', '10100001100',
-  '10010110000', '10010000110', '10000101100', '10000100110', '10110010000',
-  '10110000100', '10011010000', '10011000010', '10000110100', '10000110010',
-  '11000010010', '11001010000', '11110111010', '11000010100', '10001111010',
-  '10100111100', '10010111100', '10010011110', '10111100100', '10011110100',
-  '10011110010', '11110100100', '11110010100', '11110010010', '11011011110',
-  '11011110110', '11110110110', '10101111000', '10100011110', '10001011110',
-  '10111101000', '10111100010', '11110101000', '11110100010', '10111011110',
-  '10111101110', '11101011110', '11110101110', '11010000100', '11010010000',
-  '11010011100', '1100011101011',
+  "11011001100", "11001101100", "11001100110", "10010011000", "10010001100",
+  "10001001100", "10011001000", "10011000100", "10001100100", "11001001000",
+  "11001000100", "11000100100", "10110011100", "10011011100", "10011001110",
+  "10111001100", "10011101100", "10011100110", "11001110010", "11001011100",
+  "11001001110", "11011100100", "11001110100", "11101101110", "11101001100",
+  "11100101100", "11100100110", "11101100100", "11100110100", "11100110010",
+  "11011011000", "11011000110", "11000110110", "10100011000", "10001011000",
+  "10001000110", "10110001000", "10001101000", "10001100010", "11010001000",
+  "11000101000", "11000100010", "10110111000", "10110001110", "10001101110",
+  "10111011000", "10111000110", "10001110110", "11101110110", "11010001110",
+  "11000101110", "11011101000", "11011100010", "11011101110", "11101011000",
+  "11101000110", "11100010110", "11101101000", "11101100010", "11100011010",
+  "11101111010", "11001000010", "11110001010", "10100110000", "10100001100",
+  "10010110000", "10010000110", "10000101100", "10000100110", "10110010000",
+  "10110000100", "10011010000", "10011000010", "10000110100", "10000110010",
+  "11000010010", "11001010000", "11110111010", "11000010100", "10001111010",
+  "10100111100", "10010111100", "10010011110", "10111100100", "10011110100",
+  "10011110010", "11110100100", "11110010100", "11110010010", "11011011110",
+  "11011110110", "11110110110", "10101111000", "10100011110", "10001011110",
+  "10111101000", "10111100010", "11110101000", "11110100010", "10111011110",
+  "10111101110", "11101011110", "11110101110", "11010000100", "11010010000",
+  "11010011100", "1100011101011"
 ];
 
-export function encodeCode128BPattern(rawText: string): string {
-  const clean = normalizeToCompactUpperCode(rawText) || 'SP11SPORT';
-  const START_CODE_B = 104;
-  const STOP_CODE = 106;
-
-  const codes: number[] = [START_CODE_B];
-  let checksum = START_CODE_B;
-
-  for (let i = 0; i < clean.length; i++) {
-    const ascii = clean.charCodeAt(i);
-    const val = ascii >= 32 && ascii <= 126 ? ascii - 32 : 0;
-    codes.push(val);
-    checksum += val * (i + 1);
+export function sanitizeAsciiCode128(input: string): string {
+  const normalized = (input || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .trim();
+  let out = "";
+  for (let i = 0; i < normalized.length; i++) {
+    const code = normalized.charCodeAt(i);
+    if (code >= 32 && code <= 126) {
+      out += normalized[i];
+    }
   }
-
-  const checkDigit = checksum % 103;
-  codes.push(checkDigit);
-  codes.push(STOP_CODE);
-
-  return codes.map((c) => CODE128_PATTERNS[c] || '').join('');
+  return out || "ITEM";
 }
 
-function isThermalPrinter(name: string, driverName: string, portName: string): boolean {
-  const combined = `${name} ${driverName} ${portName}`.toLowerCase();
-  if (/pdf|xps|onenote|fax|foxit/i.test(combined)) {
-    return false;
+export function encodeCode128RawPattern(rawText: string): string {
+  const text = sanitizeAsciiCode128(rawText);
+  const START_B = 104;
+  const START_C = 105;
+  const CODE_B = 100;
+  const CODE_C = 99;
+  const STOP_CODE = 106;
+
+  const countConsecutiveDigits = (str: string, startIdx: number): number => {
+    let count = 0;
+    while (startIdx + count < str.length) {
+      const ch = str.charCodeAt(startIdx + count);
+      if (ch >= 48 && ch <= 57) count++;
+      else break;
+    }
+    return count;
+  };
+
+  const codes: number[] = [];
+  let i = 0;
+  const initialDigits = countConsecutiveDigits(text, 0);
+  let mode: "B" | "C" = initialDigits >= 4 ? "C" : "B";
+  codes.push(mode === "C" ? START_C : START_B);
+
+  while (i < text.length) {
+    if (mode === "C") {
+      const dCount = countConsecutiveDigits(text, i);
+      if (dCount >= 2) {
+        codes.push(parseInt(text.slice(i, i + 2), 10));
+        i += 2;
+      } else {
+        codes.push(CODE_B);
+        mode = "B";
+      }
+    } else {
+      const dCount = countConsecutiveDigits(text, i);
+      if (dCount >= 4) {
+        if (dCount % 2 === 1) {
+          codes.push(text.charCodeAt(i) - 32);
+          i += 1;
+        }
+        codes.push(CODE_C);
+        mode = "C";
+      } else {
+        codes.push(text.charCodeAt(i) - 32);
+        i += 1;
+      }
+    }
   }
-  return /xprinter|xp-|tsc|godex|zebra|gprinter|pos|label|barcode|bixolon|hprt|rongta|seagull|usb/i.test(
-    combined
-  );
+
+  let checksum = codes[0];
+  for (let idx = 1; idx < codes.length; idx++) {
+    checksum += codes[idx] * idx;
+  }
+  const checkIndex = checksum % 103;
+  codes.push(checkIndex);
+  codes.push(STOP_CODE);
+
+  return codes.map((c) => CODE128_PATTERNS[c] || "").join("");
+}
+
+/**
+ * Mở rộng chuỗi module Code 128 sang đúng số lượng điểm in vật lý (dots ở 203 DPI)
+ * lấp đầy tối đa chiều ngang tem 35×20mm (~258/276 dots = 93% bề ngang tem)
+ * với sai số giải mã ISO/IEC 15417 (cả element & edge-to-similar-edge) bằng 0 tuyệt đối.
+ */
+export function encodeCode128BPattern(rawText: string, maxDots = 258): string {
+  const pat = encodeCode128RawPattern(rawText);
+  const numSymbols = Math.floor((pat.length - 2) / 11);
+  if (numSymbols <= 0) return pat;
+
+  let symW = Math.floor((maxDots - 4) / numSymbols);
+  if (symW > 24) symW = 24;
+  if (symW < 16) symW = 11;
+
+  if (symW === 11) {
+    return pat;
+  }
+
+  let out = "";
+  for (let sIdx = 0; sIdx < numSymbols; sIdx++) {
+    const symPat = pat.slice(sIdx * 11, sIdx * 11 + 11);
+    const m: number[] = [];
+    let i = 0;
+    while (i < 11) {
+      const ch = symPat[i];
+      let r = 1;
+      while (i + r < 11 && symPat[i + r] === ch) r++;
+      m.push(r);
+      i += r;
+    }
+
+    if (symW === 22) {
+      for (let k = 0; k < 6; k++) {
+        out += (k % 2 === 0 ? "1" : "0").repeat(m[k] * 2);
+      }
+      continue;
+    }
+
+    const minR: number[] = [];
+    const maxR: number[] = [];
+    for (let k = 0; k < 6; k++) {
+      let lo = 1;
+      while (Math.round((lo * 11) / symW) < m[k]) lo++;
+      let hi = lo;
+      while (Math.round(((hi + 1) * 11) / symW) === m[k]) hi++;
+      minR.push(lo);
+      maxR.push(hi);
+    }
+
+    let bestR: number[] = m.map((v) => Math.max(1, Math.round((v * symW) / 11)));
+    let bestCost = 1e9;
+
+    for (let r0 = minR[0]; r0 <= maxR[0]; r0++) {
+      for (let r1 = minR[1]; r1 <= maxR[1]; r1++) {
+        for (let r2 = minR[2]; r2 <= maxR[2]; r2++) {
+          for (let r3 = minR[3]; r3 <= maxR[3]; r3++) {
+            for (let r4 = minR[4]; r4 <= maxR[4]; r4++) {
+              const r5 = symW - (r0 + r1 + r2 + r3 + r4);
+              if (r5 >= minR[5] && r5 <= maxR[5]) {
+                const rr = [r0, r1, r2, r3, r4, r5];
+                let ok = true;
+                for (let k = 0; k < 4; k++) {
+                  if (Math.round(((rr[k] + rr[k + 1]) * 11) / symW) !== m[k] + m[k + 1]) {
+                    ok = false;
+                    break;
+                  }
+                }
+                if (ok) {
+                  let cost = 0;
+                  for (let k = 0; k < 6; k++) {
+                    const diff = (rr[k] * 11) / symW - m[k];
+                    cost += diff * diff;
+                  }
+                  if (cost < bestCost) {
+                    bestCost = cost;
+                    bestR = rr;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    for (let k = 0; k < 6; k++) {
+      out += (k % 2 === 0 ? "1" : "0").repeat(bestR[k]);
+    }
+  }
+
+  const finalBarPx = Math.max(2, Math.round((2 * symW) / 11));
+  out += "1".repeat(finalBarPx);
+  return out;
+}
+
+const THERMAL_KEYWORDS = [
+  "xprinter",
+  "xp-",
+  "365b",
+  "350b",
+  "420b",
+  "470b",
+  "gprinter",
+  "gp-",
+  "zebra",
+  "zd",
+  "zt",
+  "godex",
+  "tsc",
+  "bixolon",
+  "pos",
+  "thermal",
+  "barcode",
+  "label",
+  "hprt",
+  "rongta",
+  "deli",
+  "zys",
+  "kpos",
+  "apson"
+];
+
+function isThermalPrinter(name: string, driverName: string): boolean {
+  const combined = `${name} ${driverName}`.toLowerCase();
+  return THERMAL_KEYWORDS.some((kw) => combined.includes(kw));
 }
 
 export async function listSystemPrinters(): Promise<{
   printers: SystemPrinterInfo[];
-  recommendedPrinter: string | null;
   platform: string;
+  defaultThermalPrinter: string | null;
 }> {
-  if (process.platform !== 'win32') {
-    return {
-      printers: [],
-      recommendedPrinter: null,
-      platform: process.platform,
-    };
+  if (process.platform !== "win32") {
+    return { printers: [], platform: process.platform, defaultThermalPrinter: null };
   }
 
+  const psScript = `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$ErrorActionPreference = 'SilentlyContinue'
+
+$printers = Get-CimInstance -ClassName Win32_Printer | ForEach-Object {
+  $name = [string]$_.Name
+  $driver = [string]$_.DriverName
+  $port = [string]$_.PortName
+  $workOffline = [bool]$_.WorkOffline
+  $statusNum = [int]$_.PrinterStatus
+  $extStatus = [int]$_.ExtendedPrinterStatus
+  $errState = [int]$_.DetectedErrorState
+
+  $statusText = 'Normal'
+  if ($workOffline) {
+    $statusText = 'Offline'
+  } elseif ($statusNum -eq 7 -or $extStatus -eq 7) {
+    $statusText = 'Offline'
+  } elseif ($errState -eq 4) {
+    $statusText = 'OutOfPaper'
+  } elseif ($errState -eq 6 -or $errState -eq 9 -or $statusNum -eq 6) {
+    $statusText = 'Error'
+  }
+
+  $isOnline = (-not $workOffline) -and ($statusText -eq 'Normal' -or $statusNum -eq 3 -or $statusNum -eq 4)
+
+  [PSCustomObject]@{
+    Name = $name
+    DriverName = $driver
+    PortName = $port
+    PrinterStatus = $statusText
+    Default = [bool]$_.Default
+    WorkOffline = $workOffline
+    IsOnline = [bool]$isOnline
+  }
+}
+
+$printers | ConvertTo-Json -Compress
+`;
+
   try {
-    const psCommand = `
-      $ErrorActionPreference = 'SilentlyContinue'
-      [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-      $list = Get-Printer | Select-Object Name, DriverName, PortName, PrinterStatus, WorkOffline
-      if ($null -eq $list) { Write-Output '[]' }
-      else { $list | ConvertTo-Json -Compress }
-    `;
     const { stdout } = await execFileAsync(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-Command', psCommand],
-      { timeout: 8000, maxBuffer: 2 * 1024 * 1024 }
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", psScript],
+      { timeout: 10000, maxBuffer: 4 * 1024 * 1024 }
     );
 
-    const trimmed = (stdout || '').trim();
-    if (!trimmed) {
-      return { printers: [], recommendedPrinter: null, platform: process.platform };
+    const raw = (stdout || "").trim();
+    if (!raw) {
+      return { printers: [], platform: process.platform, defaultThermalPrinter: null };
     }
 
-    const parsed = JSON.parse(trimmed);
-    const rawList = Array.isArray(parsed) ? parsed : [parsed];
+    const parsed = JSON.parse(raw);
+    const list: any[] = Array.isArray(parsed) ? parsed : [parsed];
 
-    const printers: SystemPrinterInfo[] = rawList
-      .filter((p) => p && typeof p.Name === 'string' && p.Name.trim() !== '')
-      .map((p) => {
-        const name = String(p.Name).trim();
-        const driverName = String(p.DriverName || '').trim();
-        const portName = String(p.PortName || '').trim();
-        const rawStatus = p.PrinterStatus;
-        const statusStr =
-          rawStatus === 0 || String(rawStatus).toLowerCase() === 'normal'
-            ? 'Normal'
-            : String(rawStatus ?? 'Normal');
-        const workOffline = Boolean(p.WorkOffline);
-        const isOnline = !workOffline && !/offline|error|notavailable/i.test(statusStr);
-        const isThermal = isThermalPrinter(name, driverName, portName);
+    const mapped: SystemPrinterInfo[] = list
+      .filter((p) => p && typeof p.Name === "string")
+      .map((p) => ({
+        Name: p.Name,
+        DriverName: p.DriverName || "",
+        PortName: p.PortName || "",
+        PrinterStatus: p.PrinterStatus || "Normal",
+        Default: Boolean(p.Default),
+        WorkOffline: Boolean(p.WorkOffline),
+        IsOnline: Boolean(p.IsOnline),
+        IsThermal: isThermalPrinter(p.Name, p.DriverName || "")
+      }));
 
-        return {
-          name,
-          driverName,
-          portName,
-          status: statusStr,
-          isOnline,
-          isThermal,
-        };
-      });
-
-    printers.sort((a, b) => {
-      if (a.isThermal !== b.isThermal) return a.isThermal ? -1 : 1;
-      if (a.isOnline !== b.isOnline) return a.isOnline ? -1 : 1;
-      return a.name.localeCompare(b.name);
+    mapped.sort((a, b) => {
+      if (a.IsOnline !== b.IsOnline) return a.IsOnline ? -1 : 1;
+      if (a.IsThermal !== b.IsThermal) return a.IsThermal ? -1 : 1;
+      if (a.Default !== b.Default) return a.Default ? -1 : 1;
+      return a.Name.localeCompare(b.Name);
     });
 
-    const recommended =
-      printers.find((p) => p.isThermal && p.isOnline)?.name ||
-      printers.find((p) => p.isThermal)?.name ||
-      printers[0]?.name ||
+    const chosen =
+      mapped.find((p) => p.IsThermal && p.IsOnline) ||
+      mapped.find((p) => p.IsThermal) ||
+      mapped.find((p) => p.Default && p.IsOnline) ||
+      mapped[0] ||
       null;
 
     return {
-      printers,
-      recommendedPrinter: recommended,
+      printers: mapped,
       platform: process.platform,
+      defaultThermalPrinter: chosen ? chosen.Name : null
     };
-  } catch (_err) {
-    return {
-      printers: [],
-      recommendedPrinter: null,
-      platform: process.platform,
-    };
+  } catch (err) {
+    console.error("[windowsPrinter] Failed to list printers:", err);
+    return { printers: [], platform: process.platform, defaultThermalPrinter: null };
   }
-}
-
-function formatVndPrice(amount: number): string {
-  const num = Math.max(0, Math.round(Number(amount) || 0));
-  return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ' VND';
 }
 
 export async function printBarcodeLabelsDirect(payload: DirectPrintPayload): Promise<{
-  printed: boolean;
-  synced?: boolean;
+  printedLabels: number;
+  printedPages: number;
   printerName: string;
-  totalStickers: number;
-  totalPages: number;
-  message: string;
+  syncedDriver?: boolean;
 }> {
-  if (process.platform !== 'win32') {
-    throw new Error('Tính năng in trực tiếp qua Windows Spooler chỉ hỗ trợ trên hệ điều hành Windows.');
+  if (process.platform !== "win32") {
+    throw new Error("Tính năng in trực tiếp qua Windows Spooler chỉ hỗ trợ trên hệ điều hành Windows.");
   }
 
-  const printerName = String(payload.printerName || '').trim();
+  const printerName = (payload.printerName || "").trim();
   if (!printerName) {
-    throw new Error('Vui lòng chọn tên máy in nhiệt (ví dụ: Xprinter XP-350BM).');
+    throw new Error("Vui lòng chọn máy in tem.");
   }
-
-  const columns: 1 | 2 = payload.preset?.columns === 2 ? 2 : 1;
-  const widthMm = Math.max(20, Math.min(120, Number(payload.preset?.widthMm) || 50));
-  const heightMm = Math.max(15, Math.min(150, Number(payload.preset?.heightMm) || 30));
-  const pageWidthMm = Math.max(
-    widthMm,
-    Math.min(120, Number(payload.preset?.pageWidthMm) || (columns === 2 ? widthMm * 2 + 2 : widthMm))
-  );
-  const pageHeightMm = Math.max(15, Math.min(150, Number(payload.preset?.pageHeightMm) || heightMm));
 
   const syncOnly = Boolean(payload.syncOnly);
   const showShopName = payload.options?.showShopName !== false;
-  const showProductName = Boolean(payload.options?.showProductName);
   const showPrice = payload.options?.showPrice !== false;
+  const shopName = showShopName ? (payload.shopName ?? "11SPORT").trim() : "";
 
-  const expandedStickers: Array<{
-    code: string;
+  // Fixed standard for 2-column 70x20mm thermal roll (2 labels of 35x20mm per row)
+  const columns: 1 | 2 = payload.columns === 1 || payload.preset?.columns === 1 ? 1 : 2;
+  const rawWidth = payload.paperWidthMm || payload.preset?.pageWidthMm || (columns === 2 ? 70 : 50);
+  const rawHeight = payload.paperHeightMm || payload.preset?.pageHeightMm || (columns === 2 ? 20 : 30);
+  const paperWidthMm = Math.max(30, Math.min(120, Number(rawWidth) || 70));
+  const paperHeightMm = Math.max(15, Math.min(120, Number(rawHeight) || 20));
+
+  type SingleStickerData = {
+    shopName: string;
     name: string;
+    code: string;
     priceText: string;
     pattern: string;
-  }> = [];
+  };
+
+  const expandedStickers: SingleStickerData[] = [];
 
   if (!syncOnly) {
     for (const item of payload.items || []) {
-      const cleanCode = normalizeToCompactUpperCode(item.code || '');
-      const qty = Math.max(0, Math.min(500, Math.round(Number(item.quantity) || 0)));
-      if (!cleanCode || qty <= 0) continue;
+      const qty = Math.max(0, Math.min(500, Math.floor(Number(item.quantity) || 0)));
+      if (qty <= 0) continue;
 
+      const cleanCode = sanitizeAsciiCode128(item.code || "ITEM");
       const pattern = encodeCode128BPattern(cleanCode);
-      const name = String(item.name || cleanCode).trim();
-      const priceText = formatVndPrice(Number(item.sellingPrice) || 0);
+
+      let priceText = (item.priceText || "").trim();
+      if (!priceText && showPrice && typeof item.sellingPrice === "number" && item.sellingPrice > 0) {
+        priceText = `${item.sellingPrice.toLocaleString("vi-VN")} đ`;
+      }
 
       for (let i = 0; i < qty; i++) {
         expandedStickers.push({
+          shopName,
+          name: (item.name || "Sản phẩm").trim(),
           code: cleanCode,
-          name,
           priceText,
-          pattern,
+          pattern
         });
       }
     }
 
     if (expandedStickers.length === 0) {
-      throw new Error('Không có tem mã vạch hợp lệ nào để in (số lượng tem phải > 0).');
+      throw new Error("Không có tem nào có số lượng > 0 để in.");
     }
   }
 
-  const pages: Array<Array<(typeof expandedStickers)[number]>> = [];
-  if (!syncOnly) {
-    if (columns === 2) {
-      for (let i = 0; i < expandedStickers.length; i += 2) {
-        const row = [expandedStickers[i]];
-        if (expandedStickers[i + 1]) {
-          row.push(expandedStickers[i + 1]);
-        }
-        pages.push(row);
-      }
-    } else {
-      for (const st of expandedStickers) {
-        pages.push([st]);
-      }
+  // Group stickers into rows (2 stickers per row for 70x20mm 2-column roll)
+  const rows: { left: SingleStickerData; right: SingleStickerData | null }[] = [];
+  if (columns === 2) {
+    for (let i = 0; i < expandedStickers.length; i += 2) {
+      rows.push({
+        left: expandedStickers[i],
+        right: expandedStickers[i + 1] || null
+      });
+    }
+  } else {
+    for (let i = 0; i < expandedStickers.length; i++) {
+      rows.push({
+        left: expandedStickers[i],
+        right: null
+      });
     }
   }
 
-  const tmpId = `11sport-label-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const jsonPath = path.join(os.tmpdir(), `${tmpId}.json`);
-  const ps1Path = path.join(os.tmpdir(), `${tmpId}.ps1`);
+  const tmpDir = os.tmpdir();
+  const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const jsonPath = path.join(tmpDir, `11sport-labels-${stamp}.json`);
+  const ps1Path = path.join(tmpDir, `11sport-print-${stamp}.ps1`);
 
   const jobData = {
     printerName,
-    widthMm,
-    heightMm,
-    columns,
-    pageWidthMm,
-    pageHeightMm,
-    showShopName,
-    showProductName,
-    showPrice,
     syncOnly,
-    totalStickers: expandedStickers.length,
-    pages,
+    columns,
+    paperWidthMm,
+    paperHeightMm,
+    rows
   };
 
-  const psScript = `
+  const psScriptContent = `param([string]$JsonPath)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+$rawJson = [System.IO.File]::ReadAllText($JsonPath, [System.Text.Encoding]::UTF8)
+$job = $rawJson | ConvertFrom-Json
+
 Add-Type -AssemblyName System.Drawing
+
+$printerName = [string]$job.printerName
+$syncOnly = [bool]$job.syncOnly
+$columns = [int]$job.columns
+$wMm = [double]$job.paperWidthMm
+$hMm = [double]$job.paperHeightMm
+$wHundredths = [int][Math]::Round($wMm / 25.4 * 100.0)
+$hHundredths = [int][Math]::Round($hMm / 25.4 * 100.0)
+$wMicrons = [int][Math]::Round($wMm * 1000.0)
+$hMicrons = [int][Math]::Round($hMm * 1000.0)
+$wTenthsMm = [int][Math]::Round($wMm * 10.0)
+$hTenthsMm = [int][Math]::Round($hMm * 10.0)
 
 Add-Type -TypeDefinition @"
 using System;
@@ -318,252 +519,362 @@ public class ThermalDriverConfigSync {
     [DllImport("winspool.drv", SetLastError = true)]
     public static extern bool ClosePrinter(IntPtr hPrinter);
 
-    [DllImport("winspool.drv", EntryPoint = "SetPrinterDataExW", CharSet = CharSet.Unicode, SetLastError = true)]
-    public static extern int SetPrinterDataEx(IntPtr hPrinter, string pKeyName, string pValueName, int Type, byte[] pData, int cbData);
-
     [DllImport("winspool.drv", EntryPoint = "DocumentPropertiesW", CharSet = CharSet.Unicode, SetLastError = true)]
     public static extern int DocumentProperties(IntPtr hwnd, IntPtr hPrinter, string pDeviceName, IntPtr pDevModeOutput, IntPtr pDevModeInput, int fMode);
+
+    [DllImport("kernel32.dll", ExactSpelling = true)]
+    public static extern IntPtr GlobalAlloc(int uFlags, int dwBytes);
+
+    [DllImport("kernel32.dll", ExactSpelling = true)]
+    public static extern IntPtr GlobalLock(IntPtr hMem);
+
+    [DllImport("kernel32.dll", ExactSpelling = true)]
+    public static extern bool GlobalUnlock(IntPtr hMem);
+
+    public static byte[] GetPatchedDevModeBytes(string printerName, short widthTenthsMm, short heightTenthsMm) {
+        PRINTER_DEFAULTS pd = new PRINTER_DEFAULTS();
+        pd.DesiredAccess = 0x00000008; // PRINTER_ACCESS_USE
+        IntPtr hPrinter;
+        if (!OpenPrinter(printerName, out hPrinter, ref pd)) {
+            return null;
+        }
+        try {
+            int size = DocumentProperties(IntPtr.Zero, hPrinter, printerName, IntPtr.Zero, IntPtr.Zero, 0);
+            if (size <= 0) return null;
+            IntPtr pDevMode = Marshal.AllocHGlobal(size);
+            try {
+                int ret = DocumentProperties(IntPtr.Zero, hPrinter, printerName, pDevMode, IntPtr.Zero, 2);
+                if (ret < 0) return null;
+
+                int dmFields = Marshal.ReadInt32(pDevMode, 72);
+                dmFields |= (1 | 2 | 4 | 8 | 0x00000800 | 0x10000000);
+                Marshal.WriteInt32(pDevMode, 72, dmFields);
+                Marshal.WriteInt16(pDevMode, 76, (short)1); // Portrait
+                Marshal.WriteInt16(pDevMode, 78, (short)256); // DMPAPER_USER
+                Marshal.WriteInt16(pDevMode, 80, heightTenthsMm);
+                Marshal.WriteInt16(pDevMode, 82, widthTenthsMm);
+                Marshal.WriteInt16(pDevMode, 92, (short)1); // DMCOLOR_MONOCHROME
+                if (size >= 204) {
+                    Marshal.WriteInt32(pDevMode, 200, 1); // DMDITHER_NONE
+                }
+
+                DocumentProperties(IntPtr.Zero, hPrinter, printerName, pDevMode, pDevMode, 10);
+
+                Marshal.WriteInt16(pDevMode, 76, (short)1);
+                Marshal.WriteInt16(pDevMode, 78, (short)256);
+                Marshal.WriteInt16(pDevMode, 80, heightTenthsMm);
+                Marshal.WriteInt16(pDevMode, 82, widthTenthsMm);
+                Marshal.WriteInt16(pDevMode, 92, (short)1);
+                if (size >= 204) {
+                    Marshal.WriteInt32(pDevMode, 200, 1);
+                }
+
+                byte[] bytes = new byte[size];
+                Marshal.Copy(pDevMode, bytes, 0, size);
+                return bytes;
+            } finally {
+                Marshal.FreeHGlobal(pDevMode);
+            }
+        } finally {
+            ClosePrinter(hPrinter);
+        }
+    }
+
+    public static IntPtr AllocHDevModeFromBytes(byte[] bytes) {
+        if (bytes == null || bytes.Length == 0) return IntPtr.Zero;
+        IntPtr hMem = GlobalAlloc(0x0042, bytes.Length);
+        if (hMem == IntPtr.Zero) return IntPtr.Zero;
+        IntPtr ptr = GlobalLock(hMem);
+        if (ptr == IntPtr.Zero) return IntPtr.Zero;
+        try {
+            Marshal.Copy(bytes, 0, ptr, bytes.Length);
+        } finally {
+            GlobalUnlock(hMem);
+        }
+        return hMem;
+    }
 }
 "@
 
-$jsonRaw = [System.IO.File]::ReadAllText('${jsonPath.replace(/'/g, "''")}', [System.Text.Encoding]::UTF8)
-$job = $jsonRaw | ConvertFrom-Json
-
-$pName = [string]$job.printerName
-$pWmm = [int][Math]::Round([double]$job.pageWidthMm)
-$pHmm = [int][Math]::Round([double]$job.pageHeightMm)
-
-# Đồng bộ khổ giấy USER trong Windows Driver (Seagull / Xprinter / TSC) để cả In trực tiếp và In trình duyệt đều đúng chuẩn kích thước tem
+$patchedDmBytes = $null
 try {
-  $pd = New-Object ThermalDriverConfigSync+PRINTER_DEFAULTS
-  $pd.DesiredAccess = 0x000F000C # PRINTER_ALL_ACCESS
-  $hPrinter = [IntPtr]::Zero
-  $driverDmBytes = $null
-  if ([ThermalDriverConfigSync]::OpenPrinter($pName, [ref]$hPrinter, [ref]$pd)) {
-    try {
-      $uf = New-Object byte[] 28
-      $wUm = [int32]($pWmm * 1000)
-      $hUm = [int32]($pHmm * 1000)
-      [Array]::Copy([BitConverter]::GetBytes($wUm), 0, $uf, 0, 4)
-      [Array]::Copy([BitConverter]::GetBytes($hUm), 0, $uf, 4, 4)
-      [Array]::Copy([BitConverter]::GetBytes([int32]0), 0, $uf, 8, 4)
-      [Array]::Copy([BitConverter]::GetBytes([int32]0), 0, $uf, 12, 4)
-      $uf[24] = 1
-      $uf[27] = 1
-      [ThermalDriverConfigSync]::SetPrinterDataEx($hPrinter, "PrinterDriverData\\Settings", "User Form: Data", 3, $uf, $uf.Length) | Out-Null
+  $patchedDmBytes = [ThermalDriverConfigSync]::GetPatchedDevModeBytes($printerName, [int16]$wTenthsMm, [int16]$hTenthsMm)
+} catch {}
 
-      $dmSize = [ThermalDriverConfigSync]::DocumentProperties([IntPtr]::Zero, $hPrinter, $pName, [IntPtr]::Zero, [IntPtr]::Zero, 0)
-      if ($dmSize -gt 0) {
-        $ptrDm = [System.Runtime.InteropServices.Marshal]::AllocHGlobal($dmSize)
-        try {
-          if ([ThermalDriverConfigSync]::DocumentProperties([IntPtr]::Zero, $hPrinter, $pName, $ptrDm, [IntPtr]::Zero, 2) -ge 0) {
-            $driverDmBytes = New-Object byte[] $dmSize
-            [System.Runtime.InteropServices.Marshal]::Copy($ptrDm, $driverDmBytes, 0, $dmSize)
-          }
-        } finally {
-          [System.Runtime.InteropServices.Marshal]::FreeHGlobal($ptrDm)
-        }
-      }
-    } finally {
-      [ThermalDriverConfigSync]::ClosePrinter($hPrinter) | Out-Null
-    }
-  }
-
-  $cfg = Get-PrintConfiguration -PrinterName $pName -ErrorAction SilentlyContinue
-  if ($null -ne $cfg -and -not [string]::IsNullOrWhiteSpace($cfg.PrintTicketXML)) {
+try {
+  $cfg = Get-PrintConfiguration -PrinterName $printerName -ErrorAction SilentlyContinue
+  if ($null -ne $cfg -and $cfg.PrintTicketXML) {
     [xml]$xml = $cfg.PrintTicketXML
-    $b64Node = ($xml.PrintTicket.ParameterInit | Where-Object { $_.name -like "*PageDevmodeSnapshot*" }).Value
-    if ($null -ne $b64Node) {
-      if ($null -ne $driverDmBytes) {
-        $b64Node.'#text' = [Convert]::ToBase64String($driverDmBytes)
-      } else {
-        $dmBytes = [Convert]::FromBase64String($b64Node.'#text')
-        $w10 = [int16]($pWmm * 10)
-        $h10 = [int16]($pHmm * 10)
-        if ($dmBytes.Length -ge 84) {
-          [Array]::Copy([BitConverter]::GetBytes([int16]1), 0, $dmBytes, 76, 2)
-          [Array]::Copy([BitConverter]::GetBytes([int16]256), 0, $dmBytes, 78, 2)
-          [Array]::Copy([BitConverter]::GetBytes($h10), 0, $dmBytes, 80, 2)
-          [Array]::Copy([BitConverter]::GetBytes($w10), 0, $dmBytes, 82, 2)
-        }
-        $b64Node.'#text' = [Convert]::ToBase64String($dmBytes)
+    $nsMgr = New-Object System.Xml.XmlNamespaceManager($xml.NameTable)
+    $nsMgr.AddNamespace('psf', 'http://schemas.microsoft.com/windows/2003/08/printing/printschemaframework')
+    $nsMgr.AddNamespace('psk', 'http://schemas.microsoft.com/windows/2003/08/printing/printschemakeywords')
+    $nsMgr.AddNamespace('xsi', 'http://www.w3.org/2001/XMLSchema-instance')
+    $nsMgr.AddNamespace('xsd', 'http://www.w3.org/2001/XMLSchema')
+
+    $mediaSizeNode = $xml.SelectSingleNode("//psf:Feature[@name='psk:PageMediaSize']/psf:Option", $nsMgr)
+    if ($null -ne $mediaSizeNode) {
+      $mediaSizeNode.SetAttribute('name', 'psk:CustomMediaSize')
+      $wNode = $mediaSizeNode.SelectSingleNode("psf:ScoredProperty[@name='psk:MediaSizeWidth']/psf:Value", $nsMgr)
+      $hNode = $mediaSizeNode.SelectSingleNode("psf:ScoredProperty[@name='psk:MediaSizeHeight']/psf:Value", $nsMgr)
+      if ($null -ne $wNode) { $wNode.InnerText = [string]$wMicrons }
+      if ($null -ne $hNode) { $hNode.InnerText = [string]$hMicrons }
+    }
+
+    $orientNode = $xml.SelectSingleNode("//psf:Feature[@name='psk:PageOrientation']/psf:Option", $nsMgr)
+    if ($null -ne $orientNode) {
+      $orientNode.SetAttribute('name', 'psk:Portrait')
+    }
+
+    if ($null -ne $patchedDmBytes) {
+      $dmNodes = $xml.SelectNodes("//psf:ParameterInit[contains(@name, 'Devmode') or contains(@name, 'DevMode')]/psf:Value", $nsMgr)
+      foreach ($dmNode in $dmNodes) {
+        $dmNode.InnerText = [Convert]::ToBase64String($patchedDmBytes)
       }
     }
-    $mediaFeature = $xml.PrintTicket.Feature | Where-Object { $_.name -eq "psk:PageMediaSize" }
-    if ($null -ne $mediaFeature -and $null -ne $mediaFeature.Option) {
-      $mediaFeature.Option.ScoredProperty[0].Value.'#text' = [string]($pWmm * 1000)
-      $mediaFeature.Option.ScoredProperty[1].Value.'#text' = [string]($pHmm * 1000)
-    }
-    $orientFeature = $xml.PrintTicket.Feature | Where-Object { $_.name -eq "psk:PageOrientation" }
-    if ($null -ne $orientFeature -and $null -ne $orientFeature.Option) {
-      $orientFeature.Option.name = "psk:Portrait"
-    }
-    Set-PrintConfiguration -PrinterName $pName -PrintTicketXml $xml.OuterXml -ErrorAction SilentlyContinue
-  }
-} catch {
-  # Bỏ qua nếu driver không phải Seagull/Xprinter
-}
 
-if ([bool]$job.syncOnly) {
-  Write-Output "SYNCED"
+    Set-PrintConfiguration -PrinterName $printerName -PrintTicketXml $xml.OuterXml -ErrorAction SilentlyContinue
+  }
+} catch {}
+
+if ($syncOnly) {
+  Write-Output "PRINTED_OK:0"
   exit 0
 }
 
 $doc = New-Object System.Drawing.Printing.PrintDocument
-$doc.PrinterSettings.PrinterName = $pName
+$doc.PrinterSettings.PrinterName = $printerName
 
 if (-not $doc.PrinterSettings.IsValid) {
-  throw "Không tìm thấy hoặc không thể kết nối tới máy in: $pName"
+  throw "Không tìm thấy máy in '$printerName' trong Windows hoặc driver chưa sẵn sàng."
 }
 
-$doc.DocumentName = "11Sport Barcode Labels ($($job.totalStickers) tem)"
-$doc.PrintController = New-Object System.Drawing.Printing.StandardPrintController
+$paperSize = New-Object System.Drawing.Printing.PaperSize('USER', $wHundredths, $hHundredths)
+$paperSize.RawKind = 256
 
-$pageW100 = [int][Math]::Round(([double]$job.pageWidthMm) * 100.0 / 25.4)
-$pageH100 = [int][Math]::Round(([double]$job.pageHeightMm) * 100.0 / 25.4)
+if ($null -ne $patchedDmBytes) {
+  try {
+    $hDevMode = [ThermalDriverConfigSync]::AllocHDevModeFromBytes($patchedDmBytes)
+    if ($hDevMode -ne [IntPtr]::Zero) {
+      $doc.PrinterSettings.SetHdevmode($hDevMode)
+      $doc.DefaultPageSettings.SetHdevmode($hDevMode)
+    }
+  } catch {}
+}
 
-$paperSize = New-Object System.Drawing.Printing.PaperSize('USER', $pageW100, $pageH100)
 $doc.DefaultPageSettings.PaperSize = $paperSize
 $doc.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(0, 0, 0, 0)
 $doc.DefaultPageSettings.Landscape = $false
+$doc.DefaultPageSettings.Color = $false
 $doc.OriginAtMargins = $false
+$doc.PrintController = New-Object System.Drawing.Printing.StandardPrintController
 
-$script:pageIndex = 0
-$pagesList = @($job.pages)
+$rows = @($job.rows)
+$script:rowIndex = 0
+
+function Get-FittedFontPx($g, [string]$family, [string]$text, [float]$maxPx, [float]$minPx, [int]$maxWidthPx) {
+  $px = $maxPx
+  while ($px -ge $minPx) {
+    $f = New-Object System.Drawing.Font($family, $px, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
+    $sz = $g.MeasureString($text, $f)
+    if ($sz.Width -le ($maxWidthPx - 2)) {
+      return $f
+    }
+    $f.Dispose()
+    $px = [float]([Math]::Round($px - 1.0, 1))
+  }
+  return New-Object System.Drawing.Font($family, $minPx, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
+}
+
+function Draw-SingleSticker($g, $sticker, [int]$cellX, [int]$cellW, [int]$cellH, [double]$pxPerMmX, [double]$pxPerMmY) {
+  if ($null -eq $sticker) { return }
+
+  $brushBlack = [System.Drawing.Brushes]::Black
+  $brushWhite = [System.Drawing.Brushes]::White
+
+  $sfCenter = New-Object System.Drawing.StringFormat
+  $sfCenter.Alignment = [System.Drawing.StringAlignment]::Center
+  $sfCenter.LineAlignment = [System.Drawing.StringAlignment]::Center
+  $sfCenter.Trimming = [System.Drawing.StringTrimming]::EllipsisCharacter
+  $sfCenter.FormatFlags = [System.Drawing.StringFormatFlags]::NoWrap -bor [System.Drawing.StringFormatFlags]::NoClip
+
+  $sfCode = New-Object System.Drawing.StringFormat
+  $sfCode.Alignment = [System.Drawing.StringAlignment]::Center
+  $sfCode.LineAlignment = [System.Drawing.StringAlignment]::Center
+  $sfCode.Trimming = [System.Drawing.StringTrimming]::None
+  $sfCode.FormatFlags = [System.Drawing.StringFormatFlags]::NoWrap -bor [System.Drawing.StringFormatFlags]::NoClip
+
+  $scaleY = $pxPerMmY / 8.0
+  $padX = [Math]::Max(2, [int][Math]::Round(0.4 * $pxPerMmX))
+  $innerX = $cellX + $padX
+  $innerW = $cellW - ($padX * 2)
+
+  $y = 0
+
+  # 1. Shop Name + Full-width line (if enabled)
+  if (-not [string]::IsNullOrWhiteSpace($sticker.shopName)) {
+    $shopH = [int][Math]::Round(19 * $scaleY)
+    $fontShop = Get-FittedFontPx $g 'Arial' ([string]$sticker.shopName) ([float](19 * $scaleY)) ([float](14 * $scaleY)) $innerW
+    $rectShop = New-Object System.Drawing.RectangleF($innerX, $y, $innerW, $shopH)
+    $g.DrawString([string]$sticker.shopName, $fontShop, $brushBlack, $rectShop, $sfCenter)
+    $fontShop.Dispose()
+    $lineH = [Math]::Max(2, [int][Math]::Round(2 * $scaleY))
+    $g.FillRectangle($brushBlack, $innerX, $y + $shopH, $innerW, $lineH)
+    $y += $shopH + $lineH + 1
+  } else {
+    $y += [int][Math]::Round(2 * $scaleY)
+  }
+
+  # 2. Product Name (Full-width auto-fitted bold)
+  $nameH = [int][Math]::Round(26 * $scaleY)
+  $fontName = Get-FittedFontPx $g 'Arial' ([string]$sticker.name) ([float](26 * $scaleY)) ([float](15 * $scaleY)) $innerW
+  $rectName = New-Object System.Drawing.RectangleF($innerX, $y, $innerW, $nameH)
+  $g.DrawString([string]$sticker.name, $fontName, $brushBlack, $rectName, $sfCenter)
+  $fontName.Dispose()
+  $y += $nameH + 1
+
+  # Reserve bottom for Code + Price
+  $hasPrice = -not [string]::IsNullOrWhiteSpace($sticker.priceText)
+  $codeH = [int][Math]::Round(18 * $scaleY)
+  $priceH = if ($hasPrice) { [int][Math]::Round(28 * $scaleY) } else { [int][Math]::Round(2 * $scaleY) }
+
+  # 3. Barcode 1D Code128 (lấp đầy ~93% chiều ngang tem 35x20mm, khớp chuẩn 203 DPI)
+  $barTop = $y
+  $barHeight = [Math]::Max([int][Math]::Round(58 * $scaleY), $cellH - $barTop - $codeH - $priceH - 1)
+  $pattern = [string]$sticker.pattern
+
+  if ($pattern.Length -gt 0) {
+    $quietZonePx = [Math]::Max(8, [int][Math]::Round(1.0 * $pxPerMmX))
+    $maxBarW = $cellW - ($quietZonePx * 2)
+    $modulePx = [int][Math]::Floor($maxBarW / $pattern.Length)
+    if ($modulePx -lt 1) { $modulePx = 1 }
+    if ($modulePx -gt 2) { $modulePx = 2 }
+
+    $totalBarPx = $pattern.Length * $modulePx
+    $startX = $cellX + [int][Math]::Floor(($cellW - $totalBarPx) / 2.0)
+
+    $g.FillRectangle($brushWhite, $cellX, $barTop, $cellW, $barHeight)
+
+    $i = 0
+    while ($i -lt $pattern.Length) {
+      if ($pattern[$i] -eq '1') {
+        $run = 1
+        while (($i + $run) -lt $pattern.Length -and $pattern[$i + $run] -eq '1') {
+          $run++
+        }
+        $barX = $startX + ($i * $modulePx)
+        $barW = $run * $modulePx
+        $g.FillRectangle($brushBlack, $barX, $barTop, $barW, $barHeight)
+        $i += $run
+      } else {
+        $i++
+      }
+    }
+  }
+  $y = $barTop + $barHeight + 1
+
+  # 4. Barcode human-readable code (spaced characters to fill width cleanly)
+  $rawCodeStr = [string]$sticker.code
+  $spacedCode = ($rawCodeStr.ToCharArray()) -join ' '
+  $fontCode = Get-FittedFontPx $g 'Consolas' $spacedCode ([float](18 * $scaleY)) ([float](12 * $scaleY)) $innerW
+  $rectCode = New-Object System.Drawing.RectangleF($innerX, $y, $innerW, $codeH)
+  $g.DrawString($spacedCode, $fontCode, $brushBlack, $rectCode, $sfCode)
+  $fontCode.Dispose()
+  $y += $codeH
+
+  # 5. Price (Large Bold filling bottom of sticker)
+  if ($hasPrice) {
+    $fontPrice = Get-FittedFontPx $g 'Arial' ([string]$sticker.priceText) ([float](28 * $scaleY)) ([float](18 * $scaleY)) $innerW
+    $rectPrice = New-Object System.Drawing.RectangleF($innerX, $y, $innerW, $priceH)
+    $g.DrawString([string]$sticker.priceText, $fontPrice, $brushBlack, $rectPrice, $sfCenter)
+    $fontPrice.Dispose()
+  }
+
+  $sfCenter.Dispose()
+  $sfCode.Dispose()
+}
+
+$doc.add_QueryPageSettings({
+  param($sender, $e)
+  $e.PageSettings.PaperSize = $paperSize
+  $e.PageSettings.Margins = New-Object System.Drawing.Printing.Margins(0, 0, 0, 0)
+  $e.PageSettings.Landscape = $false
+  $e.PageSettings.Color = $false
+})
 
 $doc.add_PrintPage({
   param($sender, $e)
   $g = $e.Graphics
-  $g.PageUnit = [System.Drawing.GraphicsUnit]::Millimeter
+  $g.PageUnit = [System.Drawing.GraphicsUnit]::Pixel
   $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::None
   $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::NearestNeighbor
-  $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::Half
+  $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::None
+  $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::SingleBitPerPixelGridFit
+  $g.Clear([System.Drawing.Color]::White)
 
-  $currentPage = @($pagesList[$script:pageIndex])
-  $stickerW = [double]$job.widthMm
-  $stickerH = [double]$job.heightMm
-  $pageW = [double]$job.pageWidthMm
-  $cols = [int]$job.columns
-  $gapMm = if ($cols -eq 2) { [Math]::Max(0.0, ($pageW - ($stickerW * 2.0))) } else { 0.0 }
+  $dpiX = [double]$g.DpiX
+  $dpiY = [double]$g.DpiY
+  if ($dpiX -le 0) { $dpiX = 203.0 }
+  if ($dpiY -le 0) { $dpiY = 203.0 }
 
-  $isSmall = ($stickerH -le 24.0)
-  $fontShop = New-Object System.Drawing.Font('Arial', [float]$(if ($isSmall) { 6.2 } else { 7.2 }), [System.Drawing.FontStyle]::Bold)
-  $fontName = New-Object System.Drawing.Font('Arial', [float]$(if ($isSmall) { 5.8 } else { 6.8 }), [System.Drawing.FontStyle]::Bold)
-  $fontCode = New-Object System.Drawing.Font('Courier New', [float]$(if ($isSmall) { 6.8 } else { 8.0 }), [System.Drawing.FontStyle]::Bold)
-  $fontPrice = New-Object System.Drawing.Font('Arial', [float]$(if ($isSmall) { 6.2 } else { 7.6 }), [System.Drawing.FontStyle]::Bold)
+  $pxPerMmX = $dpiX / 25.4
+  $pxPerMmY = $dpiY / 25.4
 
-  $sf = New-Object System.Drawing.StringFormat
-  $sf.Alignment = [System.Drawing.StringAlignment]::Center
-  $sf.LineAlignment = [System.Drawing.StringAlignment]::Near
-  $sf.FormatFlags = [System.Drawing.StringFormatFlags]::NoWrap
-  $sf.Trimming = [System.Drawing.StringTrimming]::EllipsisCharacter
+  $W = [int][Math]::Round($wMm * $pxPerMmX)
+  $H = [int][Math]::Round($hMm * $pxPerMmY)
 
-  for ($colIdx = 0; $colIdx -lt $currentPage.Count; $colIdx++) {
-    $st = $currentPage[$colIdx]
-    if ($null -eq $st) { continue }
+  $row = $rows[$script:rowIndex]
 
-    $offsetX = if ($colIdx -eq 0) { 0.0 } else { $stickerW + $gapMm }
-    $padX = 1.5
-    $innerW = $stickerW - ($padX * 2.0)
-    $curY = if ($isSmall) { 1.0 } else { 1.5 }
-
-    if ([bool]$job.showShopName) {
-      $rectShop = New-Object System.Drawing.RectangleF([float]($offsetX + $padX), [float]$curY, [float]$innerW, [float]3.2)
-      $g.DrawString('11 SPORT', $fontShop, [System.Drawing.Brushes]::Black, $rectShop, $sf)
-      $curY += if ($isSmall) { 2.7 } else { 3.2 }
+  if ($columns -eq 2) {
+    # 2-column 70x20mm layout: Left sticker (34.5mm), Gap (1mm), Right sticker (34.5mm)
+    $cellW = [int][Math]::Round(34.5 * $pxPerMmX)
+    $rightX = $W - $cellW
+    Draw-SingleSticker $g $row.left 0 $cellW $H $pxPerMmX $pxPerMmY
+    if ($null -ne $row.right) {
+      Draw-SingleSticker $g $row.right $rightX $cellW $H $pxPerMmX $pxPerMmY
     }
-
-    if ([bool]$job.showProductName -and -not [string]::IsNullOrWhiteSpace([string]$st.name)) {
-      $rectName = New-Object System.Drawing.RectangleF([float]($offsetX + $padX), [float]$curY, [float]$innerW, [float]3.2)
-      $g.DrawString([string]$st.name, $fontName, [System.Drawing.Brushes]::Black, $rectName, $sf)
-      $curY += if ($isSmall) { 2.7 } else { 3.3 }
-    }
-
-    $bottomReserve = $(if ($isSmall) { 3.0 } else { 3.6 }) + $(if ([bool]$job.showPrice) { $(if ($isSmall) { 2.8 } else { 3.4 }) } else { 0.5 })
-    $barH = [Math]::Max(6.5, ($stickerH - $curY - $bottomReserve))
-    $pattern = [string]$st.pattern
-
-    if ($pattern.Length -gt 0) {
-      $quietModules = 6
-      $totalModules = $pattern.Length + ($quietModules * 2)
-      $modW = $innerW / [double]$totalModules
-      $barStartX = $offsetX + $padX + ($quietModules * $modW)
-
-      $idx = 0
-      while ($idx -lt $pattern.Length) {
-        if ($pattern[$idx] -eq '1') {
-          $run = 1
-          while (($idx + $run -lt $pattern.Length) -and ($pattern[$idx + $run] -eq '1')) {
-            $run++
-          }
-          $bx = [float]($barStartX + ($idx * $modW))
-          $bw = [float]($run * $modW)
-          $g.FillRectangle([System.Drawing.Brushes]::Black, $bx, [float]$curY, $bw, [float]$barH)
-          $idx += $run
-        } else {
-          $idx++
-        }
-      }
-    }
-
-    $curY += $barH + 0.4
-
-    $rectCode = New-Object System.Drawing.RectangleF([float]($offsetX + 0.5), [float]$curY, [float]($stickerW - 1.0), [float]3.4)
-    $g.DrawString([string]$st.code, $fontCode, [System.Drawing.Brushes]::Black, $rectCode, $sf)
-    $curY += if ($isSmall) { 2.6 } else { 3.2 }
-
-    if ([bool]$job.showPrice -and -not [string]::IsNullOrWhiteSpace([string]$st.priceText)) {
-      $rectPrice = New-Object System.Drawing.RectangleF([float]($offsetX + 0.5), [float]$curY, [float]($stickerW - 1.0), [float]3.4)
-      $g.DrawString([string]$st.priceText, $fontPrice, [System.Drawing.Brushes]::Black, $rectPrice, $sf)
-    }
+  } else {
+    Draw-SingleSticker $g $row.left 0 $W $H $pxPerMmX $pxPerMmY
   }
 
-  $fontShop.Dispose()
-  $fontName.Dispose()
-  $fontCode.Dispose()
-  $fontPrice.Dispose()
-  $sf.Dispose()
-
-  $script:pageIndex++
-  $e.HasMorePages = ($script:pageIndex -lt $pagesList.Count)
+  $script:rowIndex++
+  if ($script:rowIndex -lt $rows.Count) {
+    $e.HasMorePages = $true
+  } else {
+    $e.HasMorePages = $false
+  }
 })
 
 $doc.Print()
 $doc.Dispose()
-Write-Output "OK"
+
+Write-Output ("PRINTED_OK:" + $rows.Count)
 `;
 
   try {
-    await fs.promises.writeFile(jsonPath, JSON.stringify(jobData), 'utf8');
-    await fs.promises.writeFile(ps1Path, '\uFEFF' + psScript, 'utf8');
+    await fs.writeFile(jsonPath, JSON.stringify(jobData), "utf8");
+    await fs.writeFile(ps1Path, "\uFEFF" + psScriptContent, "utf8");
 
-    await execFileAsync(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', ps1Path],
-      { timeout: 25000, maxBuffer: 2 * 1024 * 1024 }
+    const { stdout, stderr } = await execFileAsync(
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", ps1Path, "-JsonPath", jsonPath],
+      { timeout: 30000, maxBuffer: 4 * 1024 * 1024 }
     );
 
-    if (syncOnly) {
-      return {
-        printed: false,
-        synced: true,
-        printerName,
-        totalStickers: 0,
-        totalPages: 0,
-        message: `Đã đồng bộ khổ giấy ${pageWidthMm}×${pageHeightMm}mm cho máy in "${printerName}".`,
-      };
+    const out = (stdout || "").trim();
+    if (!out.includes("PRINTED_OK:")) {
+      throw new Error(stderr || out || "Không nhận được phản hồi thành công từ Windows Print Spooler.");
     }
 
     return {
-      printed: true,
-      synced: true,
+      printedLabels: expandedStickers.length,
+      printedPages: rows.length,
       printerName,
-      totalStickers: expandedStickers.length,
-      totalPages: pages.length,
-      message: `Đã gửi lệnh in ${expandedStickers.length} tem (${pages.length} hàng/trang) tới máy in "${printerName}" thành công!`,
+      syncedDriver: true
     };
   } finally {
-    await fs.promises.unlink(jsonPath).catch(() => undefined);
-    await fs.promises.unlink(ps1Path).catch(() => undefined);
+    await fs.unlink(jsonPath).catch(() => {});
+    await fs.unlink(ps1Path).catch(() => {});
   }
 }
+
+export const printLabelsDirectWindows = printBarcodeLabelsDirect;
