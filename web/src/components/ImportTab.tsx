@@ -1686,8 +1686,8 @@ export default function ImportTab() {
                     </span>
                     <span
                       className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold ${scannerEnabled
-                          ? "bg-emerald-500 text-slate-950"
-                          : "bg-slate-700 text-slate-300"
+                        ? "bg-emerald-500 text-slate-950"
+                        : "bg-slate-700 text-slate-300"
                         }`}
                     >
                       <Zap className="w-3 h-3" />
@@ -1697,7 +1697,6 @@ export default function ImportTab() {
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-300 mt-0.5">
-                    Bắn mã vạch trên sản phẩm để tự động <strong>+1 SL Thực nhận</strong> &amp; <strong>Tick Xác nhận nhập</strong> (Khử lỗi bộ gõ Tiếng Việt Unikey).
                   </p>
                 </div>
               </div>
@@ -1731,8 +1730,8 @@ export default function ImportTab() {
                   type="button"
                   onClick={() => setScannerEnabled((prev) => !prev)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-extrabold border transition ${scannerEnabled
-                      ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-400"
-                      : "bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-600"
+                    ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-400"
+                    : "bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-600"
                     }`}
                 >
                   {scannerEnabled ? "🟢 Đang nhận máy quét" : "⚪ Bật nhận máy quét"}
@@ -1772,10 +1771,10 @@ export default function ImportTab() {
             {lastScanFeedback && (
               <div
                 className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center justify-between gap-2 border ${lastScanFeedback.type === "success"
-                    ? "bg-emerald-950/90 border-emerald-500/60 text-emerald-200"
-                    : lastScanFeedback.type === "warning"
-                      ? "bg-amber-950/90 border-amber-400/70 text-amber-200"
-                      : "bg-red-950/90 border-red-500/70 text-red-200"
+                  ? "bg-emerald-950/90 border-emerald-500/60 text-emerald-200"
+                  : lastScanFeedback.type === "warning"
+                    ? "bg-amber-950/90 border-amber-400/70 text-amber-200"
+                    : "bg-red-950/90 border-red-500/70 text-red-200"
                   }`}
               >
                 <div className="flex items-center gap-2 min-w-0">
@@ -1908,10 +1907,10 @@ export default function ImportTab() {
                   <tr
                     key={idx}
                     className={`hover:bg-slate-50 transition-colors ${lastScannedRowIdx === idx
-                        ? "bg-emerald-100/80 ring-2 ring-inset ring-emerald-500"
-                        : row.isConfirmed
-                          ? "bg-emerald-50/20"
-                          : ""
+                      ? "bg-emerald-100/80 ring-2 ring-inset ring-emerald-500"
+                      : row.isConfirmed
+                        ? "bg-emerald-50/20"
+                        : ""
                       }`}
                   >
                     {/* STT */}
@@ -2656,11 +2655,11 @@ export default function ImportTab() {
                                             Number(it.costPrice) > 0
                                               ? Number(it.costPrice)
                                               : Number(
-                                                  resolveCatalogProductForItem(
-                                                    it.productCode,
-                                                    it.productName
-                                                  )?.costPrice || 0
-                                                )
+                                                resolveCatalogProductForItem(
+                                                  it.productCode,
+                                                  it.productName
+                                                )?.costPrice || 0
+                                              )
                                           )}
                                         </td>
                                         <td className="py-1.5 px-2 text-right font-mono text-emerald-700 font-semibold">
@@ -2668,11 +2667,11 @@ export default function ImportTab() {
                                             Number(it.sellingPrice) > 0
                                               ? Number(it.sellingPrice)
                                               : Number(
-                                                  resolveCatalogProductForItem(
-                                                    it.productCode,
-                                                    it.productName
-                                                  )?.sellingPrice || 0
-                                                )
+                                                resolveCatalogProductForItem(
+                                                  it.productCode,
+                                                  it.productName
+                                                )?.sellingPrice || 0
+                                              )
                                           )}
                                         </td>
                                       </tr>
@@ -2780,11 +2779,11 @@ export default function ImportTab() {
                             Number(it.costPrice) > 0
                               ? Number(it.costPrice)
                               : Number(
-                                  resolveCatalogProductForItem(
-                                    it.productCode,
-                                    it.productName
-                                  )?.costPrice || 0
-                                )
+                                resolveCatalogProductForItem(
+                                  it.productCode,
+                                  it.productName
+                                )?.costPrice || 0
+                              )
                           )}
                         </td>
                         <td className="py-2.5 px-2.5 text-right font-mono font-semibold text-emerald-700">
@@ -2792,11 +2791,11 @@ export default function ImportTab() {
                             Number(it.sellingPrice) > 0
                               ? Number(it.sellingPrice)
                               : Number(
-                                  resolveCatalogProductForItem(
-                                    it.productCode,
-                                    it.productName
-                                  )?.sellingPrice || 0
-                                )
+                                resolveCatalogProductForItem(
+                                  it.productCode,
+                                  it.productName
+                                )?.sellingPrice || 0
+                              )
                           )}
                         </td>
                       </tr>
@@ -2881,8 +2880,8 @@ export default function ImportTab() {
                       setScanCandidateRowIndices(null);
                     }}
                     className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl border text-left transition-all ${isEnough
-                        ? "border-emerald-300 bg-emerald-50/60 hover:bg-emerald-100/70"
-                        : "border-amber-300 bg-amber-50/40 hover:bg-amber-100/60"
+                      ? "border-emerald-300 bg-emerald-50/60 hover:bg-emerald-100/70"
+                      : "border-amber-300 bg-amber-50/40 hover:bg-amber-100/60"
                       }`}
                   >
                     <div className="flex items-center gap-2.5">

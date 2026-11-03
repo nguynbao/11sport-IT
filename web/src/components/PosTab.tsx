@@ -273,20 +273,20 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       drafts.map((d) =>
         d.id === activeDraftId
           ? {
-              ...d,
-              cart,
-              giftCart,
-              billDiscountType,
-              billDiscountValue,
-              customerPhone,
-              customerName,
-              isExistingCustomer,
-              customerOrders,
-              paymentMethod,
-              splitPayments,
-              hasCardFee,
-              note,
-            }
+            ...d,
+            cart,
+            giftCart,
+            billDiscountType,
+            billDiscountValue,
+            customerPhone,
+            customerName,
+            isExistingCustomer,
+            customerOrders,
+            paymentMethod,
+            splitPayments,
+            hasCardFee,
+            note,
+          }
           : d
       ),
     [
@@ -650,23 +650,23 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     const hasSearch = search.trim().length > 0;
     const searched = hasSearch
       ? filterAndRankBySearch(categoryFiltered, search, (p) => [
-          { text: p.code, weight: 1.5 },
-          { text: p.barcode, weight: 1.5 },
-          { text: p.name, weight: 1.3 },
-          { text: p.brand, weight: 1.1 },
-          { text: getCategoryName(p), weight: 0.9 },
-          { text: p.categoryCode, weight: 0.9 },
-          {
-            text: (p.variants || [])
-              .map(
-                (v) =>
-                  `${v.variantCode || generateVariantProductCode(p.code, v.color, v.size)} ${v.color} ${v.size}`
-              )
-              .join(" "),
-            weight: 1.4,
-          },
-          { text: p.unit, weight: 0.6 },
-        ])
+        { text: p.code, weight: 1.5 },
+        { text: p.barcode, weight: 1.5 },
+        { text: p.name, weight: 1.3 },
+        { text: p.brand, weight: 1.1 },
+        { text: getCategoryName(p), weight: 0.9 },
+        { text: p.categoryCode, weight: 0.9 },
+        {
+          text: (p.variants || [])
+            .map(
+              (v) =>
+                `${v.variantCode || generateVariantProductCode(p.code, v.color, v.size)} ${v.color} ${v.size}`
+            )
+            .join(" "),
+          weight: 1.4,
+        },
+        { text: p.unit, weight: 0.6 },
+      ])
       : categoryFiltered;
 
     if (hasSearch && sortBy === "CATEGORY") {
@@ -916,10 +916,9 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
             }
           }
           details.push(
-            `🏷️ Giảm ${
-              promo.itemDiscountType === "PERCENT"
-                ? `${promo.itemDiscountValue}%`
-                : `${formatVND(promo.itemDiscountValue)}/SP`
+            `🏷️ Giảm ${promo.itemDiscountType === "PERCENT"
+              ? `${promo.itemDiscountValue}%`
+              : `${formatVND(promo.itemDiscountValue)}/SP`
             }`
           );
         }
@@ -942,10 +941,9 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
             };
           }
           details.push(
-            `🧾 Giảm Bill ${
-              promo.billDiscountType === "PERCENT"
-                ? `${promo.billDiscountValue}%`
-                : formatVND(promo.billDiscountValue)
+            `🧾 Giảm Bill ${promo.billDiscountType === "PERCENT"
+              ? `${promo.billDiscountValue}%`
+              : formatVND(promo.billDiscountValue)
             }`
           );
         }
@@ -1127,21 +1125,21 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
 
     const nextCart: CartItem[] = existing
       ? cart.map((c) =>
-          getCartLineKey(c.product._id, c.color, c.size) === lineKey
-            ? { ...c, quantity: c.quantity + 1 }
-            : c
-        )
+        getCartLineKey(c.product._id, c.color, c.size) === lineKey
+          ? { ...c, quantity: c.quantity + 1 }
+          : c
+      )
       : [
-          ...cart,
-          {
-            product,
-            color,
-            size,
-            quantity: 1,
-            discountType: "NONE",
-            discountValue: 0,
-          },
-        ];
+        ...cart,
+        {
+          product,
+          color,
+          size,
+          quantity: 1,
+          discountType: "NONE",
+          discountValue: 0,
+        },
+      ];
 
     applyPromotionsForCart(nextCart, giftCart);
     return true;
@@ -1211,9 +1209,8 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     const f2Stock = Number(matchedProduct.stockFloor2 || 0);
     if (f1Stock <= 0) {
       playScannerBeep("error");
-      const msg = `Mã ${matchedProduct.code} ("${matchedProduct.name}") đã HẾT HÀNG tại Kho Tầng 1${
-        f2Stock > 0 ? ` (Đang còn ${f2Stock} ${matchedProduct.unit} ở Kho Tầng 2)` : ""
-      }!`;
+      const msg = `Mã ${matchedProduct.code} ("${matchedProduct.name}") đã HẾT HÀNG tại Kho Tầng 1${f2Stock > 0 ? ` (Đang còn ${f2Stock} ${matchedProduct.unit} ở Kho Tầng 2)` : ""
+        }!`;
       setErrorMsg(msg);
       setLastScanBanner({
         type: "error",
@@ -1239,9 +1236,8 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
         setLastScanBanner({
           type: "success",
           code: childCode,
-          message: `Đã quét mã con ${childCode} → +1 "${matchedProduct.name}"${
-            vLabel ? ` (${vLabel})` : ""
-          } • ${formatVND(matchedProduct.sellingPrice)} (Trong giỏ: ${newQtyInCart} ${matchedProduct.unit})`,
+          message: `Đã quét mã con ${childCode} → +1 "${matchedProduct.name}"${vLabel ? ` (${vLabel})` : ""
+            } • ${formatVND(matchedProduct.sellingPrice)} (Trong giỏ: ${newQtyInCart} ${matchedProduct.unit})`,
           time: nowStr,
         });
         setVariantPickerProduct(null);
@@ -1320,9 +1316,8 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       setLastScanBanner({
         type: "success",
         code: matchedProduct.code,
-        message: `Đã quét ${matchedProduct.code} → +1 "${matchedProduct.name}"${
-          vLabel ? ` (${vLabel})` : ""
-        } • ${formatVND(matchedProduct.sellingPrice)} (Trong giỏ: ${newQtyInCart} ${matchedProduct.unit})`,
+        message: `Đã quét ${matchedProduct.code} → +1 "${matchedProduct.name}"${vLabel ? ` (${vLabel})` : ""
+          } • ${formatVND(matchedProduct.sellingPrice)} (Trong giỏ: ${newQtyInCart} ${matchedProduct.unit})`,
         time: nowStr,
       });
       setVariantPickerProduct(null);
@@ -1669,13 +1664,13 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     const formattedSplitDetail =
       paymentMethod === "OTHER"
         ? splitPayments
-            .map((sp) => {
-              const label =
-                SPLIT_METHOD_OPTIONS.find((o) => o.value === sp.method)?.label ||
-                sp.method;
-              return `${label}: ${formatNumberDots(sp.amount || 0)}`;
-            })
-            .join(" + ")
+          .map((sp) => {
+            const label =
+              SPLIT_METHOD_OPTIONS.find((o) => o.value === sp.method)?.label ||
+              sp.method;
+            return `${label}: ${formatNumberDots(sp.amount || 0)}`;
+          })
+          .join(" + ")
         : "";
 
     setSubmitting(true);
@@ -1766,13 +1761,13 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     const formattedSplitDetail =
       paymentMethod === "OTHER"
         ? splitPayments
-            .map((sp) => {
-              const label =
-                SPLIT_METHOD_OPTIONS.find((o) => o.value === sp.method)?.label ||
-                sp.method;
-              return `${label}: ${formatNumberDots(sp.amount || 0)}`;
-            })
-            .join(" + ")
+          .map((sp) => {
+            const label =
+              SPLIT_METHOD_OPTIONS.find((o) => o.value === sp.method)?.label ||
+              sp.method;
+            return `${label}: ${formatNumberDots(sp.amount || 0)}`;
+          })
+          .join(" + ")
         : "";
 
     setSavingDraft(true);
@@ -1812,13 +1807,13 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
 
       const res = editingServerDraftOrder
         ? await apiRequest<Order>(`/orders/${editingServerDraftOrder._id}`, {
-            method: "PUT",
-            body: JSON.stringify(payload),
-          })
+          method: "PUT",
+          body: JSON.stringify(payload),
+        })
         : await apiRequest<Order>("/orders", {
-            method: "POST",
-            body: JSON.stringify(payload),
-          });
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
 
       const savedOrder = res.data;
       const code = savedOrder.orderCode || savedOrder.code || "";
@@ -2009,11 +2004,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       <div
         key={p._id}
         onClick={() => canSell && handleSelectProductForPos(p)}
-        className={`p-3.5 rounded-xl border transition flex flex-col justify-between ${
-          canSell
-            ? "border-slate-200 hover:border-emerald-500 hover:shadow-md cursor-pointer bg-white"
-            : "border-slate-200 bg-slate-50 opacity-70 cursor-not-allowed"
-        }`}
+        className={`p-3.5 rounded-xl border transition flex flex-col justify-between ${canSell
+          ? "border-slate-200 hover:border-emerald-500 hover:shadow-md cursor-pointer bg-white"
+          : "border-slate-200 bg-slate-50 opacity-70 cursor-not-allowed"
+          }`}
       >
         <div className="min-w-0">
           <div className="flex items-start justify-between gap-2 min-w-0">
@@ -2022,11 +2016,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
             </span>
             <div className="text-right shrink-0">
               <span
-                className={`text-xs font-extrabold px-2 py-0.5 rounded whitespace-nowrap ${
-                  floor1Stock > 0
-                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                    : "bg-red-50 text-red-600 border border-red-200"
-                }`}
+                className={`text-xs font-extrabold px-2 py-0.5 rounded whitespace-nowrap ${floor1Stock > 0
+                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                  : "bg-red-50 text-red-600 border border-red-200"
+                  }`}
               >
                 🏢 Kho Tầng 1: {floor1Stock} {p.unit}
               </span>
@@ -2055,13 +2048,12 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                       handleAddToCart(p, v.color, v.size);
                     }}
                     title={`Bấm để thêm nhanh ${formatVariantLabel(v.color, v.size)}`}
-                    className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md border transition ${
-                      vStock <= 0
-                        ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
-                        : inCart > 0
-                          ? "bg-indigo-600 text-white border-indigo-700 shadow-xs"
-                          : "bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border-indigo-200"
-                    }`}
+                    className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md border transition ${vStock <= 0
+                      ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
+                      : inCart > 0
+                        ? "bg-indigo-600 text-white border-indigo-700 shadow-xs"
+                        : "bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border-indigo-200"
+                      }`}
                   >
                     <span>
                       {v.color || "Mặc định"}
@@ -2112,11 +2104,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
               e.stopPropagation();
               handleSelectProductForPos(p);
             }}
-            className={`min-h-[38px] px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 shrink-0 ${
-              canSell
-                ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                : "bg-slate-200 text-slate-500"
-            }`}
+            className={`min-h-[38px] px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 shrink-0 ${canSell
+              ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+              : "bg-slate-200 text-slate-500"
+              }`}
           >
             <Plus className="w-3.5 h-3.5" />{" "}
             {namedVariants.length > 1 ? "Chọn Size/Màu" : "Chọn bán"}
@@ -2149,26 +2140,23 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                 aria-selected={isActive}
                 onClick={() => handleSwitchDraft(d.id)}
                 title={submitting ? "Đang tạo đơn, vui lòng chờ..." : `Chuyển sang Đơn ${d.seq}`}
-                className={`group flex items-center gap-2 pl-3 pr-1.5 py-1.5 rounded-lg border text-xs shrink-0 transition select-none ${
-                  isActive
-                    ? "bg-emerald-600 border-emerald-700 text-white shadow-sm"
-                    : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-emerald-50 hover:border-emerald-300"
-                } ${submitting && !isActive ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                className={`group flex items-center gap-2 pl-3 pr-1.5 py-1.5 rounded-lg border text-xs shrink-0 transition select-none ${isActive
+                  ? "bg-emerald-600 border-emerald-700 text-white shadow-sm"
+                  : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-emerald-50 hover:border-emerald-300"
+                  } ${submitting && !isActive ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
               >
                 <div className="flex flex-col leading-tight min-w-0">
                   <span className="font-extrabold">Đơn {d.seq}</span>
                   <span
-                    className={`text-[10px] truncate max-w-[120px] ${
-                      isActive ? "text-emerald-50" : "text-slate-500"
-                    }`}
+                    className={`text-[10px] truncate max-w-[120px] ${isActive ? "text-emerald-50" : "text-slate-500"
+                      }`}
                   >
                     {customerLabel}
                   </span>
                 </div>
                 <span
-                  className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                    isActive ? "bg-white/20 text-white" : "bg-emerald-100 text-emerald-800"
-                  }`}
+                  className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isActive ? "bg-white/20 text-white" : "bg-emerald-100 text-emerald-800"
+                    }`}
                 >
                   {qty} SP
                 </span>
@@ -2181,11 +2169,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                   }}
                   title={`Hủy Đơn ${d.seq}`}
                   aria-label={`Hủy Đơn ${d.seq}`}
-                  className={`p-1 rounded-md transition disabled:cursor-not-allowed ${
-                    isActive
-                      ? "hover:bg-white/20 text-white"
-                      : "hover:bg-red-100 text-slate-400 hover:text-red-600"
-                  }`}
+                  className={`p-1 rounded-md transition disabled:cursor-not-allowed ${isActive
+                    ? "hover:bg-white/20 text-white"
+                    : "hover:bg-red-100 text-slate-400 hover:text-red-600"
+                    }`}
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -2249,11 +2236,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                           Máy Quét Label — Quét Bán Hàng
                         </span>
                         <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-                            scannerEnabled
-                              ? "bg-emerald-500 text-slate-950"
-                              : "bg-slate-700 text-slate-300"
-                          }`}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold ${scannerEnabled
+                            ? "bg-emerald-500 text-slate-950"
+                            : "bg-slate-700 text-slate-300"
+                            }`}
                         >
                           <Zap className="w-3 h-3" />
                           {scannerEnabled
@@ -2262,7 +2248,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-300">
-                        Cầm máy quét bắn thẳng vào tem mã vạch sản phẩm (Tự động khử lỗi bộ gõ Tiếng Việt Unikey &amp; cộng +1 vào giỏ).
                       </p>
                     </div>
                   </div>
@@ -2270,11 +2255,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                   <button
                     type="button"
                     onClick={() => setScannerEnabled((prev) => !prev)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-extrabold border transition shrink-0 ${
-                      scannerEnabled
-                        ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-400"
-                        : "bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-600"
-                    }`}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-extrabold border transition shrink-0 ${scannerEnabled
+                      ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-400"
+                      : "bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-600"
+                      }`}
                   >
                     {scannerEnabled ? "🟢 Đang nhận máy quét" : "⚪ Bật nhận máy quét"}
                   </button>
@@ -2312,13 +2296,12 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
 
                 {lastScanBanner && (
                   <div
-                    className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center justify-between gap-2 border ${
-                      lastScanBanner.type === "success"
-                        ? "bg-emerald-950/90 border-emerald-500/60 text-emerald-200"
-                        : lastScanBanner.type === "warning"
+                    className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center justify-between gap-2 border ${lastScanBanner.type === "success"
+                      ? "bg-emerald-950/90 border-emerald-500/60 text-emerald-200"
+                      : lastScanBanner.type === "warning"
                         ? "bg-amber-950/90 border-amber-400/70 text-amber-200"
                         : "bg-red-950/90 border-red-500/70 text-red-200"
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       {lastScanBanner.type === "success" ? (
@@ -2341,11 +2324,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                   <button
                     type="button"
                     onClick={() => setSelectedCategoryId("")}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${
-                      selectedCategoryId === ""
-                        ? "bg-slate-900 text-white border-slate-900 shadow-sm"
-                        : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200"
-                    }`}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${selectedCategoryId === ""
+                      ? "bg-slate-900 text-white border-slate-900 shadow-sm"
+                      : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200"
+                      }`}
                   >
                     Tất cả ({floor1Products.length})
                   </button>
@@ -2356,11 +2338,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                         key={cat._id}
                         type="button"
                         onClick={() => setSelectedCategoryId(cat._id)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${
-                          selectedCategoryId === cat._id
-                            ? "bg-emerald-600 text-white border-emerald-700 shadow-sm"
-                            : "bg-white text-slate-700 border-slate-200 hover:bg-emerald-50"
-                        }`}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${selectedCategoryId === cat._id
+                          ? "bg-emerald-600 text-white border-emerald-700 shadow-sm"
+                          : "bg-white text-slate-700 border-slate-200 hover:bg-emerald-50"
+                          }`}
                       >
                         {cat.name} ({count})
                       </button>
@@ -2451,11 +2432,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                   return (
                     <div
                       key={ord._id}
-                      className={`p-2.5 rounded-xl border text-xs space-y-1.5 transition ${
-                        isBeingEdited
-                          ? "border-amber-500 bg-amber-50/70"
-                          : "border-slate-200 bg-slate-50/70 hover:border-amber-300"
-                      }`}
+                      className={`p-2.5 rounded-xl border text-xs space-y-1.5 transition ${isBeingEdited
+                        ? "border-amber-500 bg-amber-50/70"
+                        : "border-slate-200 bg-slate-50/70 hover:border-amber-300"
+                        }`}
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
@@ -3090,11 +3070,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                   setBillDiscountType("NONE");
                   setBillDiscountValue(0);
                 }}
-                className={`py-2 px-2 rounded-lg border text-xs font-bold transition ${
-                  billDiscountType === "NONE"
-                    ? "bg-slate-900 text-white border-slate-900"
-                    : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
-                }`}
+                className={`py-2 px-2 rounded-lg border text-xs font-bold transition ${billDiscountType === "NONE"
+                  ? "bg-slate-900 text-white border-slate-900"
+                  : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
+                  }`}
               >
                 Không giảm Bill
               </button>
@@ -3104,11 +3083,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                   setBillDiscountType("PERCENT");
                   setBillDiscountValue(0);
                 }}
-                className={`py-2 px-2 rounded-lg border text-xs font-bold transition ${
-                  billDiscountType === "PERCENT"
-                    ? "bg-rose-600 text-white border-rose-700"
-                    : "bg-white text-slate-700 border-slate-300 hover:bg-rose-50"
-                }`}
+                className={`py-2 px-2 rounded-lg border text-xs font-bold transition ${billDiscountType === "PERCENT"
+                  ? "bg-rose-600 text-white border-rose-700"
+                  : "bg-white text-slate-700 border-slate-300 hover:bg-rose-50"
+                  }`}
               >
                 Giảm Bill theo %
               </button>
@@ -3118,11 +3096,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                   setBillDiscountType("AMOUNT");
                   setBillDiscountValue(0);
                 }}
-                className={`py-2 px-2 rounded-lg border text-xs font-bold transition ${
-                  billDiscountType === "AMOUNT"
-                    ? "bg-rose-600 text-white border-rose-700"
-                    : "bg-white text-slate-700 border-slate-300 hover:bg-rose-50"
-                }`}
+                className={`py-2 px-2 rounded-lg border text-xs font-bold transition ${billDiscountType === "AMOUNT"
+                  ? "bg-rose-600 text-white border-rose-700"
+                  : "bg-white text-slate-700 border-slate-300 hover:bg-rose-50"
+                  }`}
               >
                 Giảm Bill số tiền
               </button>
@@ -3189,11 +3166,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
               <button
                 type="button"
                 onClick={() => setPaymentMethod("CASH")}
-                className={`min-h-[52px] py-2.5 px-3 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1 text-center transition ${
-                  paymentMethod === "CASH"
-                    ? "border-emerald-600 bg-emerald-50 text-emerald-800 shadow-sm"
-                    : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                }`}
+                className={`min-h-[52px] py-2.5 px-3 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1 text-center transition ${paymentMethod === "CASH"
+                  ? "border-emerald-600 bg-emerald-50 text-emerald-800 shadow-sm"
+                  : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
               >
                 <Banknote className="w-4 h-4" />
                 Tiền mặt
@@ -3202,11 +3178,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
               <button
                 type="button"
                 onClick={() => setPaymentMethod("BANKING")}
-                className={`min-h-[52px] py-2.5 px-3 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1 text-center transition ${
-                  paymentMethod === "BANKING"
-                    ? "border-emerald-600 bg-emerald-50 text-emerald-800 shadow-sm"
-                    : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                }`}
+                className={`min-h-[52px] py-2.5 px-3 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1 text-center transition ${paymentMethod === "BANKING"
+                  ? "border-emerald-600 bg-emerald-50 text-emerald-800 shadow-sm"
+                  : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
               >
                 <Landmark className="w-4 h-4" />
                 Chuyển khoản
@@ -3215,11 +3190,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
               <button
                 type="button"
                 onClick={() => setPaymentMethod("CARD")}
-                className={`min-h-[52px] py-2.5 px-3 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1 text-center transition ${
-                  paymentMethod === "CARD"
-                    ? "border-emerald-600 bg-emerald-50 text-emerald-800 shadow-sm"
-                    : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                }`}
+                className={`min-h-[52px] py-2.5 px-3 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1 text-center transition ${paymentMethod === "CARD"
+                  ? "border-emerald-600 bg-emerald-50 text-emerald-800 shadow-sm"
+                  : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
               >
                 <CreditCard className="w-4 h-4" />
                 Quẹt Thẻ
@@ -3228,11 +3202,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
               <button
                 type="button"
                 onClick={() => setPaymentMethod("OTHER")}
-                className={`min-h-[52px] py-2.5 px-3 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1 text-center transition ${
-                  paymentMethod === "OTHER"
-                    ? "border-emerald-600 bg-emerald-50 text-emerald-800 shadow-sm"
-                    : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                }`}
+                className={`min-h-[52px] py-2.5 px-3 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1 text-center transition ${paymentMethod === "OTHER"
+                  ? "border-emerald-600 bg-emerald-50 text-emerald-800 shadow-sm"
+                  : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
               >
                 <Layers className="w-4 h-4" />
                 <span>Khác (Tùy chọn)</span>
@@ -3363,11 +3336,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <label
-                    className={`min-h-[40px] flex items-center gap-2 p-2 rounded-lg border cursor-pointer text-xs font-semibold ${
-                      hasCardFee
-                        ? "border-amber-600 bg-white text-amber-900"
-                        : "border-amber-200 text-slate-600"
-                    }`}
+                    className={`min-h-[40px] flex items-center gap-2 p-2 rounded-lg border cursor-pointer text-xs font-semibold ${hasCardFee
+                      ? "border-amber-600 bg-white text-amber-900"
+                      : "border-amber-200 text-slate-600"
+                      }`}
                   >
                     <input
                       type="radio"
@@ -3377,11 +3349,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                     Có phí 3% (+{formatVND(Math.round(afterBillDiscount * 0.03))})
                   </label>
                   <label
-                    className={`min-h-[40px] flex items-center gap-2 p-2 rounded-lg border cursor-pointer text-xs font-semibold ${
-                      !hasCardFee
-                        ? "border-amber-600 bg-white text-amber-900"
-                        : "border-amber-200 text-slate-600"
-                    }`}
+                    className={`min-h-[40px] flex items-center gap-2 p-2 rounded-lg border cursor-pointer text-xs font-semibold ${!hasCardFee
+                      ? "border-amber-600 bg-white text-amber-900"
+                      : "border-amber-200 text-slate-600"
+                      }`}
                   >
                     <input
                       type="radio"
@@ -3557,11 +3528,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                           setVariantPickerProduct(null);
                         }
                       }}
-                      className={`p-3 rounded-xl border text-left transition flex items-center justify-between gap-2 ${
-                        canPick
-                          ? "border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/40 bg-white cursor-pointer"
-                          : "border-slate-200 bg-slate-50 opacity-50 cursor-not-allowed"
-                      }`}
+                      className={`p-3 rounded-xl border text-left transition flex items-center justify-between gap-2 ${canPick
+                        ? "border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/40 bg-white cursor-pointer"
+                        : "border-slate-200 bg-slate-50 opacity-50 cursor-not-allowed"
+                        }`}
                     >
                       <div className="flex items-start gap-2">
                         {idx < 9 && (
@@ -3705,11 +3675,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                     return (
                       <div
                         key={p._id}
-                        className={`p-3 rounded-xl border transition flex flex-col justify-between gap-2 ${
-                          isPinned
-                            ? "border-amber-400 bg-amber-50/40 shadow-xs"
-                            : "border-slate-200 bg-white hover:border-amber-400"
-                        }`}
+                        className={`p-3 rounded-xl border transition flex flex-col justify-between gap-2 ${isPinned
+                          ? "border-amber-400 bg-amber-50/40 shadow-xs"
+                          : "border-slate-200 bg-white hover:border-amber-400"
+                          }`}
                       >
                         <div className="space-y-1.5">
                           <div className="flex items-start justify-between gap-2">
@@ -3725,11 +3694,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                             <button
                               type="button"
                               onClick={() => togglePinGiftProduct(p._id)}
-                              className={`px-2 py-1 rounded-md text-[11px] font-bold flex items-center gap-1 border transition shrink-0 ${
-                                isPinned
-                                  ? "bg-amber-500 text-white border-amber-600 shadow-xs"
-                                  : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-amber-50 hover:text-amber-700"
-                              }`}
+                              className={`px-2 py-1 rounded-md text-[11px] font-bold flex items-center gap-1 border transition shrink-0 ${isPinned
+                                ? "bg-amber-500 text-white border-amber-600 shadow-xs"
+                                : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-amber-50 hover:text-amber-700"
+                                }`}
                             >
                               <Pin className="w-3 h-3" />
                               {isPinned ? "Đã ghim" : "Ghim"}
@@ -3778,11 +3746,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                               type="button"
                               disabled={remainingForGift <= 0}
                               onClick={() => handleAddGiftProduct(p)}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition ${
-                                remainingForGift > 0
-                                  ? "bg-amber-600 hover:bg-amber-700 text-white shadow-xs"
-                                  : "bg-slate-200 text-slate-400 cursor-not-allowed"
-                              }`}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition ${remainingForGift > 0
+                                ? "bg-amber-600 hover:bg-amber-700 text-white shadow-xs"
+                                : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                                }`}
                             >
                               <Gift className="w-3.5 h-3.5" />
                               Chọn tặng
