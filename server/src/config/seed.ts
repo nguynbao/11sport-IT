@@ -11,16 +11,18 @@ import { hashPassword } from '../utils/auth';
 import {
   extractVariantFromText,
   generateProductCode,
+  generateVariantProductCode,
   isStandardSixDigitProductCode,
   normalizeToCompactUpperCode,
 } from '../utils/productCode';
+import { normalizeVariants } from '../utils/warehouseFloor';
 
 let codeMigrationPromise: Promise<void> | null = null;
 
 /**
  * Tự động chuẩn hóa toàn bộ Mã sản phẩm hiện có trong DB sang quy tắc mới:
- * [Chữ cái đầu của Cate] + [Tên Hãng (không có hãng = NN)] + [6 chữ số]
- * Ví dụ: GASIA221401, GNN221401
+ * - Mã gốc (code): [Chữ cái đầu của Cate] + [Tên Hãng (không có hãng = NN)] + [6 chữ số] (VD: GASIA221401)
+ * - Mã con theo thuộc tính (variantCode / barcode trên variants[] và import items): [Mã gốc][MÀU][SIZE] (VD: GASIA221401DO38)
  */
 export async function ensureStandardProductCodesMigrated(): Promise<void> {
   if (codeMigrationPromise) {
@@ -36,9 +38,23 @@ export async function ensureStandardProductCodesMigrated(): Promise<void> {
       ]);
 
       const catMap = new Map(categories.map((c) => [String(c._id), c]));
-      const needsProductMigration = products.some((p) => !isStandardSixDigitProductCode(p.code));
+      const needsProductMigration = products.some(
+        (p) =>
+          !isStandardSixDigitProductCode(p.code) ||
+          (Array.isArray(p.variants) &&
+            p.variants.some(
+              (v: any) =>
+                !v.variantCode ||
+                v.variantCode !== generateVariantProductCode(p.code, v.color, v.size)
+            ))
+      );
       const needsReceiptMigration = receipts.some((r) =>
-        (r.items || []).some((it: any) => !isStandardSixDigitProductCode(it.productCode))
+        (r.items || []).some(
+          (it: any) =>
+            !isStandardSixDigitProductCode(it.productCode) ||
+            !it.variantCode ||
+            it.variantCode !== generateVariantProductCode(it.productCode, it.color, it.size)
+        )
       );
 
       if (!needsProductMigration && !needsReceiptMigration) {
@@ -55,7 +71,7 @@ export async function ensureStandardProductCodesMigrated(): Promise<void> {
         }
       }
 
-      // 1. Chuẩn hóa bảng Products
+      // 1. Chuẩn hóa bảng Products & variants[].variantCode
       for (const p of products) {
         const cat = catMap.get(String(p.categoryId));
         const extracted = extractVariantFromText(p.name, {
@@ -92,11 +108,26 @@ export async function ensureStandardProductCodesMigrated(): Promise<void> {
         }
 
         const nextBrand = p.brand || extracted.brand || '';
-        if (newCode !== p.code || p.barcode !== newCode || p.brand !== nextBrand) {
+        const normalizedVariants = normalizeVariants(p.variants, newCode);
+        const variantsChanged =
+          Array.isArray(p.variants) &&
+          p.variants.some(
+            (v: any, idx: number) =>
+              v.variantCode !== normalizedVariants[idx]?.variantCode ||
+              v.barcode !== normalizedVariants[idx]?.barcode
+          );
+
+        if (
+          newCode !== p.code ||
+          p.barcode !== newCode ||
+          p.brand !== nextBrand ||
+          variantsChanged
+        ) {
           await productRepo.updateById(p._id, {
             code: newCode,
             barcode: newCode,
             brand: nextBrand,
+            ...(normalizedVariants.length > 0 ? { variants: normalizedVariants } : {}),
           });
         }
       }
@@ -126,16 +157,19 @@ export async function ensureStandardProductCodesMigrated(): Promise<void> {
             brand: it.brand,
           });
           const nextBrand = it.brand || extracted.brand || '';
+          const nextVariantCode = generateVariantProductCode(mappedCode, it.color, it.size);
           if (
             mappedCode !== it.productCode ||
-            it.barcode !== mappedCode ||
+            it.variantCode !== nextVariantCode ||
+            it.barcode !== nextVariantCode ||
             nextBrand !== (it.brand || '')
           ) {
             changed = true;
             return {
               ...it,
               productCode: mappedCode,
-              barcode: mappedCode,
+              variantCode: nextVariantCode,
+              barcode: nextVariantCode,
               brand: nextBrand,
             };
           }

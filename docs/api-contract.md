@@ -579,3 +579,36 @@
       "meta": {}
     }
     ```
+
+
+### 2.14 Mã Con Theo Thuộc Tính Biến Thể (`variantCode`) — In Tem & Quét Kiểm Kho / Bán Hàng POS *(v3.2)*
+- **Quy tắc sinh Mã Con (`generateVariantProductCode(baseCode, color, size)`)**:
+  - Mỗi sản phẩm vẫn giữ 1 **Mã Gốc (`code` / Root Code)** để gom nhóm và đồng bộ **Giá gốc (`costPrice`) / Giá bán (`sellingPrice`)** 1 lần cho toàn bộ các thuộc tính bên trong.
+  - Tuy nhiên, mỗi biến thể thuộc tính `(color, size)` bên trong `variants[]` sẽ được cấp một **Mã Con duy nhất (`variantCode` / `barcode`)** theo công thức:
+    `[Mã Gốc IN HOA][MÀU IN HOA KHÔNG DẤU VIẾT LIỀN][SIZE IN HOA VIẾT LIỀN]`
+    - Ví dụ Mã gốc `GASIA221401`:
+      - Màu `Đỏ`, Size `38` -> `variantCode = "GASIA221401DO38"`
+      - Màu `Đỏ`, Size `39` -> `variantCode = "GASIA221401DO39"`
+      - Màu `Trắng Xanh`, Size `41` -> `variantCode = "GASIA221401TRANGXANH41"`
+      - Không màu, chỉ có Size `XL` -> `variantCode = "GASIA221401XL"`
+      - Không màu, không size -> `variantCode = "GASIA221401"`
+- **Cấu trúc `IProductVariant` trong `Product.variants[]`**:
+  ```json
+  {
+    "variantKey": "DO_38",
+    "variantCode": "GASIA221401DO38",
+    "barcode": "GASIA221401DO38",
+    "color": "Đỏ",
+    "size": "38",
+    "stockFloor1": 10,
+    "stockFloor2": 5,
+    "stock": 15
+  }
+  ```
+- **Quy tắc In Tem Nhãn (`BarcodeLabelModal`)**:
+  - Khi sản phẩm có thuộc tính (`variants[]` có màu/size), hệ thống **chỉ in theo Mã Con (`variantCode`)** của từng thuộc tính (VD: `GASIA221401DO38`, `GASIA221401DO39`...), kèm tên hiển thị rõ màu & size (VD: `Giày Asia (Đỏ - 38)`), **tuyệt đối không in mã Root chung**.
+  - Cho phép bấm in tem cho tất cả các biến thể của sản phẩm hoặc in lẻ từng dòng biến thể (Màu + Size).
+- **Quy tắc Quét Mã Vạch (Kiểm kho, Nhập kho & Bán hàng POS)**:
+  - **Kiểm kho (CMS & Web)**: Khi bắn Mã Con (VD: `GASIA221401DO38`), hệ thống nhận diện chính xác cả sản phẩm lẫn đúng biến thể `(Đỏ, 38)`, đếm kiểm `+1` vào đúng biến thể đó (`scannedVariantCounts`) và đồng thời cộng vào tổng đã quét của sản phẩm.
+  - **Nhập kho (`ImportTab` & `POST /imports/:id/scan-check` / `scan-tag`)**: Mỗi dòng trong phiếu nhập có `variantCode` / `barcode` theo đúng `(productCode, color, size)` của dòng đó. Khi bắn Mã Con, hệ thống khớp thẳng 1-1 vào đúng dòng biến thể mà không bị trùng lặp hay phải bấm phím `1..9` chọn dòng.
+  - **Bán hàng POS (`PosTab`)**: Khi bắn Mã Con (VD: `GASIA221401DO38`), hệ thống thêm thẳng `+1` của đúng biến thể `Đỏ - Size 38` vào giỏ hàng POS ngay lập tức, không cần bật Popup hỏi chọn Size/Màu.

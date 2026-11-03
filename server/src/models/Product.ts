@@ -4,6 +4,10 @@ export type WarehouseFloor = 'FLOOR_1' | 'FLOOR_2';
 
 export interface IProductVariant {
   variantKey: string;
+  /** Mã con (Child SKU) riêng cho từng biến thể Màu + Size (VD: GASIA221401DO38) */
+  variantCode?: string;
+  /** Mã vạch Code128 in trên tem nhãn của biến thể này (= variantCode) */
+  barcode?: string;
   color: string;
   size: string;
   stockFloor1: number;
@@ -41,6 +45,8 @@ export interface IProduct extends Document {
 const ProductVariantSchema = new Schema<IProductVariant>(
   {
     variantKey: { type: String, required: true, default: 'DEFAULT' },
+    variantCode: { type: String, default: '', trim: true, uppercase: true },
+    barcode: { type: String, default: '', trim: true, uppercase: true },
     color: { type: String, default: '', trim: true },
     size: { type: String, default: '', trim: true },
     stockFloor1: { type: Number, default: 0, min: 0 },

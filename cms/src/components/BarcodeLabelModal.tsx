@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { generateVariantProductCode } from "@/lib/api";
 import {
   Printer,
   X,
@@ -360,8 +361,22 @@ export default function BarcodeLabelModal({
 
   const normalizedItems = useMemo<NormalizedLabelItem[]>(() => {
     return (items || []).map((item, idx) => {
-      const code = String(item.code || item.productCode || "ITEM").trim();
-      const name = String(item.name || item.productName || "Sản phẩm").trim();
+      const rawCode = String(item.code || item.productCode || "ITEM").trim();
+      const hasAttr = Boolean((item.color && item.color.trim()) || (item.size && item.size.trim()));
+      const code = hasAttr
+        ? generateVariantProductCode(rawCode, item.color, item.size)
+        : rawCode;
+      const rawName = String(item.name || item.productName || "Sản phẩm").trim();
+      const attrLabel = [
+        item.color?.trim(),
+        item.size?.trim() ? `Size ${item.size.trim().toUpperCase()}` : "",
+      ]
+        .filter(Boolean)
+        .join(" - ");
+      const name =
+        attrLabel && !rawName.toLowerCase().includes(attrLabel.toLowerCase())
+          ? `${rawName} (${attrLabel})`
+          : rawName;
       const price = Number(item.price ?? item.sellingPrice ?? 0);
       const id = String(item.id ?? `${code}_${idx}`);
       const defaultQty = item.defaultQty && item.defaultQty > 0 ? item.defaultQty : 1;
