@@ -4,6 +4,7 @@ import {
   listSystemPrinters,
   printBarcodeLabelsDirect,
   DirectPrintPayload,
+  LabelPrintItem,
 } from '../utils/windowsPrinter';
 
 export const printersRouter = Router();
@@ -18,6 +19,7 @@ printersRouter.get(
     try {
       const result = await listSystemPrinters();
       res.json({
+        success: true,
         data: result,
         meta: {},
       });
@@ -29,7 +31,7 @@ printersRouter.get(
 
 /**
  * POST /api/v1/printers/print-labels
- * Gửi lệnh in tem mã vạch Code128 trực tiếp xuống máy in nhiệt (ví dụ: Xprinter XP-350BM)
+ * Gửi lệnh in tem mã vạch Code128 trực tiếp xuống máy in nhiệt 2 cột 70x20mm (Xprinter XP-350BM)
  */
 printersRouter.post(
   '/printers/print-labels',
@@ -50,32 +52,43 @@ printersRouter.post(
         });
       }
 
+      const columns: 1 | 2 = body.columns === 1 || body.preset?.columns === 1 ? 1 : 2;
+      const pageWidthMm = Number(body.paperWidthMm) || Number(body.preset?.pageWidthMm) || 70;
+      const pageHeightMm = Number(body.paperHeightMm) || Number(body.preset?.pageHeightMm) || 20;
+
       const result = await printBarcodeLabelsDirect({
         printerName,
         syncOnly,
+        shopName: body.shopName,
+        columns,
+        paperWidthMm: pageWidthMm,
+        paperHeightMm: pageHeightMm,
         preset: {
-          id: body.preset?.id,
-          widthMm: Number(body.preset?.widthMm) || 50,
-          heightMm: Number(body.preset?.heightMm) || 30,
-          columns: body.preset?.columns === 2 ? 2 : 1,
-          pageWidthMm: Number(body.preset?.pageWidthMm) || 50,
-          pageHeightMm: Number(body.preset?.pageHeightMm) || 30,
+          id: body.preset?.id || '70x20_2up',
+          widthMm: Number(body.preset?.widthMm) || 35,
+          heightMm: Number(body.preset?.heightMm) || 20,
+          columns,
+          pageWidthMm,
+          pageHeightMm,
         },
         options: {
           showShopName: body.options?.showShopName !== false,
           showProductName: Boolean(body.options?.showProductName),
           showPrice: body.options?.showPrice !== false,
         },
-        items: (body.items || []).map((it) => ({
+        items: (body.items || []).map((it: LabelPrintItem) => ({
           code: String(it.code || ''),
           name: String(it.name || ''),
+          priceText: it.priceText ? String(it.priceText) : undefined,
           sellingPrice: Number(it.sellingPrice) || 0,
           quantity: Number(it.quantity) || 0,
         })),
       });
 
       res.json({
+        success: true,
         data: result,
+        message: `Đã in ${result.printedLabels} tem (${result.printedPages} hàng 70×20mm) tới máy in "${printerName}"`,
         meta: {},
       });
     } catch (err: any) {
