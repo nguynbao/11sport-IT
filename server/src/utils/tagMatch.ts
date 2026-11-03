@@ -1,10 +1,14 @@
-import { generateProductCode, normalizeToUpperCode } from './productCode';
+import {
+  generateProductCode,
+  normalizeToUpperCode,
+  tokenizeUpperAlphaNum,
+} from './productCode';
 
 /**
- * So khớp kết quả quét tag với các dòng trong phiếu nhập (danh sách đã OCR ở bước Kiểm hàng).
+ * So khớp kết quả quét tag với các dòng trong phiếu nhập.
  * - Ưu tiên khớp chính xác mã vạch (barcode) đã được ghi nhớ trên dòng hàng.
- * - Tiếp theo khớp chính xác mã hàng (productCode).
- * - Sau đó chấm điểm theo token của mã hàng (mã mẫu/SKU có chữ số bắt buộc phải khớp, màu/size phải có trên tag).
+ * - Tiếp theo khớp chính xác mã hàng (productCode) kết hợp token màu/size.
+ * - Sau đó chấm điểm theo token của tên hàng/mã hàng/màu/size (mã mẫu/SKU có chữ số bắt buộc phải khớp).
  * - Không bao giờ thêm dòng mới: không khớp => trả về null.
  */
 export interface TagScanInput {
@@ -19,6 +23,8 @@ export interface TagScanInput {
 export interface TagMatchItem {
   productCode: string;
   productName: string;
+  color?: string;
+  size?: string;
   barcode?: string;
   isChecked?: boolean;
 }
@@ -32,11 +38,10 @@ export interface TagMatchResult {
 const MIN_SCORE = 0.6;
 
 const tokensOf = (s?: string): string[] =>
-  normalizeToUpperCode(String(s || ''))
-    .split('_')
-    .filter(Boolean);
+  tokenizeUpperAlphaNum(String(s || '')).filter((t) => t !== 'SIZE');
 
-const isSkuToken = (t: string) => t.length >= 3 && /\d/.test(t);
+const isSkuToken = (t: string) =>
+  t.length >= 3 && t.length <= 14 && /\d/.test(t) && t !== '11SPORT';
 
 export function matchTagToItems(items: TagMatchItem[], scan: TagScanInput): TagMatchResult {
   const cleanBarcode = String(scan.barcode || '').trim();
@@ -51,10 +56,7 @@ export function matchTagToItems(items: TagMatchItem[], scan: TagScanInput): TagM
     }
     if (barcodeMatches.length > 1) {
       const unchecked = barcodeMatches.filter((i) => !items[i].isChecked);
-      if (unchecked.length === 1) {
-        return { index: unchecked[0], ambiguous: false, candidates: barcodeMatches };
-      }
-      if (unchecked.length > 1) {
+      if (unchecked.length >= 1) {
         return { index: unchecked[0], ambiguous: false, candidates: barcodeMatches };
       }
       return { index: barcodeMatches[0], ambiguous: false, candidates: barcodeMatches };
@@ -85,25 +87,50 @@ export function matchTagToItems(items: TagMatchItem[], scan: TagScanInput): TagM
 
   const scores = items.map((item) => {
     const code = item.productCode || generateProductCode(item.productName);
-    if (!code) return 0;
-    if (tagCodes.has(code)) return 10; // khớp chính xác mã hàng
+    if (!code && !item.productName) return 0;
 
-    const itemTokens = Array.from(new Set(code.split('_').filter(Boolean)));
-    if (itemTokens.length === 0) return 0;
+    const itemTokens = Array.from(
+      new Set([
+        ...tokensOf(item.productName),
+        ...tokensOf(item.color),
+        ...tokensOf(item.size),
+        ...(code ? tokensOf(code) : []),
+      ])
+    );
+    if (itemTokens.length === 0) {
+      return code && tagCodes.has(code) ? 1 : 0;
+    }
 
-    // Mã mẫu/SKU (có chữ số) trên dòng hàng phải xuất hiện trên tag
-    const skuTokens = itemTokens.filter(isSkuToken);
-    if (skuTokens.length > 0 && !skuTokens.every((t) => tagTokens.has(t))) return 0;
+    // Mã mẫu/SKU (có chữ số, độ dài vừa phải <= 12) trên dòng hàng phải xuất hiện trên tag
+    const skuTokens = itemTokens.filter((t) => isSkuToken(t) && t.length <= 14);
+    const hasExactCodeMatch = Boolean(code && tagCodes.has(code));
+    if (
+      !hasExactCodeMatch &&
+      skuTokens.length > 0 &&
+      !skuTokens.every((t) => tagTokens.has(t) || Array.from(tagCodes).some((tc) => tc.includes(t)))
+    ) {
+      return 0;
+    }
 
     const hit = itemTokens.filter((t) => tagTokens.has(t)).length;
     const ratio = hit / itemTokens.length;
-    // Có SKU khớp => đủ điều kiện, phần còn lại (màu/size...) dùng để phân biệt các biến thể
-    let score = skuTokens.length > 0 ? 0.6 + 0.39 * ratio : ratio;
+    let score = skuTokens.length > 0 || hasExactCodeMatch ? 0.6 + 0.39 * ratio : ratio;
 
-    // Tag chứa nguyên mã hàng (VD tag in đầy đủ chuỗi trong ngoặc đơn kèm chữ khác)
-    for (const tc of tagCodes) {
-      if (tc.includes(code)) score = Math.max(score, 0.995);
+    // Cộng điểm phân biệt nếu khớp đúng màu/size riêng của dòng
+    const variantTokens = [...tokensOf(item.color), ...tokensOf(item.size)];
+    if (variantTokens.length > 0) {
+      const variantHit = variantTokens.filter((vt) => tagTokens.has(vt)).length;
+      score += 0.05 * (variantHit / variantTokens.length);
     }
+
+    // Nếu quét đúng toàn bộ chuỗi tên sản phẩm (bao gồm cả màu/size trong ngoặc)
+    const fullItemCompact = normalizeToUpperCode(
+      `${item.productName || ''} ${item.color || ''} ${item.size || ''}`
+    );
+    if (fullItemCompact && tagCodes.has(fullItemCompact)) {
+      score = Math.max(score, 10);
+    }
+
     return score;
   });
 

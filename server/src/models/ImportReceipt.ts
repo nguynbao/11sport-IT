@@ -15,6 +15,9 @@ export interface IImportReceiptItem {
   productId?: string;
   productCode: string;
   productName: string;
+  brand?: string;
+  color?: string;
+  size?: string;
   categoryId: string;
   unit: string;
   expectedQuantity: number;
@@ -32,7 +35,7 @@ export interface IImportReceiptItem {
   checkedAt?: Date;
   /** Số chiếc từng nhân viên đã quét kiểm */
   scanCounts?: IScanCount[];
-  /** Mã vạch EAN/Code128 được ghi nhớ khi quét tag thực tế */
+  /** Mã vạch EAN/Code128 được ghi nhớ khi quét tag thực tế (= productCode) */
   barcode?: string;
   note: string;
   isChecked: boolean;
@@ -65,6 +68,9 @@ const ImportReceiptItemSchema = new Schema<IImportReceiptItem>(
     productId: { type: String, default: '' },
     productCode: { type: String, required: true },
     productName: { type: String, required: true },
+    brand: { type: String, default: '' },
+    color: { type: String, default: '' },
+    size: { type: String, default: '' },
     categoryId: { type: String, default: '' },
     unit: { type: String, default: 'Cái' },
     expectedQuantity: { type: Number, required: true, default: 0 },

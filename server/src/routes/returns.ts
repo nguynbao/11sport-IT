@@ -8,7 +8,14 @@ import {
 import { ApiError } from '../utils/errors';
 import { IReturnItem, IExchangeItem, ReturnCondition } from '../models/ReturnExchange';
 import { PaymentMethod } from '../models/Order';
-import { applyFloorDelta, deductStockForSale, getFloorStocks } from '../utils/warehouseFloor';
+import {
+  applyFloorDelta,
+  deductStockForSale,
+  getFloorStocks,
+  getVariantFloorStocks,
+  formatProductWithVariant,
+} from '../utils/warehouseFloor';
+import { buildVariantKey } from '../utils/productCode';
 import { filterAndRankBySearch } from '../utils/search';
 
 export const returnsRouter = Router();
@@ -37,18 +44,29 @@ async function prepareReturnExchangeCalculation(body: any) {
   }
 
   const preparedReturnItems: IReturnItem[] = [];
-  const cumulativeReturnByProdId = new Map<string, number>();
+  const cumulativeReturnByLineKey = new Map<string, number>();
   for (const rItem of returnItems) {
     const qty = Math.round(Number(rItem.quantity));
     if (!rItem.productId || isNaN(qty) || qty <= 0) {
       throw new ApiError(400, 'INVALID_RETURN_QUANTITY', 'Số lượng trả phải lớn hơn 0');
     }
 
-    const originalLine = order.items.find(
-      (i) =>
-        String(i.productId) === String(rItem.productId) ||
-        i.productCode === String(rItem.productId).toUpperCase()
-    );
+    const rColor = rItem.color ? String(rItem.color).trim() : '';
+    const rSize = rItem.size ? String(rItem.size).trim().toUpperCase() : '';
+
+    // Tìm dòng khớp theo productId + (color, size) nếu có, hoặc fallback theo productId
+    const originalLine =
+      order.items.find(
+        (i) =>
+          (String(i.productId) === String(rItem.productId) ||
+            i.productCode === String(rItem.productId).toUpperCase()) &&
+          buildVariantKey(i.color, i.size) === buildVariantKey(rColor, rSize)
+      ) ||
+      order.items.find(
+        (i) =>
+          String(i.productId) === String(rItem.productId) ||
+          i.productCode === String(rItem.productId).toUpperCase()
+      );
 
     if (!originalLine) {
       throw new ApiError(
@@ -58,9 +76,9 @@ async function prepareReturnExchangeCalculation(body: any) {
       );
     }
 
-    const prodKey = String(originalLine.productId);
-    const totalReturning = (cumulativeReturnByProdId.get(prodKey) || 0) + qty;
-    cumulativeReturnByProdId.set(prodKey, totalReturning);
+    const lineKey = `${String(originalLine.productId)}__${buildVariantKey(originalLine.color, originalLine.size)}`;
+    const totalReturning = (cumulativeReturnByLineKey.get(lineKey) || 0) + qty;
+    cumulativeReturnByLineKey.set(lineKey, totalReturning);
 
     const maxReturnable = originalLine.quantity - (originalLine.returnedQuantity || 0);
     if (totalReturning > maxReturnable) {
@@ -79,8 +97,10 @@ async function prepareReturnExchangeCalculation(body: any) {
       productId: originalLine.productId,
       productCode: originalLine.productCode,
       productName: originalLine.productName,
+      color: originalLine.color || rColor,
+      size: originalLine.size || rSize,
       unit: originalLine.unit,
-      unitPrice: originalLine.unitPrice, // Tính trên đơn giá gốc, không hoàn phí thẻ 3%
+      unitPrice: originalLine.unitPrice,
       quantity: qty,
       condition,
       restocked: condition === 'GOOD',
@@ -90,6 +110,8 @@ async function prepareReturnExchangeCalculation(body: any) {
 
   const preparedExchangeItems: IExchangeItem[] = [];
   const cumulativeExchangeByProdId = new Map<string, number>();
+  const cumulativeExchangeByVariant = new Map<string, number>();
+
   if (Array.isArray(exchangeItems) && exchangeItems.length > 0) {
     for (const eItem of exchangeItems) {
       const qty = Math.round(Number(eItem.quantity));
@@ -113,9 +135,17 @@ async function prepareReturnExchangeCalculation(body: any) {
         );
       }
 
+      const eColor = eItem.color ? String(eItem.color).trim() : '';
+      const eSize = eItem.size ? String(eItem.size).trim().toUpperCase() : '';
+      const displayExName = formatProductWithVariant(product.name, eColor, eSize);
+
       const exKey = String(product._id);
       const totalExchanging = (cumulativeExchangeByProdId.get(exKey) || 0) + qty;
       cumulativeExchangeByProdId.set(exKey, totalExchanging);
+
+      const exVariantKey = `${exKey}__${buildVariantKey(eColor, eSize)}`;
+      const totalExchangingVariant = (cumulativeExchangeByVariant.get(exVariantKey) || 0) + qty;
+      cumulativeExchangeByVariant.set(exVariantKey, totalExchangingVariant);
 
       const exFloors = getFloorStocks(product);
       if (exFloors.stockFloor1 < totalExchanging) {
@@ -126,10 +156,23 @@ async function prepareReturnExchangeCalculation(body: any) {
         );
       }
 
+      if ((eColor || eSize) && exFloors.variants.length > 0) {
+        const vFloors = getVariantFloorStocks(product, eColor, eSize);
+        if (vFloors.stockFloor1 < totalExchangingVariant) {
+          throw new ApiError(
+            400,
+            'INSUFFICIENT_EXCHANGE_STOCK',
+            `Sản phẩm đổi mới "${displayExName}" không đủ tồn tại Kho Tầng 1 (Tồn Tầng 1: ${vFloors.stockFloor1}, Cần: ${totalExchangingVariant})`
+          );
+        }
+      }
+
       preparedExchangeItems.push({
         productId: product._id,
         productCode: product.code,
-        productName: product.name,
+        productName: displayExName,
+        color: eColor,
+        size: eSize,
         unit: product.unit,
         unitPrice: product.sellingPrice,
         quantity: qty,
@@ -138,7 +181,6 @@ async function prepareReturnExchangeCalculation(body: any) {
     }
   }
 
-  // BR-16: Tính tiền trên đơn giá gốc (không hoàn phí thẻ 3%)
   const returnTotal = preparedReturnItems.reduce((sum, i) => sum + i.lineTotal, 0);
   const exchangeTotal = preparedExchangeItems.reduce((sum, i) => sum + i.lineTotal, 0);
   const netDifference = exchangeTotal - returnTotal;
@@ -276,15 +318,28 @@ returnsRouter.post('/returns', async (req, res, next) => {
         if (product) {
           const beforeFloors = getFloorStocks(product);
           const balanceBefore = beforeFloors.stock;
-          const nextFloors = applyFloorDelta(product, 'FLOOR_1', rItem.quantity);
+          const nextFloors = applyFloorDelta(
+            product,
+            'FLOOR_1',
+            rItem.quantity,
+            rItem.color,
+            rItem.size
+          );
           const balanceAfter = nextFloors.stock;
-          await productRepo.updateById(product._id, nextFloors);
+          await productRepo.updateById(product._id, {
+            variants: nextFloors.variants,
+            stockFloor1: nextFloors.stockFloor1,
+            stockFloor2: nextFloors.stockFloor2,
+            stock: nextFloors.stock,
+          });
 
           await stockMovementRepo.create({
             type: isExchange ? 'EXCHANGE_IN' : 'RETURN',
             productId: product._id,
             productCode: product.code,
-            productName: product.name,
+            productName: formatProductWithVariant(product.name, rItem.color, rItem.size),
+            color: rItem.color || '',
+            size: rItem.size || '',
             categoryId: product.categoryId,
             unit: product.unit,
             quantityChange: rItem.quantity,
@@ -308,15 +363,22 @@ returnsRouter.post('/returns', async (req, res, next) => {
       if (product) {
         const beforeFloors = getFloorStocks(product);
         const balanceBefore = beforeFloors.stock;
-        const nextFloors = deductStockForSale(product, eItem.quantity);
+        const nextFloors = deductStockForSale(product, eItem.quantity, eItem.color, eItem.size);
         const balanceAfter = nextFloors.stock;
-        await productRepo.updateById(product._id, nextFloors);
+        await productRepo.updateById(product._id, {
+          variants: nextFloors.variants,
+          stockFloor1: nextFloors.stockFloor1,
+          stockFloor2: nextFloors.stockFloor2,
+          stock: nextFloors.stock,
+        });
 
         await stockMovementRepo.create({
           type: 'EXCHANGE_OUT',
           productId: product._id,
           productCode: product.code,
-          productName: product.name,
+          productName: formatProductWithVariant(product.name, eItem.color, eItem.size),
+          color: eItem.color || '',
+          size: eItem.size || '',
           categoryId: product.categoryId,
           unit: product.unit,
           quantityChange: -eItem.quantity,
@@ -332,10 +394,14 @@ returnsRouter.post('/returns', async (req, res, next) => {
       }
     }
 
-    // 3. Cập nhật returnedQuantity và trạng thái đơn gốc (PARTIALLY_RETURNED / FULLY_RETURNED)
+    // 3. Cập nhật returnedQuantity và trạng thái đơn gốc
     const updatedOrderItems = order.items.map((item) => {
       const returnedInThisTx = preparedReturnItems
-        .filter((r) => String(r.productId) === String(item.productId))
+        .filter(
+          (r) =>
+            String(r.productId) === String(item.productId) &&
+            buildVariantKey(r.color, r.size) === buildVariantKey(item.color, item.size)
+        )
         .reduce((sum, r) => sum + r.quantity, 0);
       return {
         ...item,

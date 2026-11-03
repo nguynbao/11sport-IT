@@ -47,6 +47,7 @@ describe('v2.4: Smart Search Engine (Bỏ dấu tiếng Việt, Đa từ rời r
         sellingPrice: 350000,
         quantity: 10,
         targetWarehouse: 'FLOOR_1',
+        upsertIfExists: true,
       });
     poloRedId = p1.body.data._id;
 
@@ -61,6 +62,7 @@ describe('v2.4: Smart Search Engine (Bỏ dấu tiếng Việt, Đa từ rời r
         sellingPrice: 350000,
         quantity: 8,
         targetWarehouse: 'FLOOR_1',
+        upsertIfExists: true,
       });
 
     await request(app)
@@ -84,7 +86,7 @@ describe('v2.4: Smart Search Engine (Bỏ dấu tiếng Việt, Đa từ rời r
         customerName: 'Nguyễn Đặng Hoàng Phúc',
         customerPhone: '0945123456',
         paymentMethod: 'BANKING',
-        items: [{ productId: poloRedId, quantity: 2 }],
+        items: [{ productId: poloRedId, color: 'Đỏ', size: 'L', quantity: 2 }],
       });
   });
 
@@ -101,9 +103,9 @@ describe('v2.4: Smart Search Engine (Bỏ dấu tiếng Việt, Đa từ rời r
 
     const ranked = filterAndRankBySearch(
       [
-        { code: 'GIAY_YONEX_42', name: 'Giày Cầu Lông Yonex size 42' },
-        { code: 'AO_POLO_DO_L', name: 'Áo Polo Thể Thao Đỏ size L' },
-        { code: 'AO_POLO_XANH_XL', name: 'Áo Polo Thể Thao Xanh size XL' },
+        { code: 'GIAYYONEX42', name: 'Giày Cầu Lông Yonex size 42' },
+        { code: 'AOPOLODOL', name: 'Áo Polo Thể Thao Đỏ size L' },
+        { code: 'AOPOLOXANHXL', name: 'Áo Polo Thể Thao Xanh size XL' },
       ],
       'ao polo do l',
       (item) => [
@@ -112,7 +114,7 @@ describe('v2.4: Smart Search Engine (Bỏ dấu tiếng Việt, Đa từ rời r
       ]
     );
     expect(ranked.length).toBe(1);
-    expect(ranked[0].code).toBe('AO_POLO_DO_L');
+    expect(ranked[0].code).toBe('AOPOLODOL');
 
     // Chữ cái viết tắt (acronym): "aptt" khớp "Áo Polo Thể Thao"
     expect(scoreSearchMatch('aptt', ['Áo Polo Thể Thao'])).toBeGreaterThan(0);
@@ -136,7 +138,8 @@ describe('v2.4: Smart Search Engine (Bỏ dấu tiếng Việt, Đa từ rời r
       .set('x-user-id', 'admin');
     expect(res2.status).toBe(200);
     expect(res2.body.data.length).toBe(1);
-    expect(res2.body.data[0].code).toContain('XANH_DEN');
+    expect(res2.body.data[0].code).toContain('KMAP262510');
+    expect(res2.body.data[0].variants.some((v: any) => v.color === 'Xanh Đen')).toBe(true);
 
     // 3. Tìm theo tên danh mục không dấu + size: "giay chay bo 42"
     const res3 = await request(app)

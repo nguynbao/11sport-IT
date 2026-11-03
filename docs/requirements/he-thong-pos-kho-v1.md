@@ -136,3 +136,7 @@ Hệ thống phục vụ cửa hàng **11Sport** quản lý toàn bộ vòng đ�
   *Given* Quản lý đăng nhập CMS Quản lý kho,
   *When* xem báo cáo tồn kho theo kỳ hoặc tạo Phiếu điều chỉnh kho,
   *Then* hệ thống hiển thị đúng `Tồn cuối kỳ = Tồn đầu kỳ + Nhập − Bán ± Điều chỉnh` và mọi điều chỉnh đều lưu vết trong Sổ kho.
+- **AC-08 (v2.8 — Mã sản phẩm IN HOA viết liền + Quản lý Biến thể Size/Màu + Nhập kho bằng PDF/Excel & In Tem Label)**:
+  - **Quy chuẩn Mã sản phẩm (`code` & `barcode`)**: Viết IN HOA liền nhau hoàn toàn (bỏ dấu tiếng Việt, bỏ toàn bộ khoảng trắng và dấu gạch `_`, `-`) theo công thức `[LOẠI][HÃNG][MẪU]` (VD: `AOKAMITOPRO`, `GIAYASICSCOURTFF3`, `VOTSYPIKTRITON5`). Mã dùng để in vào tem nhãn Label (`barcode`) chỉ là Mã sản phẩm chung này, không nối thêm Size hay Màu vào mã.
+  - **Biến thể (`variants`) trong 1 Mã sản phẩm**: Cùng 1 Mã sản phẩm dùng chung `costPrice` (Giá gốc) và `sellingPrice` (Giá bán), bên trong lưu danh sách `variants: [{ variantKey, color, size, stockFloor1, stockFloor2, stock }]`. Tổng `stockFloor1`, `stockFloor2`, `stock` của sản phẩm luôn bằng tổng cộng các `variants`.
+  - **Nhập kho (Warehouse)**: Bỏ phần chụp ảnh Camera OCR, thay bằng tính năng **Import file PDF hoặc Excel (`.xlsx`, `.xls`, `.csv`, `.pdf`)** để tự động trích xuất danh sách hàng hóa (Mã viết liền, Tên SP, Màu sắc, Size, ĐVT, Số lượng, Giá gốc, Giá bán) và tích hợp **In Tem Mã Vạch (Barcode Label Printer)** chuẩn Code128 theo số lượng nhập.

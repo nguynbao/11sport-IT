@@ -100,7 +100,7 @@ export default function CustomerTab({ onOpenInvoice }: CustomerTabProps) {
           Tra cứu Khách hàng theo Số Điện Thoại & Xuất Hóa Đơn PDF
         </h2>
         <p className="text-xs text-slate-500 mt-0.5">
-          Nhập số điện thoại khách hàng để xem toàn bộ lịch sử mua hàng, phiếu trả/đổi và in lại hóa đơn PDF (Khổ K80 / A4).
+          Nhập số điện thoại khách hàng để xem toàn bộ lịch sử mua hàng, phiếu trả/đổi và in lại hóa đơn.
         </p>
 
         <form
@@ -267,23 +267,22 @@ export default function CustomerTab({ onOpenInvoice }: CustomerTabProps) {
                         </td>
                         <td className="py-3 px-4 text-center">
                           <span
-                            className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full whitespace-nowrap ${
-                              ord.status === "DRAFT"
+                            className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full whitespace-nowrap ${ord.status === "DRAFT"
                                 ? "bg-indigo-100 text-indigo-800 border border-indigo-300"
                                 : ord.status === "PAID"
-                                ? "bg-emerald-100 text-emerald-800"
-                                : ord.status === "PARTIALLY_RETURNED"
-                                  ? "bg-amber-100 text-amber-800"
-                                  : "bg-red-100 text-red-700"
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : ord.status === "PARTIALLY_RETURNED"
+                                    ? "bg-amber-100 text-amber-800"
+                                    : "bg-red-100 text-red-700"
                               }`}
                           >
                             {ord.status === "DRAFT"
                               ? "Bản nháp"
                               : ord.status === "PAID"
-                              ? "Đã thanh toán"
-                              : ord.status === "PARTIALLY_RETURNED"
-                                ? "Đã trả 1 phần"
-                                : "Đã trả toàn bộ"}
+                                ? "Đã thanh toán"
+                                : ord.status === "PARTIALLY_RETURNED"
+                                  ? "Đã trả 1 phần"
+                                  : "Đã trả toàn bộ"}
                           </span>
                         </td>
                         <td className="py-3 px-4 text-right">

@@ -44,21 +44,21 @@ import {
 const TABS_CONFIG: TabConfig[] = [
   {
     id: "POS",
-    label: "1. Bán hàng (POS)",
+    label: "1. Bán hàng",
     icon: ShoppingCart,
     allowedRoles: ["SALES", "ADMIN"],
     roleHint: "NV Bán hàng / Quản lý",
   },
   {
     id: "INVENTORY",
-    label: "2. Kho hàng (Tồn kho)",
+    label: "2. Kho hàng",
     icon: Package,
     allowedRoles: ["SALES", "WAREHOUSE", "ADMIN"],
     roleHint: "Tất cả nhân sự",
   },
   {
     id: "IMPORT",
-    label: "3. Nhập kho (7 Bước & Camera OCR)",
+    label: "3. Nhập kho",
     icon: ClipboardCheck,
     allowedRoles: ["WAREHOUSE", "ADMIN"],
     roleHint: "Thủ kho / Quản lý",
@@ -119,9 +119,9 @@ export default function WebPosHomePage() {
 
   // Định kỳ 8 phút gửi 1 API đánh thức server chống sleep (5-10 phút/lần)
   useEffect(() => {
-    apiRequest("/health").catch(() => {});
+    apiRequest("/health").catch(() => { });
     const timer = setInterval(() => {
-      apiRequest("/health").catch(() => {});
+      apiRequest("/health").catch(() => { });
     }, 8 * 60 * 1000);
     return () => clearInterval(timer);
   }, []);
@@ -355,13 +355,12 @@ export default function WebPosHomePage() {
                       setActiveTab(tab.id);
                     }
                   }}
-                  className={`min-h-[40px] shrink-0 snap-start px-3 md:px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 md:gap-2 whitespace-nowrap transition ${
-                    !isAllowed
-                      ? "opacity-40 cursor-not-allowed text-slate-400 bg-slate-900/40"
-                      : isActive
+                  className={`min-h-[40px] shrink-0 snap-start px-3 md:px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 md:gap-2 whitespace-nowrap transition ${!isAllowed
+                    ? "opacity-40 cursor-not-allowed text-slate-400 bg-slate-900/40"
+                    : isActive
                       ? "bg-emerald-600 text-white shadow"
                       : "text-slate-300 hover:bg-slate-700/60 hover:text-white"
-                  }`}
+                    }`}
                 >
                   {isAllowed ? (
                     <Icon className="w-4 h-4" />

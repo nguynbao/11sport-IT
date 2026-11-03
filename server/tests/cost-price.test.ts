@@ -9,7 +9,7 @@ const app = createApp();
 describe('v1.1: Giá gốc khi nhập kho & phân quyền giá bán', () => {
   let categoryId = '';
   const productName = 'Quần Short Chạy Bộ (Quần Short Chạy Bộ QSCB01 Đen size M)';
-  const productCode = 'QUAN_SHORT_CHAY_BO_QSCB01_DEN_SIZE_M';
+  const productCode = 'QUANSHORTCHAYBOQSCB01';
 
   beforeAll(async () => {
     process.env.FORCE_MEMORY_DB = 'true';
@@ -135,7 +135,7 @@ describe('v1.1: Giá gốc khi nhập kho & phân quyền giá bán', () => {
 
   it('CMS Admin nhập thẳng sản phẩm vào kho (quantity, upsertIfExists) & sửa số lượng tồn (allowDirectStock)', async () => {
     const directName = 'Áo Ba Lỗ Gym (Áo Ba Lỗ Gym ABL09 Đen size L)';
-    const directCode = 'AO_BA_LO_GYM_ABL09_DEN_SIZE_L';
+    const directCode = 'AOBALOGYMABL09';
 
     // 1. Tạo mới kèm số lượng nhập thẳng = 12
     const createRes = await request(app)
@@ -275,7 +275,7 @@ describe('v1.1: Giá gốc khi nhập kho & phân quyền giá bán', () => {
 
   it('Hệ thống Kho 2 tầng (FLOOR_1 & FLOOR_2): chọn tầng khi nhập kho, Admin lập Phiếu xuất kho chuyển tầng (PXK-...) và ghi vào Hoạt động nhân viên', async () => {
     const floorProdName = 'Giày Chạy Bộ 2 Tầng (Giày Chạy Bộ 2 Tầng GCB02 Trắng size 42)';
-    const floorProdCode = 'GIAY_CHAY_BO_2_TANG_GCB02_TRANG_SIZE_42';
+    const floorProdCode = 'GIAYCHAYBO2TANGGCB02';
 
     // 1. Warehouse lập phiếu nhập 6 đôi vào Kho Tầng 2 (FLOOR_2)
     const impF2 = await request(app)

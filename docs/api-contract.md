@@ -436,3 +436,144 @@
     - Danh sách chương trình được kích hoạt (`appliedPromotions`).
     - Danh sách sản phẩm/phụ kiện tặng kèm tự động (`autoGiftItems`).
     - Mức giảm giá tự động cho từng dòng sản phẩm (`itemDiscounts`) và giảm giá tổng Bill (`billDiscount`).
+
+
+---
+
+### 2.11 Chuẩn hóa Mã Sản Phẩm Viết Liền, Biến Thể (`Size` / `Màu`) & Nhập Kho File PDF/Excel + In Tem Label *(v2.8)*
+- **Quy tắc sinh Mã sản phẩm (`POST /api/v1/products/generate-code` & `generateProductCode`)**:
+  - Chuyển toàn bộ về **CHỮ IN HOA, bỏ dấu tiếng Việt, viết liền hoàn toàn (không khoảng trắng, không ký tự đặc biệt `_` hay `-`)** theo công thức `[LOẠI][HÃNG][MẪU]`.
+  - Tự động loại bỏ hậu tố màu sắc / kích cỡ (`size S/M/L/XL/38..45`, `màu Đỏ/Trắng/Xanh/Gray/Blue/Pink...`) khi sinh mã gốc để các phân loại cùng mẫu quy về **1 Mã sản phẩm duy nhất** (VD: `Áo Kamito Pro - Đỏ - Size L` -> Mã `AOKAMITOPRO`, `color: "Đỏ"`, `size: "L"`).
+  - Mã in lên tem nhãn Label (`barcode`) chỉ sử dụng chính Mã sản phẩm chung (`code`), không ghép thêm Size/Màu.
+- **Cấu trúc `Product` & `variants[]`**:
+  ```json
+  {
+    "_id": "...",
+    "code": "AOKAMITOPRO",
+    "barcode": "AOKAMITOPRO",
+    "name": "Áo Kamito Pro",
+    "brand": "Kamito",
+    "modelName": "Pro",
+    "categoryId": "...",
+    "categoryCode": "AO",
+    "categoryName": "Áo thể thao",
+    "unit": "Cái",
+    "costPrice": 180000,
+    "sellingPrice": 350000,
+    "stockFloor1": 25,
+    "stockFloor2": 30,
+    "stock": 55,
+    "variants": [
+      {
+        "variantKey": "DO_M",
+        "color": "Đỏ",
+        "size": "M",
+        "stockFloor1": 10,
+        "stockFloor2": 15,
+        "stock": 25
+      },
+      {
+        "variantKey": "DO_L",
+        "color": "Đỏ",
+        "size": "L",
+        "stockFloor1": 15,
+        "stockFloor2": 15,
+        "stock": 30
+      }
+    ]
+  }
+  ```
+- **API Bóc tách File PDF / Excel khi Nhập kho (`POST /api/v1/imports/parse-file`)**:
+  - Body:
+    ```json
+    {
+      "fileName": "phieu-nhap-hang.xlsx",
+      "fileType": "EXCEL | CSV | PDF",
+      "contentBase64": "...",
+      "rawText": "...",
+      "rows": [
+        {
+          "category": "Áo",
+          "brand": "Kamito",
+          "productName": "Áo Kamito Pro",
+          "color": "Đỏ",
+          "size": "L",
+          "unit": "Cái",
+          "expectedQuantity": 15,
+          "costPrice": 180000,
+          "sellingPrice": 350000
+        }
+      ],
+      "defaultCategoryId": "..."
+    }
+    ```
+  - Hỗ trợ đọc trực tiếp file `.xlsx` (ZIP/XML), `.csv`/`.tsv`, `.pdf` (bóc tách text/stream từ file PDF) hoặc mảng dòng trích xuất từ client, trả về danh sách `items` chuẩn hóa sẵn `productCode` (IN HOA viết liền), `productName`, `brand`, `color`, `size`, `unit`, `expectedQuantity`, `actualQuantity`, `costPrice`, `sellingPrice`.
+- **Hỗ trợ `color` và `size` xuyên suốt các API Kho & POS**:
+  - `POST /api/v1/products` & `PATCH /api/v1/products/:id`: Nhận `variants` hoặc `color`, `size`, `quantity`, tự động gộp vào đúng biến thể của mã sản phẩm và tính lại tổng `stockFloor1`, `stockFloor2`, `stock`.
+  - `POST /api/v1/imports` & `POST /api/v1/imports/:id/complete`: Mỗi dòng `items[]` có thêm `color`, `size`, `brand`; khi hoàn thành phiếu nhập, các dòng cùng `productCode` nhưng khác `(color, size)` được cộng dồn vào đúng biến thể trong cùng 1 `Product`.
+  - `POST /api/v1/inventory/adjustments` & `POST /api/v1/inventory/transfers`: Hỗ trợ truyền `color`, `size` để điều chỉnh hoặc chuyển tầng đúng biến thể.
+  - `POST /api/v1/orders` & `POST /api/v1/returns`: Hỗ trợ `color`, `size` trong từng dòng sản phẩm mua/trả/đổi, trừ/cộng tồn Kho Tầng 1 vào đúng biến thể `(color, size)` tương ứng.
+
+### 2.13 Máy in Tem Mã Vạch Nhiệt & In Trực Tiếp (`/printers`) *(v3.1)*
+- `GET /api/v1/printers` — Quét danh sách máy in đang kết nối trên máy trạm/server Windows (ưu tiên tự động nhận diện máy in nhiệt Xprinter / TSC / Godex / Zebra qua cổng USB/LAN).
+  - Response:
+    ```json
+    {
+      "data": {
+        "printers": [
+          {
+            "name": "Xprinter XP-350BM",
+            "driverName": "Xprinter XP-350BM",
+            "portName": "USB001",
+            "status": "Normal",
+            "isOnline": true,
+            "isThermal": true
+          }
+        ],
+        "recommendedPrinter": "Xprinter XP-350BM",
+        "platform": "win32"
+      },
+      "meta": {}
+    }
+    ```
+- `POST /api/v1/printers/print-labels` — Gửi lệnh in tem mã vạch Code128 trực tiếp xuống máy in nhiệt qua Windows Print Spooler (không cần qua hộp thoại trình duyệt hay bị chặn popup). Mã vạch chỉ mã hóa **Mã sản phẩm chung IN HOA VIẾT LIỀN** (`code`).
+  - Body:
+    ```json
+    {
+      "printerName": "Xprinter XP-350BM",
+      "preset": {
+        "id": "35x22_2col",
+        "widthMm": 35,
+        "heightMm": 22,
+        "columns": 2,
+        "pageWidthMm": 72,
+        "pageHeightMm": 22
+      },
+      "options": {
+        "showShopName": true,
+        "showProductName": true,
+        "showPrice": true
+      },
+      "items": [
+        {
+          "code": "JOGABOLABUBBLEJ",
+          "name": "Jogabola BUBBLE J",
+          "sellingPrice": 1150000,
+          "quantity": 10
+        }
+      ]
+    }
+    ```
+  - Response:
+    ```json
+    {
+      "data": {
+        "printed": true,
+        "printerName": "Xprinter XP-350BM",
+        "totalStickers": 10,
+        "totalPages": 5,
+        "message": "Đã gửi lệnh in 10 tem (5 hàng/trang) tới máy in Xprinter XP-350BM thành công."
+      },
+      "meta": {}
+    }
+    ```
