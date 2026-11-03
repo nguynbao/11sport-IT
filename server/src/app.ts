@@ -43,9 +43,14 @@ export function createApp() {
       origin: (origin, callback) => {
         if (!origin) return callback(null, true);
         const normalized = origin.replace(/\/+$/, '');
+        const isPrivateLanOrigin =
+          /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$/i.test(
+            normalized
+          );
         if (
           allowedOrigins.includes(normalized) ||
-          normalized.endsWith('.vercel.app')
+          normalized.endsWith('.vercel.app') ||
+          isPrivateLanOrigin
         ) {
           return callback(null, true);
         }

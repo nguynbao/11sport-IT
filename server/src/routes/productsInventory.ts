@@ -132,11 +132,16 @@ productsInventoryRouter.get('/products', async (req, res, next) => {
         const { costPrice, ...rest } = p as any;
         const floors = getFloorStocks(p);
         const visibleVariants = floors.variants.map((v) => {
-          const vCode = v.variantCode || generateVariantProductCode(p.code, v.color, v.size);
+          const hasAttr = Boolean(
+            (v.color && String(v.color).trim()) || (v.size && String(v.size).trim())
+          );
+          const vCode = hasAttr
+            ? generateVariantProductCode(p.code, v.color, v.size)
+            : v.variantCode || p.code;
           return {
             ...v,
             variantCode: vCode,
-            barcode: v.barcode || vCode,
+            barcode: vCode,
             stockFloor1: v.stockFloor1,
             stockFloor2: isSalesRole ? 0 : v.stockFloor2,
             stock: isSalesRole ? v.stockFloor1 : v.stock,

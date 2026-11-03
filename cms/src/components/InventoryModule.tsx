@@ -317,6 +317,9 @@ export default function InventoryModule() {
       const prodRes = await apiRequest<Product[]>(`/products?${q.toString()}`);
       const pList = Array.isArray(prodRes.data) ? prodRes.data : [];
       setProducts(pList);
+      if (!categoryId && !debouncedSearch.trim()) {
+        setAllCatalogProducts(pList);
+      }
 
       const nameMap: Record<string, string> = {};
       const catMap: Record<string, string> = {};
@@ -337,13 +340,15 @@ export default function InventoryModule() {
         priceMap[p._id] = Number(p.sellingPrice || 0);
         varMap[p._id] = Array.isArray(p.variants)
           ? p.variants.map((v) => ({
-              variantKey: v.variantKey,
-              color: v.color || "",
-              size: v.size || "",
-              stockFloor1: Number(v.stockFloor1 ?? 0),
-              stockFloor2: Number(v.stockFloor2 ?? 0),
-              stock: Number(v.stock ?? (Number(v.stockFloor1 || 0) + Number(v.stockFloor2 || 0))),
-            }))
+            variantKey: v.variantKey,
+            variantCode: v.variantCode,
+            barcode: v.barcode,
+            color: v.color || "",
+            size: v.size || "",
+            stockFloor1: Number(v.stockFloor1 ?? 0),
+            stockFloor2: Number(v.stockFloor2 ?? 0),
+            stock: Number(v.stock ?? (Number(v.stockFloor1 || 0) + Number(v.stockFloor2 || 0))),
+          }))
           : [];
       });
       setEditingNames(nameMap);
@@ -557,8 +562,8 @@ export default function InventoryModule() {
         const newName = String(editingNames[prod._id] ?? prod.name ?? "").trim();
         const newCatId = String(
           editingCats[prod._id] ??
-            (typeof prod.categoryId === "object" ? prod.categoryId?._id : prod.categoryId) ??
-            ""
+          (typeof prod.categoryId === "object" ? prod.categoryId?._id : prod.categoryId) ??
+          ""
         );
         const newUnit = String(editingUnits[prod._id] ?? prod.unit ?? "Cái").trim() || "Cái";
         const newF1 = Math.max(
@@ -1150,16 +1155,18 @@ export default function InventoryModule() {
     const namedVars = prodVariants.filter((v) => v.color || v.size);
 
     if (specificVariant) {
-      const childCode =
-        specificVariant.variantCode ||
-        generateVariantProductCode(prod.code, specificVariant.color, specificVariant.size);
+      const childCode = generateVariantProductCode(
+        prod.code,
+        specificVariant.color,
+        specificVariant.size
+      );
       const vQty =
         activeWarehouse === "FLOOR_2"
           ? Number(specificVariant.stockFloor2 || 0)
           : activeWarehouse === "FLOOR_1"
             ? Number(specificVariant.stockFloor1 || 0)
             : (Number(specificVariant.stockFloor1) || 0) +
-              (Number(specificVariant.stockFloor2) || 0);
+            (Number(specificVariant.stockFloor2) || 0);
       return [
         {
           id: `${prod._id}_${childCode}`,
@@ -1177,8 +1184,7 @@ export default function InventoryModule() {
 
     if (namedVars.length > 0) {
       return namedVars.map((v, idx) => {
-        const childCode =
-          v.variantCode || generateVariantProductCode(prod.code, v.color, v.size);
+        const childCode = generateVariantProductCode(prod.code, v.color, v.size);
         const vQty =
           activeWarehouse === "FLOOR_2"
             ? Number(v.stockFloor2 || 0)
@@ -1367,8 +1373,8 @@ export default function InventoryModule() {
       transferItems.length > 0
         ? transferItems
         : transferProductId && Number(transferQty) > 0
-        ? [{ productId: transferProductId, quantity: Math.round(Number(transferQty)) }]
-        : [];
+          ? [{ productId: transferProductId, quantity: Math.round(Number(transferQty)) }]
+          : [];
 
     if (finalItems.length === 0) {
       setStatusMsg({
@@ -1456,9 +1462,9 @@ export default function InventoryModule() {
       { text: p.unit, weight: 0.6 },
       ...(Array.isArray(p.variants)
         ? p.variants.map((v) => ({
-            text: `${v.variantCode || generateVariantProductCode(p.code, v.color, v.size)} ${v.color || ""} ${v.size || ""} size ${v.size || ""}`,
-            weight: 1.4,
-          }))
+          text: `${v.variantCode || generateVariantProductCode(p.code, v.color, v.size)} ${v.color || ""} ${v.size || ""} size ${v.size || ""}`,
+          weight: 1.4,
+        }))
         : []),
     ]);
   }, [products, activeWarehouse, showZeroFloorItems, importsList, search, onlyShowScanned, scannedCheckCounts]);
@@ -1497,8 +1503,8 @@ export default function InventoryModule() {
     activeWarehouse === "FLOOR_1"
       ? "🏢 Kho Tầng 1"
       : activeWarehouse === "FLOOR_2"
-      ? "🏬 Kho Tầng 2"
-      : "📊 Tổng hợp Cả 2 Kho (Tầng 1 + Tầng 2)";
+        ? "🏬 Kho Tầng 2"
+        : "📊 Tổng hợp Cả 2 Kho (Tầng 1 + Tầng 2)";
 
   // Reset trang về 1 khi thay đổi bộ lọc
   useEffect(() => {
@@ -1526,16 +1532,32 @@ export default function InventoryModule() {
     prodPageSize <= 0
       ? displayedProducts
       : displayedProducts.slice(
-          (safeProdPage - 1) * prodPageSize,
-          safeProdPage * prodPageSize
-        );
+        (safeProdPage - 1) * prodPageSize,
+        safeProdPage * prodPageSize
+      );
 
   const handleBarcodeScanInCms = useCallback(
-    (rawInput: string) => {
+    async (rawInput: string) => {
       const rawTrimmed = String(rawInput || "").trim();
       if (!rawTrimmed) return;
       const nowStr = new Date().toLocaleTimeString("vi-VN");
       const pool = allCatalogProducts.length > 0 ? allCatalogProducts : products;
+
+      const findWithRemoteRetry = async (code: string) => {
+        const localHit = findProductAndVariantByScannedBarcode(pool, code);
+        if (localHit) return localHit;
+        try {
+          const freshRes = await apiRequest<Product[]>("/products");
+          const freshPool = Array.isArray(freshRes.data) ? freshRes.data : [];
+          if (freshPool.length > 0) {
+            setAllCatalogProducts(freshPool);
+            return findProductAndVariantByScannedBarcode(freshPool, code);
+          }
+        } catch {
+          // ignore network error
+        }
+        return undefined;
+      };
 
       // Nếu đang mở Popup Nhập Kho Admin -> Quét mã để cộng SL hoặc thêm dòng vào bảng nhập kho
       if (showAdminImportModal) {
@@ -1552,8 +1574,8 @@ export default function InventoryModule() {
           exactChildIdx >= 0
             ? exactChildIdx
             : adminImportRows.findIndex(
-                (r) => r.productCode && isScannedCodeMatch(rawTrimmed, r.productCode)
-              );
+              (r) => r.productCode && isScannedCodeMatch(rawTrimmed, r.productCode)
+            );
         if (matchedRowIdx >= 0) {
           setAdminImportRows((prev) =>
             prev.map((r, i) =>
@@ -1574,7 +1596,7 @@ export default function InventoryModule() {
           return;
         }
 
-        const scanRes = findProductAndVariantByScannedBarcode(pool, rawTrimmed);
+        const scanRes = await findWithRemoteRetry(rawTrimmed);
         if (scanRes) {
           const { product, matchedVariant } = scanRes;
           const catId =
@@ -1608,9 +1630,8 @@ export default function InventoryModule() {
           setLastScanFeedback({
             type: "success",
             code: childCode,
-            message: `Đã thêm [${childCode}] ${product.name}${
-              vColor || vSize ? ` (${[vColor, vSize].filter(Boolean).join(" - ")})` : ""
-            } vào bảng nhập kho (SL: 1)`,
+            message: `Đã thêm [${childCode}] ${product.name}${vColor || vSize ? ` (${[vColor, vSize].filter(Boolean).join(" - ")})` : ""
+              } vào bảng nhập kho (SL: 1)`,
             time: nowStr,
           });
           return;
@@ -1627,7 +1648,7 @@ export default function InventoryModule() {
       }
 
       // Mặc định: Quét kiểm hàng & đối chiếu tồn kho trên tab PRODUCTS (ưu tiên khớp chính xác Mã con thuộc tính)
-      const scanRes = findProductAndVariantByScannedBarcode(pool, rawTrimmed);
+      const scanRes = await findWithRemoteRetry(rawTrimmed);
       if (!scanRes) {
         playScannerBeep("error");
         setLastScanFeedback({
@@ -1693,9 +1714,8 @@ export default function InventoryModule() {
         setLastScanFeedback({
           type: isOver ? "warning" : "success",
           code: childCode,
-          message: `[${childCode}] ${product.name} (${attrDesc}) • Đã quét mã con: ${nextVarCount} / Tồn biến thể (${activeWarehouseLabel}): ${varSysStock} ${product.unit || "Cái"}${
-            isExact ? " (✓ ĐÃ KHỚP ĐỦ)" : isOver ? ` (⚠️ DƯ +${nextVarCount - varSysStock})` : ""
-          }`,
+          message: `[${childCode}] ${product.name} (${attrDesc}) • Đã quét mã con: ${nextVarCount} / Tồn biến thể (${activeWarehouseLabel}): ${varSysStock} ${product.unit || "Cái"}${isExact ? " (✓ ĐÃ KHỚP ĐỦ)" : isOver ? ` (⚠️ DƯ +${nextVarCount - varSysStock})` : ""
+            }`,
           time: nowStr,
         });
         return;
@@ -1713,9 +1733,8 @@ export default function InventoryModule() {
       setLastScanFeedback({
         type: isOver ? "warning" : "success",
         code: product.code,
-        message: `[${product.code}] ${product.name} • Đã quét kiểm: ${nextCount} / Tồn ${activeWarehouseLabel}: ${sysStock} ${product.unit || "Cái"}${
-          isExact ? " (✓ ĐÃ KHỚP ĐỦ)" : isOver ? ` (⚠️ DƯ +${nextCount - sysStock})` : ""
-        }`,
+        message: `[${product.code}] ${product.name} • Đã quét kiểm: ${nextCount} / Tồn ${activeWarehouseLabel}: ${sysStock} ${product.unit || "Cái"}${isExact ? " (✓ ĐÃ KHỚP ĐỦ)" : isOver ? ` (⚠️ DƯ +${nextCount - sysStock})` : ""
+          }`,
         time: nowStr,
       });
     },
@@ -1766,9 +1785,9 @@ export default function InventoryModule() {
     reportPageSize <= 0
       ? filteredReportRows
       : filteredReportRows.slice(
-          (safeReportPage - 1) * reportPageSize,
-          safeReportPage * reportPageSize
-        );
+        (safeReportPage - 1) * reportPageSize,
+        safeReportPage * reportPageSize
+      );
 
   const filteredMovements = movements.filter((m) => {
     if (activeWarehouse === "ALL") return true;
@@ -1784,9 +1803,9 @@ export default function InventoryModule() {
     movPageSize <= 0
       ? filteredMovements
       : filteredMovements.slice(
-          (safeMovPage - 1) * movPageSize,
-          safeMovPage * movPageSize
-        );
+        (safeMovPage - 1) * movPageSize,
+        safeMovPage * movPageSize
+      );
 
   const filteredImports = importsList.filter((imp) => {
     if (activeWarehouse === "ALL") return true;
@@ -1802,9 +1821,9 @@ export default function InventoryModule() {
     impPageSize <= 0
       ? filteredImports
       : filteredImports.slice(
-          (safeImpPage - 1) * impPageSize,
-          safeImpPage * impPageSize
-        );
+        (safeImpPage - 1) * impPageSize,
+        safeImpPage * impPageSize
+      );
 
   const renderPaginationBar = (opts: {
     totalItems: number;
@@ -1893,11 +1912,10 @@ export default function InventoryModule() {
                 key={pNum}
                 type="button"
                 onClick={() => onPageChange(pNum)}
-                className={`w-8 h-8 rounded-lg font-mono font-extrabold text-xs transition ${
-                  pNum === page
-                    ? "bg-emerald-600 text-white shadow"
-                    : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                }`}
+                className={`w-8 h-8 rounded-lg font-mono font-extrabold text-xs transition ${pNum === page
+                  ? "bg-emerald-600 text-white shadow"
+                  : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                  }`}
               >
                 {pNum}
               </button>
@@ -1943,11 +1961,10 @@ export default function InventoryModule() {
           <button
             type="button"
             onClick={() => handleSelectWarehouseTab("FLOOR_1")}
-            className={`px-4 py-2.5 rounded-xl text-left transition border-2 ${
-              activeWarehouse === "FLOOR_1"
-                ? "bg-emerald-500 text-slate-950 border-emerald-300 shadow-lg"
-                : "bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700"
-            }`}
+            className={`px-4 py-2.5 rounded-xl text-left transition border-2 ${activeWarehouse === "FLOOR_1"
+              ? "bg-emerald-500 text-slate-950 border-emerald-300 shadow-lg"
+              : "bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700"
+              }`}
           >
             <div className="text-xs font-extrabold flex items-center justify-between gap-2">
               <span>🏢 KHO TẦNG 1</span>
@@ -1956,9 +1973,8 @@ export default function InventoryModule() {
               </span>
             </div>
             <div
-              className={`text-[10px] mt-0.5 ${
-                activeWarehouse === "FLOOR_1" ? "text-slate-900 font-semibold" : "text-slate-400"
-              }`}
+              className={`text-[10px] mt-0.5 ${activeWarehouse === "FLOOR_1" ? "text-slate-900 font-semibold" : "text-slate-400"
+                }`}
             >
               Quản lý tồn & giá bán Kho Tầng 1
             </div>
@@ -1967,11 +1983,10 @@ export default function InventoryModule() {
           <button
             type="button"
             onClick={() => handleSelectWarehouseTab("FLOOR_2")}
-            className={`px-4 py-2.5 rounded-xl text-left transition border-2 ${
-              activeWarehouse === "FLOOR_2"
-                ? "bg-purple-500 text-white border-purple-300 shadow-lg"
-                : "bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700"
-            }`}
+            className={`px-4 py-2.5 rounded-xl text-left transition border-2 ${activeWarehouse === "FLOOR_2"
+              ? "bg-purple-500 text-white border-purple-300 shadow-lg"
+              : "bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700"
+              }`}
           >
             <div className="text-xs font-extrabold flex items-center justify-between gap-2">
               <span>🏬 KHO TẦNG 2</span>
@@ -1980,9 +1995,8 @@ export default function InventoryModule() {
               </span>
             </div>
             <div
-              className={`text-[10px] mt-0.5 ${
-                activeWarehouse === "FLOOR_2" ? "text-purple-100 font-semibold" : "text-slate-400"
-              }`}
+              className={`text-[10px] mt-0.5 ${activeWarehouse === "FLOOR_2" ? "text-purple-100 font-semibold" : "text-slate-400"
+                }`}
             >
               Quản lý tồn & giá bán Kho Tầng 2
             </div>
@@ -1991,11 +2005,10 @@ export default function InventoryModule() {
           <button
             type="button"
             onClick={() => handleSelectWarehouseTab("ALL")}
-            className={`px-4 py-2.5 rounded-xl text-left transition border-2 ${
-              activeWarehouse === "ALL"
-                ? "bg-blue-500 text-white border-blue-300 shadow-lg"
-                : "bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700"
-            }`}
+            className={`px-4 py-2.5 rounded-xl text-left transition border-2 ${activeWarehouse === "ALL"
+              ? "bg-blue-500 text-white border-blue-300 shadow-lg"
+              : "bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700"
+              }`}
           >
             <div className="text-xs font-extrabold flex items-center justify-between gap-2">
               <span>📊 XEM GỘP 2 KHO</span>
@@ -2004,9 +2017,8 @@ export default function InventoryModule() {
               </span>
             </div>
             <div
-              className={`text-[10px] mt-0.5 ${
-                activeWarehouse === "ALL" ? "text-blue-100 font-semibold" : "text-slate-400"
-              }`}
+              className={`text-[10px] mt-0.5 ${activeWarehouse === "ALL" ? "text-blue-100 font-semibold" : "text-slate-400"
+                }`}
             >
               So sánh Tầng 1 + Tầng 2 trên cùng bảng
             </div>
@@ -2019,11 +2031,10 @@ export default function InventoryModule() {
         <button
           type="button"
           onClick={() => setSubTab("PRODUCTS")}
-          className={`px-4 py-2.5 rounded-lg text-xs font-extrabold flex items-center gap-2 transition ${
-            subTab === "PRODUCTS"
-              ? "bg-slate-900 text-white shadow"
-              : "text-slate-600 hover:bg-slate-100"
-          }`}
+          className={`px-4 py-2.5 rounded-lg text-xs font-extrabold flex items-center gap-2 transition ${subTab === "PRODUCTS"
+            ? "bg-slate-900 text-white shadow"
+            : "text-slate-600 hover:bg-slate-100"
+            }`}
         >
           <Package className="w-4 h-4 text-emerald-400" />
           1. Sản phẩm, Số lượng, Giá gốc & Giá bán
@@ -2032,11 +2043,10 @@ export default function InventoryModule() {
         <button
           type="button"
           onClick={() => setSubTab("REPORT")}
-          className={`px-4 py-2.5 rounded-lg text-xs font-extrabold flex items-center gap-2 transition ${
-            subTab === "REPORT"
-              ? "bg-slate-900 text-white shadow"
-              : "text-slate-600 hover:bg-slate-100"
-          }`}
+          className={`px-4 py-2.5 rounded-lg text-xs font-extrabold flex items-center gap-2 transition ${subTab === "REPORT"
+            ? "bg-slate-900 text-white shadow"
+            : "text-slate-600 hover:bg-slate-100"
+            }`}
         >
           <BarChart3 className="w-4 h-4 text-emerald-400" />
           2. Báo cáo Tồn kho theo kỳ (SL, Giá gốc, Giá bán)
@@ -2045,11 +2055,10 @@ export default function InventoryModule() {
         <button
           type="button"
           onClick={() => setSubTab("MOVEMENTS")}
-          className={`px-4 py-2.5 rounded-lg text-xs font-extrabold flex items-center gap-2 transition ${
-            subTab === "MOVEMENTS"
-              ? "bg-slate-900 text-white shadow"
-              : "text-slate-600 hover:bg-slate-100"
-          }`}
+          className={`px-4 py-2.5 rounded-lg text-xs font-extrabold flex items-center gap-2 transition ${subTab === "MOVEMENTS"
+            ? "bg-slate-900 text-white shadow"
+            : "text-slate-600 hover:bg-slate-100"
+            }`}
         >
           <BookOpen className="w-4 h-4 text-emerald-400" />
           3. Sổ kho (Số lượng, Giá gốc, Giá bán)
@@ -2058,11 +2067,10 @@ export default function InventoryModule() {
         <button
           type="button"
           onClick={() => setSubTab("IMPORTS")}
-          className={`px-4 py-2.5 rounded-lg text-xs font-extrabold flex items-center gap-2 transition ${
-            subTab === "IMPORTS"
-              ? "bg-slate-900 text-white shadow"
-              : "text-slate-600 hover:bg-slate-100"
-          }`}
+          className={`px-4 py-2.5 rounded-lg text-xs font-extrabold flex items-center gap-2 transition ${subTab === "IMPORTS"
+            ? "bg-slate-900 text-white shadow"
+            : "text-slate-600 hover:bg-slate-100"
+            }`}
         >
           <ClipboardList className="w-4 h-4 text-emerald-400" />
           4. Danh sách Phiếu nhập kho
@@ -2071,11 +2079,10 @@ export default function InventoryModule() {
         <button
           type="button"
           onClick={() => setSubTab("ADJUSTMENT")}
-          className={`px-4 py-2.5 rounded-lg text-xs font-extrabold flex items-center gap-2 transition ${
-            subTab === "ADJUSTMENT"
-              ? "bg-slate-900 text-white shadow"
-              : "text-slate-600 hover:bg-slate-100"
-          }`}
+          className={`px-4 py-2.5 rounded-lg text-xs font-extrabold flex items-center gap-2 transition ${subTab === "ADJUSTMENT"
+            ? "bg-slate-900 text-white shadow"
+            : "text-slate-600 hover:bg-slate-100"
+            }`}
         >
           <Sliders className="w-4 h-4 text-emerald-400" />
           5. Lập Phiếu Điều chỉnh Kho
@@ -2084,11 +2091,10 @@ export default function InventoryModule() {
         <button
           type="button"
           onClick={() => setSubTab("TRANSFER")}
-          className={`px-4 py-2.5 rounded-lg text-xs font-extrabold flex items-center gap-2 transition ${
-            subTab === "TRANSFER"
-              ? "bg-indigo-700 text-white shadow"
-              : "text-indigo-700 bg-indigo-50 hover:bg-indigo-100"
-          }`}
+          className={`px-4 py-2.5 rounded-lg text-xs font-extrabold flex items-center gap-2 transition ${subTab === "TRANSFER"
+            ? "bg-indigo-700 text-white shadow"
+            : "text-indigo-700 bg-indigo-50 hover:bg-indigo-100"
+            }`}
         >
           <ArrowLeftRight className="w-4 h-4" />
           6. Xuất Kho Chuyển Tầng (Kho 1 ↔ Kho 2)
@@ -2097,11 +2103,10 @@ export default function InventoryModule() {
 
       {statusMsg && (
         <div
-          className={`p-3.5 rounded-xl border text-xs font-bold flex items-center gap-2 ${
-            statusMsg.type === "success"
-              ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-              : "bg-red-50 border-red-200 text-red-700"
-          }`}
+          className={`p-3.5 rounded-xl border text-xs font-bold flex items-center gap-2 ${statusMsg.type === "success"
+            ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+            : "bg-red-50 border-red-200 text-red-700"
+            }`}
         >
           {statusMsg.type === "success" ? (
             <CheckCircle2 className="w-4 h-4 shrink-0" />
@@ -2160,9 +2165,8 @@ export default function InventoryModule() {
                 Lãi gộp dự kiến ({activeWarehouseLabel})
               </div>
               <div
-                className={`text-2xl font-extrabold font-mono mt-1 ${
-                  totalExpectedMargin >= 0 ? "text-emerald-400" : "text-red-400"
-                }`}
+                className={`text-2xl font-extrabold font-mono mt-1 ${totalExpectedMargin >= 0 ? "text-emerald-400" : "text-red-400"
+                  }`}
               >
                 {formatVND(totalExpectedMargin)}
               </div>
@@ -2200,33 +2204,30 @@ export default function InventoryModule() {
                     <button
                       type="button"
                       onClick={() => setRecentImportRoleFilter("ALL")}
-                      className={`px-2.5 py-1 rounded-md transition ${
-                        recentImportRoleFilter === "ALL"
-                          ? "bg-slate-900 text-white"
-                          : "text-slate-600 hover:bg-slate-100"
-                      }`}
+                      className={`px-2.5 py-1 rounded-md transition ${recentImportRoleFilter === "ALL"
+                        ? "bg-slate-900 text-white"
+                        : "text-slate-600 hover:bg-slate-100"
+                        }`}
                     >
                       Tất cả vai trò
                     </button>
                     <button
                       type="button"
                       onClick={() => setRecentImportRoleFilter("ADMIN")}
-                      className={`px-2.5 py-1 rounded-md transition ${
-                        recentImportRoleFilter === "ADMIN"
-                          ? "bg-purple-700 text-white"
-                          : "text-purple-700 hover:bg-purple-50"
-                      }`}
+                      className={`px-2.5 py-1 rounded-md transition ${recentImportRoleFilter === "ADMIN"
+                        ? "bg-purple-700 text-white"
+                        : "text-purple-700 hover:bg-purple-50"
+                        }`}
                     >
                       Admin
                     </button>
                     <button
                       type="button"
                       onClick={() => setRecentImportRoleFilter("WAREHOUSE")}
-                      className={`px-2.5 py-1 rounded-md transition ${
-                        recentImportRoleFilter === "WAREHOUSE"
-                          ? "bg-teal-700 text-white"
-                          : "text-teal-700 hover:bg-teal-50"
-                      }`}
+                      className={`px-2.5 py-1 rounded-md transition ${recentImportRoleFilter === "WAREHOUSE"
+                        ? "bg-teal-700 text-white"
+                        : "text-teal-700 hover:bg-teal-50"
+                        }`}
                     >
                       Warehouse
                     </button>
@@ -2286,7 +2287,7 @@ export default function InventoryModule() {
                             (s, it) =>
                               s +
                               (Number(it.costPrice) || 0) *
-                                (Number(it.actualQuantity ?? it.expectedQuantity) || 0),
+                              (Number(it.actualQuantity ?? it.expectedQuantity) || 0),
                             0
                           );
                           combinedEntries.push({
@@ -2396,11 +2397,10 @@ export default function InventoryModule() {
                             </td>
                             <td className="py-2.5 px-3 whitespace-nowrap">
                               <span
-                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                  entry.targetWarehouse === "FLOOR_2"
-                                    ? "bg-blue-100 text-blue-800"
-                                    : "bg-emerald-100 text-emerald-800"
-                                }`}
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${entry.targetWarehouse === "FLOOR_2"
+                                  ? "bg-blue-100 text-blue-800"
+                                  : "bg-emerald-100 text-emerald-800"
+                                  }`}
                               >
                                 {entry.targetWarehouse === "FLOOR_2"
                                   ? "🏬 Kho Tầng 2"
@@ -2469,8 +2469,8 @@ export default function InventoryModule() {
                   {activeWarehouse === "FLOOR_1"
                     ? "Đang xem và chỉnh sửa trực tiếp tồn kho tại Kho Tầng 1. Bấm sang tab 'Kho Tầng 2' ở trên để quản lý riêng Kho Tầng 2."
                     : activeWarehouse === "FLOOR_2"
-                    ? "Đang xem và chỉnh sửa trực tiếp tồn kho tại Kho Tầng 2. Có thể bật 'Hiện toàn bộ SP' nếu muốn nhập số lượng Tầng 2 cho các mã hàng khác."
-                    : "Đang xem gộp cả 2 kho: có thể chỉnh sửa riêng cột Tồn Kho Tầng 1 và Tồn Kho Tầng 2 trên cùng một dòng."}
+                      ? "Đang xem và chỉnh sửa trực tiếp tồn kho tại Kho Tầng 2. Có thể bật 'Hiện toàn bộ SP' nếu muốn nhập số lượng Tầng 2 cho các mã hàng khác."
+                      : "Đang xem gộp cả 2 kho: có thể chỉnh sửa riêng cột Tồn Kho Tầng 1 và Tồn Kho Tầng 2 trên cùng một dòng."}
                 </p>
               </div>
 
@@ -2500,11 +2500,10 @@ export default function InventoryModule() {
                   type="button"
                   onClick={handleSaveAllProductChanges}
                   disabled={changedProducts.length === 0 || savingBatch}
-                  className={`px-4 py-2 rounded-lg text-xs font-extrabold inline-flex items-center gap-1.5 transition ${
-                    changedProducts.length > 0 && !savingBatch
-                      ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-md ring-2 ring-emerald-200 cursor-pointer"
-                      : "bg-slate-200 text-slate-400 cursor-not-allowed"
-                  }`}
+                  className={`px-4 py-2 rounded-lg text-xs font-extrabold inline-flex items-center gap-1.5 transition ${changedProducts.length > 0 && !savingBatch
+                    ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-md ring-2 ring-emerald-200 cursor-pointer"
+                    : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                    }`}
                   title={
                     changedProducts.length > 0
                       ? `Lưu toàn bộ ${changedProducts.length} sản phẩm đã thay đổi`
@@ -2515,8 +2514,8 @@ export default function InventoryModule() {
                   {savingBatch
                     ? "Đang lưu..."
                     : changedProducts.length > 0
-                    ? `Lưu thay đổi (${changedProducts.length} SP)`
-                    : "Lưu thay đổi"}
+                      ? `Lưu thay đổi (${changedProducts.length} SP)`
+                      : "Lưu thay đổi"}
                 </button>
                 {activeWarehouse !== "ALL" && (
                   <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 bg-slate-100 px-3 py-2 rounded-lg cursor-pointer">
@@ -2583,11 +2582,10 @@ export default function InventoryModule() {
                       <button
                         type="button"
                         onClick={() => setScannerEnabled((v) => !v)}
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold transition ${
-                          scannerEnabled
-                            ? "bg-emerald-600 text-white"
-                            : "bg-slate-200 text-slate-600"
-                        }`}
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold transition ${scannerEnabled
+                          ? "bg-emerald-600 text-white"
+                          : "bg-slate-200 text-slate-600"
+                          }`}
                       >
                         {scannerEnabled ? "● ĐANG BẬT MÁY QUÉT (TỰ ĐỘNG)" : "○ ĐÃ TẮT MÁY QUÉT"}
                       </button>
@@ -2612,7 +2610,7 @@ export default function InventoryModule() {
                       type="text"
                       data-barcode-input="true"
                       value={scannerInput}
-                      onChange={(e) => setScannerInput(e.target.value.toUpperCase())}
+                      onChange={(e) => setScannerInput(e.target.value)}
                       placeholder="Quét hoặc gõ mã SP + Enter..."
                       className="w-48 sm:w-56 px-3 py-1.5 rounded-lg border-2 border-emerald-400 bg-white text-xs font-mono font-extrabold text-slate-900 uppercase focus:border-emerald-600 focus:outline-none"
                     />
@@ -2629,11 +2627,10 @@ export default function InventoryModule() {
                       <button
                         type="button"
                         onClick={() => setOnlyShowScanned((v) => !v)}
-                        className={`px-2.5 py-1.5 rounded-lg border text-xs font-extrabold transition ${
-                          onlyShowScanned
-                            ? "bg-emerald-700 text-white border-emerald-700"
-                            : "bg-white text-emerald-800 border-emerald-300 hover:bg-emerald-50"
-                        }`}
+                        className={`px-2.5 py-1.5 rounded-lg border text-xs font-extrabold transition ${onlyShowScanned
+                          ? "bg-emerald-700 text-white border-emerald-700"
+                          : "bg-white text-emerald-800 border-emerald-300 hover:bg-emerald-50"
+                          }`}
                       >
                         {onlyShowScanned
                           ? `Đang lọc mã đã quét (${Object.keys(scannedCheckCounts).length})`
@@ -2677,13 +2674,12 @@ export default function InventoryModule() {
 
               {lastScanFeedback && (
                 <div
-                  className={`mt-2.5 px-3 py-2 rounded-lg text-xs font-bold flex items-center justify-between gap-2 border ${
-                    lastScanFeedback.type === "success"
-                      ? "bg-emerald-100/90 border-emerald-300 text-emerald-950"
-                      : lastScanFeedback.type === "warning"
-                        ? "bg-amber-100/90 border-amber-300 text-amber-950"
-                        : "bg-red-100/90 border-red-300 text-red-900"
-                  }`}
+                  className={`mt-2.5 px-3 py-2 rounded-lg text-xs font-bold flex items-center justify-between gap-2 border ${lastScanFeedback.type === "success"
+                    ? "bg-emerald-100/90 border-emerald-300 text-emerald-950"
+                    : lastScanFeedback.type === "warning"
+                      ? "bg-amber-100/90 border-amber-300 text-amber-950"
+                      : "bg-red-100/90 border-red-300 text-red-900"
+                    }`}
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     {lastScanFeedback.type === "error" ? (
@@ -2750,8 +2746,8 @@ export default function InventoryModule() {
                       activeWarehouse === "FLOOR_1"
                         ? f1Val
                         : activeWarehouse === "FLOOR_2"
-                        ? f2Val
-                        : f1Val + f2Val;
+                          ? f2Val
+                          : f1Val + f2Val;
                     const costVal = Number(editingCosts[p._id] ?? p.costPrice ?? 0);
                     const sellVal = Number(editingPrices[p._id] ?? p.sellingPrice ?? 0);
                     const margin = sellVal - costVal;
@@ -2767,612 +2763,601 @@ export default function InventoryModule() {
                     const scannedQty = scannedCheckCounts[p._id] || 0;
                     return (
                       <React.Fragment key={p._id}>
-                      <tr
-                        className={`hover:bg-slate-50 transition-colors ${
-                          lastScannedProdId === p._id
+                        <tr
+                          className={`hover:bg-slate-50 transition-colors ${lastScannedProdId === p._id
                             ? "bg-emerald-100/80 ring-2 ring-inset ring-emerald-500"
                             : scannedQty > 0
                               ? "bg-emerald-50/40"
                               : ""
-                        }`}
-                      >
-                        <td className="py-3 px-2 text-center font-mono font-bold text-slate-400 align-top">
-                          {rowStt}
-                        </td>
-                        <td className="py-3 px-2.5 font-mono font-bold text-slate-800 align-top break-all max-w-[180px] text-[11px] leading-snug">
-                          <div>{p.code}</div>
-                          {scannedQty > 0 && (
-                            <span
-                              className={`mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-extrabold font-mono border ${
-                                scannedQty === activeQty
+                            }`}
+                        >
+                          <td className="py-3 px-2 text-center font-mono font-bold text-slate-400 align-top">
+                            {rowStt}
+                          </td>
+                          <td className="py-3 px-2.5 font-mono font-bold text-slate-800 align-top break-all max-w-[180px] text-[11px] leading-snug">
+                            <div>{p.code}</div>
+                            {scannedQty > 0 && (
+                              <span
+                                className={`mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-extrabold font-mono border ${scannedQty === activeQty
                                   ? "bg-emerald-600 text-white border-emerald-700"
                                   : scannedQty > activeQty
                                     ? "bg-amber-500 text-white border-amber-600"
                                     : "bg-teal-100 text-teal-900 border-teal-300"
-                              }`}
-                            >
-                              Đã quét: {scannedQty}/{activeQty}
-                            </span>
-                          )}
-                          <div>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenPrintLabelForProduct(p)}
-                              className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-sans font-bold text-[10px]"
-                              title="In tem nhãn mã vạch theo từng Mã con (Màu + Size)"
-                            >
-                              <Printer className="w-3 h-3" /> In tem mã con
-                            </button>
-                          </div>
-                        </td>
-                        <td className="py-3 px-2.5 align-top space-y-1.5">
-                          <textarea
-                            rows={Math.max(2, Math.ceil((nameVal.length || 0) / 42))}
-                            value={nameVal}
-                            onChange={(e) =>
-                              setEditingNames((prev) => ({
-                                ...prev,
-                                [p._id]: e.target.value,
-                              }))
-                            }
-                            className="w-full px-2.5 py-1.5 rounded border border-slate-300 font-semibold text-slate-900 whitespace-pre-wrap break-words leading-snug resize-y"
-                          />
-                          <div className="flex flex-wrap items-center gap-1">
-                            {namedVars.map((v, vIdx) => {
-                              const childCode =
-                                v.variantCode ||
-                                generateVariantProductCode(p.code, v.color, v.size);
-                              const vScanned = scannedVariantCounts[p._id]?.[childCode] || 0;
-                              return (
-                                <span
-                                  key={`${v.color}-${v.size}-${vIdx}`}
-                                  title={`Mã con in tem: ${childCode}`}
-                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-bold ${
-                                    lastScannedVariantCode === childCode
+                                  }`}
+                              >
+                                Đã quét: {scannedQty}/{activeQty}
+                              </span>
+                            )}
+                            <div>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenPrintLabelForProduct(p)}
+                                className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-sans font-bold text-[10px]"
+                                title="In tem nhãn mã vạch theo từng Mã con (Màu + Size)"
+                              >
+                                <Printer className="w-5 h-3" />IN MÃ
+                              </button>
+                            </div>
+                          </td>
+                          <td className="py-3 px-2.5 align-top space-y-1.5">
+                            <textarea
+                              rows={Math.max(2, Math.ceil((nameVal.length || 0) / 42))}
+                              value={nameVal}
+                              onChange={(e) =>
+                                setEditingNames((prev) => ({
+                                  ...prev,
+                                  [p._id]: e.target.value,
+                                }))
+                              }
+                              className="w-full px-2.5 py-1.5 rounded border border-slate-300 font-semibold text-slate-900 whitespace-pre-wrap break-words leading-snug resize-y"
+                            />
+                            <div className="flex flex-wrap items-center gap-1">
+                              {namedVars.map((v, vIdx) => {
+                                const childCode =
+                                  v.variantCode ||
+                                  generateVariantProductCode(p.code, v.color, v.size);
+                                const vScanned = scannedVariantCounts[p._id]?.[childCode] || 0;
+                                return (
+                                  <span
+                                    key={`${v.color}-${v.size}-${vIdx}`}
+                                    title={`Mã con in tem: ${childCode}`}
+                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-bold ${lastScannedVariantCode === childCode
                                       ? "bg-emerald-600 text-white border-emerald-700 ring-2 ring-emerald-300"
                                       : "bg-indigo-50 text-indigo-800 border-indigo-200"
-                                  }`}
-                                >
-                                  <span className="font-mono text-[9px] opacity-85">[{childCode}]</span>
-                                  <span>
-                                    {v.color || "Mặc định"}
-                                    {v.size ? ` • ${v.size}` : ""}
-                                  </span>
-                                  <span
-                                    className={`font-mono font-extrabold ${
-                                      lastScannedVariantCode === childCode
+                                      }`}
+                                  >
+                                    <span className="font-mono text-[9px] opacity-85">[{childCode}]</span>
+                                    <span>
+                                      {v.color || "Mặc định"}
+                                      {v.size ? ` • ${v.size}` : ""}
+                                    </span>
+                                    <span
+                                      className={`font-mono font-extrabold ${lastScannedVariantCode === childCode
                                         ? "text-white"
                                         : "text-emerald-700"
-                                    }`}
-                                  >
-                                    :{activeWarehouse === "FLOOR_2" ? v.stockFloor2 : activeWarehouse === "FLOOR_1" ? v.stockFloor1 : (v.stockFloor1 || 0) + (v.stockFloor2 || 0)}
-                                  </span>
-                                  {vScanned > 0 && (
-                                    <span className="ml-0.5 px-1 rounded bg-teal-700 text-white font-mono text-[9px]">
-                                      Quét:{vScanned}
+                                        }`}
+                                    >
+                                      :{activeWarehouse === "FLOOR_2" ? v.stockFloor2 : activeWarehouse === "FLOOR_1" ? v.stockFloor1 : (v.stockFloor1 || 0) + (v.stockFloor2 || 0)}
                                     </span>
-                                  )}
-                                </span>
-                              );
-                            })}
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setExpandedVariantProdId(isVarExpanded ? null : p._id)
-                              }
-                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-extrabold transition ${
-                                isVarExpanded
+                                    {vScanned > 0 && (
+                                      <span className="ml-0.5 px-1 rounded bg-teal-700 text-white font-mono text-[9px]">
+                                        Quét:{vScanned}
+                                      </span>
+                                    )}
+                                  </span>
+                                );
+                              })}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpandedVariantProdId(isVarExpanded ? null : p._id)
+                                }
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-extrabold transition ${isVarExpanded
                                   ? "bg-indigo-600 text-white border-indigo-700"
                                   : "bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border-slate-300"
-                              }`}
-                            >
-                              <span>
-                                🎨 Size/Màu ({namedVars.length}) · +Thêm
-                              </span>
-                              {isVarExpanded ? (
-                                <ChevronUp className="w-3 h-3" />
-                              ) : (
-                                <ChevronDown className="w-3 h-3" />
-                              )}
-                            </button>
-                          </div>
-                        </td>
-                        <td className="py-3 px-2.5 align-top">
-                          <select
-                            value={catVal}
-                            onChange={(e) =>
-                              setEditingCats((prev) => ({
-                                ...prev,
-                                [p._id]: e.target.value,
-                              }))
-                            }
-                            className="w-full px-2 py-1.5 rounded border border-slate-300 bg-white text-slate-700"
-                          >
-                            {categories.map((c) => (
-                              <option key={c._id} value={c._id}>
-                                {c.name}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="py-3 px-2 text-center align-top">
-                          <input
-                            type="text"
-                            value={unitVal}
-                            onChange={(e) =>
-                              setEditingUnits((prev) => ({
-                                ...prev,
-                                [p._id]: e.target.value,
-                              }))
-                            }
-                            className="w-14 px-1.5 py-1.5 rounded border border-slate-300 text-center"
-                          />
-                        </td>
-
-                        {(activeWarehouse === "FLOOR_1" || activeWarehouse === "ALL") && (
-                          <td className="py-3 px-2.5 text-right align-top bg-emerald-50/30">
-                            <input
-                              type="number"
-                              min={0}
-                              step={1}
-                              value={f1Val}
+                                  }`}
+                              >
+                                <span>
+                                  🎨 Size/Màu ({namedVars.length}) · +Thêm
+                                </span>
+                                {isVarExpanded ? (
+                                  <ChevronUp className="w-3 h-3" />
+                                ) : (
+                                  <ChevronDown className="w-3 h-3" />
+                                )}
+                              </button>
+                            </div>
+                          </td>
+                          <td className="py-3 px-2.5 align-top">
+                            <select
+                              value={catVal}
                               onChange={(e) =>
-                                setEditingFloor1((prev) => ({
+                                setEditingCats((prev) => ({
                                   ...prev,
-                                  [p._id]: Math.max(0, Math.round(Number(e.target.value) || 0)),
+                                  [p._id]: e.target.value,
                                 }))
                               }
-                              className={`w-24 px-2 py-1.5 rounded border text-right font-mono font-extrabold ${
-                                f1Val !== origF1
+                              className="w-full px-2 py-1.5 rounded border border-slate-300 bg-white text-slate-700"
+                            >
+                              {categories.map((c) => (
+                                <option key={c._id} value={c._id}>
+                                  {c.name}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="py-3 px-2 text-center align-top">
+                            <input
+                              type="text"
+                              value={unitVal}
+                              onChange={(e) =>
+                                setEditingUnits((prev) => ({
+                                  ...prev,
+                                  [p._id]: e.target.value,
+                                }))
+                              }
+                              className="w-14 px-1.5 py-1.5 rounded border border-slate-300 text-center"
+                            />
+                          </td>
+
+                          {(activeWarehouse === "FLOOR_1" || activeWarehouse === "ALL") && (
+                            <td className="py-3 px-2.5 text-right align-top bg-emerald-50/30">
+                              <input
+                                type="number"
+                                min={0}
+                                step={1}
+                                value={f1Val}
+                                onChange={(e) =>
+                                  setEditingFloor1((prev) => ({
+                                    ...prev,
+                                    [p._id]: Math.max(0, Math.round(Number(e.target.value) || 0)),
+                                  }))
+                                }
+                                className={`w-24 px-2 py-1.5 rounded border text-right font-mono font-extrabold ${f1Val !== origF1
                                   ? "border-emerald-500 bg-emerald-50 text-emerald-900"
                                   : "border-slate-300 bg-white text-emerald-700"
-                              }`}
-                            />
-                            {activeWarehouse === "FLOOR_1" && origF2 > 0 && (
-                              <div className="mt-1 text-[10px] text-purple-700 font-mono">
-                                (Kho Tầng 2 đang có: <b>{origF2}</b>)
-                              </div>
-                            )}
-                            {f1Val !== origF1 && (
-                              <div className="mt-0.5 text-[10px] font-mono font-bold text-emerald-700">
-                                Hiện tại: {origF1} ({f1Val > origF1 ? `+${f1Val - origF1}` : f1Val - origF1})
-                              </div>
-                            )}
-                          </td>
-                        )}
+                                  }`}
+                              />
+                              {activeWarehouse === "FLOOR_1" && origF2 > 0 && (
+                                <div className="mt-1 text-[10px] text-purple-700 font-mono">
+                                  (Kho Tầng 2 đang có: <b>{origF2}</b>)
+                                </div>
+                              )}
+                              {f1Val !== origF1 && (
+                                <div className="mt-0.5 text-[10px] font-mono font-bold text-emerald-700">
+                                  Hiện tại: {origF1} ({f1Val > origF1 ? `+${f1Val - origF1}` : f1Val - origF1})
+                                </div>
+                              )}
+                            </td>
+                          )}
 
-                        {(activeWarehouse === "FLOOR_2" || activeWarehouse === "ALL") && (
-                          <td className="py-3 px-2.5 text-right align-top bg-purple-50/30">
-                            <input
-                              type="number"
-                              min={0}
-                              step={1}
-                              value={f2Val}
-                              onChange={(e) =>
-                                setEditingFloor2((prev) => ({
-                                  ...prev,
-                                  [p._id]: Math.max(0, Math.round(Number(e.target.value) || 0)),
-                                }))
-                              }
-                              className={`w-24 px-2 py-1.5 rounded border text-right font-mono font-extrabold ${
-                                f2Val !== origF2
+                          {(activeWarehouse === "FLOOR_2" || activeWarehouse === "ALL") && (
+                            <td className="py-3 px-2.5 text-right align-top bg-purple-50/30">
+                              <input
+                                type="number"
+                                min={0}
+                                step={1}
+                                value={f2Val}
+                                onChange={(e) =>
+                                  setEditingFloor2((prev) => ({
+                                    ...prev,
+                                    [p._id]: Math.max(0, Math.round(Number(e.target.value) || 0)),
+                                  }))
+                                }
+                                className={`w-24 px-2 py-1.5 rounded border text-right font-mono font-extrabold ${f2Val !== origF2
                                   ? "border-purple-500 bg-purple-50 text-purple-900"
                                   : "border-slate-300 bg-white text-purple-700"
-                              }`}
-                            />
-                            {activeWarehouse === "FLOOR_2" && origF1 > 0 && (
-                              <div className="mt-1 text-[10px] text-emerald-700 font-mono">
-                                (Kho Tầng 1 đang có: <b>{origF1}</b>)
-                              </div>
-                            )}
-                            {f2Val !== origF2 && (
-                              <div className="mt-0.5 text-[10px] font-mono font-bold text-purple-700">
-                                Hiện tại: {origF2} ({f2Val > origF2 ? `+${f2Val - origF2}` : f2Val - origF2})
-                              </div>
-                            )}
-                          </td>
-                        )}
+                                  }`}
+                              />
+                              {activeWarehouse === "FLOOR_2" && origF1 > 0 && (
+                                <div className="mt-1 text-[10px] text-emerald-700 font-mono">
+                                  (Kho Tầng 1 đang có: <b>{origF1}</b>)
+                                </div>
+                              )}
+                              {f2Val !== origF2 && (
+                                <div className="mt-0.5 text-[10px] font-mono font-bold text-purple-700">
+                                  Hiện tại: {origF2} ({f2Val > origF2 ? `+${f2Val - origF2}` : f2Val - origF2})
+                                </div>
+                              )}
+                            </td>
+                          )}
 
-                        {activeWarehouse === "ALL" && (
-                          <td className="py-3 px-2.5 text-right align-top font-mono font-extrabold text-slate-900 bg-slate-50">
-                            <div className="py-1.5">{f1Val + f2Val}</div>
-                          </td>
-                        )}
+                          {activeWarehouse === "ALL" && (
+                            <td className="py-3 px-2.5 text-right align-top font-mono font-extrabold text-slate-900 bg-slate-50">
+                              <div className="py-1.5">{f1Val + f2Val}</div>
+                            </td>
+                          )}
 
-                        <td className="py-3 px-2.5 text-right align-top">
-                          <div className="relative inline-block w-32">
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              value={costVal > 0 ? formatNumberDots(costVal) : ""}
-                              placeholder="0"
-                              onChange={(e) =>
-                                setEditingCosts((prev) => ({
-                                  ...prev,
-                                  [p._id]: parseNumberDots(e.target.value),
-                                }))
-                              }
-                              className={`w-full pl-2 pr-9 py-1.5 rounded border text-right font-mono font-bold ${
-                                costVal === 0
+                          <td className="py-3 px-2.5 text-right align-top">
+                            <div className="relative inline-block w-32">
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                value={costVal > 0 ? formatNumberDots(costVal) : ""}
+                                placeholder="0"
+                                onChange={(e) =>
+                                  setEditingCosts((prev) => ({
+                                    ...prev,
+                                    [p._id]: parseNumberDots(e.target.value),
+                                  }))
+                                }
+                                className={`w-full pl-2 pr-9 py-1.5 rounded border text-right font-mono font-bold ${costVal === 0
                                   ? "border-orange-300 bg-orange-50 text-orange-900"
                                   : "border-slate-300 bg-white text-slate-800"
-                              }`}
-                            />
-                            <span className="absolute right-2 top-2 text-[10px] font-mono font-bold text-slate-400 pointer-events-none">
-                              VND
-                            </span>
-                          </div>
-                          <div className="mt-1 text-[10px] text-slate-500 font-mono whitespace-nowrap">
-                            Tổng vốn: {formatVND(activeQty * costVal)}
-                          </div>
-                        </td>
-                        <td className="py-3 px-2.5 text-right align-top">
-                          <div className="relative inline-block w-32">
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              value={sellVal > 0 ? formatNumberDots(sellVal) : ""}
-                              placeholder="0"
-                              onChange={(e) =>
-                                setEditingPrices((prev) => ({
-                                  ...prev,
-                                  [p._id]: parseNumberDots(e.target.value),
-                                }))
-                              }
-                              className={`w-full pl-2 pr-9 py-1.5 rounded border text-right font-mono font-bold ${
-                                sellVal === 0
+                                  }`}
+                              />
+                              <span className="absolute right-2 top-2 text-[10px] font-mono font-bold text-slate-400 pointer-events-none">
+                                VND
+                              </span>
+                            </div>
+                            <div className="mt-1 text-[10px] text-slate-500 font-mono whitespace-nowrap">
+                              Tổng vốn: {formatVND(activeQty * costVal)}
+                            </div>
+                          </td>
+                          <td className="py-3 px-2.5 text-right align-top">
+                            <div className="relative inline-block w-32">
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                value={sellVal > 0 ? formatNumberDots(sellVal) : ""}
+                                placeholder="0"
+                                onChange={(e) =>
+                                  setEditingPrices((prev) => ({
+                                    ...prev,
+                                    [p._id]: parseNumberDots(e.target.value),
+                                  }))
+                                }
+                                className={`w-full pl-2 pr-9 py-1.5 rounded border text-right font-mono font-bold ${sellVal === 0
                                   ? "border-amber-400 bg-amber-50 text-amber-900"
                                   : "border-slate-300 bg-white text-slate-900"
-                              }`}
-                            />
-                            <span className="absolute right-2 top-2 text-[10px] font-mono font-bold text-slate-400 pointer-events-none">
-                              VND
-                            </span>
-                          </div>
-                          <div className="mt-1 text-[10px] text-slate-500 font-mono whitespace-nowrap">
-                            Tổng bán: {formatVND(activeQty * sellVal)}
-                          </div>
-                          {sellVal > 0 && costVal > 0 && (
-                            <div
-                              className={`mt-0.5 text-[10px] font-bold whitespace-nowrap ${
-                                margin < 0 ? "text-red-600" : "text-emerald-700"
-                              }`}
-                            >
-                              {margin < 0 ? "Lỗ" : "Lãi"}: {formatVND(Math.abs(margin))}/SP (
-                              {Math.round((margin / costVal) * 100)}%)
-                            </div>
-                          )}
-                        </td>
-                        <td className="py-3 px-2.5 text-right align-top whitespace-nowrap">
-                          <div className="inline-flex items-center gap-1">
-                            {isProductChanged(p) && (
-                              <span className="px-2 py-1 rounded-md bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-extrabold">
-                                Đã sửa
+                                  }`}
+                              />
+                              <span className="absolute right-2 top-2 text-[10px] font-mono font-bold text-slate-400 pointer-events-none">
+                                VND
                               </span>
+                            </div>
+                            <div className="mt-1 text-[10px] text-slate-500 font-mono whitespace-nowrap">
+                              Tổng bán: {formatVND(activeQty * sellVal)}
+                            </div>
+                            {sellVal > 0 && costVal > 0 && (
+                              <div
+                                className={`mt-0.5 text-[10px] font-bold whitespace-nowrap ${margin < 0 ? "text-red-600" : "text-emerald-700"
+                                  }`}
+                              >
+                                {margin < 0 ? "Lỗ" : "Lãi"}: {formatVND(Math.abs(margin))}/SP (
+                                {Math.round((margin / costVal) * 100)}%)
+                              </div>
                             )}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setTransferProductId(p._id);
-                                if (activeWarehouse === "FLOOR_2") {
-                                  setTransferDirection("F2_TO_F1");
-                                } else if (activeWarehouse === "FLOOR_1") {
-                                  setTransferDirection("F1_TO_F2");
-                                }
-                                setSubTab("TRANSFER");
-                              }}
-                              className="p-1.5 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 inline-flex items-center justify-center"
-                              title="Dời sản phẩm giữa Kho Tầng 1 và Kho Tầng 2 (Lập phiếu xuất kho)"
-                            >
-                              <ArrowLeftRight className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteProduct(p)}
-                              className="p-1.5 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 text-red-600 inline-flex items-center justify-center"
-                              title="Xóa sản phẩm"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                      {isVarExpanded && (
-                        <tr className="bg-indigo-50/40">
-                          <td colSpan={11} className="p-3.5">
-                            <div className="bg-white rounded-xl border-2 border-indigo-200 p-3.5 space-y-3 shadow-xs">
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <div>
-                                  <div className="text-xs font-extrabold text-indigo-950">
-                                    🎨 Quản lý Chi tiết Màu sắc • Size • Mã con cho Mã gốc:{" "}
-                                    <span className="font-mono text-indigo-700">{p.code}</span>
-                                  </div>
-                                  <div className="text-[11px] text-slate-500">
-                                    Mỗi thuộc tính (Màu + Size) có <b>Mã con riêng</b> để in tem &amp; quét kiểm kho chính xác, dùng chung Giá gốc ({formatVND(costVal)}) và Giá bán ({formatVND(sellVal)}).
-                                  </div>
-                                </div>
-                                <button
-                                  type="button"
-                                  disabled={savingVariantsProdId === p._id}
-                                  onClick={() => handleSaveProductVariants(p)}
-                                  className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs inline-flex items-center gap-1.5 shadow-xs"
-                                >
-                                  <Save className="w-3.5 h-3.5" />
-                                  {savingVariantsProdId === p._id
-                                    ? "Đang lưu Size/Màu..."
-                                    : "Lưu bảng Size/Màu"}
-                                </button>
-                              </div>
-
-                              <div className="overflow-x-auto border border-slate-200 rounded-lg">
-                                <table className="w-full text-xs text-left">
-                                  <thead className="bg-slate-800 text-white uppercase text-[10px]">
-                                    <tr>
-                                      <th className="py-2 px-2.5 w-10 text-center">#</th>
-                                      <th className="py-2 px-2.5">Mã con (Barcode In Tem)</th>
-                                      <th className="py-2 px-2.5">Màu sắc</th>
-                                      <th className="py-2 px-2.5">Size</th>
-                                      <th className="py-2 px-2.5 text-right">🏢 Tồn Kho Tầng 1</th>
-                                      <th className="py-2 px-2.5 text-right">🏬 Tồn Kho Tầng 2</th>
-                                      <th className="py-2 px-2.5 text-right">Tổng SL</th>
-                                      <th className="py-2 px-2.5 text-center">In tem</th>
-                                      <th className="py-2 px-2.5 text-center w-16">Xóa</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-slate-200">
-                                    {prodVariants.length === 0 ? (
-                                      <tr>
-                                        <td colSpan={9} className="py-3 text-center text-slate-400">
-                                          Chưa có phân loại Size/Màu. Hãy thêm ở dòng bên dưới.
-                                        </td>
-                                      </tr>
-                                    ) : (
-                                      prodVariants.map((v, vIdx) => {
-                                        const childCode = generateVariantProductCode(
-                                          p.code,
-                                          v.color,
-                                          v.size
-                                        );
-                                        const vScanned =
-                                          scannedVariantCounts[p._id]?.[childCode] || 0;
-                                        return (
-                                        <tr
-                                          key={vIdx}
-                                          className={`hover:bg-slate-50 ${
-                                            lastScannedVariantCode === childCode
-                                              ? "bg-emerald-50"
-                                              : ""
-                                          }`}
-                                        >
-                                          <td className="py-1.5 px-2.5 text-center font-mono text-slate-400">
-                                            {vIdx + 1}
-                                          </td>
-                                          <td className="py-1.5 px-2.5">
-                                            <span className="font-mono font-extrabold text-indigo-800 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">
-                                              {childCode}
-                                            </span>
-                                            {vScanned > 0 && (
-                                              <span className="ml-1.5 px-1.5 py-0.5 rounded bg-emerald-600 text-white font-mono text-[10px] font-bold">
-                                                Quét: {vScanned}
-                                              </span>
-                                            )}
-                                          </td>
-                                          <td className="py-1.5 px-2.5">
-                                            <input
-                                              type="text"
-                                              list="cms-color-suggestions"
-                                              value={v.color}
-                                              onChange={(e) => {
-                                                const next = [...prodVariants];
-                                                next[vIdx] = { ...next[vIdx], color: e.target.value };
-                                                setEditingVariants((prev) => ({
-                                                  ...prev,
-                                                  [p._id]: next,
-                                                }));
-                                              }}
-                                              placeholder="VD: Đỏ, Trắng..."
-                                              className="w-36 px-2 py-1 rounded border border-slate-300 font-semibold"
-                                            />
-                                          </td>
-                                          <td className="py-1.5 px-2.5">
-                                            <input
-                                              type="text"
-                                              list="cms-size-suggestions"
-                                              value={v.size}
-                                              onChange={(e) => {
-                                                const next = [...prodVariants];
-                                                next[vIdx] = {
-                                                  ...next[vIdx],
-                                                  size: e.target.value.toUpperCase(),
-                                                };
-                                                setEditingVariants((prev) => ({
-                                                  ...prev,
-                                                  [p._id]: next,
-                                                }));
-                                              }}
-                                              placeholder="M, L, XL, 42..."
-                                              className="w-24 px-2 py-1 rounded border border-slate-300 font-mono font-bold uppercase text-center"
-                                            />
-                                          </td>
-                                          <td className="py-1.5 px-2.5 text-right">
-                                            <input
-                                              type="number"
-                                              min={0}
-                                              value={v.stockFloor1}
-                                              onChange={(e) => {
-                                                const nextF1 = Math.max(
-                                                  0,
-                                                  Math.round(Number(e.target.value) || 0)
-                                                );
-                                                const next = [...prodVariants];
-                                                next[vIdx] = {
-                                                  ...next[vIdx],
-                                                  stockFloor1: nextF1,
-                                                  stock: nextF1 + (Number(next[vIdx].stockFloor2) || 0),
-                                                };
-                                                setEditingVariants((prev) => ({
-                                                  ...prev,
-                                                  [p._id]: next,
-                                                }));
-                                              }}
-                                              className="w-24 px-2 py-1 rounded border border-emerald-300 font-mono font-bold text-right text-emerald-800"
-                                            />
-                                          </td>
-                                          <td className="py-1.5 px-2.5 text-right">
-                                            <input
-                                              type="number"
-                                              min={0}
-                                              value={v.stockFloor2}
-                                              onChange={(e) => {
-                                                const nextF2 = Math.max(
-                                                  0,
-                                                  Math.round(Number(e.target.value) || 0)
-                                                );
-                                                const next = [...prodVariants];
-                                                next[vIdx] = {
-                                                  ...next[vIdx],
-                                                  stockFloor2: nextF2,
-                                                  stock: (Number(next[vIdx].stockFloor1) || 0) + nextF2,
-                                                };
-                                                setEditingVariants((prev) => ({
-                                                  ...prev,
-                                                  [p._id]: next,
-                                                }));
-                                              }}
-                                              className="w-24 px-2 py-1 rounded border border-purple-300 font-mono font-bold text-right text-purple-800"
-                                            />
-                                          </td>
-                                          <td className="py-1.5 px-2.5 text-right font-mono font-extrabold text-slate-900">
-                                            {(Number(v.stockFloor1) || 0) + (Number(v.stockFloor2) || 0)}
-                                          </td>
-                                          <td className="py-1.5 px-2.5 text-center">
-                                            <button
-                                              type="button"
-                                              onClick={() => handleOpenPrintLabelForProduct(p, v)}
-                                              className="inline-flex items-center gap-1 px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-bold"
-                                              title={`In tem mã con ${childCode}`}
-                                            >
-                                              <Printer className="w-3 h-3" /> In tem
-                                            </button>
-                                          </td>
-                                          <td className="py-1.5 px-2.5 text-center">
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                const next = prodVariants.filter((_, i) => i !== vIdx);
-                                                setEditingVariants((prev) => ({
-                                                  ...prev,
-                                                  [p._id]: next,
-                                                }));
-                                              }}
-                                              className="p-1 text-red-500 hover:bg-red-50 rounded"
-                                              title="Xóa phân loại này"
-                                            >
-                                              <Trash2 className="w-3.5 h-3.5" />
-                                            </button>
-                                          </td>
-                                        </tr>
-                                        );
-                                      })
-                                    )}
-                                  </tbody>
-                                </table>
-                              </div>
-
-                              {/* Dòng thêm nhanh Size / Màu mới */}
-                              <div className="flex flex-wrap items-end gap-2 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
-                                <div>
-                                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
-                                    + Màu sắc mới
-                                  </label>
-                                  <input
-                                    type="text"
-                                    list="cms-color-suggestions"
-                                    value={newVarDraft.color}
-                                    onChange={(e) =>
-                                      setNewVariantInputs((prev) => ({
-                                        ...prev,
-                                        [p._id]: { ...newVarDraft, color: e.target.value },
-                                      }))
-                                    }
-                                    placeholder="VD: Xanh, Đen..."
-                                    className="w-36 px-2.5 py-1.5 rounded border border-slate-300 text-xs bg-white"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
-                                    Size mới
-                                  </label>
-                                  <input
-                                    type="text"
-                                    list="cms-size-suggestions"
-                                    value={newVarDraft.size}
-                                    onChange={(e) =>
-                                      setNewVariantInputs((prev) => ({
-                                        ...prev,
-                                        [p._id]: {
-                                          ...newVarDraft,
-                                          size: e.target.value.toUpperCase(),
-                                        },
-                                      }))
-                                    }
-                                    placeholder="M, L, XL, 42..."
-                                    className="w-24 px-2.5 py-1.5 rounded border border-slate-300 text-xs font-mono font-bold uppercase text-center bg-white"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-[10px] font-bold text-emerald-700 mb-0.5">
-                                    SL Kho Tầng 1
-                                  </label>
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    value={newVarDraft.stockFloor1}
-                                    onChange={(e) =>
-                                      setNewVariantInputs((prev) => ({
-                                        ...prev,
-                                        [p._id]: {
-                                          ...newVarDraft,
-                                          stockFloor1: Math.max(0, Number(e.target.value) || 0),
-                                        },
-                                      }))
-                                    }
-                                    className="w-24 px-2.5 py-1.5 rounded border border-emerald-300 text-xs font-mono font-bold text-right bg-white"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-[10px] font-bold text-purple-700 mb-0.5">
-                                    SL Kho Tầng 2
-                                  </label>
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    value={newVarDraft.stockFloor2}
-                                    onChange={(e) =>
-                                      setNewVariantInputs((prev) => ({
-                                        ...prev,
-                                        [p._id]: {
-                                          ...newVarDraft,
-                                          stockFloor2: Math.max(0, Number(e.target.value) || 0),
-                                        },
-                                      }))
-                                    }
-                                    className="w-24 px-2.5 py-1.5 rounded border border-purple-300 text-xs font-mono font-bold text-right bg-white"
-                                  />
-                                </div>
-                                <button
-                                  type="button"
-                                  disabled={savingVariantsProdId === p._id}
-                                  onClick={() => handleAddVariantToProduct(p)}
-                                  className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold inline-flex items-center gap-1"
-                                >
-                                  <Plus className="w-3.5 h-3.5" /> Thêm Size/Màu &amp; Lưu
-                                </button>
-                              </div>
+                          </td>
+                          <td className="py-3 px-2.5 text-right align-top whitespace-nowrap">
+                            <div className="inline-flex items-center gap-1">
+                              {isProductChanged(p) && (
+                                <span className="px-2 py-1 rounded-md bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-extrabold">
+                                  Đã sửa
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setTransferProductId(p._id);
+                                  if (activeWarehouse === "FLOOR_2") {
+                                    setTransferDirection("F2_TO_F1");
+                                  } else if (activeWarehouse === "FLOOR_1") {
+                                    setTransferDirection("F1_TO_F2");
+                                  }
+                                  setSubTab("TRANSFER");
+                                }}
+                                className="p-1.5 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 inline-flex items-center justify-center"
+                                title="Dời sản phẩm giữa Kho Tầng 1 và Kho Tầng 2 (Lập phiếu xuất kho)"
+                              >
+                                <ArrowLeftRight className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteProduct(p)}
+                                className="p-1.5 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 text-red-600 inline-flex items-center justify-center"
+                                title="Xóa sản phẩm"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </div>
                           </td>
                         </tr>
-                      )}
+                        {isVarExpanded && (
+                          <tr className="bg-indigo-50/40">
+                            <td colSpan={11} className="p-3.5">
+                              <div className="bg-white rounded-xl border-2 border-indigo-200 p-3.5 space-y-3 shadow-xs">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div>
+                                    <div className="text-xs font-extrabold text-indigo-950">
+                                      🎨 Quản lý Chi tiết Màu sắc • Size • Mã con cho Mã gốc:{" "}
+                                      <span className="font-mono text-indigo-700">{p.code}</span>
+                                    </div>
+                                    <div className="text-[11px] text-slate-500">
+                                      Mỗi thuộc tính (Màu + Size) có <b>Mã con riêng</b> để in tem &amp; quét kiểm kho chính xác, dùng chung Giá gốc ({formatVND(costVal)}) và Giá bán ({formatVND(sellVal)}).
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    disabled={savingVariantsProdId === p._id}
+                                    onClick={() => handleSaveProductVariants(p)}
+                                    className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs inline-flex items-center gap-1.5 shadow-xs"
+                                  >
+                                    <Save className="w-3.5 h-3.5" />
+                                    {savingVariantsProdId === p._id
+                                      ? "Đang lưu Size/Màu..."
+                                      : "Lưu bảng Size/Màu"}
+                                  </button>
+                                </div>
+
+                                <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                                  <table className="w-full text-xs text-left">
+                                    <thead className="bg-slate-800 text-white uppercase text-[10px]">
+                                      <tr>
+                                        <th className="py-2 px-2.5 w-10 text-center">#</th>
+                                        <th className="py-2 px-2.5">Mã con (Barcode In Tem)</th>
+                                        <th className="py-2 px-2.5">Màu sắc</th>
+                                        <th className="py-2 px-2.5">Size</th>
+                                        <th className="py-2 px-2.5 text-right">🏢 Tồn Kho Tầng 1</th>
+                                        <th className="py-2 px-2.5 text-right">🏬 Tồn Kho Tầng 2</th>
+                                        <th className="py-2 px-2.5 text-right">Tổng SL</th>
+                                        <th className="py-2 px-2.5 text-center">In tem</th>
+                                        <th className="py-2 px-2.5 text-center w-16">Xóa</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-200">
+                                      {prodVariants.length === 0 ? (
+                                        <tr>
+                                          <td colSpan={9} className="py-3 text-center text-slate-400">
+                                            Chưa có phân loại Size/Màu. Hãy thêm ở dòng bên dưới.
+                                          </td>
+                                        </tr>
+                                      ) : (
+                                        prodVariants.map((v, vIdx) => {
+                                          const childCode = generateVariantProductCode(
+                                            p.code,
+                                            v.color,
+                                            v.size
+                                          );
+                                          const vScanned =
+                                            scannedVariantCounts[p._id]?.[childCode] || 0;
+                                          return (
+                                            <tr
+                                              key={vIdx}
+                                              className={`hover:bg-slate-50 ${lastScannedVariantCode === childCode
+                                                ? "bg-emerald-50"
+                                                : ""
+                                                }`}
+                                            >
+                                              <td className="py-1.5 px-2.5 text-center font-mono text-slate-400">
+                                                {vIdx + 1}
+                                              </td>
+                                              <td className="py-1.5 px-2.5">
+                                                <span className="font-mono font-extrabold text-indigo-800 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">
+                                                  {childCode}
+                                                </span>
+                                                {vScanned > 0 && (
+                                                  <span className="ml-1.5 px-1.5 py-0.5 rounded bg-emerald-600 text-white font-mono text-[10px] font-bold">
+                                                    Quét: {vScanned}
+                                                  </span>
+                                                )}
+                                              </td>
+                                              <td className="py-1.5 px-2.5">
+                                                <input
+                                                  type="text"
+                                                  list="cms-color-suggestions"
+                                                  value={v.color}
+                                                  onChange={(e) => {
+                                                    const next = [...prodVariants];
+                                                    next[vIdx] = { ...next[vIdx], color: e.target.value };
+                                                    setEditingVariants((prev) => ({
+                                                      ...prev,
+                                                      [p._id]: next,
+                                                    }));
+                                                  }}
+                                                  placeholder="VD: Đỏ, Trắng..."
+                                                  className="w-36 px-2 py-1 rounded border border-slate-300 font-semibold"
+                                                />
+                                              </td>
+                                              <td className="py-1.5 px-2.5">
+                                                <input
+                                                  type="text"
+                                                  list="cms-size-suggestions"
+                                                  value={v.size}
+                                                  onChange={(e) => {
+                                                    const next = [...prodVariants];
+                                                    next[vIdx] = {
+                                                      ...next[vIdx],
+                                                      size: e.target.value.toUpperCase(),
+                                                    };
+                                                    setEditingVariants((prev) => ({
+                                                      ...prev,
+                                                      [p._id]: next,
+                                                    }));
+                                                  }}
+                                                  placeholder="M, L, XL, 42..."
+                                                  className="w-24 px-2 py-1 rounded border border-slate-300 font-mono font-bold uppercase text-center"
+                                                />
+                                              </td>
+                                              <td className="py-1.5 px-2.5 text-right">
+                                                <input
+                                                  type="number"
+                                                  min={0}
+                                                  value={v.stockFloor1}
+                                                  onChange={(e) => {
+                                                    const nextF1 = Math.max(
+                                                      0,
+                                                      Math.round(Number(e.target.value) || 0)
+                                                    );
+                                                    const next = [...prodVariants];
+                                                    next[vIdx] = {
+                                                      ...next[vIdx],
+                                                      stockFloor1: nextF1,
+                                                      stock: nextF1 + (Number(next[vIdx].stockFloor2) || 0),
+                                                    };
+                                                    setEditingVariants((prev) => ({
+                                                      ...prev,
+                                                      [p._id]: next,
+                                                    }));
+                                                  }}
+                                                  className="w-24 px-2 py-1 rounded border border-emerald-300 font-mono font-bold text-right text-emerald-800"
+                                                />
+                                              </td>
+                                              <td className="py-1.5 px-2.5 text-right">
+                                                <input
+                                                  type="number"
+                                                  min={0}
+                                                  value={v.stockFloor2}
+                                                  onChange={(e) => {
+                                                    const nextF2 = Math.max(
+                                                      0,
+                                                      Math.round(Number(e.target.value) || 0)
+                                                    );
+                                                    const next = [...prodVariants];
+                                                    next[vIdx] = {
+                                                      ...next[vIdx],
+                                                      stockFloor2: nextF2,
+                                                      stock: (Number(next[vIdx].stockFloor1) || 0) + nextF2,
+                                                    };
+                                                    setEditingVariants((prev) => ({
+                                                      ...prev,
+                                                      [p._id]: next,
+                                                    }));
+                                                  }}
+                                                  className="w-24 px-2 py-1 rounded border border-purple-300 font-mono font-bold text-right text-purple-800"
+                                                />
+                                              </td>
+                                              <td className="py-1.5 px-2.5 text-right font-mono font-extrabold text-slate-900">
+                                                {(Number(v.stockFloor1) || 0) + (Number(v.stockFloor2) || 0)}
+                                              </td>
+                                              <td className="py-1.5 px-2.5 text-center">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleOpenPrintLabelForProduct(p, v)}
+                                                  className="inline-flex items-center gap-1 px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-bold"
+                                                  title={`In tem mã con ${childCode}`}
+                                                >
+                                                  <Printer className="w-3 h-3" /> In tem
+                                                </button>
+                                              </td>
+                                              <td className="py-1.5 px-2.5 text-center">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    const next = prodVariants.filter((_, i) => i !== vIdx);
+                                                    setEditingVariants((prev) => ({
+                                                      ...prev,
+                                                      [p._id]: next,
+                                                    }));
+                                                  }}
+                                                  className="p-1 text-red-500 hover:bg-red-50 rounded"
+                                                  title="Xóa phân loại này"
+                                                >
+                                                  <Trash2 className="w-3.5 h-3.5" />
+                                                </button>
+                                              </td>
+                                            </tr>
+                                          );
+                                        })
+                                      )}
+                                    </tbody>
+                                  </table>
+                                </div>
+
+                                {/* Dòng thêm nhanh Size / Màu mới */}
+                                <div className="flex flex-wrap items-end gap-2 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                                  <div>
+                                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                                      + Màu sắc mới
+                                    </label>
+                                    <input
+                                      type="text"
+                                      list="cms-color-suggestions"
+                                      value={newVarDraft.color}
+                                      onChange={(e) =>
+                                        setNewVariantInputs((prev) => ({
+                                          ...prev,
+                                          [p._id]: { ...newVarDraft, color: e.target.value },
+                                        }))
+                                      }
+                                      placeholder="VD: Xanh, Đen..."
+                                      className="w-36 px-2.5 py-1.5 rounded border border-slate-300 text-xs bg-white"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                                      Size mới
+                                    </label>
+                                    <input
+                                      type="text"
+                                      list="cms-size-suggestions"
+                                      value={newVarDraft.size}
+                                      onChange={(e) =>
+                                        setNewVariantInputs((prev) => ({
+                                          ...prev,
+                                          [p._id]: {
+                                            ...newVarDraft,
+                                            size: e.target.value.toUpperCase(),
+                                          },
+                                        }))
+                                      }
+                                      placeholder="M, L, XL, 42..."
+                                      className="w-24 px-2.5 py-1.5 rounded border border-slate-300 text-xs font-mono font-bold uppercase text-center bg-white"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-[10px] font-bold text-emerald-700 mb-0.5">
+                                      SL Kho Tầng 1
+                                    </label>
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      value={newVarDraft.stockFloor1}
+                                      onChange={(e) =>
+                                        setNewVariantInputs((prev) => ({
+                                          ...prev,
+                                          [p._id]: {
+                                            ...newVarDraft,
+                                            stockFloor1: Math.max(0, Number(e.target.value) || 0),
+                                          },
+                                        }))
+                                      }
+                                      className="w-24 px-2.5 py-1.5 rounded border border-emerald-300 text-xs font-mono font-bold text-right bg-white"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-[10px] font-bold text-purple-700 mb-0.5">
+                                      SL Kho Tầng 2
+                                    </label>
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      value={newVarDraft.stockFloor2}
+                                      onChange={(e) =>
+                                        setNewVariantInputs((prev) => ({
+                                          ...prev,
+                                          [p._id]: {
+                                            ...newVarDraft,
+                                            stockFloor2: Math.max(0, Number(e.target.value) || 0),
+                                          },
+                                        }))
+                                      }
+                                      className="w-24 px-2.5 py-1.5 rounded border border-purple-300 text-xs font-mono font-bold text-right bg-white"
+                                    />
+                                  </div>
+                                  <button
+                                    type="button"
+                                    disabled={savingVariantsProdId === p._id}
+                                    onClick={() => handleAddVariantToProduct(p)}
+                                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold inline-flex items-center gap-1"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" /> Thêm Size/Màu &amp; Lưu
+                                  </button>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
                       </React.Fragment>
                     );
                   })}
@@ -3661,8 +3646,8 @@ export default function InventoryModule() {
                 {activeWarehouse === "FLOOR_1"
                   ? "🏢 Kho Tầng 1"
                   : activeWarehouse === "FLOOR_2"
-                  ? "🏬 Kho Tầng 2"
-                  : "📊 Cả 2 Kho"}{" "}
+                    ? "🏬 Kho Tầng 2"
+                    : "📊 Cả 2 Kho"}{" "}
                 (Stock Movements — BR-07)
               </h3>
               <p className="text-xs text-slate-500">
@@ -3722,11 +3707,10 @@ export default function InventoryModule() {
                       </td>
                       <td className="py-2.5 px-3 whitespace-nowrap">
                         <span
-                          className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                            loc === "FLOOR_2"
-                              ? "bg-blue-100 text-blue-800"
-                              : "bg-emerald-100 text-emerald-800"
-                          }`}
+                          className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${loc === "FLOOR_2"
+                            ? "bg-blue-100 text-blue-800"
+                            : "bg-emerald-100 text-emerald-800"
+                            }`}
                         >
                           {loc === "FLOOR_2" ? "🏬 Kho Tầng 2" : "🏢 Kho Tầng 1"}
                         </span>
@@ -3739,9 +3723,8 @@ export default function InventoryModule() {
                         </div>
                       </td>
                       <td
-                        className={`py-2.5 px-3 text-right font-mono font-extrabold ${
-                          m.quantityChange > 0 ? "text-emerald-700" : "text-red-600"
-                        }`}
+                        className={`py-2.5 px-3 text-right font-mono font-extrabold ${m.quantityChange > 0 ? "text-emerald-700" : "text-red-600"
+                          }`}
                       >
                         {m.quantityChange > 0 ? `+${m.quantityChange}` : m.quantityChange}
                       </td>
@@ -3795,8 +3778,8 @@ export default function InventoryModule() {
                 {activeWarehouse === "FLOOR_1"
                   ? "🏢 Kho Tầng 1"
                   : activeWarehouse === "FLOOR_2"
-                  ? "🏬 Kho Tầng 2"
-                  : "📊 Cả 2 Kho"}{" "}
+                    ? "🏬 Kho Tầng 2"
+                    : "📊 Cả 2 Kho"}{" "}
                 (BR-09, BR-10)
               </h3>
               <p className="text-xs text-slate-500">
@@ -3838,7 +3821,7 @@ export default function InventoryModule() {
                     (s, it) =>
                       s +
                       (Number(it.costPrice) || 0) *
-                        (Number(it.actualQuantity ?? it.expectedQuantity) || 0),
+                      (Number(it.actualQuantity ?? it.expectedQuantity) || 0),
                     0
                   );
                   const totalSell = items.reduce((s, it) => {
@@ -3864,24 +3847,22 @@ export default function InventoryModule() {
                         </td>
                         <td className="py-3 px-3 whitespace-nowrap">
                           <span
-                            className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                              wh === "FLOOR_2"
-                                ? "bg-blue-100 text-blue-800"
-                                : "bg-emerald-100 text-emerald-800"
-                            }`}
+                            className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${wh === "FLOOR_2"
+                              ? "bg-blue-100 text-blue-800"
+                              : "bg-emerald-100 text-emerald-800"
+                              }`}
                           >
                             {wh === "FLOOR_2" ? "🏬 Kho Tầng 2" : "🏢 Kho Tầng 1"}
                           </span>
                         </td>
                         <td className="py-3 px-3">
                           <span
-                            className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                              imp.status === "COMPLETED"
-                                ? "bg-emerald-100 text-emerald-800"
-                                : imp.status === "CHECKING"
+                            className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${imp.status === "COMPLETED"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : imp.status === "CHECKING"
                                 ? "bg-amber-100 text-amber-800"
                                 : "bg-blue-100 text-blue-800"
-                            }`}
+                              }`}
                           >
                             {imp.status}
                           </span>
@@ -4243,32 +4224,29 @@ export default function InventoryModule() {
                 <button
                   type="button"
                   onClick={() => handleChangeTransferDirection("F1_TO_F2")}
-                  className={`p-3.5 rounded-xl border-2 text-left transition flex items-center justify-between ${
-                    transferDirection === "F1_TO_F2"
-                      ? "bg-emerald-600 text-white border-emerald-700 shadow-md"
-                      : "bg-white text-slate-800 border-slate-200 hover:border-emerald-400"
-                  }`}
+                  className={`p-3.5 rounded-xl border-2 text-left transition flex items-center justify-between ${transferDirection === "F1_TO_F2"
+                    ? "bg-emerald-600 text-white border-emerald-700 shadow-md"
+                    : "bg-white text-slate-800 border-slate-200 hover:border-emerald-400"
+                    }`}
                 >
                   <div>
                     <div className="text-xs font-extrabold uppercase">
                       🏢 Kho Tầng 1 → 🏬 Kho Tầng 2
                     </div>
                     <div
-                      className={`text-[11px] mt-0.5 ${
-                        transferDirection === "F1_TO_F2"
-                          ? "text-emerald-100"
-                          : "text-slate-500"
-                      }`}
+                      className={`text-[11px] mt-0.5 ${transferDirection === "F1_TO_F2"
+                        ? "text-emerald-100"
+                        : "text-slate-500"
+                        }`}
                     >
                       Kho đầu dời: <strong>Kho Tầng 1</strong> (Chỉ hiện SP có tồn Tầng 1)
                     </div>
                   </div>
                   <span
-                    className={`px-2.5 py-1 rounded-full font-mono text-xs font-extrabold ${
-                      transferDirection === "F1_TO_F2"
-                        ? "bg-white text-emerald-800"
-                        : "bg-emerald-100 text-emerald-800"
-                    }`}
+                    className={`px-2.5 py-1 rounded-full font-mono text-xs font-extrabold ${transferDirection === "F1_TO_F2"
+                      ? "bg-white text-emerald-800"
+                      : "bg-emerald-100 text-emerald-800"
+                      }`}
                   >
                     {
                       products.filter((p) => (Number(p.stockFloor1 ?? p.stock) || 0) > 0)
@@ -4281,32 +4259,29 @@ export default function InventoryModule() {
                 <button
                   type="button"
                   onClick={() => handleChangeTransferDirection("F2_TO_F1")}
-                  className={`p-3.5 rounded-xl border-2 text-left transition flex items-center justify-between ${
-                    transferDirection === "F2_TO_F1"
-                      ? "bg-blue-600 text-white border-blue-700 shadow-md"
-                      : "bg-white text-slate-800 border-slate-200 hover:border-blue-400"
-                  }`}
+                  className={`p-3.5 rounded-xl border-2 text-left transition flex items-center justify-between ${transferDirection === "F2_TO_F1"
+                    ? "bg-blue-600 text-white border-blue-700 shadow-md"
+                    : "bg-white text-slate-800 border-slate-200 hover:border-blue-400"
+                    }`}
                 >
                   <div>
                     <div className="text-xs font-extrabold uppercase">
                       🏬 Kho Tầng 2 → 🏢 Kho Tầng 1
                     </div>
                     <div
-                      className={`text-[11px] mt-0.5 ${
-                        transferDirection === "F2_TO_F1"
-                          ? "text-blue-100"
-                          : "text-slate-500"
-                      }`}
+                      className={`text-[11px] mt-0.5 ${transferDirection === "F2_TO_F1"
+                        ? "text-blue-100"
+                        : "text-slate-500"
+                        }`}
                     >
                       Kho đầu dời: <strong>Kho Tầng 2</strong> (Chỉ hiện SP có tồn Tầng 2)
                     </div>
                   </div>
                   <span
-                    className={`px-2.5 py-1 rounded-full font-mono text-xs font-extrabold ${
-                      transferDirection === "F2_TO_F1"
-                        ? "bg-white text-blue-800"
-                        : "bg-blue-100 text-blue-800"
-                    }`}
+                    className={`px-2.5 py-1 rounded-full font-mono text-xs font-extrabold ${transferDirection === "F2_TO_F1"
+                      ? "bg-white text-blue-800"
+                      : "bg-blue-100 text-blue-800"
+                      }`}
                   >
                     {products.filter((p) => (Number(p.stockFloor2) || 0) > 0).length} SP
                   </span>
@@ -4415,11 +4390,10 @@ export default function InventoryModule() {
                           key={p._id}
                           type="button"
                           onClick={() => handleAddTransferItem(p._id, 1)}
-                          className={`p-2.5 rounded-lg border text-left transition flex items-center justify-between gap-2 text-xs ${
-                            inCart
-                              ? "border-indigo-500 bg-indigo-50/70"
-                              : "border-slate-200 hover:border-indigo-400 hover:bg-slate-50"
-                          }`}
+                          className={`p-2.5 rounded-lg border text-left transition flex items-center justify-between gap-2 text-xs ${inCart
+                            ? "border-indigo-500 bg-indigo-50/70"
+                            : "border-slate-200 hover:border-indigo-400 hover:bg-slate-50"
+                            }`}
                         >
                           <div className="min-w-0">
                             <div className="font-bold text-slate-900 truncate">{p.name}</div>
@@ -4783,19 +4757,18 @@ export default function InventoryModule() {
                       </span>
                     </h3>
                     <span
-                      className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                        detailModalReceipt.status === "COMPLETED"
-                          ? "bg-emerald-500/20 text-emerald-300 border border-emerald-400/30"
-                          : detailModalReceipt.status === "CHECKING"
+                      className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${detailModalReceipt.status === "COMPLETED"
+                        ? "bg-emerald-500/20 text-emerald-300 border border-emerald-400/30"
+                        : detailModalReceipt.status === "CHECKING"
                           ? "bg-amber-500/20 text-amber-300 border border-amber-400/30"
                           : "bg-blue-500/20 text-blue-300 border border-blue-400/30"
-                      }`}
+                        }`}
                     >
                       {detailModalReceipt.status === "COMPLETED"
                         ? "ĐÃ HOÀN THÀNH"
                         : detailModalReceipt.status === "CHECKING"
-                        ? "ĐANG KIỂM HÀNG"
-                        : detailModalReceipt.status}
+                          ? "ĐANG KIỂM HÀNG"
+                          : detailModalReceipt.status}
                     </span>
                     <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-800 text-slate-200 border border-slate-700">
                       {detailModalReceipt.targetWarehouse === "FLOOR_2"
@@ -4933,6 +4906,7 @@ export default function InventoryModule() {
                       <th className="py-2.5 px-3 text-right">SL Thực nhập</th>
                       <th className="py-2.5 px-3 text-right">Chênh lệch</th>
                       <th className="py-2.5 px-3 text-right">Giá gốc (VND)</th>
+                      <th className="py-2.5 px-3 text-right">Giá bán (VND)</th>
                       <th className="py-2.5 px-3 text-right">Thành tiền vốn</th>
                       <th className="py-2.5 px-3">Người kiểm dòng</th>
                       <th className="py-2.5 px-3">Ghi chú dòng</th>
@@ -4945,6 +4919,7 @@ export default function InventoryModule() {
                       const actQty = Number(it.actualQuantity ?? it.expectedQuantity) || 0;
                       const diff = actQty - expQty;
                       const cost = Number(it.costPrice || prod?.costPrice || 0);
+                      const sell = Number(it.sellingPrice || prod?.sellingPrice || 0);
                       return (
                         <tr key={idx} className="hover:bg-slate-50">
                           <td className="py-2 px-3 text-center font-mono font-bold text-slate-400">
@@ -4952,8 +4927,7 @@ export default function InventoryModule() {
                           </td>
                           <td className="py-2 px-3 font-mono font-bold text-slate-900">
                             <div>
-                              {it.variantCode ||
-                                generateVariantProductCode(it.productCode, it.color, it.size)}
+                              {generateVariantProductCode(it.productCode, it.color, it.size)}
                             </div>
                             {(it.color || it.size) && (
                               <div className="text-[10px] text-slate-400 font-normal">
@@ -4982,6 +4956,9 @@ export default function InventoryModule() {
                           </td>
                           <td className="py-2 px-3 text-right font-mono text-amber-800 whitespace-nowrap">
                             {formatVND(cost)}
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono font-semibold text-emerald-700 whitespace-nowrap">
+                            {formatVND(sell)}
                           </td>
                           <td className="py-2 px-3 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
                             {formatVND(actQty * cost)}
@@ -5030,11 +5007,11 @@ export default function InventoryModule() {
                             (s: number, it: any) =>
                               s +
                               (Number(it.actualQuantity ?? it.expectedQuantity) || 0) *
-                                (Number(
-                                  it.costPrice ||
-                                    productByCode.get(it.productCode)?.costPrice ||
-                                    0
-                                ) || 0),
+                              (Number(
+                                it.costPrice ||
+                                productByCode.get(it.productCode)?.costPrice ||
+                                0
+                              ) || 0),
                             0
                           )
                         )}
@@ -5190,6 +5167,11 @@ export default function InventoryModule() {
                             it.color,
                             it.size
                           );
+                          const matchedProd = productByCode.get(baseCode);
+                          const resolvedSellPrice =
+                            Number(it.sellingPrice) > 0
+                              ? Number(it.sellingPrice)
+                              : Number(matchedProd?.sellingPrice || 0);
                           return {
                             id: `${childCode}_${idx}`,
                             code: childCode,
@@ -5197,7 +5179,7 @@ export default function InventoryModule() {
                             productName: it.productName,
                             color: it.color,
                             size: it.size,
-                            sellingPrice: it.sellingPrice,
+                            sellingPrice: resolvedSellPrice,
                             unit: it.unit,
                             defaultQty: Math.max(1, Number(it.quantity || 1)),
                           };
@@ -5254,9 +5236,8 @@ export default function InventoryModule() {
 
               {/* Bảng nhập nhiều dòng sản phẩm */}
               <div
-                className={`overflow-x-auto border border-slate-200 rounded-xl transition-all ${
-                  activeAdminSuggestRowIdx !== null ? "pb-60" : ""
-                }`}
+                className={`overflow-x-auto border border-slate-200 rounded-xl transition-all ${activeAdminSuggestRowIdx !== null ? "pb-60" : ""
+                  }`}
               >
                 <table className="w-full text-xs text-left">
                   <thead className="bg-slate-900 text-white uppercase">
@@ -5293,9 +5274,8 @@ export default function InventoryModule() {
                       return (
                         <tr
                           key={idx}
-                          className={`hover:bg-slate-50 ${
-                            row.isConfirmed ? "bg-emerald-50/20" : ""
-                          }`}
+                          className={`hover:bg-slate-50 ${row.isConfirmed ? "bg-emerald-50/20" : ""
+                            }`}
                         >
                           <td className="py-2.5 px-2 text-center font-mono font-bold text-slate-700 align-top pt-3.5">
                             {idx + 1}
@@ -5315,7 +5295,7 @@ export default function InventoryModule() {
                             <div className="mt-1 text-[10px] text-slate-500 space-y-0.5">
                               {(row.color || row.size) && row.productCode && (
                                 <div className="font-mono font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded inline-block">
-                                  Mã con: {generateVariantProductCode(row.productCode, row.color, row.size)}
+                                  {generateVariantProductCode(row.productCode, row.color, row.size)}
                                 </div>
                               )}
                               <div>
@@ -5410,11 +5390,10 @@ export default function InventoryModule() {
                                               onMouseEnter={() =>
                                                 setAdminSuggestHighlightIdx(sIdx)
                                               }
-                                              className={`w-full text-left px-3 py-2 transition flex flex-col gap-0.5 ${
-                                                isHighlighted
-                                                  ? "bg-emerald-50/90"
-                                                  : "hover:bg-slate-50"
-                                              }`}
+                                              className={`w-full text-left px-3 py-2 transition flex flex-col gap-0.5 ${isHighlighted
+                                                ? "bg-emerald-50/90"
+                                                : "hover:bg-slate-50"
+                                                }`}
                                             >
                                               <div className="font-bold text-xs text-slate-900">
                                                 {p.name}
@@ -5592,9 +5571,8 @@ export default function InventoryModule() {
                                 className="w-4 h-4 accent-emerald-600 rounded"
                               />
                               <span
-                                className={`text-[10px] font-bold ${
-                                  row.isConfirmed ? "text-emerald-800" : "text-slate-400"
-                                }`}
+                                className={`text-[10px] font-bold ${row.isConfirmed ? "text-emerald-800" : "text-slate-400"
+                                  }`}
                               >
                                 {row.isConfirmed ? "✓ Nhập" : "Bỏ qua"}
                               </span>
@@ -5667,11 +5645,10 @@ export default function InventoryModule() {
                     <span>
                       {submittingAdminImport
                         ? "Đang nhập kho..."
-                        : `✅ Hoàn thành Nhập Kho (${
-                            adminImportRows.filter(
-                              (r) => r.productName.trim() !== "" && r.isConfirmed
-                            ).length
-                          } dòng đã tick)`}
+                        : `✅ Hoàn thành Nhập Kho (${adminImportRows.filter(
+                          (r) => r.productName.trim() !== "" && r.isConfirmed
+                        ).length
+                        } dòng đã tick)`}
                     </span>
                   </button>
                 </div>

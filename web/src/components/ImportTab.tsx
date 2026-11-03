@@ -232,6 +232,26 @@ export default function ImportTab() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const resolveCatalogProductForItem = useCallback(
+    (productCode?: string, productName?: string): Product | undefined => {
+      const cleanCode = String(productCode || "").trim().toUpperCase();
+      if (cleanCode) {
+        const byCode = catalogProducts.find(
+          (p) => String(p.code || "").trim().toUpperCase() === cleanCode
+        );
+        if (byCode) return byCode;
+      }
+      const cleanName = String(productName || "").trim().toLowerCase();
+      if (cleanName) {
+        return catalogProducts.find(
+          (p) => String(p.name || "").trim().toLowerCase() === cleanName
+        );
+      }
+      return undefined;
+    },
+    [catalogProducts]
+  );
+
   const handleSelectReceipt = (rc: ImportReceipt) => {
     setCurrentReceipt(rc);
     setNote(rc.note || "");
@@ -247,16 +267,18 @@ export default function ImportTab() {
           brand: it.brand,
           existingCode: it.productCode,
         });
+        const resolvedCode =
+          it.productCode ||
+          extracted.code ||
+          generateProductCode(it.productName, {
+            categoryCode: cat?.code,
+            categoryName: cat?.name,
+            brand: it.brand,
+          });
+        const matchedProd = resolveCatalogProductForItem(resolvedCode, it.productName);
         return {
           stt: idx + 1,
-          productCode:
-            it.productCode ||
-            extracted.code ||
-            generateProductCode(it.productName, {
-              categoryCode: cat?.code,
-              categoryName: cat?.name,
-              brand: it.brand,
-            }),
+          productCode: resolvedCode,
           productName: it.productName,
           brand: it.brand || extracted.brand || "",
           color: it.color !== undefined ? it.color : extracted.color,
@@ -265,8 +287,14 @@ export default function ImportTab() {
           unit: it.unit || "Cái",
           expectedQuantity: Number(it.expectedQuantity || 0),
           actualQuantity: Number(it.actualQuantity ?? 0),
-          costPrice: Number(it.costPrice || 0),
-          sellingPrice: Number(it.sellingPrice || 0),
+          costPrice:
+            Number(it.costPrice) > 0
+              ? Number(it.costPrice)
+              : Number(matchedProd?.costPrice || 0),
+          sellingPrice:
+            Number(it.sellingPrice) > 0
+              ? Number(it.sellingPrice)
+              : Number(matchedProd?.sellingPrice || 0),
           scannedQuantity: Number(it.scannedQuantity || 0),
           checkedBy: it.checkedBy,
           checkedByName: it.checkedByName,
@@ -503,9 +531,8 @@ export default function ImportTab() {
       setLastScanFeedback({
         type: "warning",
         code: targetRow.productCode,
-        message: `Đã hoàn tác (-1) dòng #${targetIdx + 1} "${targetRow.productName}"${
-          variantDesc ? ` (${variantDesc})` : ""
-        } → SL Thực nhận: ${nextActual}/${exp}`,
+        message: `Đã hoàn tác (-1) dòng #${targetIdx + 1} "${targetRow.productName}"${variantDesc ? ` (${variantDesc})` : ""
+          } → SL Thực nhận: ${nextActual}/${exp}`,
         time: nowStr,
       });
       return;
@@ -516,9 +543,8 @@ export default function ImportTab() {
       setLastScanFeedback({
         type: "warning",
         code: targetRow.productCode,
-        message: `⚠️ Vượt SL Dự kiến! Dòng #${targetIdx + 1} "${targetRow.productName}"${
-          variantDesc ? ` (${variantDesc})` : ""
-        } → SL Thực nhận: ${nextActual}/${exp} (${discNote})`,
+        message: `⚠️ Vượt SL Dự kiến! Dòng #${targetIdx + 1} "${targetRow.productName}"${variantDesc ? ` (${variantDesc})` : ""
+          } → SL Thực nhận: ${nextActual}/${exp} (${discNote})`,
         time: nowStr,
       });
     } else {
@@ -526,11 +552,9 @@ export default function ImportTab() {
       setLastScanFeedback({
         type: "success",
         code: targetRow.productCode,
-        message: `✅ +1 Dòng #${targetIdx + 1} "${targetRow.productName}"${
-          variantDesc ? ` (${variantDesc})` : ""
-        } → SL Thực nhận: ${nextActual}/${exp} (${
-          nextActual === exp ? "ĐÃ KHỚP ĐỦ" : `Còn thiếu ${exp - nextActual}`
-        })`,
+        message: `✅ +1 Dòng #${targetIdx + 1} "${targetRow.productName}"${variantDesc ? ` (${variantDesc})` : ""
+          } → SL Thực nhận: ${nextActual}/${exp} (${nextActual === exp ? "ĐÃ KHỚP ĐỦ" : `Còn thiếu ${exp - nextActual}`
+          })`,
         time: nowStr,
       });
     }
@@ -544,7 +568,7 @@ export default function ImportTab() {
    * - Nếu khớp nhiều dòng (nhiều Màu/Size): mở khung chọn nhanh dòng (bấm phím 1..9) hoặc tự cộng vào dòng chưa đủ.
    * - Nếu mã chưa có trong phiếu nhưng có trong Danh mục Kho: tự động thêm dòng sản phẩm đó vào phiếu với SL Thực nhận = 1.
    */
-  const handleBarcodeScanForImportCheck = (rawInput: string) => {
+  const handleBarcodeScanForImportCheck = async (rawInput: string) => {
     if (isCompleted) return;
     const trimmed = String(rawInput || "").trim();
     if (!trimmed) return;
@@ -630,16 +654,27 @@ export default function ImportTab() {
       setLastScanFeedback({
         type: "warning",
         code: items[matchedIndices[0]]?.productCode || displayCode,
-        message: `Mã ${
-          items[matchedIndices[0]]?.productCode || displayCode
-        } có ${matchedIndices.length} dòng phân loại (Màu/Size) trong phiếu — Bấm phím số [1..${matchedIndices.length}] hoặc click chọn dòng vừa kiểm!`,
+        message: `Mã ${items[matchedIndices[0]]?.productCode || displayCode
+          } có ${matchedIndices.length} dòng phân loại (Màu/Size) trong phiếu — Bấm phím số [1..${matchedIndices.length}] hoặc click chọn dòng vừa kiểm!`,
         time: nowStr,
       });
       return;
     }
 
     // 2. Nếu chưa có trong phiếu nhập, thử tìm trong Danh mục sản phẩm kho (hỗ trợ cả Mã con & Mã gốc) để tự động thêm vào phiếu
-    const catalogScan = findProductAndVariantByScannedBarcode(catalogProducts, trimmed);
+    let catalogScan = findProductAndVariantByScannedBarcode(catalogProducts, trimmed);
+    if (!catalogScan) {
+      try {
+        const freshRes = await apiRequest<Product[]>("/products");
+        const freshPool = Array.isArray(freshRes.data) ? freshRes.data : [];
+        if (freshPool.length > 0) {
+          setCatalogProducts(freshPool);
+          catalogScan = findProductAndVariantByScannedBarcode(freshPool, trimmed);
+        }
+      } catch {
+        // ignore network error
+      }
+    }
     if (catalogScan) {
       const { product: catalogProd, matchedVariant } = catalogScan;
       const catId =
@@ -1136,8 +1171,15 @@ export default function ImportTab() {
     setLabelModalItems(
       valid.map((it, idx) => {
         const baseCode = it.productCode || generateProductCode(it.productName);
-        const childCode =
-          it.variantCode || generateVariantProductCode(baseCode, it.color, it.size);
+        const hasAttr = Boolean((it.color && it.color.trim()) || (it.size && it.size.trim()));
+        const childCode = hasAttr
+          ? generateVariantProductCode(baseCode, it.color, it.size)
+          : it.variantCode || baseCode;
+        const matchedProd = resolveCatalogProductForItem(baseCode, it.productName);
+        const resolvedSellingPrice =
+          Number(it.sellingPrice) > 0
+            ? Number(it.sellingPrice)
+            : Number(matchedProd?.sellingPrice || 0);
         return {
           id: `${childCode}_${idx}`,
           code: childCode,
@@ -1145,7 +1187,7 @@ export default function ImportTab() {
           productName: it.productName,
           color: it.color,
           size: it.size,
-          sellingPrice: it.sellingPrice,
+          sellingPrice: resolvedSellingPrice,
           unit: it.unit,
           defaultQty: Math.max(1, Number(it.actualQuantity || it.expectedQuantity || 1)),
         };
@@ -1643,11 +1685,10 @@ export default function ImportTab() {
                       Máy Quét Label — Quét Kiểm Hàng Nhập Kho
                     </span>
                     <span
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-                        scannerEnabled
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold ${scannerEnabled
                           ? "bg-emerald-500 text-slate-950"
                           : "bg-slate-700 text-slate-300"
-                      }`}
+                        }`}
                     >
                       <Zap className="w-3 h-3" />
                       {scannerEnabled
@@ -1689,11 +1730,10 @@ export default function ImportTab() {
                 <button
                   type="button"
                   onClick={() => setScannerEnabled((prev) => !prev)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-extrabold border transition ${
-                    scannerEnabled
+                  className={`px-3 py-1.5 rounded-lg text-xs font-extrabold border transition ${scannerEnabled
                       ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-400"
                       : "bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-600"
-                  }`}
+                    }`}
                 >
                   {scannerEnabled ? "🟢 Đang nhận máy quét" : "⚪ Bật nhận máy quét"}
                 </button>
@@ -1731,13 +1771,12 @@ export default function ImportTab() {
 
             {lastScanFeedback && (
               <div
-                className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center justify-between gap-2 border ${
-                  lastScanFeedback.type === "success"
+                className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center justify-between gap-2 border ${lastScanFeedback.type === "success"
                     ? "bg-emerald-950/90 border-emerald-500/60 text-emerald-200"
                     : lastScanFeedback.type === "warning"
-                    ? "bg-amber-950/90 border-amber-400/70 text-amber-200"
-                    : "bg-red-950/90 border-red-500/70 text-red-200"
-                }`}
+                      ? "bg-amber-950/90 border-amber-400/70 text-amber-200"
+                      : "bg-red-950/90 border-red-500/70 text-red-200"
+                  }`}
               >
                 <div className="flex items-center gap-2 min-w-0">
                   {lastScanFeedback.type === "success" ? (
@@ -1868,13 +1907,12 @@ export default function ImportTab() {
                 return (
                   <tr
                     key={idx}
-                    className={`hover:bg-slate-50 transition-colors ${
-                      lastScannedRowIdx === idx
+                    className={`hover:bg-slate-50 transition-colors ${lastScannedRowIdx === idx
                         ? "bg-emerald-100/80 ring-2 ring-inset ring-emerald-500"
                         : row.isConfirmed
                           ? "bg-emerald-50/20"
                           : ""
-                    }`}
+                      }`}
                   >
                     {/* STT */}
                     <td className="py-2.5 px-2 text-center font-mono font-bold text-slate-700 align-top pt-3.5">
@@ -1895,7 +1933,7 @@ export default function ImportTab() {
                       <div className="mt-1 text-[10px] text-slate-500 space-y-0.5">
                         {(row.color || row.size) && row.productCode && (
                           <div className="font-mono font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded inline-block">
-                            Mã con in tem: {generateVariantProductCode(row.productCode, row.color, row.size)}
+                            {generateVariantProductCode(row.productCode, row.color, row.size)}
                           </div>
                         )}
                         <div>
@@ -2614,10 +2652,28 @@ export default function ImportTab() {
                                           {it.actualQuantity}
                                         </td>
                                         <td className="py-1.5 px-2 text-right font-mono">
-                                          {formatVND(it.costPrice || 0)}
+                                          {formatVND(
+                                            Number(it.costPrice) > 0
+                                              ? Number(it.costPrice)
+                                              : Number(
+                                                  resolveCatalogProductForItem(
+                                                    it.productCode,
+                                                    it.productName
+                                                  )?.costPrice || 0
+                                                )
+                                          )}
                                         </td>
                                         <td className="py-1.5 px-2 text-right font-mono text-emerald-700 font-semibold">
-                                          {formatVND(it.sellingPrice || 0)}
+                                          {formatVND(
+                                            Number(it.sellingPrice) > 0
+                                              ? Number(it.sellingPrice)
+                                              : Number(
+                                                  resolveCatalogProductForItem(
+                                                    it.productCode,
+                                                    it.productName
+                                                  )?.sellingPrice || 0
+                                                )
+                                          )}
                                         </td>
                                       </tr>
                                     ))}
@@ -2720,10 +2776,28 @@ export default function ImportTab() {
                           {it.actualQuantity}
                         </td>
                         <td className="py-2.5 px-2.5 text-right font-mono">
-                          {formatVND(it.costPrice || 0)}
+                          {formatVND(
+                            Number(it.costPrice) > 0
+                              ? Number(it.costPrice)
+                              : Number(
+                                  resolveCatalogProductForItem(
+                                    it.productCode,
+                                    it.productName
+                                  )?.costPrice || 0
+                                )
+                          )}
                         </td>
                         <td className="py-2.5 px-2.5 text-right font-mono font-semibold text-emerald-700">
-                          {formatVND(it.sellingPrice || 0)}
+                          {formatVND(
+                            Number(it.sellingPrice) > 0
+                              ? Number(it.sellingPrice)
+                              : Number(
+                                  resolveCatalogProductForItem(
+                                    it.productCode,
+                                    it.productName
+                                  )?.sellingPrice || 0
+                                )
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -2806,11 +2880,10 @@ export default function ImportTab() {
                       applyScanDeltaToRow(rowIdx, 1, "máy quét (chọn phân loại)");
                       setScanCandidateRowIndices(null);
                     }}
-                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl border text-left transition-all ${
-                      isEnough
+                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl border text-left transition-all ${isEnough
                         ? "border-emerald-300 bg-emerald-50/60 hover:bg-emerald-100/70"
                         : "border-amber-300 bg-amber-50/40 hover:bg-amber-100/60"
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-2.5">
                       {idx < 9 && (
@@ -2841,9 +2914,8 @@ export default function ImportTab() {
                     </div>
                     <div className="text-right">
                       <div
-                        className={`text-xs font-extrabold ${
-                          isEnough ? "text-emerald-700" : "text-amber-700"
-                        }`}
+                        className={`text-xs font-extrabold ${isEnough ? "text-emerald-700" : "text-amber-700"
+                          }`}
                       >
                         Đã kiểm: {row.actualQuantity} / {row.expectedQuantity} {row.unit}
                       </div>

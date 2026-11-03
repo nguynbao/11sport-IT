@@ -282,13 +282,16 @@ export default function InventoryTab() {
   const expandProductToPrintLabelItems = useCallback(
     (p: Product, specificVariant?: ProductVariant): BarcodeLabelItem[] => {
       const f1 = getFloor1Stock(p);
+      const effSellPrice = Number(priceEdits[p._id] ?? p.sellingPrice ?? 0);
       const variants = Array.isArray(p.variants) ? p.variants : [];
       const namedVariants = variants.filter((v) => v.color || v.size);
 
       if (specificVariant) {
-        const childCode =
-          specificVariant.variantCode ||
-          generateVariantProductCode(p.code, specificVariant.color, specificVariant.size);
+        const childCode = generateVariantProductCode(
+          p.code,
+          specificVariant.color,
+          specificVariant.size
+        );
         const vQty =
           effectiveWarehouse === "FLOOR_1"
             ? specificVariant.stockFloor1
@@ -303,7 +306,7 @@ export default function InventoryTab() {
             productName: p.name,
             color: specificVariant.color,
             size: specificVariant.size,
-            sellingPrice: p.sellingPrice,
+            sellingPrice: effSellPrice,
             unit: p.unit,
             defaultQty: Math.max(1, Number(vQty) || 1),
           },
@@ -312,8 +315,7 @@ export default function InventoryTab() {
 
       if (namedVariants.length > 0) {
         return namedVariants.map((v, idx) => {
-          const childCode =
-            v.variantCode || generateVariantProductCode(p.code, v.color, v.size);
+          const childCode = generateVariantProductCode(p.code, v.color, v.size);
           const vQty =
             effectiveWarehouse === "FLOOR_1"
               ? v.stockFloor1
@@ -327,7 +329,7 @@ export default function InventoryTab() {
             productName: p.name,
             color: v.color,
             size: v.size,
-            sellingPrice: p.sellingPrice,
+            sellingPrice: effSellPrice,
             unit: p.unit,
             defaultQty: Math.max(1, Number(vQty) || 1),
           };
@@ -340,22 +342,37 @@ export default function InventoryTab() {
           code: p.code,
           productCode: p.code,
           productName: p.name,
-          sellingPrice: p.sellingPrice,
+          sellingPrice: effSellPrice,
           unit: p.unit,
           defaultQty: Math.max(1, f1 || p.stock || 1),
         },
       ];
     },
-    [effectiveWarehouse]
+    [effectiveWarehouse, priceEdits]
   );
 
   const handleBarcodeScanForInventoryCheck = useCallback(
-    (rawInput: string) => {
+    async (rawInput: string) => {
       const rawTrimmed = String(rawInput || "").trim();
       if (!rawTrimmed) return;
       const nowStr = new Date().toLocaleTimeString("vi-VN");
       const pool = allCatalogProducts.length > 0 ? allCatalogProducts : products;
-      const scanRes = findProductAndVariantByScannedBarcode(pool, rawTrimmed);
+      let scanRes = findProductAndVariantByScannedBarcode(pool, rawTrimmed);
+
+      // Nếu chưa thấy trong bộ nhớ cục bộ, tự động tải lại danh mục mới nhất từ Server 1 lần
+      // (phòng trường hợp máy khác vừa tạo mã con / biến thể mới mà máy này chưa F5)
+      if (!scanRes) {
+        try {
+          const freshRes = await apiRequest<Product[]>("/products");
+          const freshPool = Array.isArray(freshRes.data) ? freshRes.data : [];
+          if (freshPool.length > 0) {
+            setAllCatalogProducts(freshPool);
+            scanRes = findProductAndVariantByScannedBarcode(freshPool, rawTrimmed);
+          }
+        } catch {
+          // ignore network error and show not found below
+        }
+      }
 
       if (!scanRes) {
         playScannerBeep("error");
@@ -422,9 +439,8 @@ export default function InventoryTab() {
         setLastScanFeedback({
           type: isOver ? "warning" : "success",
           code: childCode,
-          message: `[${childCode}] ${product.name} (${attrDesc}) • Đã quét mã con: ${nextVarCount} / Tồn biến thể: ${varSysStock} ${product.unit}${
-            isExact ? " (✓ ĐÃ KHỚP ĐỦ)" : isOver ? ` (⚠️ DƯ +${nextVarCount - varSysStock})` : ""
-          }`,
+          message: `[${childCode}] ${product.name} (${attrDesc}) • Đã quét mã con: ${nextVarCount} / Tồn biến thể: ${varSysStock} ${product.unit}${isExact ? " (✓ ĐÃ KHỚP ĐỦ)" : isOver ? ` (⚠️ DƯ +${nextVarCount - varSysStock})` : ""
+            }`,
           time: nowStr,
         });
         return;
@@ -445,9 +461,8 @@ export default function InventoryTab() {
       setLastScanFeedback({
         type: isOver ? "warning" : "success",
         code: product.code,
-        message: `[${product.code}] ${product.name} • Đã quét kiểm: ${nextCount} / Tồn hệ thống: ${sysStock} ${product.unit}${
-          isExact ? " (✓ ĐÃ KHỚP ĐỦ)" : isOver ? ` (⚠️ DƯ +${nextCount - sysStock})` : ""
-        }`,
+        message: `[${product.code}] ${product.name} • Đã quét kiểm: ${nextCount} / Tồn hệ thống: ${sysStock} ${product.unit}${isExact ? " (✓ ĐÃ KHỚP ĐỦ)" : isOver ? ` (⚠️ DƯ +${nextCount - sysStock})` : ""
+          }`,
         time: nowStr,
       });
     },
@@ -491,9 +506,9 @@ export default function InventoryTab() {
       { text: p.unit, weight: 0.6 },
       ...(Array.isArray(p.variants)
         ? p.variants.map((v) => ({
-            text: `${v.variantCode || generateVariantProductCode(p.code, v.color, v.size)} ${v.color || ""} ${v.size || ""} size ${v.size || ""}`,
-            weight: 1.4,
-          }))
+          text: `${v.variantCode || generateVariantProductCode(p.code, v.color, v.size)} ${v.color || ""} ${v.size || ""} size ${v.size || ""}`,
+          weight: 1.4,
+        }))
         : []),
     ]);
   }, [products, isSales, effectiveWarehouse, floor1Codes, floor2Codes, search, onlyShowScanned, scannedCheckCounts]);
@@ -514,27 +529,25 @@ export default function InventoryTab() {
               {effectiveWarehouse === "FLOOR_1"
                 ? "🏢 Kho Tầng 1 (Kho bán lẻ & trưng bày)"
                 : effectiveWarehouse === "FLOOR_2"
-                ? "🏬 Kho Tầng 2 (Kho dự trữ)"
-                : "📊 Xem gộp cả 2 Kho (Tầng 1 + Tầng 2)"}
+                  ? "🏬 Kho Tầng 2 (Kho dự trữ)"
+                  : "📊 Xem gộp cả 2 Kho (Tầng 1 + Tầng 2)"}
             </h3>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => setActiveWarehouse("FLOOR_1")}
-              className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-2 border-2 ${
-                effectiveWarehouse === "FLOOR_1"
+              className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-2 border-2 ${effectiveWarehouse === "FLOOR_1"
                   ? "bg-emerald-600 text-white border-emerald-700 shadow-sm"
                   : "bg-emerald-50/60 text-emerald-900 border-emerald-200 hover:bg-emerald-100"
-              }`}
+                }`}
             >
               <span>🏢 KHO TẦNG 1</span>
               <span
-                className={`px-2 py-0.5 rounded-full font-mono text-[11px] ${
-                  effectiveWarehouse === "FLOOR_1"
+                className={`px-2 py-0.5 rounded-full font-mono text-[11px] ${effectiveWarehouse === "FLOOR_1"
                     ? "bg-white text-emerald-800"
                     : "bg-emerald-200 text-emerald-900"
-                }`}
+                  }`}
               >
                 {totalStockFloor1.toLocaleString("vi-VN")}
               </span>
@@ -542,19 +555,17 @@ export default function InventoryTab() {
             <button
               type="button"
               onClick={() => setActiveWarehouse("FLOOR_2")}
-              className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-2 border-2 ${
-                effectiveWarehouse === "FLOOR_2"
+              className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-2 border-2 ${effectiveWarehouse === "FLOOR_2"
                   ? "bg-blue-600 text-white border-blue-700 shadow-sm"
                   : "bg-blue-50/60 text-blue-900 border-blue-200 hover:bg-blue-100"
-              }`}
+                }`}
             >
               <span>🏬 KHO TẦNG 2</span>
               <span
-                className={`px-2 py-0.5 rounded-full font-mono text-[11px] ${
-                  effectiveWarehouse === "FLOOR_2"
+                className={`px-2 py-0.5 rounded-full font-mono text-[11px] ${effectiveWarehouse === "FLOOR_2"
                     ? "bg-white text-blue-800"
                     : "bg-blue-200 text-blue-900"
-                }`}
+                  }`}
               >
                 {totalStockFloor2.toLocaleString("vi-VN")}
               </span>
@@ -562,19 +573,17 @@ export default function InventoryTab() {
             <button
               type="button"
               onClick={() => setActiveWarehouse("ALL")}
-              className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-2 border-2 ${
-                effectiveWarehouse === "ALL"
+              className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-2 border-2 ${effectiveWarehouse === "ALL"
                   ? "bg-slate-900 text-white border-slate-900 shadow-sm"
                   : "bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200"
-              }`}
+                }`}
             >
               <span>📊 GỘP 2 KHO</span>
               <span
-                className={`px-2 py-0.5 rounded-full font-mono text-[11px] ${
-                  effectiveWarehouse === "ALL"
+                className={`px-2 py-0.5 rounded-full font-mono text-[11px] ${effectiveWarehouse === "ALL"
                     ? "bg-white text-slate-900"
                     : "bg-slate-200 text-slate-800"
-                }`}
+                  }`}
               >
                 {totalStock.toLocaleString("vi-VN")}
               </span>
@@ -591,8 +600,8 @@ export default function InventoryTab() {
               {effectiveWarehouse === "FLOOR_1"
                 ? "Số Mã SP Kho Tầng 1"
                 : effectiveWarehouse === "FLOOR_2"
-                ? "Số Mã SP Kho Tầng 2"
-                : "Tổng số Mã sản phẩm chung"}
+                  ? "Số Mã SP Kho Tầng 2"
+                  : "Tổng số Mã sản phẩm chung"}
             </p>
             <p className="text-2xl md:text-3xl font-extrabold font-mono text-slate-900 mt-1">
               {displayedProducts.length}
@@ -609,15 +618,15 @@ export default function InventoryTab() {
               {effectiveWarehouse === "FLOOR_1"
                 ? "🏢 Tồn Kho Tầng 1"
                 : effectiveWarehouse === "FLOOR_2"
-                ? "🏬 Tồn Kho Tầng 2"
-                : "Tổng tồn cả 2 kho"}
+                  ? "🏬 Tồn Kho Tầng 2"
+                  : "Tổng tồn cả 2 kho"}
             </p>
             <p className="text-2xl md:text-3xl font-extrabold font-mono text-emerald-600 mt-1">
               {effectiveWarehouse === "FLOOR_1"
                 ? totalStockFloor1
                 : effectiveWarehouse === "FLOOR_2"
-                ? totalStockFloor2
-                : totalStock}
+                  ? totalStockFloor2
+                  : totalStock}
             </p>
           </div>
           <div className="w-12 h-12 shrink-0 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
@@ -652,11 +661,10 @@ export default function InventoryTab() {
                   <button
                     type="button"
                     onClick={() => setScannerEnabled((v) => !v)}
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold transition ${
-                      scannerEnabled
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold transition ${scannerEnabled
                         ? "bg-emerald-600 text-white shadow-xs"
                         : "bg-slate-200 text-slate-600"
-                    }`}
+                      }`}
                   >
                     {scannerEnabled ? "● ĐANG BẬT MÁY QUÉT (TỰ ĐỘNG)" : "○ ĐÃ TẮT MÁY QUÉT"}
                   </button>
@@ -681,7 +689,7 @@ export default function InventoryTab() {
                   type="text"
                   data-barcode-input="true"
                   value={scannerInput}
-                  onChange={(e) => setScannerInput(e.target.value.toUpperCase())}
+                  onChange={(e) => setScannerInput(e.target.value)}
                   placeholder="Quét hoặc gõ mã SP + Enter..."
                   className="w-48 sm:w-56 px-3 py-1.5 rounded-lg border-2 border-emerald-400 bg-white text-xs font-mono font-extrabold text-slate-900 uppercase focus:border-emerald-600 focus:outline-none"
                 />
@@ -698,11 +706,10 @@ export default function InventoryTab() {
                   <button
                     type="button"
                     onClick={() => setOnlyShowScanned((v) => !v)}
-                    className={`px-2.5 py-1.5 rounded-lg border text-xs font-extrabold transition ${
-                      onlyShowScanned
+                    className={`px-2.5 py-1.5 rounded-lg border text-xs font-extrabold transition ${onlyShowScanned
                         ? "bg-emerald-700 text-white border-emerald-700"
                         : "bg-white text-emerald-800 border-emerald-300 hover:bg-emerald-50"
-                    }`}
+                      }`}
                   >
                     {onlyShowScanned
                       ? `Đang lọc mã đã quét (${Object.keys(scannedCheckCounts).length})`
@@ -747,13 +754,12 @@ export default function InventoryTab() {
 
           {lastScanFeedback && (
             <div
-              className={`mt-2.5 px-3 py-2 rounded-lg text-xs font-bold flex items-center justify-between gap-2 border ${
-                lastScanFeedback.type === "success"
+              className={`mt-2.5 px-3 py-2 rounded-lg text-xs font-bold flex items-center justify-between gap-2 border ${lastScanFeedback.type === "success"
                   ? "bg-emerald-100/90 border-emerald-300 text-emerald-950"
                   : lastScanFeedback.type === "warning"
                     ? "bg-amber-100/90 border-amber-300 text-amber-950"
                     : "bg-red-100/90 border-red-300 text-red-900"
-              }`}
+                }`}
             >
               <div className="flex items-center gap-2 min-w-0">
                 {lastScanFeedback.type === "error" ? (
@@ -831,18 +837,17 @@ export default function InventoryTab() {
                   type="button"
                   disabled={changedPriceProducts.length === 0 || savingBatch}
                   onClick={handleSaveAllPriceChanges}
-                  className={`min-h-[40px] px-4 py-2 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1.5 transition shadow-sm ${
-                    changedPriceProducts.length > 0
+                  className={`min-h-[40px] px-4 py-2 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1.5 transition shadow-sm ${changedPriceProducts.length > 0
                       ? "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
                       : "bg-slate-200 text-slate-400 cursor-not-allowed"
-                  }`}
+                    }`}
                 >
                   <Save className="w-4 h-4" />
                   {savingBatch
                     ? "Đang lưu..."
                     : changedPriceProducts.length > 0
-                    ? `Lưu thay đổi (${changedPriceProducts.length})`
-                    : "Lưu thay đổi"}
+                      ? `Lưu thay đổi (${changedPriceProducts.length})`
+                      : "Lưu thay đổi"}
                 </button>
               </>
             )}
@@ -869,7 +874,7 @@ export default function InventoryTab() {
             <thead className="bg-slate-900 text-white text-xs uppercase">
               <tr>
                 <th className="py-3 px-3 w-10">STT</th>
-                <th className="py-3 px-3">Mã SP Chung (Barcode)</th>
+                <th className="py-3 px-3">Mã SP (chung)</th>
                 <th className="py-3 px-3">Tên hàng hóa</th>
                 <th className="py-3 px-3">Phân loại (Màu sắc • Size : SL)</th>
                 <th className="py-3 px-3">Danh mục</th>
@@ -931,13 +936,12 @@ export default function InventoryTab() {
                   return (
                     <React.Fragment key={p._id}>
                       <tr
-                        className={`hover:bg-slate-50 transition-colors ${
-                          lastScannedProdId === p._id
+                        className={`hover:bg-slate-50 transition-colors ${lastScannedProdId === p._id
                             ? "bg-emerald-100/80 ring-2 ring-inset ring-emerald-500"
                             : scannedQty > 0
                               ? "bg-emerald-50/40"
                               : ""
-                        }`}
+                          }`}
                       >
                         <td className="py-3 px-3 font-mono text-xs text-slate-500">
                           {idx + 1}
@@ -949,13 +953,12 @@ export default function InventoryTab() {
                             </span>
                             {scannedQty > 0 && (
                               <span
-                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-extrabold font-mono border ${
-                                  scannedQty === sysStockForCompare
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-extrabold font-mono border ${scannedQty === sysStockForCompare
                                     ? "bg-emerald-600 text-white border-emerald-700"
                                     : scannedQty > sysStockForCompare
                                       ? "bg-amber-500 text-white border-amber-600"
                                       : "bg-teal-100 text-teal-900 border-teal-300"
-                                }`}
+                                  }`}
                               >
                                 Đã quét: {scannedQty}/{sysStockForCompare}
                               </span>
@@ -978,8 +981,8 @@ export default function InventoryTab() {
                                   effectiveWarehouse === "FLOOR_1"
                                     ? v.stockFloor1
                                     : effectiveWarehouse === "FLOOR_2"
-                                    ? v.stockFloor2
-                                    : v.stock;
+                                      ? v.stockFloor2
+                                      : v.stock;
                                 const childCode =
                                   v.variantCode ||
                                   generateVariantProductCode(p.code, v.color, v.size);
@@ -992,13 +995,12 @@ export default function InventoryTab() {
                                   <span
                                     key={`${v.variantKey || vIdx}`}
                                     title={`Mã con: ${childCode}`}
-                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold border ${
-                                      lastScannedVariantCode === childCode
+                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold border ${lastScannedVariantCode === childCode
                                         ? "bg-emerald-600 text-white border-emerald-700 ring-2 ring-emerald-300"
                                         : vQty > 0
                                           ? "bg-emerald-50 text-emerald-800 border-emerald-200"
                                           : "bg-slate-100 text-slate-500 border-slate-200"
-                                    }`}
+                                      }`}
                                   >
                                     <span className="font-mono text-[10px] opacity-85">[{childCode}]</span>
                                     <span>{label}:</span>
@@ -1035,11 +1037,10 @@ export default function InventoryTab() {
                         {(effectiveWarehouse === "FLOOR_1" || effectiveWarehouse === "ALL") && (
                           <td className="py-3 px-3 text-right font-mono font-extrabold bg-emerald-50/30">
                             <span
-                              className={`px-2.5 py-1 rounded-full text-xs ${
-                                f1 > 0
+                              className={`px-2.5 py-1 rounded-full text-xs ${f1 > 0
                                   ? "bg-emerald-100 text-emerald-800"
                                   : "bg-red-50 text-red-600"
-                              }`}
+                                }`}
                             >
                               {f1}
                             </span>
@@ -1048,11 +1049,10 @@ export default function InventoryTab() {
                         {(effectiveWarehouse === "FLOOR_2" || effectiveWarehouse === "ALL") && (
                           <td className="py-3 px-3 text-right font-mono font-extrabold bg-blue-50/30">
                             <span
-                              className={`px-2.5 py-1 rounded-full text-xs ${
-                                f2 > 0
+                              className={`px-2.5 py-1 rounded-full text-xs ${f2 > 0
                                   ? "bg-blue-100 text-blue-800"
                                   : "bg-slate-100 text-slate-500"
-                              }`}
+                                }`}
                             >
                               {f2}
                             </span>
@@ -1086,10 +1086,10 @@ export default function InventoryTab() {
                                       ? priceEdits[p._id]
                                       : Number(p.sellingPrice || 0)) > 0
                                       ? formatNumberDots(
-                                          priceEdits[p._id] !== undefined
-                                            ? priceEdits[p._id]
-                                            : p.sellingPrice
-                                        )
+                                        priceEdits[p._id] !== undefined
+                                          ? priceEdits[p._id]
+                                          : p.sellingPrice
+                                      )
                                       : ""
                                   }
                                   onChange={(e) =>
@@ -1105,14 +1105,13 @@ export default function InventoryTab() {
                                     }
                                   }}
                                   placeholder="Nhập giá bán..."
-                                  className={`w-full pl-2 pr-9 py-1.5 rounded-lg border text-right text-xs font-mono font-bold focus:border-emerald-600 focus:outline-none ${
-                                    priceEdits[p._id] !== undefined &&
-                                    priceEdits[p._id] !== Number(p.sellingPrice || 0)
+                                  className={`w-full pl-2 pr-9 py-1.5 rounded-lg border text-right text-xs font-mono font-bold focus:border-emerald-600 focus:outline-none ${priceEdits[p._id] !== undefined &&
+                                      priceEdits[p._id] !== Number(p.sellingPrice || 0)
                                       ? "border-emerald-500 bg-emerald-50/70 text-emerald-950 ring-1 ring-emerald-400"
                                       : (priceEdits[p._id] ?? p.sellingPrice) > 0
-                                      ? "border-slate-300 bg-white text-slate-900"
-                                      : "border-amber-300 bg-amber-50 text-amber-900"
-                                  }`}
+                                        ? "border-slate-300 bg-white text-slate-900"
+                                        : "border-amber-300 bg-amber-50 text-amber-900"
+                                    }`}
                                 />
                                 <span className="absolute right-2 top-2 text-[10px] font-mono font-bold text-slate-400 pointer-events-none">
                                   VND
@@ -1153,7 +1152,10 @@ export default function InventoryTab() {
                                   <span className="font-mono text-blue-700">{p.code}</span> ({p.name})
                                 </div>
                                 <span className="text-[11px] text-slate-500">
-                                  Mỗi thuộc tính (Màu + Size) có <b className="font-mono text-indigo-700">Mã con riêng</b> để in tem &amp; quét kiểm kho chính xác
+                                  Mỗi thuộc tính (Màu + Size) có <b className="font-mono text-indigo-700">Mã con riêng</b> để in tem &amp; quét kiểm kho • Đơn giá bán:{" "}
+                                  <b className="font-mono text-emerald-700">
+                                    {formatVND(Number(priceEdits[p._id] ?? p.sellingPrice ?? 0))}
+                                  </b>
                                 </span>
                               </div>
 
@@ -1165,6 +1167,7 @@ export default function InventoryTab() {
                                       <th className="py-2 px-3 text-left">Mã con (Barcode In Tem)</th>
                                       <th className="py-2 px-3 text-left">Màu sắc</th>
                                       <th className="py-2 px-3 text-left">Size</th>
+                                      <th className="py-2 px-3 text-right">Giá bán</th>
                                       <th className="py-2 px-3 text-right text-emerald-700">
                                         🏢 Tồn Kho Tầng 1
                                       </th>
@@ -1183,7 +1186,7 @@ export default function InventoryTab() {
                                     {variants.length === 0 ? (
                                       <tr>
                                         <td
-                                          colSpan={isSales ? 6 : 8}
+                                          colSpan={isSales ? 7 : 9}
                                           className="py-3 px-3 text-center text-slate-400"
                                         >
                                           Sản phẩm này hiện chưa chia biến thể Màu/Size riêng (Tổng tồn:{" "}
@@ -1192,9 +1195,11 @@ export default function InventoryTab() {
                                       </tr>
                                     ) : (
                                       variants.map((v, vIdx) => {
-                                        const childCode =
-                                          v.variantCode ||
-                                          generateVariantProductCode(p.code, v.color, v.size);
+                                        const childCode = generateVariantProductCode(
+                                          p.code,
+                                          v.color,
+                                          v.size
+                                        );
                                         const vScanned =
                                           scannedVariantCounts[p._id]?.[childCode] || 0;
                                         return (
@@ -1222,6 +1227,9 @@ export default function InventoryTab() {
                                             </td>
                                             <td className="py-2 px-3 font-mono font-bold text-indigo-700">
                                               {v.size || "FREESIZE"}
+                                            </td>
+                                            <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
+                                              {formatVND(Number(priceEdits[p._id] ?? p.sellingPrice ?? 0))}
                                             </td>
                                             <td className="py-2 px-3 text-right font-mono font-bold text-emerald-700">
                                               {v.stockFloor1}

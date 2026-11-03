@@ -15,7 +15,11 @@ import {
   isStandardSixDigitProductCode,
   normalizeToCompactUpperCode,
 } from '../utils/productCode';
-import { matchTagToItems } from '../utils/tagMatch';
+import {
+  matchTagToItems,
+  isScannedCodeMatchServer,
+  getBarcodeCandidatesServer,
+} from '../utils/tagMatch';
 import { ApiError } from '../utils/errors';
 import { IImportReceiptItem } from '../models/ImportReceipt';
 import {
@@ -79,7 +83,28 @@ async function buildStaffRoleMap(): Promise<Map<string, string>> {
   return map;
 }
 
-function enrichReceiptRoles(receipt: any, staffRoleMap: Map<string, string>) {
+async function buildProductPriceMap(): Promise<
+  Map<string, { costPrice: number; sellingPrice: number }>
+> {
+  const products = await productRepo.find({});
+  const map = new Map<string, { costPrice: number; sellingPrice: number }>();
+  for (const p of products) {
+    const info = {
+      costPrice: Number(p.costPrice || 0),
+      sellingPrice: Number(p.sellingPrice || 0),
+    };
+    if (p._id) map.set(String(p._id).trim(), info);
+    if (p.code) map.set(String(p.code).trim().toUpperCase(), info);
+    if (p.name) map.set(String(p.name).trim().toLowerCase(), info);
+  }
+  return map;
+}
+
+function enrichReceiptRoles(
+  receipt: any,
+  staffRoleMap: Map<string, string>,
+  productPriceMap?: Map<string, { costPrice: number; sellingPrice: number }>
+) {
   if (!receipt) return receipt;
   const createdByRole = inferReceiptActorRole(
     receipt.createdByRole,
@@ -98,13 +123,30 @@ function enrichReceiptRoles(receipt: any, staffRoleMap: Map<string, string>) {
       : '';
   const items = Array.isArray(receipt.items)
     ? receipt.items.map((it: any) => {
-        const computedVariantCode =
-          it.variantCode ||
-          generateVariantProductCode(it.productCode || '', it.color || '', it.size || '');
+        const hasAttr = Boolean(
+          (it.color && String(it.color).trim()) || (it.size && String(it.size).trim())
+        );
+        const computedVariantCode = hasAttr
+          ? generateVariantProductCode(it.productCode || '', it.color || '', it.size || '')
+          : it.variantCode || it.productCode || '';
+        const matchedProdPrice =
+          productPriceMap?.get(String(it.productId || '').trim()) ||
+          productPriceMap?.get(String(it.productCode || '').trim().toUpperCase()) ||
+          productPriceMap?.get(String(it.productName || '').trim().toLowerCase());
+        const costPrice =
+          Number(it.costPrice) > 0
+            ? Number(it.costPrice)
+            : Number(matchedProdPrice?.costPrice || 0);
+        const sellingPrice =
+          Number(it.sellingPrice) > 0
+            ? Number(it.sellingPrice)
+            : Number(matchedProdPrice?.sellingPrice || 0);
         return {
           ...it,
+          costPrice,
+          sellingPrice,
           variantCode: computedVariantCode,
-          barcode: it.barcode || computedVariantCode || it.productCode || '',
+          barcode: computedVariantCode || it.barcode || it.productCode || '',
           checkedByRole:
             it.checkedBy || it.checkedByName
               ? inferReceiptActorRole(it.checkedByRole, it.checkedBy, it.checkedByName, staffRoleMap)
@@ -416,18 +458,20 @@ async function applyMatchedScan(params: {
 
 async function findRowByKnownBarcode(items: IImportReceiptItem[], barcode: string): Promise<number | null> {
   if (!barcode) return null;
-  const compactScan = normalizeToCompactUpperCode(barcode);
+  const candidates = getBarcodeCandidatesServer(barcode);
 
   // 1. Ưu tiên khớp chính xác Mã con (variantCode) hoặc barcode riêng của dòng
   const variantMatches = items
     .map((it, i) => {
       const vc = it.variantCode || generateVariantProductCode(it.productCode, it.color, it.size);
-      return { it, i, vc };
+      const fullVc = normalizeToCompactUpperCode(`${it.productCode || ''}${it.color || ''}${it.size || ''}`);
+      return { it, i, vc, fullVc };
     })
     .filter(
-      ({ it, vc }) =>
-        (it.barcode && (it.barcode === barcode || normalizeToCompactUpperCode(it.barcode) === compactScan)) ||
-        (vc && normalizeToCompactUpperCode(vc) === compactScan)
+      ({ it, vc, fullVc }) =>
+        (it.barcode && (it.barcode === barcode || isScannedCodeMatchServer(barcode, it.barcode))) ||
+        (vc && isScannedCodeMatchServer(barcode, vc)) ||
+        (fullVc && isScannedCodeMatchServer(barcode, fullVc))
     );
 
   if (variantMatches.length > 0) {
@@ -438,7 +482,7 @@ async function findRowByKnownBarcode(items: IImportReceiptItem[], barcode: strin
   // 2. Fallback khớp Mã gốc (productCode) nếu chỉ có 1 dòng mang mã gốc đó
   const directRoot = items
     .map((it, i) => ({ it, i }))
-    .filter(({ it }) => normalizeToCompactUpperCode(it.productCode) === compactScan);
+    .filter(({ it }) => isScannedCodeMatchServer(barcode, it.productCode));
   if (directRoot.length === 1) {
     return directRoot[0].i;
   }
@@ -453,8 +497,8 @@ async function findRowByKnownBarcode(items: IImportReceiptItem[], barcode: strin
     const floors = getFloorStocks(prod);
     const matchedVar = floors.variants.find(
       (v) =>
-        normalizeToCompactUpperCode(v.variantCode || '') === compactScan ||
-        normalizeToCompactUpperCode(v.barcode || '') === compactScan
+        isScannedCodeMatchServer(barcode, v.variantCode) ||
+        isScannedCodeMatchServer(barcode, v.barcode)
     );
     if (matchedVar) {
       const byVar = items
@@ -471,9 +515,13 @@ async function findRowByKnownBarcode(items: IImportReceiptItem[], barcode: strin
     }
   }
 
-  const product =
-    (await productRepo.findOne({ barcode })) ||
-    (await productRepo.findOne({ code: barcode.toUpperCase() }));
+  let product = await productRepo.findOne({ barcode });
+  if (!product) {
+    for (const cand of candidates) {
+      product = (await productRepo.findOne({ code: cand })) || (await productRepo.findOne({ barcode: cand }));
+      if (product) break;
+    }
+  }
   if (product && product.code) {
     const byProduct = items
       .map((it, i) => ({ it, i }))
@@ -719,12 +767,15 @@ importsRouter.get('/imports', async (req, res, next) => {
   try {
     await ensureStandardProductCodesMigrated();
     const { status, search } = req.query;
-    const [allReceipts, staffRoleMap] = await Promise.all([
+    const [allReceipts, staffRoleMap, productPriceMap] = await Promise.all([
       importReceiptRepo.find({}, { createdAt: -1 }),
       buildStaffRoleMap(),
+      buildProductPriceMap(),
     ]);
 
-    const enrichedReceipts = allReceipts.map((r) => enrichReceiptRoles(r, staffRoleMap));
+    const enrichedReceipts = allReceipts.map((r) =>
+      enrichReceiptRoles(r, staffRoleMap, productPriceMap)
+    );
 
     const baseFiltered = enrichedReceipts.filter((r) => {
       if (status && r.status !== String(status).toUpperCase()) return false;
@@ -767,8 +818,11 @@ importsRouter.get('/imports/:id', async (req, res, next) => {
       throw new ApiError(404, 'IMPORT_RECEIPT_NOT_FOUND', 'Không tìm thấy phiếu nhập kho');
     }
 
-    const staffRoleMap = await buildStaffRoleMap();
-    const enriched = enrichReceiptRoles(receipt, staffRoleMap);
+    const [staffRoleMap, productPriceMap] = await Promise.all([
+      buildStaffRoleMap(),
+      buildProductPriceMap(),
+    ]);
+    const enriched = enrichReceiptRoles(receipt, staffRoleMap, productPriceMap);
 
     const totalLines = enriched.items.length;
     const checkedLines = enriched.items.filter((i: any) => i.isChecked).length;
@@ -987,7 +1041,7 @@ importsRouter.post('/imports/:id/scan-check', async (req, res, next) => {
     const delta: 1 | -1 = Number(req.body?.delta) === -1 ? -1 : 1;
     const hasRowIndex = rowIndex !== undefined && rowIndex !== null && rowIndex !== '';
     const cleanBarcode = sanitizeBarcode(barcode);
-    const label = String(productName || query || productCode || cleanBarcode || '').trim();
+    const label = String(productName || query || productCode || cleanBarcode || barcode || '').trim();
     if (!hasRowIndex && !label) {
       throw new ApiError(400, 'VALIDATION_ERROR', 'Vui lòng cung cấp mã hoặc tên hàng đọc được từ tag');
     }
@@ -1010,7 +1064,7 @@ importsRouter.post('/imports/:id/scan-check', async (req, res, next) => {
       matchedIndex = idx;
     } else {
       if (cleanBarcode) {
-        matchedIndex = await findRowByKnownBarcode(items, cleanBarcode);
+        matchedIndex = await findRowByKnownBarcode(items, String(barcode || cleanBarcode));
       }
       if (matchedIndex === null) {
         const result = matchTagToItems(
