@@ -295,34 +295,18 @@ function renderCode128SvgString(rawText: string, height = 46): string {
 }
 
 /**
- * Kết xuất ảnh PNG 1-bit khớp đúng độ phân giải đầu in 203 DPI cho khổ tem 35×20mm (lấp đầy ~93% chiều ngang tem)
+ * Kết xuất Vector SVG chuẩn từng dot 203 DPI (1 dot = 25.4/203 ≈ 0.12512mm) cho in qua trình duyệt (Ctrl+P).
+ * Không dùng PNG co giãn hay CSS filter để tránh trình duyệt rasterize gây uốn lượn vạch trên máy in nhiệt.
  */
-function renderCode128MonochromePngDataUrl(rawText: string, labelWidthMm = 34.5, barHeightPx = 68): string {
-  const baseWidth = Math.round(labelWidthMm * 8); // 276 dots cho tem 34.5mm ở 203 DPI
-  const canvasHeight = barHeightPx;
-  const quietZonePx = 8; // ~1.0mm mỗi bên
-  const maxBarW = baseWidth - quietZonePx * 2;
-  const pattern = encodeCode128Bars(rawText, maxBarW);
-  const dotsPerUnit = Math.max(1, Math.min(2, Math.floor(maxBarW / pattern.length) || 1));
-  const totalBarPx = pattern.length * dotsPerUnit;
-  const canvasWidth = Math.max(baseWidth, totalBarPx + quietZonePx * 2);
-  const startX = Math.max(quietZonePx, Math.floor((canvasWidth - totalBarPx) / 2));
+function renderCode128PrintSvgFor203Dpi(rawText: string, labelWidthMm = 34.5): string {
+  const maxBarDots = Math.round((labelWidthMm - 2.0) * 8); // Trừa 1mm quiet-zone mỗi bên (~260 dots)
+  const pattern = encodeCode128Bars(rawText, maxBarDots);
+  const dotsPerUnit = Math.max(1, Math.min(2, Math.floor(maxBarDots / pattern.length) || 1));
+  const totalBarDots = pattern.length * dotsPerUnit;
+  const exactBarWidthMm = (totalBarDots * 25.4) / 203;
+  const viewBoxHeight = 100;
 
-  if (typeof document === "undefined") {
-    return "";
-  }
-
-  const canvas = document.createElement("canvas");
-  canvas.width = canvasWidth;
-  canvas.height = canvasHeight;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return "";
-
-  ctx.imageSmoothingEnabled = false;
-  ctx.fillStyle = "#FFFFFF";
-  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-
-  ctx.fillStyle = "#000000";
+  const rects: string[] = [];
   let i = 0;
   while (i < pattern.length) {
     if (pattern[i] === "1") {
@@ -330,16 +314,21 @@ function renderCode128MonochromePngDataUrl(rawText: string, labelWidthMm = 34.5,
       while (i + run < pattern.length && pattern[i + run] === "1") {
         run++;
       }
-      const x = startX + i * dotsPerUnit;
+      const x = i * dotsPerUnit;
       const w = run * dotsPerUnit;
-      ctx.fillRect(x, 0, w, canvasHeight);
+      rects.push(
+        `<rect x="${x}" y="0" width="${w}" height="${viewBoxHeight}" fill="#000000" shape-rendering="crispEdges" />`
+      );
       i += run;
     } else {
       i++;
     }
   }
 
-  return canvas.toDataURL("image/png");
+  return `<svg class="barcode-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalBarDots} ${viewBoxHeight}" preserveAspectRatio="none" shape-rendering="crispEdges" style="width:${exactBarWidthMm.toFixed(3)}mm;max-width:100%;height:100%;display:block;margin:0 auto;background:#ffffff;">
+    <rect x="0" y="0" width="${totalBarDots}" height="${viewBoxHeight}" fill="#ffffff" shape-rendering="crispEdges" />
+    ${rects.join("")}
+  </svg>`;
 }
 
 function escapeHtml(str: string): string {
@@ -689,22 +678,22 @@ export default function BarcodeLabelModal({
     const pagesHtml: string[] = [];
     const cols = FIXED_LABEL_CONFIG.columns;
 
-    const pngCache = new Map<string, string>();
-    const getPngForCode = (code: string) => {
-      if (!pngCache.has(code)) {
-        pngCache.set(
+    const svgCache = new Map<string, string>();
+    const getSvgForCode = (code: string) => {
+      if (!svgCache.has(code)) {
+        svgCache.set(
           code,
-          renderCode128MonochromePngDataUrl(code, FIXED_LABEL_CONFIG.labelWidthMm, 68)
+          renderCode128PrintSvgFor203Dpi(code, FIXED_LABEL_CONFIG.labelWidthMm)
         );
       }
-      return pngCache.get(code) || "";
+      return svgCache.get(code) || "";
     };
 
     for (let i = 0; i < expandedLabels.length; i += cols) {
       const rowItems = expandedLabels.slice(i, i + cols);
       const cellsHtml = rowItems
         .map((item) => {
-          const pngDataUrl = getPngForCode(item.code);
+          const svgMarkup = getSvgForCode(item.code);
           const shopHtml = showShopName
             ? `<div class="label-shop">${escapeHtml(shopName)}</div>`
             : "";
@@ -726,7 +715,7 @@ export default function BarcodeLabelModal({
               ${shopHtml}
               ${nameHtml}
               <div class="label-barcode">
-                <img class="barcode-img" src="${pngDataUrl}" alt="${escapeHtml(item.code)}" />
+                ${svgMarkup}
               </div>
               <div class="label-code">${escapeHtml(item.code)}</div>
               ${priceHtml}
@@ -772,6 +761,7 @@ export default function BarcodeLabelModal({
       color: #000000;
       font-family: Arial, Helvetica, sans-serif;
       -webkit-font-smoothing: none;
+      text-rendering: geometricPrecision;
     }
     .label-page {
       width: 70mm;
@@ -786,7 +776,6 @@ export default function BarcodeLabelModal({
       break-after: page;
       overflow: hidden;
       background: #ffffff;
-      filter: contrast(200%);
     }
     .label-page:last-child {
       page-break-after: auto;
@@ -833,7 +822,7 @@ export default function BarcodeLabelModal({
       text-overflow: ellipsis;
     }
     .label-barcode {
-      width: 98%;
+      width: 100%;
       flex: 1 1 auto;
       min-height: 4.2mm;
       max-height: ${showProductName ? "9.0mm" : "12.0mm"};
@@ -843,14 +832,10 @@ export default function BarcodeLabelModal({
       background: #ffffff;
       overflow: hidden;
     }
-    .barcode-img {
+    .barcode-svg {
       display: block;
-      width: 100%;
       height: 100%;
-      object-fit: fill;
-      image-rendering: -moz-crisp-edges;
-      image-rendering: crisp-edges;
-      image-rendering: pixelated;
+      shape-rendering: crispEdges;
     }
     .label-code {
       width: 100%;
