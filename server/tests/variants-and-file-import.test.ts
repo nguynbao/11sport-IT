@@ -162,6 +162,16 @@ describe('v2.8 & v3.2: Mã gốc + Mã con theo thuộc tính (variantCode = [Ro
     expect(scanCheckRes.body.data.receipt.items[0].variantCode).toBe('AKAMITO146857DOL');
     expect(scanCheckRes.body.data.receipt.items[0].actualQuantity).toBe(10);
 
+    // Quét kiểm hàng dòng #2 khi máy khác bật Unikey Tiếng Việt (biến DOXL -> DOÕL do Backspace)
+    const scanCheckUnikeyRes = await request(app)
+      .post(`/api/v1/imports/${createImp.body.data._id}/scan-check`)
+      .set('x-user-id', 'warehouse1')
+      .send({ barcode: 'AKAMITO146857DOÕL', actualQuantity: 8 });
+    expect(scanCheckUnikeyRes.status).toBe(200);
+    expect(scanCheckUnikeyRes.body.data.matched).toBe(true);
+    expect(scanCheckUnikeyRes.body.data.matchedIndex).toBe(1);
+    expect(scanCheckUnikeyRes.body.data.receipt.items[1].variantCode).toBe('AKAMITO146857DOXL');
+
     const completeRes = await request(app)
       .post(`/api/v1/imports/${createImp.body.data._id}/complete`)
       .set('x-user-id', 'warehouse1')

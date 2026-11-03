@@ -1,5 +1,6 @@
 import { ApiError } from './errors';
 import { generateProductCode, normalizeToUpperCode } from './productCode';
+import { decodeScannedBarcodeServer } from './tagMatch';
 
 export type OcrMode = 'TABLE' | 'TAG';
 
@@ -405,10 +406,16 @@ export function parseTextToRows(rawText: string): OcrTableRow[] {
   return rows;
 }
 
-/** Chuẩn hóa chuỗi mã vạch (chỉ giữ chữ số/chữ cái in hoa, tối thiểu 6 ký tự). */
+/** Chuẩn hóa chuỗi mã vạch (khôi phục chuỗi bị Unikey/EVKey biến đổi, tối thiểu 6 ký tự). */
 export function sanitizeBarcode(raw: unknown): string {
-  const cleaned = String(raw || '')
-    .trim()
+  const rawStr = String(raw || '').trim();
+  if (!rawStr) return '';
+  // Nếu chứa ký tự có dấu tiếng Việt do bộ gõ Unikey/EVKey biến đổi khi quét súng mã vạch
+  if (/[^\x00-\x7F]/.test(rawStr)) {
+    const decoded = decodeScannedBarcodeServer(rawStr);
+    return decoded.length >= 6 ? decoded : '';
+  }
+  const cleaned = rawStr
     .replace(/\s+/g, '')
     .replace(/[^0-9A-Za-z-_]/g, '');
   return cleaned.length >= 6 ? cleaned : '';

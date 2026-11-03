@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { generateVariantProductCode } from "@/lib/api";
+import { Product, apiRequest, formatNumberDots, generateVariantProductCode, parseNumberDots } from "@/lib/api";
 import {
   Printer,
   X,
@@ -34,7 +34,9 @@ export interface BarcodeLabelItem {
 interface NormalizedLabelItem {
   id: string;
   code: string;
+  baseCode: string;
   name: string;
+  attrLabel: string;
   price: number;
   defaultQty: number;
 }
@@ -296,14 +298,15 @@ function renderCode128SvgString(rawText: string, height = 46): string {
  * Kết xuất ảnh PNG 1-bit khớp đúng độ phân giải đầu in 203 DPI cho khổ tem 35×20mm (lấp đầy ~93% chiều ngang tem)
  */
 function renderCode128MonochromePngDataUrl(rawText: string, labelWidthMm = 34.5, barHeightPx = 68): string {
-  const canvasWidth = Math.round(labelWidthMm * 8); // 276 dots cho tem 34.5mm ở 203 DPI
+  const baseWidth = Math.round(labelWidthMm * 8); // 276 dots cho tem 34.5mm ở 203 DPI
   const canvasHeight = barHeightPx;
   const quietZonePx = 8; // ~1.0mm mỗi bên
-  const maxBarW = canvasWidth - quietZonePx * 2;
+  const maxBarW = baseWidth - quietZonePx * 2;
   const pattern = encodeCode128Bars(rawText, maxBarW);
   const dotsPerUnit = Math.max(1, Math.min(2, Math.floor(maxBarW / pattern.length) || 1));
   const totalBarPx = pattern.length * dotsPerUnit;
-  const startX = Math.floor((canvasWidth - totalBarPx) / 2);
+  const canvasWidth = Math.max(baseWidth, totalBarPx + quietZonePx * 2);
+  const startX = Math.max(quietZonePx, Math.floor((canvasWidth - totalBarPx) / 2));
 
   if (typeof document === "undefined") {
     return "";
@@ -361,30 +364,28 @@ export default function BarcodeLabelModal({
 
   const normalizedItems = useMemo<NormalizedLabelItem[]>(() => {
     return (items || []).map((item, idx) => {
+      const baseCode = String(item.productCode || item.code || "ITEM").trim();
       const rawCode = String(item.code || item.productCode || "ITEM").trim();
       const hasAttr = Boolean((item.color && item.color.trim()) || (item.size && item.size.trim()));
       const code = hasAttr
-        ? generateVariantProductCode(rawCode, item.color, item.size)
+        ? generateVariantProductCode(baseCode, item.color, item.size)
         : rawCode;
-      const rawName = String(item.name || item.productName || "Sản phẩm").trim();
+      const name = String(item.name || item.productName || "Sản phẩm").trim();
       const attrLabel = [
         item.color?.trim(),
         item.size?.trim() ? `Size ${item.size.trim().toUpperCase()}` : "",
       ]
         .filter(Boolean)
         .join(" - ");
-      const name =
-        attrLabel && !rawName.toLowerCase().includes(attrLabel.toLowerCase())
-          ? `${rawName} (${attrLabel})`
-          : rawName;
       const price = Number(item.price ?? item.sellingPrice ?? 0);
       const id = String(item.id ?? `${code}_${idx}`);
       const defaultQty = item.defaultQty && item.defaultQty > 0 ? item.defaultQty : 1;
-      return { id, code, name, price, defaultQty };
+      return { id, code, baseCode, name, attrLabel, price, defaultQty };
     });
   }, [items]);
 
   const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [customPrices, setCustomPrices] = useState<Record<string, number>>({});
   const [showPrice, setShowPrice] = useState<boolean>(true);
   const [showShopName, setShowShopName] = useState<boolean>(true);
   const [showProductName, setShowProductName] = useState<boolean>(true);
@@ -468,13 +469,57 @@ export default function BarcodeLabelModal({
   useEffect(() => {
     if (modalOpen) {
       const initial: Record<string, number> = {};
+      const initPrices: Record<string, number> = {};
+      let hasMissingPrice = false;
       normalizedItems.forEach((item) => {
         initial[item.id] = item.defaultQty;
+        initPrices[item.id] = item.price;
+        if (!(item.price > 0)) {
+          hasMissingPrice = true;
+        }
       });
       setQuantities(initial);
+      setCustomPrices(initPrices);
       fetchPrintersList();
+
+      if (hasMissingPrice) {
+        apiRequest<Product[]>("/products?limit=500")
+          .then((res) => {
+            const prods = Array.isArray(res?.data) ? res.data : [];
+            if (prods.length === 0) return;
+            const byCode = new Map<string, Product>();
+            const byName = new Map<string, Product>();
+            prods.forEach((p) => {
+              if (p.code) byCode.set(p.code.trim().toUpperCase(), p);
+              if (p.name) byName.set(p.name.trim().toLowerCase(), p);
+              (p.variants || []).forEach((v) => {
+                if (v.variantCode) byCode.set(v.variantCode.trim().toUpperCase(), p);
+              });
+            });
+            setCustomPrices((prev) => {
+              const next = { ...prev };
+              normalizedItems.forEach((item) => {
+                if ((next[item.id] || 0) > 0) return;
+                const matched =
+                  byCode.get(item.baseCode.toUpperCase()) ||
+                  byCode.get(item.code.toUpperCase()) ||
+                  byName.get(item.name.toLowerCase());
+                if (matched && Number(matched.sellingPrice) > 0) {
+                  next[item.id] = Number(matched.sellingPrice);
+                }
+              });
+              return next;
+            });
+          })
+          .catch(() => {});
+      }
     }
   }, [modalOpen, normalizedItems]);
+
+  const getEffectiveItemPrice = (item: NormalizedLabelItem): number => {
+    const val = customPrices[item.id] !== undefined ? customPrices[item.id] : item.price;
+    return Number(val) > 0 ? Number(val) : 0;
+  };
 
   const currentPrinterObj = useMemo(
     () => printers.find((p) => p.Name === selectedPrinter) || null,
@@ -531,14 +576,15 @@ export default function BarcodeLabelModal({
         .map((item) => {
           const qty = quantities[item.id] || 0;
           if (qty <= 0) return null;
+          const effPrice = getEffectiveItemPrice(item);
           return {
             code: sanitizeAscii(item.code),
             name: showProductName ? item.name : "",
             priceText:
-              showPrice && item.price > 0
-                ? `${item.price.toLocaleString("vi-VN")} đ`
+              showPrice && effPrice > 0
+                ? `${effPrice.toLocaleString("vi-VN")} đ`
                 : "",
-            sellingPrice: showPrice ? item.price : 0,
+            sellingPrice: showPrice ? effPrice : 0,
             quantity: qty
           };
         })
@@ -630,11 +676,12 @@ export default function BarcodeLabelModal({
 
     normalizedItems.forEach((item) => {
       const qty = quantities[item.id] || 0;
+      const effPrice = getEffectiveItemPrice(item);
       for (let i = 0; i < qty; i++) {
         expandedLabels.push({
           code: sanitizeAscii(item.code),
           name: item.name,
-          price: item.price
+          price: effPrice
         });
       }
     });
@@ -762,7 +809,8 @@ export default function BarcodeLabelModal({
     }
     .label-shop {
       width: 100%;
-      font-size: 7.2pt;
+      flex-shrink: 0;
+      font-size: 7.0pt;
       font-weight: 900;
       line-height: 1.05;
       text-transform: uppercase;
@@ -775,9 +823,11 @@ export default function BarcodeLabelModal({
     }
     .label-name {
       width: 100%;
-      font-size: 8.5pt;
+      flex-shrink: 0;
+      font-size: 8.2pt;
       font-weight: 800;
       line-height: 1.05;
+      max-height: 5.2mm;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -785,8 +835,8 @@ export default function BarcodeLabelModal({
     .label-barcode {
       width: 98%;
       flex: 1 1 auto;
-      min-height: 7.2mm;
-      max-height: ${showProductName ? "9.8mm" : "12.8mm"};
+      min-height: 4.2mm;
+      max-height: ${showProductName ? "9.0mm" : "12.0mm"};
       display: flex;
       align-items: center;
       justify-content: center;
@@ -804,17 +854,19 @@ export default function BarcodeLabelModal({
     }
     .label-code {
       width: 100%;
+      flex-shrink: 0;
       font-family: "Courier New", Consolas, monospace;
-      font-size: 6.8pt;
+      font-size: 6.5pt;
       font-weight: 800;
-      letter-spacing: 0.12em;
+      letter-spacing: 0.08em;
       line-height: 1.05;
       white-space: nowrap;
       overflow: hidden;
     }
     .label-price {
       width: 100%;
-      font-size: 9.8pt;
+      flex-shrink: 0;
+      font-size: 9.4pt;
       font-weight: 900;
       line-height: 1.05;
       white-space: nowrap;
@@ -859,18 +911,19 @@ export default function BarcodeLabelModal({
   const renderSingleStickerPreview = (item: NormalizedLabelItem | undefined, indexLabel: string) => {
     if (!item) return null;
     const cleanCode = sanitizeAscii(item.code);
+    const effPrice = getEffectiveItemPrice(item);
     const effective203Px = getEffectiveNameFontPx(item.name, nameFontSizePx);
     const previewNameFontPx = Math.round(effective203Px * 0.62 * 10) / 10;
     const isTwoLinePreview =
       showProductName && wrapProductName && (item.name || "").trim().length > 18;
-    const previewBarHeight = !showProductName ? 64 : isTwoLinePreview ? 40 : 48;
+    const previewBarHeight = !showProductName ? 58 : isTwoLinePreview ? 34 : 44;
 
     return (
       <div
         style={{
           flex: 1,
           minWidth: 0,
-          height: 128,
+          minHeight: 132,
           backgroundColor: "#ffffff",
           border: "1.5px dashed #64748b",
           borderRadius: 6,
@@ -902,6 +955,7 @@ export default function BarcodeLabelModal({
           <div
             style={{
               width: "100%",
+              flexShrink: 0,
               fontSize: 11,
               fontWeight: 900,
               lineHeight: 1.05,
@@ -919,6 +973,7 @@ export default function BarcodeLabelModal({
           <div
             style={{
               width: "100%",
+              flexShrink: 0,
               fontSize: previewNameFontPx,
               fontWeight: 800,
               lineHeight: 1.05,
@@ -958,11 +1013,12 @@ export default function BarcodeLabelModal({
         <div
           style={{
             width: "100%",
+            flexShrink: 0,
             fontFamily: "Consolas, 'Courier New', monospace",
-            fontSize: 10.5,
+            fontSize: 10.2,
             fontWeight: 800,
             lineHeight: 1.05,
-            letterSpacing: "0.14em",
+            letterSpacing: "0.08em",
             whiteSpace: "nowrap",
             overflow: "hidden"
           }}
@@ -970,10 +1026,16 @@ export default function BarcodeLabelModal({
           {cleanCode}
         </div>
 
-        {showPrice && item.price > 0 && (
-          <div style={{ width: "100%", fontSize: 15, fontWeight: 900, lineHeight: 1.05 }}>
-            {item.price.toLocaleString("vi-VN")} đ
-          </div>
+        {showPrice && (
+          effPrice > 0 ? (
+            <div style={{ width: "100%", flexShrink: 0, fontSize: 15, fontWeight: 900, lineHeight: 1.05 }}>
+              {effPrice.toLocaleString("vi-VN")} đ
+            </div>
+          ) : (
+            <div style={{ width: "100%", flexShrink: 0, fontSize: 10.5, fontWeight: 700, color: "#dc2626", lineHeight: 1.05 }}>
+              Chưa nhập giá bán
+            </div>
+          )
         )}
       </div>
     );
@@ -1487,6 +1549,7 @@ export default function BarcodeLabelModal({
               <div style={{ maxHeight: 250, overflowY: "auto" }}>
                 {normalizedItems.map((item) => {
                   const qty = quantities[item.id] || 0;
+                  const effPrice = getEffectiveItemPrice(item);
                   return (
                     <div
                       key={item.id}
@@ -1512,6 +1575,11 @@ export default function BarcodeLabelModal({
                           }}
                         >
                           {item.name}
+                          {item.attrLabel ? (
+                            <span style={{ color: "#4338ca", fontWeight: 700, marginLeft: 6, fontSize: 12 }}>
+                              ({item.attrLabel})
+                            </span>
+                          ) : null}
                         </div>
                         <div
                           style={{
@@ -1519,8 +1587,9 @@ export default function BarcodeLabelModal({
                             color: "#64748b",
                             display: "flex",
                             alignItems: "center",
+                            flexWrap: "wrap",
                             gap: 8,
-                            marginTop: 2
+                            marginTop: 3
                           }}
                         >
                           <span
@@ -1535,11 +1604,35 @@ export default function BarcodeLabelModal({
                           >
                             {item.code}
                           </span>
-                          {item.price > 0 && (
-                            <span style={{ fontWeight: 600, color: "#0f172a" }}>
-                              {item.price.toLocaleString("vi-VN")} đ
-                            </span>
-                          )}
+                          <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                            <span style={{ fontSize: 11, fontWeight: 600, color: "#475569" }}>Giá:</span>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={effPrice > 0 ? formatNumberDots(effPrice) : ""}
+                              placeholder="Nhập giá bán..."
+                              onChange={(e) => {
+                                const nextVal = parseNumberDots(e.target.value);
+                                setCustomPrices((prev) => ({
+                                  ...prev,
+                                  [item.id]: nextVal,
+                                }));
+                              }}
+                              style={{
+                                width: 92,
+                                padding: "2px 6px",
+                                borderRadius: 5,
+                                border: effPrice > 0 ? "1px solid #cbd5e1" : "1px solid #f59e0b",
+                                backgroundColor: effPrice > 0 ? "#ffffff" : "#fffbeb",
+                                color: effPrice > 0 ? "#0f172a" : "#b45309",
+                                fontFamily: "monospace",
+                                fontSize: 11.5,
+                                fontWeight: 700,
+                                textAlign: "right"
+                              }}
+                            />
+                            <span style={{ fontSize: 11, fontWeight: 700, color: "#0f172a" }}>đ</span>
+                          </div>
                         </div>
                       </div>
 
