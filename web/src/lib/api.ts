@@ -26,6 +26,9 @@ export interface ProductVariant {
   variantKey?: string;
   color: string;
   size: string;
+  /** Mã con riêng theo thuộc tính (Màu, Size): [Mã gốc][MÀU][SIZE] (VD: GASIA221401DO38) */
+  variantCode?: string;
+  barcode?: string;
   stockFloor1: number;
   stockFloor2: number;
   stock: number;
@@ -63,6 +66,8 @@ export interface ImportScanCount {
 export interface ImportItem {
   stt: number;
   productCode: string;
+  /** Mã con riêng theo thuộc tính (Màu, Size) để in tem & quét kiểm kho */
+  variantCode?: string;
   productName: string;
   brand?: string;
   color?: string;
@@ -81,7 +86,7 @@ export interface ImportItem {
   checkedByRole?: string;
   checkedAt?: string;
   scanCounts?: ImportScanCount[];
-  /** Mã vạch đã học được khi quét tag */
+  /** Mã vạch đã học được khi quét tag (= variantCode) */
   barcode?: string;
   note: string;
   isChecked: boolean;
@@ -202,10 +207,9 @@ export interface ReturnReceipt {
 }
 
 /**
- * Công thức tự sinh Mã sản phẩm chuẩn 11Sport (v3.0):
- * - Công thức: [Chữ cái đầu tiên của Category] + [Tên Hãng IN HOA (không có hãng = NN)] + [6 chữ số bất kỳ (thể hiện version / size / màu)]
- * - Ví dụ có hãng: Category "Giày" (G) + Hãng "Asia" (ASIA) + 6 chữ số (221401) => GASIA221401
- * - Ví dụ không có hãng: Category "Giày" (G) + Không hãng (NN) + 6 chữ số (221401) => GNN221401
+ * Công thức tự sinh Mã sản phẩm chuẩn 11Sport (v3.2):
+ * - Mã gốc: [Chữ cái đầu tiên của Category] + [Tên Hãng IN HOA (không có hãng = NN)] + [6 chữ số]
+ * - Mã con theo thuộc tính: [Mã gốc][MÀU IN HOA BỎ DẤU][SIZE IN HOA] (VD: GASIA221401DO38)
  */
 const KNOWN_BRANDS_FE: { pattern: RegExp; code: string; display: string }[] = [
   { pattern: /\b(under\s*armour|underarmour)\b/i, code: "UNDERARMOUR", display: "Under Armour" },
@@ -231,7 +235,7 @@ const KNOWN_BRANDS_FE: { pattern: RegExp; code: string; display: string }[] = [
   { pattern: /\b(gearbox)\b/i, code: "GEARBOX", display: "Gearbox" },
   { pattern: /\b(passion)\b/i, code: "PASSION", display: "Passion" },
   { pattern: /\b(artengo)\b/i, code: "ARTENGO", display: "Artengo" },
-  { pattern: /\b(kalenji)\b/i, code: "Kalenji", display: "Kalenji" },
+  { pattern: /\b(kalenji)\b/i, code: "KALENJI", display: "Kalenji" },
   { pattern: /\b(diadora)\b/i, code: "DIADORA", display: "Diadora" },
   { pattern: /\b(kamito)\b/i, code: "KAMITO", display: "Kamito" },
   { pattern: /\b(mizuno)\b/i, code: "MIZUNO", display: "Mizuno" },
@@ -322,6 +326,26 @@ function toCompactUpperFE(s: string): string {
 export function isStandardSixDigitProductCode(code?: string): boolean {
   const clean = toCompactUpperFE(String(code || ""));
   return /^[A-Z]{2,}[0-9]{6}$/.test(clean);
+}
+
+/**
+ * Sinh Mã con riêng cho từng thuộc tính biến thể (Màu, Size) từ Mã gốc.
+ * Công thức: [Mã gốc IN HOA][MÀU BỎ DẤU IN HOA][SIZE IN HOA]
+ * Ví dụ: GASIA221401 + Đỏ + 38 -> GASIA221401DO38
+ */
+export function generateVariantProductCode(
+  baseCode?: string,
+  color?: string,
+  size?: string
+): string {
+  const root = toCompactUpperFE(String(baseCode || ""));
+  if (!root) return "";
+  const cleanColor = toCompactUpperFE(String(color || ""));
+  const cleanSize = toCompactUpperFE(String(size || ""));
+  if (!cleanColor && !cleanSize) return root;
+  const suffix = `${cleanColor}${cleanSize}`;
+  if (suffix && root.endsWith(suffix)) return root;
+  return `${root}${suffix}`;
 }
 
 export function generateSixDigitsFromSeed(seed?: string): string {
@@ -424,6 +448,7 @@ export function extractVariantFromText(
 ): {
   baseName: string;
   code: string;
+  variantCode: string;
   brand: string;
   color: string;
   size: string;
@@ -437,6 +462,7 @@ export function extractVariantFromText(
     return {
       baseName: "",
       code: "",
+      variantCode: "",
       brand: "",
       color: "",
       size: "",
@@ -457,12 +483,15 @@ export function extractVariantFromText(
     const sixDigits = compactRaw.slice(-6);
     const catInit = compactRaw.charAt(0);
     const bCode = compactRaw.slice(1, -6) || "NN";
+    const c = options?.color || "";
+    const s = options?.size || "";
     return {
       baseName: raw,
       code: compactRaw,
+      variantCode: generateVariantProductCode(compactRaw, c, s),
       brand: bCode === "NN" ? "" : bCode,
-      color: options?.color || "",
-      size: options?.size || "",
+      color: c,
+      size: s,
       categoryInitial: catInit,
       brandCode: bCode,
       sixDigits,
@@ -573,10 +602,12 @@ export function extractVariantFromText(
   }
 
   const code = `${categoryInitial}${brandCode}${sixDigits}`;
+  const variantCode = generateVariantProductCode(code, color, size);
 
   return {
     baseName,
     code,
+    variantCode,
     brand: brandDisplay,
     color,
     size,

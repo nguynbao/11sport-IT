@@ -1,5 +1,5 @@
 import { WarehouseFloor, IProductVariant } from '../models/Product';
-import { buildVariantKey } from './productCode';
+import { buildVariantKey, generateVariantProductCode } from './productCode';
 
 export function normalizeFloor(val?: any): WarehouseFloor {
   return String(val || '').toUpperCase() === 'FLOOR_2' ? 'FLOOR_2' : 'FLOOR_1';
@@ -11,10 +11,12 @@ export function floorLabel(floor?: any): string {
 
 /**
  * Chuẩn hóa danh sách variants của sản phẩm (gộp trùng khóa variantKey nếu có).
+ * Tự động gắn Mã con (variantCode / barcode) theo thuộc tính (Màu, Size) từ baseCode (Mã gốc).
  */
-export function normalizeVariants(rawVariants?: any[]): IProductVariant[] {
+export function normalizeVariants(rawVariants?: any[], baseCode?: string): IProductVariant[] {
   if (!Array.isArray(rawVariants) || rawVariants.length === 0) return [];
   const map = new Map<string, IProductVariant>();
+  const cleanBaseCode = String(baseCode || '').trim();
 
   for (const raw of rawVariants) {
     if (!raw || typeof raw !== 'object') continue;
@@ -26,17 +28,26 @@ export function normalizeVariants(rawVariants?: any[]): IProductVariant[] {
     const explicitStock = raw.stock !== undefined ? Math.max(0, Math.round(Number(raw.stock) || 0)) : f1 + f2;
     const finalF1 = f1 === 0 && f2 === 0 && explicitStock > 0 ? explicitStock : f1;
     const finalF2 = f2;
+    const computedVariantCode = cleanBaseCode
+      ? generateVariantProductCode(cleanBaseCode, color, size)
+      : String(raw.variantCode || raw.barcode || '').trim();
     const existing = map.get(variantKey);
 
     if (existing) {
       existing.stockFloor1 += finalF1;
       existing.stockFloor2 += finalF2;
       existing.stock = existing.stockFloor1 + existing.stockFloor2;
+      if (computedVariantCode) {
+        existing.variantCode = computedVariantCode;
+        existing.barcode = computedVariantCode;
+      }
     } else {
       map.set(variantKey, {
         variantKey,
         color,
         size,
+        variantCode: computedVariantCode,
+        barcode: computedVariantCode,
         stockFloor1: finalF1,
         stockFloor2: finalF2,
         stock: finalF1 + finalF2,
@@ -50,13 +61,16 @@ export function normalizeVariants(rawVariants?: any[]): IProductVariant[] {
 /**
  * Tính tổng tồn Tầng 1, Tầng 2 và Tổng tồn từ danh sách variants.
  */
-export function summarizeVariants(rawVariants?: any[]): {
+export function summarizeVariants(
+  rawVariants?: any[],
+  baseCode?: string
+): {
   variants: IProductVariant[];
   stockFloor1: number;
   stockFloor2: number;
   stock: number;
 } {
-  const variants = normalizeVariants(rawVariants);
+  const variants = normalizeVariants(rawVariants, baseCode);
   const stockFloor1 = variants.reduce((sum, v) => sum + v.stockFloor1, 0);
   const stockFloor2 = variants.reduce((sum, v) => sum + v.stockFloor2, 0);
   return {
@@ -69,7 +83,7 @@ export function summarizeVariants(rawVariants?: any[]): {
 
 /**
  * Chuẩn hóa tồn kho theo 2 tầng từ bản ghi Product.
- * Nếu sản phẩm có variants[], tổng tồn luôn được đồng bộ từ variants[].
+ * Nếu sản phẩm có variants[], tổng tồn luôn được đồng bộ từ variants[] và mỗi variant đều có variantCode riêng.
  */
 export function getFloorStocks(product: any): {
   stockFloor1: number;
@@ -77,7 +91,8 @@ export function getFloorStocks(product: any): {
   stock: number;
   variants: IProductVariant[];
 } {
-  const variants = normalizeVariants(product?.variants);
+  const baseCode = String(product?.code || '').trim();
+  const variants = normalizeVariants(product?.variants, baseCode);
   if (variants.length > 0) {
     const f1 = variants.reduce((s, v) => s + v.stockFloor1, 0);
     const f2 = variants.reduce((s, v) => s + v.stockFloor2, 0);
@@ -175,6 +190,7 @@ export function applyFloorDelta(
   balanceBefore: number;
   balanceAfter: number;
 } {
+  const baseCode = String(product?.code || '').trim();
   const current = getFloorStocks(product);
   const balanceBefore = current.stock;
   const cleanColor = String(color || '').trim();
@@ -192,6 +208,8 @@ export function applyFloorDelta(
         variantKey: 'DEFAULT',
         color: '',
         size: '',
+        variantCode: baseCode,
+        barcode: baseCode,
         stockFloor1: current.stockFloor1,
         stockFloor2: current.stockFloor2,
         stock: current.stock,
@@ -204,10 +222,13 @@ export function applyFloorDelta(
 
     let targetVariant = variants.find((v) => v.variantKey === targetKey);
     if (!targetVariant) {
+      const childCode = baseCode ? generateVariantProductCode(baseCode, cleanColor, cleanSize) : '';
       targetVariant = {
         variantKey: targetKey,
         color: cleanColor,
         size: cleanSize,
+        variantCode: childCode,
+        barcode: childCode,
         stockFloor1: 0,
         stockFloor2: 0,
         stock: 0,
@@ -222,7 +243,7 @@ export function applyFloorDelta(
     }
     targetVariant.stock = targetVariant.stockFloor1 + targetVariant.stockFloor2;
 
-    const summary = summarizeVariants(variants);
+    const summary = summarizeVariants(variants, baseCode);
     return {
       stockFloor1: summary.stockFloor1,
       stockFloor2: summary.stockFloor2,
@@ -269,6 +290,7 @@ export function deductStockForSale(
   stock: number;
   variants: IProductVariant[];
 } {
+  const baseCode = String(product?.code || '').trim();
   const current = getFloorStocks(product);
   const amount = Math.max(0, qty);
   const cleanColor = String(color || '').trim();
@@ -294,7 +316,7 @@ export function deductStockForSale(
       }
     }
 
-    const summary = summarizeVariants(variants);
+    const summary = summarizeVariants(variants, baseCode);
     return {
       stockFloor1: summary.stockFloor1,
       stockFloor2: summary.stockFloor2,

@@ -27,6 +27,9 @@ export interface ProductVariant {
   variantKey?: string;
   color: string;
   size: string;
+  /** Mã con riêng theo thuộc tính (Màu, Size): [Mã gốc][MÀU][SIZE] (VD: GASIA221401DO38) */
+  variantCode?: string;
+  barcode?: string;
   stockFloor1: number;
   stockFloor2: number;
   stock: number;
@@ -451,6 +454,26 @@ export function isStandardSixDigitProductCode(code?: string): boolean {
   return /^[A-Z]{2,}[0-9]{6}$/.test(clean);
 }
 
+/**
+ * Sinh Mã con riêng cho từng thuộc tính biến thể (Màu, Size) từ Mã gốc.
+ * Công thức: [Mã gốc IN HOA][MÀU BỎ DẤU IN HOA][SIZE IN HOA]
+ * Ví dụ: GASIA221401 + Đỏ + 38 -> GASIA221401DO38
+ */
+export function generateVariantProductCode(
+  baseCode?: string,
+  color?: string,
+  size?: string
+): string {
+  const root = toCompactUpperFE(String(baseCode || ""));
+  if (!root) return "";
+  const cleanColor = toCompactUpperFE(String(color || ""));
+  const cleanSize = toCompactUpperFE(String(size || ""));
+  if (!cleanColor && !cleanSize) return root;
+  const suffix = `${cleanColor}${cleanSize}`;
+  if (suffix && root.endsWith(suffix)) return root;
+  return `${root}${suffix}`;
+}
+
 export function generateSixDigitsFromSeed(seed?: string): string {
   const clean = toCompactUpperFE(String(seed || ""));
   if (!clean) {
@@ -551,6 +574,7 @@ export function extractVariantFromText(
 ): {
   baseName: string;
   code: string;
+  variantCode: string;
   brand: string;
   color: string;
   size: string;
@@ -564,6 +588,7 @@ export function extractVariantFromText(
     return {
       baseName: "",
       code: "",
+      variantCode: "",
       brand: "",
       color: "",
       size: "",
@@ -584,12 +609,15 @@ export function extractVariantFromText(
     const sixDigits = compactRaw.slice(-6);
     const catInit = compactRaw.charAt(0);
     const bCode = compactRaw.slice(1, -6) || "NN";
+    const c = options?.color || "";
+    const s = options?.size || "";
     return {
       baseName: raw,
       code: compactRaw,
+      variantCode: generateVariantProductCode(compactRaw, c, s),
       brand: bCode === "NN" ? "" : bCode,
-      color: options?.color || "",
-      size: options?.size || "",
+      color: c,
+      size: s,
       categoryInitial: catInit,
       brandCode: bCode,
       sixDigits,
@@ -700,10 +728,12 @@ export function extractVariantFromText(
   }
 
   const code = `${categoryInitial}${brandCode}${sixDigits}`;
+  const variantCode = generateVariantProductCode(code, color, size);
 
   return {
     baseName,
     code,
+    variantCode,
     brand: brandDisplay,
     color,
     size,

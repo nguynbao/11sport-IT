@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { generateVariantProductCode } from "./api";
 
 /**
  * Chuẩn hóa chuỗi mã vạch về dạng IN HOA VIẾT LIỀN (chỉ giữ A-Z và 0-9).
@@ -18,7 +19,6 @@ export function cleanBarcodeCode(raw: string): string {
 /**
  * Bản đồ chuyển đổi dấu thanh & dấu mũ Tiếng Việt (NFD) ngược về phím gõ Telex.
  * Khắc phục triệt để lỗi khi máy tính đang bật Unikey / EVKey (Telex) lúc máy quét mã vạch bắn chuỗi ký tự.
- * Ví dụ: Máy quét bắn "GASIA221401" -> Unikey biến thành "GÁIA221401" -> Khôi phục lại chính xác "GASIA221401".
  */
 const NFD_TO_TELEX_KEY: Record<string, string> = {
   "\u0301": "S", // Dấu sắc
@@ -30,10 +30,6 @@ const NFD_TO_TELEX_KEY: Record<string, string> = {
   "\u031B": "W", // Dấu móc (Ơ, Ư)
 };
 
-/**
- * Phân tích một chuỗi bất kỳ (có thể đã bị bộ gõ Tiếng Việt Telex biến đổi)
- * thành danh sách các mã sản phẩm ứng viên chuẩn IN HOA VIẾT LIỀN.
- */
 export function getBarcodeCandidates(rawInput: string): string[] {
   if (!rawInput || typeof rawInput !== "string") return [];
   const trimmed = rawInput.trim();
@@ -41,11 +37,9 @@ export function getBarcodeCandidates(rawInput: string): string[] {
 
   const candidates = new Set<string>();
 
-  // 1. Chuẩn hóa bỏ dấu thông thường
   const basicClean = cleanBarcodeCode(trimmed);
   if (basicClean) candidates.add(basicClean);
 
-  // 2. Khôi phục chuỗi gõ Telex trực tiếp tại vị trí nguyên âm (VD: GÁIA221401 -> GASIA221401)
   const nfd = trimmed.normalize("NFD");
   let inlineTelex = "";
   let delayedTones = "";
@@ -59,7 +53,6 @@ export function getBarcodeCandidates(rawInput: string): string[] {
       continue;
     }
     if (ch === "\u0302") {
-      // Dấu mũ (Â, Ê, Ô) -> Lặp lại nguyên âm gốc (AA, EE, OO)
       inlineTelex += lastBaseVowel || "";
       continue;
     }
@@ -71,7 +64,6 @@ export function getBarcodeCandidates(rawInput: string): string[] {
     }
     const upper = ch.toUpperCase();
     if (/^[A-Z0-9]$/.test(upper)) {
-      // Nếu chuyển sang chữ số mà còn dấu thanh treo ở âm tiết chữ cái trước đó
       if (/^[0-9]$/.test(upper) && delayedTones) {
         delayedTones = "";
       }
@@ -86,8 +78,6 @@ export function getBarcodeCandidates(rawInput: string): string[] {
     candidates.add(inlineTelex);
   }
 
-  // 3. Trường hợp phím dấu Telex được gõ sau phụ âm cuối (VD: VANS123456 -> VÁN123456)
-  // Tách phần chữ cái đầu và phần số cuối, thử đặt phím dấu ở sau cụm nguyên âm + phụ âm
   let deferredTelex = "";
   let pendingModifiers = "";
   let prevVowelForCircumflex = "";
@@ -131,9 +121,6 @@ export function getBarcodeCandidates(rawInput: string): string[] {
   return Array.from(candidates);
 }
 
-/**
- * Kiểm tra chuỗi `sub` có phải là dãy con có thứ tự (ordered subsequence) của `target` hay không.
- */
 function isOrderedSubsequence(sub: string, target: string): boolean {
   let i = 0;
   let j = 0;
@@ -146,10 +133,6 @@ function isOrderedSubsequence(sub: string, target: string): boolean {
   return i === sub.length;
 }
 
-/**
- * Đối chiếu thông minh mã quét từ máy quét Label với mã sản phẩm (`code` hoặc `barcode`),
- * hỗ trợ khử hoàn toàn lỗi bộ gõ Tiếng Việt (Unikey Telex) và CapsLock.
- */
 export function isScannedCodeMatch(
   rawScanned: string,
   productCode?: string,
@@ -167,7 +150,6 @@ export function isScannedCodeMatch(
     if (candidates.includes(t)) return true;
   }
 
-  // Kiểm tra tương đương tổ hợp phím Telex (khi Unikey đảo vị trí dấu thanh vào nguyên âm đứng trước)
   const inlineCandidate = candidates[1] || candidates[0] || "";
   const basicBase = candidates[0] || "";
   if (!inlineCandidate || !basicBase) return false;
@@ -191,43 +173,127 @@ export function isScannedCodeMatch(
   return false;
 }
 
+export interface ScannedProductVariantMatch<T> {
+  product: T;
+  matchedVariant?: {
+    variantKey?: string;
+    color: string;
+    size: string;
+    variantCode: string;
+    stockFloor1: number;
+    stockFloor2: number;
+    stock: number;
+  };
+  isVariantExactMatch: boolean;
+}
+
 /**
- * Tìm sản phẩm trong danh sách theo chuỗi mã vạch vừa quét.
- * Hỗ trợ cả trường hợp mã vạch chỉ chứa Mã SP chung (VD: GASIA221401)
- * hoặc mã vạch có hậu tố Màu/Size (VD: GASIA221401-41).
+ * Tìm sản phẩm VÀ biến thể (Màu, Size) tương ứng theo chuỗi mã vạch vừa quét.
+ * - Ưu tiên 1: Khớp chính xác Mã con theo thuộc tính (VD: GASIA221401DO38 -> Giày Asia Đỏ Size 38).
+ * - Ưu tiên 2: Khớp Mã gốc của sản phẩm (VD: GASIA221401).
  */
-export function findProductByScannedBarcode<
-  T extends { code?: string; barcode?: string }
->(products: T[], rawScanned: string): T | undefined {
+export function findProductAndVariantByScannedBarcode<
+  T extends {
+    code?: string;
+    barcode?: string;
+    variants?: Array<{
+      variantKey?: string;
+      color: string;
+      size: string;
+      variantCode?: string;
+      barcode?: string;
+      stockFloor1: number;
+      stockFloor2: number;
+      stock: number;
+    }>;
+  }
+>(products: T[], rawScanned: string): ScannedProductVariantMatch<T> | undefined {
   if (!rawScanned || !Array.isArray(products) || products.length === 0) {
     return undefined;
   }
 
-  // 1. Tìm khớp chính xác (hoặc tương đương Telex)
-  const exact = products.find((p) =>
+  // 1. Ưu tiên khớp Mã con (variantCode) của từng thuộc tính (color, size)
+  for (const p of products) {
+    if (Array.isArray(p.variants) && p.variants.length > 0) {
+      for (const v of p.variants) {
+        const vCode =
+          v.variantCode || generateVariantProductCode(p.code, v.color, v.size);
+        if (vCode && isScannedCodeMatch(rawScanned, vCode, v.barcode || vCode)) {
+          return {
+            product: p,
+            matchedVariant: {
+              ...v,
+              variantCode: vCode,
+            },
+            isVariantExactMatch: Boolean(v.color || v.size),
+          };
+        }
+      }
+    }
+  }
+
+  // 2. Khớp Mã gốc của sản phẩm
+  const exactRoot = products.find((p) =>
     isScannedCodeMatch(rawScanned, p.code, p.barcode)
   );
-  if (exact) return exact;
+  if (exactRoot) {
+    const singleVariant =
+      Array.isArray(exactRoot.variants) && exactRoot.variants.length === 1
+        ? {
+            ...exactRoot.variants[0],
+            variantCode:
+              exactRoot.variants[0].variantCode ||
+              generateVariantProductCode(
+                exactRoot.code,
+                exactRoot.variants[0].color,
+                exactRoot.variants[0].size
+              ),
+          }
+        : undefined;
+    return {
+      product: exactRoot,
+      matchedVariant: singleVariant,
+      isVariantExactMatch: Boolean(singleVariant),
+    };
+  }
 
-  // 2. Nếu mã quét có kèm phân cách biến thể (VD: GASIA221401_41 hoặc GASIA221401-DO-L)
+  // 3. Nếu mã quét có dấu phân cách (VD: GASIA221401-DO-38)
   const parts = rawScanned.trim().split(/[-_/:|\s]+/);
   if (parts.length > 1 && parts[0].length >= 4) {
     const basePart = parts[0];
     const byBase = products.find((p) =>
       isScannedCodeMatch(basePart, p.code, p.barcode)
     );
-    if (byBase) return byBase;
+    if (byBase) {
+      return {
+        product: byBase,
+        isVariantExactMatch: false,
+      };
+    }
   }
 
   return undefined;
 }
 
-/**
- * Phát âm thanh phản hồi tức thì khi quét mã vạch (Web Audio API — không cần file âm thanh ngoài).
- * - "success": Tiếng Bíp cao trong trẻo (nhận mã thành công)
- * - "warning": 2 tiếng Bíp trung (cần chọn Size/Màu hoặc cảnh báo vượt số lượng dự kiến)
- * - "error": Tiếng Bíp trầm dài (không tìm thấy mã hoặc hết hàng)
- */
+export function findProductByScannedBarcode<
+  T extends {
+    code?: string;
+    barcode?: string;
+    variants?: Array<{
+      variantKey?: string;
+      color: string;
+      size: string;
+      variantCode?: string;
+      barcode?: string;
+      stockFloor1: number;
+      stockFloor2: number;
+      stock: number;
+    }>;
+  }
+>(products: T[], rawScanned: string): T | undefined {
+  return findProductAndVariantByScannedBarcode(products, rawScanned)?.product;
+}
+
 export function playScannerBeep(kind: "success" | "warning" | "error" = "success") {
   if (typeof window === "undefined") return;
   try {
@@ -282,21 +348,11 @@ export function playScannerBeep(kind: "success" | "warning" | "error" = "success
 }
 
 interface UseHardwareBarcodeScannerOptions {
-  /** Bật/tắt chế độ lắng nghe máy quét mã vạch toàn cục */
   enabled?: boolean;
-  /** Callback nhận chuỗi mã vạch khi máy quét bắn xong (kết thúc bằng Enter/Tab) */
   onScan: (scannedCode: string) => void;
-  /** Độ dài tối thiểu của mã vạch (mặc định: 4 ký tự) */
   minLength?: number;
 }
 
-/**
- * Hook lắng nghe sự kiện từ Máy Quét Mã Vạch (USB / Bluetooth / 2.4G HID Keyboard).
- * - Tự động bắt mã vạch ngay cả khi người dùng KHÔNG đặt con trỏ chuột vào ô tìm kiếm.
- * - Nếu con trỏ đang đặt trong một ô input thường (như Ghi chú, Tên khách, Giá tiền),
- *   chỉ tự động bắt nếu phát hiện tốc độ bắn phím cực nhanh đặc trưng của máy quét (< 40ms/ký tự)
- *   và chuỗi khớp định dạng Mã sản phẩm, tránh ảnh hưởng tới việc gõ phím bình thường.
- */
 export function useHardwareBarcodeScanner({
   enabled = true,
   onScan,
@@ -343,7 +399,6 @@ export function useHardwareBarcodeScanner({
       const isDedicatedBarcodeInput =
         target?.getAttribute?.("data-barcode-input") === "true";
 
-      // Nếu đang gõ trực tiếp trong ô input chuyên dụng của máy quét -> để sự kiện onKeyDown của ô đó xử lý
       if (isDedicatedBarcodeInput) {
         resetBuffer();
         return;
@@ -359,7 +414,6 @@ export function useHardwareBarcodeScanner({
       const buf = bufferRef.current;
       const gap = buf.lastKeyTime ? now - buf.lastKeyTime : 0;
 
-      // Nếu khoảng nghỉ giữa 2 phím quá dài -> reset bộ đệm
       const maxGapMs = isEditable ? 55 : 160;
       if (buf.chars.length > 0 && gap > maxGapMs) {
         resetBuffer();
@@ -373,13 +427,11 @@ export function useHardwareBarcodeScanner({
           const avgMsPerChar =
             totalDuration / Math.max(1, currentChars.length);
 
-          // Nếu không ở trong ô input, hoặc nếu ở trong ô input nhưng tốc độ bắn phím cực nhanh (< 42ms/ký tự)
           const isFastBurst = avgMsPerChar <= 42 && currentChars.length >= 6;
           if (!bufferRef.current.startedInEditable || isFastBurst) {
             e.preventDefault();
             e.stopPropagation();
 
-            // Nếu máy quét lỡ bắn ký tự vào một ô input khác (như ô Ghi chú), khôi phục giá trị cũ của ô đó
             if (
               bufferRef.current.startedInEditable &&
               bufferRef.current.targetElement &&
@@ -407,7 +459,6 @@ export function useHardwareBarcodeScanner({
         return;
       }
 
-      // Ghi nhận ký tự in được (bao gồm cả ký tự Tiếng Việt có dấu do Unikey sinh ra)
       if (e.key.length === 1) {
         if (bufferRef.current.chars.length === 0) {
           bufferRef.current.firstKeyTime = now;
