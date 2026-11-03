@@ -357,7 +357,14 @@ export default function CmsDashboardPage() {
             </button>
 
             <a
-              href={process.env.NEXT_PUBLIC_WEB_URL || "https://11sport-it.vercel.app"}
+              href={
+                process.env.NEXT_PUBLIC_WEB_URL ||
+                (typeof window !== "undefined" &&
+                (window.location.hostname === "localhost" ||
+                  window.location.hostname === "127.0.0.1")
+                  ? "http://localhost:3000"
+                  : "https://11sport-it.vercel.app")
+              }
               target="_blank"
               rel="noreferrer"
               className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-emerald-400 border border-slate-700 flex items-center gap-1"

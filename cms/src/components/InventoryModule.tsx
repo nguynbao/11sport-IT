@@ -2826,10 +2826,10 @@ export default function InventoryModule() {
                                       : "bg-indigo-50 text-indigo-800 border-indigo-200"
                                       }`}
                                   >
-                                    <span className="font-mono text-[9px] opacity-85">[{childCode}]</span>
                                     <span>
-                                      {v.color || "Mặc định"}
-                                      {v.size ? ` • ${v.size}` : ""}
+                                      {[v.color, v.size ? `Size ${v.size}` : ""]
+                                        .filter(Boolean)
+                                        .join(" • ") || "Mặc định"}
                                     </span>
                                     <span
                                       className={`font-mono font-extrabold ${lastScannedVariantCode === childCode
@@ -3095,7 +3095,7 @@ export default function InventoryModule() {
                                     <thead className="bg-slate-800 text-white uppercase text-[10px]">
                                       <tr>
                                         <th className="py-2 px-2.5 w-10 text-center">#</th>
-                                        <th className="py-2 px-2.5">Mã con (Barcode In Tem)</th>
+                                        <th className="py-2 px-2.5">Mã con</th>
                                         <th className="py-2 px-2.5">Màu sắc</th>
                                         <th className="py-2 px-2.5">Size</th>
                                         <th className="py-2 px-2.5 text-right">🏢 Tồn Kho Tầng 1</th>
