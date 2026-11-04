@@ -63,6 +63,45 @@ function sanitizeAsciiCode128(input: string): string {
   return out || "ITEM";
 }
 
+function compactColorTokenForBarcode(colorPart: string, maxLen: number): string {
+  const clean = (colorPart || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!clean || clean.length <= maxLen) return clean;
+  if (maxLen <= 1) return clean.slice(0, 1);
+
+  const knownMap: [RegExp, string][] = [
+    [/^TRANGXANH|^TRXANH|^TRXAN|^TRXA/, "TX"],
+    [/^TRANGDO|^TRDO/, "TD"],
+    [/^TRANGDEN|^TRDEN/, "TDE"],
+    [/^TRANGVANG|^TRVA/, "TV"],
+    [/^DENDO|^DEDO/, "DD"],
+    [/^DENTRANG|^DETR/, "DT"],
+    [/^DENVANG|^DEVA/, "DV"],
+    [/^XANHDUONG|^XADU/, "XD"],
+    [/^XANHDEN|^XADE/, "XDE"],
+    [/^XANHLA|^XALA/, "XL"],
+    [/^XANHNGOC|^XANGO/, "XN"],
+    [/^XANHTRANG|^XATR/, "XT"],
+    [/^WHBCOF|^WHBCO/, "WBC"],
+    [/^WHBLUE/, "WBL"],
+    [/^SOOVKH|^SOOVK/, "SVK"],
+    [/^BLGOL/, "BG"],
+    [/^GREIGESO|^GRSOO/, "GSO"],
+    [/^WHSTGR/, "WSG"],
+    [/^WHCAFE/, "WCF"],
+  ];
+
+  for (const [re, short] of knownMap) {
+    if (re.test(clean)) {
+      return short.length <= maxLen ? short : short.slice(0, maxLen);
+    }
+  }
+
+  if (maxLen === 2) {
+    return clean[0] + clean[Math.floor(clean.length / 2)];
+  }
+  return clean.slice(0, maxLen - 1) + clean[clean.length - 1];
+}
+
 function encodeCode128RawPattern(rawText: string): string {
   const text = sanitizeAsciiCode128(rawText);
   const START_B = 104;
@@ -122,94 +161,79 @@ function encodeCode128RawPattern(rawText: string): string {
   return codes.map((c) => CODE128_PATTERNS[c] || "").join("");
 }
 
-function encodeCode128BPattern(rawText: string, maxDots = 258): string {
-  const pat = encodeCode128RawPattern(rawText);
-  const numSymbols = Math.floor((pat.length - 2) / 11);
-  if (numSymbols <= 0) return pat;
+function toCompactBarcode128(rawCode: string, maxDots = 200): string {
+  const clean = sanitizeAsciiCode128(rawCode).toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!clean) return "ITEM";
+  if (encodeCode128RawPattern(clean).length <= maxDots) return clean;
 
-  let symW = Math.floor((maxDots - 4) / numSymbols);
-  if (symW > 24) symW = 24;
-  if (symW < 16) symW = 11;
-
-  if (symW === 11) {
-    return pat;
+  const m = clean.match(/^([A-Z])([A-Z]+?)(\d{6})([A-Z0-9]*)$/);
+  if (!m) {
+    let trimmed = clean;
+    while (trimmed.length > 8 && encodeCode128RawPattern(trimmed).length > maxDots) {
+      trimmed = trimmed.slice(0, -1);
+    }
+    return trimmed;
   }
 
-  let out = "";
-  for (let sIdx = 0; sIdx < numSymbols; sIdx++) {
-    const symPat = pat.slice(sIdx * 11, sIdx * 11 + 11);
-    const m: number[] = [];
-    let i = 0;
-    while (i < 11) {
-      const ch = symPat[i];
-      let r = 1;
-      while (i + r < 11 && symPat[i + r] === ch) r++;
-      m.push(r);
-      i += r;
+  const [, cat, brand, sixDigits, suffix] = m;
+  let colorPart = "";
+  let sizePart = "";
+  if (suffix) {
+    const sm = suffix.match(/^(.*?)(FREESIZE|XXS|XS|2XL|3XL|4XL|XXL|XXXL|XL|[234]\d(?:5)?|[2345]U|S|M|L)$/);
+    if (sm) {
+      colorPart = sm[1] || "";
+      sizePart = sm[2] || "";
+    } else {
+      colorPart = suffix;
     }
+  }
 
-    if (symW === 22) {
-      for (let k = 0; k < 6; k++) {
-        out += (k % 2 === 0 ? "1" : "0").repeat(m[k] * 2);
-      }
-      continue;
-    }
+  const sizeTokens = sizePart === "FREESIZE" ? ["FREESIZE", "FS"] : [sizePart];
 
-    const minR: number[] = [];
-    const maxR: number[] = [];
-    for (let k = 0; k < 6; k++) {
-      let lo = 1;
-      while (Math.round((lo * 11) / symW) < m[k]) lo++;
-      let hi = lo;
-      while (Math.round(((hi + 1) * 11) / symW) === m[k]) hi++;
-      minR.push(lo);
-      maxR.push(hi);
-    }
-
-    let bestR: number[] = m.map((v) => Math.max(1, Math.round((v * symW) / 11)));
-    let bestCost = 1e9;
-
-    for (let r0 = minR[0]; r0 <= maxR[0]; r0++) {
-      for (let r1 = minR[1]; r1 <= maxR[1]; r1++) {
-        for (let r2 = minR[2]; r2 <= maxR[2]; r2++) {
-          for (let r3 = minR[3]; r3 <= maxR[3]; r3++) {
-            for (let r4 = minR[4]; r4 <= maxR[4]; r4++) {
-              const r5 = symW - (r0 + r1 + r2 + r3 + r4);
-              if (r5 >= minR[5] && r5 <= maxR[5]) {
-                const rr = [r0, r1, r2, r3, r4, r5];
-                let ok = true;
-                for (let k = 0; k < 4; k++) {
-                  if (Math.round(((rr[k] + rr[k + 1]) * 11) / symW) !== m[k] + m[k + 1]) {
-                    ok = false;
-                    break;
-                  }
-                }
-                if (ok) {
-                  let cost = 0;
-                  for (let k = 0; k < 6; k++) {
-                    const diff = (rr[k] * 11) / symW - m[k];
-                    cost += diff * diff;
-                  }
-                  if (cost < bestCost) {
-                    bestCost = cost;
-                    bestR = rr;
-                  }
-                }
-              }
-            }
-          }
+  for (const sz of sizeTokens) {
+    if (colorPart) {
+      for (const cLen of [3, 2]) {
+        const sc = compactColorTokenForBarcode(colorPart, cLen);
+        const candidate = `${cat}${brand}${sixDigits}${sc}${sz}`;
+        if (encodeCode128RawPattern(candidate).length <= maxDots) {
+          return candidate;
         }
       }
     }
 
-    for (let k = 0; k < 6; k++) {
-      out += (k % 2 === 0 ? "1" : "0").repeat(bestR[k]);
+    const sc2 = compactColorTokenForBarcode(colorPart, 2);
+    for (let bLen = Math.min(brand.length, 5); bLen >= 2; bLen--) {
+      const sb = brand.slice(0, bLen);
+      for (const cLen of [3, 2]) {
+        const sc = compactColorTokenForBarcode(colorPart, cLen);
+        const candidate = `${cat}${sb}${sixDigits}${sc}${sz}`;
+        if (encodeCode128RawPattern(candidate).length <= maxDots) {
+          return candidate;
+        }
+      }
     }
   }
 
-  const finalBarPx = Math.max(2, Math.round((2 * symW) / 11));
-  out += "1".repeat(finalBarPx);
-  return out;
+  const finalSize = sizePart === "FREESIZE" ? "FS" : sizePart;
+  const sc1 = compactColorTokenForBarcode(colorPart, 1);
+  return `${cat}${brand.slice(0, 2)}${sixDigits}${sc1}${finalSize}`;
+}
+
+function encodeCode128BPattern(rawText: string, maxDots = 200): string {
+  const safeMaxDots = Math.max(120, Math.min(212, Number(maxDots) || 200));
+  const compactText = toCompactBarcode128(rawText, safeMaxDots);
+  const pat = encodeCode128RawPattern(compactText);
+  if (!pat) return "";
+
+  if (pat.length * 2 <= Math.min(safeMaxDots, 178)) {
+    let doubled = "";
+    for (let i = 0; i < pat.length; i++) {
+      doubled += pat[i] === "1" ? "11" : "00";
+    }
+    return doubled;
+  }
+
+  return pat;
 }
 
 export async function GET() {
@@ -320,6 +344,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const syncOnly = Boolean(body?.syncOnly);
     const showShopName = body?.options?.showShopName !== false;
     const showProductName = body?.options?.showProductName !== false;
     const showPrice = body?.options?.showPrice !== false;
@@ -334,34 +359,36 @@ export async function POST(req: NextRequest) {
     const items = Array.isArray(body?.items) ? body.items : [];
 
     const expandedStickers: any[] = [];
-    for (const item of items) {
-      const qty = Math.max(0, Math.min(500, Math.floor(Number(item?.quantity) || 0)));
-      if (qty <= 0) continue;
-      const cleanCode = sanitizeAsciiCode128(String(item?.code || "ITEM"));
-      const pattern = encodeCode128BPattern(cleanCode);
-      let priceText = String(item?.priceText || "").trim();
-      if (!priceText && showPrice && Number(item?.sellingPrice) > 0) {
-        priceText = `${Number(item.sellingPrice).toLocaleString("vi-VN")} đ`;
+    if (!syncOnly) {
+      for (const item of items) {
+        const qty = Math.max(0, Math.min(500, Math.floor(Number(item?.quantity) || 0)));
+        if (qty <= 0) continue;
+        const cleanCode = toCompactBarcode128(sanitizeAsciiCode128(String(item?.code || "ITEM")), 200);
+        const pattern = encodeCode128BPattern(cleanCode, 200);
+        let priceText = String(item?.priceText || "").trim();
+        if (!priceText && showPrice && Number(item?.sellingPrice) > 0) {
+          priceText = `${Number(item.sellingPrice).toLocaleString("vi-VN")} đ`;
+        }
+        const displayName = showProductName ? String(item?.name || "").trim() : "";
+        for (let i = 0; i < qty; i++) {
+          expandedStickers.push({
+            shopName,
+            name: displayName,
+            code: cleanCode,
+            priceText,
+            pattern,
+            nameFontSizePx,
+            wrapProductName
+          });
+        }
       }
-      const displayName = showProductName ? String(item?.name || "").trim() : "";
-      for (let i = 0; i < qty; i++) {
-        expandedStickers.push({
-          shopName,
-          name: displayName,
-          code: cleanCode,
-          priceText,
-          pattern,
-          nameFontSizePx,
-          wrapProductName
-        });
-      }
-    }
 
-    if (expandedStickers.length === 0) {
-      return NextResponse.json(
-        { success: false, message: "Không có tem nào có số lượng > 0 để in." },
-        { status: 400 }
-      );
+      if (expandedStickers.length === 0) {
+        return NextResponse.json(
+          { success: false, message: "Không có tem nào có số lượng > 0 để in." },
+          { status: 400 }
+        );
+      }
     }
 
     const rows: { left: any; right: any | null }[] = [];
@@ -396,6 +423,7 @@ $job = $rawJson | ConvertFrom-Json
 Add-Type -AssemblyName System.Drawing
 
 $printerName = [string]$job.printerName
+$syncOnly = [bool]$job.syncOnly
 $columns = [int]$job.columns
 $wMm = [double]$job.paperWidthMm
 $hMm = [double]$job.paperHeightMm
@@ -541,6 +569,11 @@ try {
   }
 } catch {}
 
+if ($syncOnly) {
+  Write-Output "PRINTED_OK:0"
+  exit 0
+}
+
 $doc = New-Object System.Drawing.Printing.PrintDocument
 $doc.PrinterSettings.PrinterName = $printerName
 
@@ -585,140 +618,149 @@ function Get-FittedFontPx($g, [string]$family, [string]$text, [float]$maxPx, [fl
   return New-Object System.Drawing.Font($family, $minPx, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
 }
 
-function Draw-SingleSticker($g, $sticker, [int]$cellX, [int]$cellW, [int]$cellH, [double]$pxPerMmX, [double]$pxPerMmY) {
+function Draw-SingleSticker($g, $sticker, [int]$cellX, [int]$cellY, [int]$cellW, [int]$cellH, [double]$pxPerMmX, [double]$pxPerMmY) {
   if ($null -eq $sticker) { return }
 
-  $brushBlack = [System.Drawing.Brushes]::Black
-  $brushWhite = [System.Drawing.Brushes]::White
+  $clipRect = New-Object System.Drawing.Rectangle($cellX, $cellY, $cellW, $cellH)
+  $g.SetClip($clipRect)
 
-  $sfCenter = New-Object System.Drawing.StringFormat
-  $sfCenter.Alignment = [System.Drawing.StringAlignment]::Center
-  $sfCenter.LineAlignment = [System.Drawing.StringAlignment]::Center
-  $sfCenter.Trimming = [System.Drawing.StringTrimming]::EllipsisCharacter
-  $sfCenter.FormatFlags = [System.Drawing.StringFormatFlags]::NoWrap -bor [System.Drawing.StringFormatFlags]::NoClip
+  try {
+    $brushBlack = [System.Drawing.Brushes]::Black
+    $brushWhite = [System.Drawing.Brushes]::White
 
-  $sfCode = New-Object System.Drawing.StringFormat
-  $sfCode.Alignment = [System.Drawing.StringAlignment]::Center
-  $sfCode.LineAlignment = [System.Drawing.StringAlignment]::Center
-  $sfCode.Trimming = [System.Drawing.StringTrimming]::None
-  $sfCode.FormatFlags = [System.Drawing.StringFormatFlags]::NoWrap -bor [System.Drawing.StringFormatFlags]::NoClip
+    $sfCenter = New-Object System.Drawing.StringFormat
+    $sfCenter.Alignment = [System.Drawing.StringAlignment]::Center
+    $sfCenter.LineAlignment = [System.Drawing.StringAlignment]::Center
+    $sfCenter.Trimming = [System.Drawing.StringTrimming]::EllipsisCharacter
+    $sfCenter.FormatFlags = [System.Drawing.StringFormatFlags]::NoWrap
 
-  $scaleY = $pxPerMmY / 8.0
-  $padX = [Math]::Max(2, [int][Math]::Round(0.4 * $pxPerMmX))
-  $innerX = $cellX + $padX
-  $innerW = $cellW - ($padX * 2)
+    $sfCode = New-Object System.Drawing.StringFormat
+    $sfCode.Alignment = [System.Drawing.StringAlignment]::Center
+    $sfCode.LineAlignment = [System.Drawing.StringAlignment]::Center
+    $sfCode.Trimming = [System.Drawing.StringTrimming]::None
+    $sfCode.FormatFlags = [System.Drawing.StringFormatFlags]::NoWrap
 
-  $y = 0
+    $scaleY = $pxPerMmY / 8.0
+    $padX = [Math]::Max(14, [int][Math]::Round(1.8 * $pxPerMmX))
+    $innerX = $cellX + $padX
+    $innerW = $cellW - ($padX * 2)
 
-  if (-not [string]::IsNullOrWhiteSpace($sticker.shopName)) {
-    $shopH = [int][Math]::Round(19 * $scaleY)
-    $fontShop = Get-FittedFontPx $g 'Arial' ([string]$sticker.shopName) ([float](19 * $scaleY)) ([float](14 * $scaleY)) $innerW
-    $rectShop = New-Object System.Drawing.RectangleF($innerX, $y, $innerW, $shopH)
-    $g.DrawString([string]$sticker.shopName, $fontShop, $brushBlack, $rectShop, $sfCenter)
-    $fontShop.Dispose()
-    $lineH = [Math]::Max(2, [int][Math]::Round(2 * $scaleY))
-    $g.FillRectangle($brushBlack, $innerX, $y + $shopH, $innerW, $lineH)
-    $y += $shopH + $lineH + 1
-  } else {
-    $y += [int][Math]::Round(2 * $scaleY)
-  }
+    $y = $cellY
 
-  if (-not [string]::IsNullOrWhiteSpace($sticker.name)) {
-    $customPx = if ($null -ne $sticker.nameFontSizePx) { [float]$sticker.nameFontSizePx } else { 0.0 }
-    $wrapName = if ($null -ne $sticker.wrapProductName) { [bool]$sticker.wrapProductName } else { $true }
-
-    if ($customPx -gt 0) {
-      $fontName = New-Object System.Drawing.Font('Arial', [float]($customPx * $scaleY), [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
+    if (-not [string]::IsNullOrWhiteSpace($sticker.shopName)) {
+      $shopH = [int][Math]::Round(19 * $scaleY)
+      $fontShop = Get-FittedFontPx $g 'Arial' ([string]$sticker.shopName) ([float](19 * $scaleY)) ([float](14 * $scaleY)) $innerW
+      $rectShop = New-Object System.Drawing.RectangleF($innerX, $y, $innerW, $shopH)
+      $g.DrawString([string]$sticker.shopName, $fontShop, $brushBlack, $rectShop, $sfCenter)
+      $fontShop.Dispose()
+      $lineH = [Math]::Max(2, [int][Math]::Round(2 * $scaleY))
+      $g.FillRectangle($brushBlack, $innerX, $y + $shopH, $innerW, $lineH)
+      $y += $shopH + $lineH + 1
     } else {
-      $fontName = Get-FittedFontPx $g 'Arial' ([string]$sticker.name) ([float](25 * $scaleY)) ([float](13 * $scaleY)) $innerW
+      $y += [int][Math]::Round(2 * $scaleY)
     }
 
-    $singleLineSz = $g.MeasureString([string]$sticker.name, $fontName)
-    $needsTwoLines = $wrapName -and ($singleLineSz.Width -gt ($innerW + 2))
+    if (-not [string]::IsNullOrWhiteSpace($sticker.name)) {
+      $customPx = if ($null -ne $sticker.nameFontSizePx) { [float]$sticker.nameFontSizePx } else { 0.0 }
+      $wrapName = if ($null -ne $sticker.wrapProductName) { [bool]$sticker.wrapProductName } else { $true }
 
-    if ($needsTwoLines) {
-      $sfWrap = New-Object System.Drawing.StringFormat
-      $sfWrap.Alignment = [System.Drawing.StringAlignment]::Center
-      $sfWrap.LineAlignment = [System.Drawing.StringAlignment]::Center
-      $sfWrap.Trimming = [System.Drawing.StringTrimming]::EllipsisCharacter
-      $lineHeightPx = [int][Math]::Ceiling($fontName.GetHeight($g))
-      $nameH = [Math]::Min([int][Math]::Round(36 * $scaleY), [Math]::Max([int][Math]::Round(26 * $scaleY), [int][Math]::Round($lineHeightPx * 2.05)))
-      $rectName = New-Object System.Drawing.RectangleF($innerX, $y, $innerW, $nameH)
-      $g.DrawString([string]$sticker.name, $fontName, $brushBlack, $rectName, $sfWrap)
-      $sfWrap.Dispose()
-      $y += $nameH + 1
-    } else {
-      $lineHeightPx = [int][Math]::Ceiling($fontName.GetHeight($g))
-      $nameH = [Math]::Max([int][Math]::Round(20 * $scaleY), [Math]::Min([int][Math]::Round(30 * $scaleY), $lineHeightPx + 2))
-      $rectName = New-Object System.Drawing.RectangleF($innerX, $y, $innerW, $nameH)
-      $g.DrawString([string]$sticker.name, $fontName, $brushBlack, $rectName, $sfCenter)
-      $y += $nameH + 1
-    }
-    $fontName.Dispose()
-  } else {
-    $y += [int][Math]::Round(2 * $scaleY)
-  }
-
-  $hasPrice = -not [string]::IsNullOrWhiteSpace($sticker.priceText)
-  $codeH = [int][Math]::Round(16 * $scaleY)
-  $priceH = if ($hasPrice) { [int][Math]::Round(24 * $scaleY) } else { [int][Math]::Round(2 * $scaleY) }
-  $bottomPad = [int][Math]::Round(3 * $scaleY)
-
-  $barTop = $y
-  $availBarH = $cellH - $barTop - $codeH - $priceH - $bottomPad - 1
-  $barHeight = [Math]::Max([int][Math]::Round(28 * $scaleY), $availBarH)
-  if (($barTop + $barHeight + $codeH + $priceH + $bottomPad) -gt $cellH) {
-    $barHeight = [Math]::Max([int][Math]::Round(22 * $scaleY), $cellH - $barTop - $codeH - $priceH - $bottomPad)
-  }
-  $pattern = [string]$sticker.pattern
-
-  if ($pattern.Length -gt 0) {
-    $quietZonePx = [Math]::Max(8, [int][Math]::Round(1.0 * $pxPerMmX))
-    $maxBarW = $cellW - ($quietZonePx * 2)
-    $modulePx = [int][Math]::Floor($maxBarW / $pattern.Length)
-    if ($modulePx -lt 1) { $modulePx = 1 }
-    if ($modulePx -gt 2) { $modulePx = 2 }
-
-    $totalBarPx = $pattern.Length * $modulePx
-    $startX = [Math]::Max($cellX + 2, $cellX + [int][Math]::Floor(($cellW - $totalBarPx) / 2.0))
-
-    $g.FillRectangle($brushWhite, $cellX, $barTop, $cellW, $barHeight)
-
-    $i = 0
-    while ($i -lt $pattern.Length) {
-      if ($pattern[$i] -eq '1') {
-        $run = 1
-        while (($i + $run) -lt $pattern.Length -and $pattern[$i + $run] -eq '1') {
-          $run++
-        }
-        $barX = $startX + ($i * $modulePx)
-        $barW = $run * $modulePx
-        $g.FillRectangle($brushBlack, $barX, $barTop, $barW, $barHeight)
-        $i += $run
+      if ($customPx -gt 0) {
+        $fontName = New-Object System.Drawing.Font('Arial', [float]($customPx * $scaleY), [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
       } else {
-        $i++
+        $fontName = Get-FittedFontPx $g 'Arial' ([string]$sticker.name) ([float](25 * $scaleY)) ([float](13 * $scaleY)) $innerW
+      }
+
+      $singleLineSz = $g.MeasureString([string]$sticker.name, $fontName)
+      $needsTwoLines = $wrapName -and ($singleLineSz.Width -gt ($innerW + 2))
+
+      if ($needsTwoLines) {
+        $sfWrap = New-Object System.Drawing.StringFormat
+        $sfWrap.Alignment = [System.Drawing.StringAlignment]::Center
+        $sfWrap.LineAlignment = [System.Drawing.StringAlignment]::Center
+        $sfWrap.Trimming = [System.Drawing.StringTrimming]::EllipsisCharacter
+        $lineHeightPx = [int][Math]::Ceiling($fontName.GetHeight($g))
+        $nameH = [Math]::Min([int][Math]::Round(36 * $scaleY), [Math]::Max([int][Math]::Round(26 * $scaleY), [int][Math]::Round($lineHeightPx * 2.05)))
+        $rectName = New-Object System.Drawing.RectangleF($innerX, $y, $innerW, $nameH)
+        $g.DrawString([string]$sticker.name, $fontName, $brushBlack, $rectName, $sfWrap)
+        $sfWrap.Dispose()
+        $y += $nameH + 1
+      } else {
+        $lineHeightPx = [int][Math]::Ceiling($fontName.GetHeight($g))
+        $nameH = [Math]::Max([int][Math]::Round(20 * $scaleY), [Math]::Min([int][Math]::Round(30 * $scaleY), $lineHeightPx + 2))
+        $rectName = New-Object System.Drawing.RectangleF($innerX, $y, $innerW, $nameH)
+        $g.DrawString([string]$sticker.name, $fontName, $brushBlack, $rectName, $sfCenter)
+        $y += $nameH + 1
+      }
+      $fontName.Dispose()
+    } else {
+      $y += [int][Math]::Round(2 * $scaleY)
+    }
+
+    $hasPrice = -not [string]::IsNullOrWhiteSpace($sticker.priceText)
+    $codeH = [int][Math]::Round(16 * $scaleY)
+    $priceH = if ($hasPrice) { [int][Math]::Round(24 * $scaleY) } else { [int][Math]::Round(2 * $scaleY) }
+    $bottomPad = [int][Math]::Round(3 * $scaleY)
+
+    $barTop = $y
+    $availBarH = ($cellY + $cellH) - $barTop - $codeH - $priceH - $bottomPad - 1
+    $barHeight = [Math]::Max([int][Math]::Round(28 * $scaleY), $availBarH)
+    if (($barTop + $barHeight + $codeH + $priceH + $bottomPad) -gt ($cellY + $cellH)) {
+      $barHeight = [Math]::Max([int][Math]::Round(22 * $scaleY), ($cellY + $cellH) - $barTop - $codeH - $priceH - $bottomPad)
+    }
+    $pattern = [string]$sticker.pattern
+
+    if ($pattern.Length -gt 0) {
+      $quietZonePx = [Math]::Max(26, [int][Math]::Round(3.25 * $pxPerMmX))
+      $maxBarW = [Math]::Min([int][Math]::Round(26.5 * $pxPerMmX), $cellW - ($quietZonePx * 2))
+      $modulePx = [int][Math]::Floor($maxBarW / $pattern.Length)
+      if ($modulePx -lt 1) { $modulePx = 1 }
+      if ($modulePx -gt 2) { $modulePx = 2 }
+
+      $totalBarPx = $pattern.Length * $modulePx
+      $startX = [Math]::Max($cellX + $quietZonePx, $cellX + [int][Math]::Floor(($cellW - $totalBarPx) / 2.0))
+
+      $g.FillRectangle($brushWhite, $cellX, $barTop, $cellW, $barHeight)
+
+      $i = 0
+      while ($i -lt $pattern.Length) {
+        if ($pattern[$i] -eq '1') {
+          $run = 1
+          while (($i + $run) -lt $pattern.Length -and $pattern[$i + $run] -eq '1') {
+            $run++
+          }
+          $barX = $startX + ($i * $modulePx)
+          $barW = $run * $modulePx
+          if (($barX + $barW) -le ($cellX + $cellW - $quietZonePx + 4)) {
+            $g.FillRectangle($brushBlack, $barX, $barTop, $barW, $barHeight)
+          }
+          $i += $run
+        } else {
+          $i++
+        }
       }
     }
+    $y = $barTop + $barHeight + 1
+
+    $rawCodeStr = [string]$sticker.code
+    $spacedCode = ($rawCodeStr.ToCharArray()) -join ' '
+    $fontCode = Get-FittedFontPx $g 'Consolas' $spacedCode ([float](17 * $scaleY)) ([float](11 * $scaleY)) $innerW
+    $rectCode = New-Object System.Drawing.RectangleF($innerX, $y, $innerW, $codeH)
+    $g.DrawString($spacedCode, $fontCode, $brushBlack, $rectCode, $sfCode)
+    $fontCode.Dispose()
+    $y += $codeH
+
+    if ($hasPrice) {
+      $fontPrice = Get-FittedFontPx $g 'Arial' ([string]$sticker.priceText) ([float](28 * $scaleY)) ([float](18 * $scaleY)) $innerW
+      $rectPrice = New-Object System.Drawing.RectangleF($innerX, $y, $innerW, $priceH)
+      $g.DrawString([string]$sticker.priceText, $fontPrice, $brushBlack, $rectPrice, $sfCenter)
+      $fontPrice.Dispose()
+    }
+
+    $sfCenter.Dispose()
+    $sfCode.Dispose()
+  } finally {
+    $g.ResetClip()
   }
-  $y = $barTop + $barHeight + 1
-
-  $rawCodeStr = [string]$sticker.code
-  $spacedCode = ($rawCodeStr.ToCharArray()) -join ' '
-  $fontCode = Get-FittedFontPx $g 'Consolas' $spacedCode ([float](18 * $scaleY)) ([float](12 * $scaleY)) $innerW
-  $rectCode = New-Object System.Drawing.RectangleF($innerX, $y, $innerW, $codeH)
-  $g.DrawString($spacedCode, $fontCode, $brushBlack, $rectCode, $sfCode)
-  $fontCode.Dispose()
-  $y += $codeH
-
-  if ($hasPrice) {
-    $fontPrice = Get-FittedFontPx $g 'Arial' ([string]$sticker.priceText) ([float](28 * $scaleY)) ([float](18 * $scaleY)) $innerW
-    $rectPrice = New-Object System.Drawing.RectangleF($innerX, $y, $innerW, $priceH)
-    $g.DrawString([string]$sticker.priceText, $fontPrice, $brushBlack, $rectPrice, $sfCenter)
-    $fontPrice.Dispose()
-  }
-
-  $sfCenter.Dispose()
-  $sfCode.Dispose()
 }
 
 $doc.add_QueryPageSettings({
@@ -747,20 +789,33 @@ $doc.add_PrintPage({
   $pxPerMmX = $dpiX / 25.4
   $pxPerMmY = $dpiY / 25.4
 
+  $hmX = 0
+  $hmY = 0
+  try {
+    $hmX = [int][Math]::Round($e.PageSettings.HardMarginX / 100.0 * $dpiX)
+    $hmY = [int][Math]::Round($e.PageSettings.HardMarginY / 100.0 * $dpiY)
+  } catch {}
+  if ($hmX -lt 0) { $hmX = 0 }
+  if ($hmX -gt 16) { $hmX = 16 }
+  if ($hmY -lt 0) { $hmY = 0 }
+  if ($hmY -gt 16) { $hmY = 16 }
+
   $W = [int][Math]::Round($wMm * $pxPerMmX)
   $H = [int][Math]::Round($hMm * $pxPerMmY)
 
   $row = $rows[$script:rowIndex]
 
   if ($columns -eq 2) {
-    $cellW = [int][Math]::Round(34.5 * $pxPerMmX)
-    $rightX = $W - $cellW
-    Draw-SingleSticker $g $row.left 0 $cellW $H $pxPerMmX $pxPerMmY
+    $cellW = [int][Math]::Round(34.0 * $pxPerMmX)
+    $leftX = 0 - $hmX
+    $rightX = ($W - $cellW) - $hmX
+    $topY = 0 - $hmY
+    Draw-SingleSticker $g $row.left $leftX $topY $cellW $H $pxPerMmX $pxPerMmY
     if ($null -ne $row.right) {
-      Draw-SingleSticker $g $row.right $rightX $cellW $H $pxPerMmX $pxPerMmY
+      Draw-SingleSticker $g $row.right $rightX $topY $cellW $H $pxPerMmX $pxPerMmY
     }
   } else {
-    Draw-SingleSticker $g $row.left 0 $W $H $pxPerMmX $pxPerMmY
+    Draw-SingleSticker $g $row.left (0 - $hmX) (0 - $hmY) $W $H $pxPerMmX $pxPerMmY
   }
 
   $script:rowIndex++
@@ -780,6 +835,7 @@ Write-Output ("PRINTED_OK:" + $rows.Count)
     try {
       await fs.writeFile(jsonPath, JSON.stringify({
         printerName,
+        syncOnly,
         columns,
         paperWidthMm,
         paperHeightMm,
@@ -803,9 +859,12 @@ Write-Output ("PRINTED_OK:" + $rows.Count)
         data: {
           printedLabels: expandedStickers.length,
           printedPages: rows.length,
-          printerName
+          printerName,
+          syncedDriver: true
         },
-        message: `Đã in ${expandedStickers.length} tem (${rows.length} hàng 70×20mm) tới máy in "${printerName}"`
+        message: syncOnly
+          ? `Đã đồng bộ khổ giấy ${paperWidthMm}×${paperHeightMm}mm cho máy in "${printerName}"`
+          : `Đã in ${expandedStickers.length} tem (${rows.length} hàng 70×20mm) tới máy in "${printerName}"`
       });
     } finally {
       await fs.unlink(jsonPath).catch(() => {});
