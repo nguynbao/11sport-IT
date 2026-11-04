@@ -4174,14 +4174,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                                     </span>
                                   </div>
 
-                                  {originalIdx < 9 && canPick && (
-                                    <span
-                                      className="font-mono text-[9px] font-bold px-1 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200 shrink-0"
-                                      title={`Bấm phím số ${originalIdx + 1} để chọn nhanh`}
-                                    >
-                                      [{originalIdx + 1}]
-                                    </span>
-                                  )}
                                 </div>
 
                                 <div className="flex items-center justify-between gap-1 pt-1 border-t border-slate-100">
