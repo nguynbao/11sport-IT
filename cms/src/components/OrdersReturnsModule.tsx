@@ -27,6 +27,7 @@ export default function OrdersReturnsModule({
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [paymentFilter, setPaymentFilter] = useState("");
+  const [debtFilter, setDebtFilter] = useState("");
   const [actionMsg, setActionMsg] = useState<{ type: "success" | "error"; text: string } | null>(
     null
   );
@@ -40,6 +41,7 @@ export default function OrdersReturnsModule({
       if (debouncedSearch.trim()) q.set("search", debouncedSearch.trim());
       if (statusFilter) q.set("status", statusFilter);
       if (paymentFilter) q.set("paymentMethod", paymentFilter);
+      if (debtFilter) q.set("debtStatus", debtFilter);
 
       const retQ = new URLSearchParams();
       if (debouncedSearch.trim()) retQ.set("search", debouncedSearch.trim());
@@ -55,7 +57,7 @@ export default function OrdersReturnsModule({
     } catch {
       // ignore
     }
-  }, [debouncedSearch, statusFilter, paymentFilter]);
+  }, [debouncedSearch, statusFilter, paymentFilter, debtFilter]);
 
   useEffect(() => {
     loadData();
@@ -197,7 +199,20 @@ export default function OrdersReturnsModule({
               <option value="CASH">Tiền mặt (CASH)</option>
               <option value="BANKING">Chuyển khoản (BANKING)</option>
               <option value="CARD">Thẻ (CARD)</option>
-              <option value="OTHER">Khác (OTHER)</option>
+              <option value="OTHER">Khác / Công nợ (OTHER)</option>
+            </select>
+
+            <select
+              value={debtFilter}
+              onChange={(e) => setDebtFilter(e.target.value)}
+              className="px-3 py-2 rounded-lg border border-amber-300 text-xs bg-amber-50 font-semibold text-amber-900"
+            >
+              <option value="">Tất cả Công nợ</option>
+              <option value="HAS_DEBT">Đang còn nợ</option>
+              <option value="OVERDUE">Quá hạn hẹn trả</option>
+              <option value="UNPAID">Chưa trả nợ</option>
+              <option value="PARTIAL">Đã trả 1 phần</option>
+              <option value="SETTLED">Đã tất toán nợ</option>
             </select>
           </div>
         </div>
@@ -270,6 +285,16 @@ export default function OrdersReturnsModule({
                       {ord.paymentMethod === "OTHER" && ord.paymentMethodDetail && (
                         <div className="text-[10px] font-normal text-indigo-700">
                           ({ord.paymentMethodDetail})
+                        </div>
+                      )}
+                      {Number(ord.debtAmount || 0) > 0 && (
+                        <div className="mt-1 inline-block px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-extrabold">
+                          Còn nợ: {formatVND(ord.debtAmount || 0)}
+                        </div>
+                      )}
+                      {ord.debtStatus === "SETTLED" && Number(ord.initialDebtAmount || 0) > 0 && (
+                        <div className="mt-1 inline-block px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-bold">
+                          Đã tất toán nợ
                         </div>
                       )}
                     </td>

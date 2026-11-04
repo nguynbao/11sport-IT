@@ -6,12 +6,18 @@ import { exportRevenueDashboard } from "@/lib/exports";
 import {
   RevenueDashboardData,
   ProductSalesAnalysisRow,
+  DebtOrderRow,
+  DebtCustomerSummary,
   Category,
   Order,
   ReturnReceipt,
   Product,
   apiRequest,
   formatVND,
+  formatDateTime,
+  formatPhone,
+  formatNumberDots,
+  parseNumberDots,
   useDebounce,
   filterAndRankBySearch,
 } from "@/lib/api";
@@ -34,10 +40,17 @@ import {
   PieChart,
   LineChart,
   RefreshCw,
+  CheckCircle2,
+  Clock,
+  Users,
+  Wallet,
+  X,
+  FileText,
 } from "lucide-react";
 
 interface Props {
   onNavigateToInventory?: (searchCode?: string) => void;
+  onNavigateToDebts?: () => void;
 }
 
 function parseLocalDateBound(raw: string | undefined | null, isEnd: boolean): Date | null {
@@ -99,7 +112,17 @@ function buildClientFallbackDashboard(
 
   const filteredOrders = orders.filter((o) => {
     if (!inRange(o.createdAt)) return false;
-    if (filterPayMethod && o.paymentMethod !== filterPayMethod) return false;
+    if (filterPayMethod) {
+      if (filterPayMethod === "DEBT") {
+        const hasDebt =
+          (Number(o.debtAmount) || 0) > 0 ||
+          (Number(o.initialDebtAmount) || 0) > 0 ||
+          (o.debtStatus && o.debtStatus !== "NONE");
+        if (!hasDebt) return false;
+      } else if (o.paymentMethod !== filterPayMethod) {
+        return false;
+      }
+    }
     if (filterCatId) {
       const hasCat = (o.items || []).some((it) => {
         const p = prodById.get(String(it.productId)) || prodByCode.get(String(it.productCode));
@@ -112,7 +135,7 @@ function buildClientFallbackDashboard(
 
   const filteredReturns = returns.filter((r) => {
     if (!inRange(r.createdAt)) return false;
-    if (filterPayMethod && r.refundMethod !== filterPayMethod) return false;
+    if (filterPayMethod && filterPayMethod !== "DEBT" && r.refundMethod !== filterPayMethod) return false;
     if (filterCatId) {
       const hasCat =
         (r.returnItems || []).some((it: any) => {
@@ -136,6 +159,10 @@ function buildClientFallbackDashboard(
   let totalUnitsSold = 0;
   let totalGiftUnits = 0;
   let estimatedCogs = 0;
+  let outstandingDebtInPeriod = 0;
+  let initialDebtInPeriod = 0;
+  let debtCollectedInPeriod = 0;
+  let debtOrdersInPeriod = 0;
 
   interface ProdStat {
     productId: string;
@@ -375,6 +402,15 @@ function buildClientFallbackDashboard(
     const pm = paymentStats[o.paymentMethod] || paymentStats.OTHER;
     pm.orders += 1;
     pm.revenue += effectiveOrderRev;
+
+    const orderDebtRem = Math.max(0, Number(o.debtAmount) || 0);
+    const orderDebtInit = Math.max(orderDebtRem, Number(o.initialDebtAmount) || 0);
+    if (orderDebtInit > 0 || orderDebtRem > 0 || (o.debtStatus && o.debtStatus !== "NONE")) {
+      debtOrdersInPeriod += 1;
+      outstandingDebtInPeriod += orderDebtRem;
+      initialDebtInPeriod += orderDebtInit;
+      debtCollectedInPeriod += Math.max(0, orderDebtInit - orderDebtRem);
+    }
   }
 
   let returnTotal = 0;
@@ -629,6 +665,8 @@ function buildClientFallbackDashboard(
     a.hour.localeCompare(b.hour)
   );
 
+  const collectedRevenue = netRevenue - outstandingDebtInPeriod;
+
   return {
     summary: {
       grossRevenue,
@@ -641,6 +679,11 @@ function buildClientFallbackDashboard(
       exchangeTotal,
       netReturnImpact,
       netRevenue,
+      collectedRevenue,
+      outstandingDebtInPeriod,
+      initialDebtInPeriod,
+      debtCollectedInPeriod,
+      debtOrdersInPeriod,
       estimatedCogs,
       grossProfit,
       grossMarginPercent,
@@ -658,6 +701,22 @@ function buildClientFallbackDashboard(
     hourlyTrend,
     topSellingProducts,
     needsPushProducts,
+    debtManagement: {
+      summary: {
+        totalOutstandingDebt: outstandingDebtInPeriod,
+        totalInitialDebt: initialDebtInPeriod,
+        totalCollectedDebt: debtCollectedInPeriod,
+        activeDebtOrdersCount: 0,
+        settledDebtOrdersCount: 0,
+        activeDebtCustomersCount: 0,
+        overdueDebtAmount: 0,
+        overdueOrdersCount: 0,
+        newDebtInPeriod: initialDebtInPeriod,
+        collectedInPeriod: debtCollectedInPeriod,
+      },
+      customers: [],
+      orders: [],
+    },
   };
 }
 
@@ -760,7 +819,10 @@ function SvgDonutChart({
   );
 }
 
-export default function RevenueDashboardModule({ onNavigateToInventory }: Props) {
+export default function RevenueDashboardModule({
+  onNavigateToInventory,
+  onNavigateToDebts,
+}: Props) {
   const [data, setData] = useState<RevenueDashboardData | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -795,6 +857,14 @@ export default function RevenueDashboardModule({ onNavigateToInventory }: Props)
   // Phân trang bảng doanh thu theo ngày
   const [dailyPage, setDailyPage] = useState(1);
   const dailyPageSize = 10;
+
+  // Thống kê Công nợ (Mua trước trả sau) — Chỉ hiển thị thông tin trên Dashboard
+  const [debtTab, setDebtTab] = useState<"CUSTOMERS" | "ORDERS">("ORDERS");
+  const [debtFilter, setDebtFilter] = useState<
+    "HAS_DEBT" | "OVERDUE" | "UNPAID" | "PARTIAL" | "SETTLED" | "ALL"
+  >("HAS_DEBT");
+  const [debtSearch, setDebtSearch] = useState("");
+  const [expandedCustomerPhone, setExpandedCustomerPhone] = useState<string | null>(null);
 
   const toDateInput = (d: Date) => {
     const yyyy = d.getFullYear();
@@ -1088,7 +1158,43 @@ export default function RevenueDashboardModule({ onNavigateToInventory }: Props)
     return Math.max(1, ...top8RevenueProducts.map((p) => p.revenue));
   }, [top8RevenueProducts]);
 
+  const filteredDebtOrders = useMemo(() => {
+    const list = data?.debtManagement?.orders || [];
+    const byStatus = list.filter((o) => {
+      if (debtFilter === "HAS_DEBT") return o.debtAmount > 0;
+      if (debtFilter === "OVERDUE") return o.isOverdue && o.debtAmount > 0;
+      if (debtFilter === "UNPAID") return o.debtStatus === "UNPAID" && o.debtAmount > 0;
+      if (debtFilter === "PARTIAL") return o.debtStatus === "PARTIAL" && o.debtAmount > 0;
+      if (debtFilter === "SETTLED") return o.debtStatus === "SETTLED" || o.debtAmount === 0;
+      return true;
+    });
+    const q = debtSearch.trim();
+    if (!q) return byStatus;
+    return filterAndRankBySearch(byStatus, q, (o) => [
+      { text: o.orderCode, weight: 1.5 },
+      { text: o.customerName, weight: 1.3 },
+      { text: o.customerPhone, weight: 1.4 },
+    ]);
+  }, [data?.debtManagement?.orders, debtFilter, debtSearch]);
+
+  const filteredDebtCustomers = useMemo(() => {
+    const list = data?.debtManagement?.customers || [];
+    const byStatus = list.filter((c) => {
+      if (debtFilter === "HAS_DEBT") return c.totalDebtAmount > 0;
+      if (debtFilter === "OVERDUE") return c.overdueOrders > 0 && c.totalDebtAmount > 0;
+      if (debtFilter === "SETTLED") return c.totalDebtAmount === 0;
+      return true;
+    });
+    const q = debtSearch.trim();
+    if (!q) return byStatus;
+    return filterAndRankBySearch(byStatus, q, (c) => [
+      { text: c.customerName, weight: 1.4 },
+      { text: c.phone, weight: 1.5 },
+    ]);
+  }, [data?.debtManagement?.customers, debtFilter, debtSearch]);
+
   const s = data?.summary;
+  const dm = data?.debtManagement;
 
   return (
     <div className="space-y-6">
@@ -1232,6 +1338,7 @@ export default function RevenueDashboardModule({ onNavigateToInventory }: Props)
               <option value="BANKING">Chuyển khoản (BANKING)</option>
               <option value="CARD">Quẹt thẻ (CARD)</option>
               <option value="OTHER">Khác (OTHER)</option>
+              <option value="DEBT">Công nợ (Mua trước trả sau)</option>
             </select>
           </div>
         </div>
@@ -1275,7 +1382,7 @@ export default function RevenueDashboardModule({ onNavigateToInventory }: Props)
         <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-xs font-extrabold uppercase text-slate-500">
-              1. Doanh thu thuần (Thực thu)
+              1. Doanh thu thuần (Thực thu + Công nợ)
             </span>
             <span className="p-2 rounded-xl bg-emerald-100 text-emerald-700">
               <DollarSign className="w-4 h-4" />
@@ -1286,6 +1393,18 @@ export default function RevenueDashboardModule({ onNavigateToInventory }: Props)
           </div>
           <div className="mt-3 pt-2.5 border-t border-slate-100 space-y-1 text-[11px] text-slate-600">
             <div className="flex justify-between">
+              <span className="font-semibold text-emerald-700">Thực thu (Đã vào quỹ):</span>
+              <span className="font-mono font-extrabold text-emerald-700">
+                {formatVND(s?.collectedRevenue ?? (s?.netRevenue || 0) - (s?.outstandingDebtInPeriod || 0))}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-semibold text-amber-700">Đang công nợ (Chưa thu):</span>
+              <span className="font-mono font-extrabold text-amber-700">
+                {formatVND(s?.outstandingDebtInPeriod || 0)}
+              </span>
+            </div>
+            <div className="flex justify-between pt-1 border-t border-slate-100">
               <span>Tiền hàng niêm yết:</span>
               <span className="font-mono font-bold text-slate-800">
                 {formatVND(s?.grossRevenue || 0)}
@@ -1416,6 +1535,418 @@ export default function RevenueDashboardModule({ onNavigateToInventory }: Props)
             </div>
           </div>
         </div>
+      </div>
+
+      {/* KHU VỰC THỐNG KÊ CÔNG NỢ KHÁCH HÀNG (CHỈ HIỂN THỊ THÔNG TIN TRÊN DASHBOARD) */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-extrabold uppercase">
+              <Wallet className="w-3.5 h-3.5" />
+              Thống kê Công nợ (Mua trước trả sau)
+            </div>
+            <h3 className="font-extrabold text-slate-900 text-base mt-1">
+              Tổng quan Dư nợ Khách hàng & Tình trạng Hạn trả
+            </h3>
+            <p className="text-xs text-slate-500">
+              Hiển thị thông tin thống kê công nợ trên Dashboard. Để xác nhận thu nợ / tất toán, vui lòng chọn mục 8 trong Menu CMS.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200 text-xs font-extrabold">
+              <button
+                type="button"
+                onClick={() => setDebtTab("ORDERS")}
+                className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition ${
+                  debtTab === "ORDERS"
+                    ? "bg-slate-900 text-white shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                Theo Đơn Công Nợ ({dm?.orders?.length || 0})
+              </button>
+              <button
+                type="button"
+                onClick={() => setDebtTab("CUSTOMERS")}
+                className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition ${
+                  debtTab === "CUSTOMERS"
+                    ? "bg-slate-900 text-white shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                Gom nhóm theo Khách SĐT ({dm?.customers?.length || 0})
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* 4 Thẻ KPI Công nợ */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="rounded-xl bg-slate-50 border border-slate-200 p-3.5">
+            <div className="flex items-center justify-between text-[11px] font-extrabold uppercase text-slate-600">
+              <span>Tổng dư nợ cần thu</span>
+              <Wallet className="w-4 h-4 text-emerald-600" />
+            </div>
+            <div className="text-xl font-black font-mono text-slate-900 mt-1">
+              {formatVND(dm?.summary?.totalOutstandingDebt || 0)}
+            </div>
+            <div className="text-[11px] text-slate-600 mt-1">
+              Trên <strong>{dm?.summary?.activeDebtOrdersCount || 0}</strong> đơn đang nợ ·{" "}
+              <strong>{dm?.summary?.activeDebtCustomersCount || 0}</strong> khách hàng
+            </div>
+          </div>
+
+          <div
+            className={`rounded-xl border p-3.5 ${
+              (dm?.summary?.overdueOrdersCount || 0) > 0
+                ? "bg-red-50 border-red-300"
+                : "bg-slate-50 border-slate-200"
+            }`}
+          >
+            <div className="flex items-center justify-between text-[11px] font-extrabold uppercase text-red-700">
+              <span>Nợ quá hạn hẹn trả</span>
+              <AlertTriangle className="w-4 h-4 text-red-600" />
+            </div>
+            <div className="text-xl font-black font-mono text-red-700 mt-1">
+              {formatVND(dm?.summary?.overdueDebtAmount || 0)}
+            </div>
+            <div className="text-[11px] text-red-700 mt-1 font-semibold">
+              {(dm?.summary?.overdueOrdersCount || 0) > 0
+                ? `⚠️ Có ${dm?.summary?.overdueOrdersCount} đơn đã quá hạn hẹn trả!`
+                : "Không có đơn công nợ quá hạn"}
+            </div>
+          </div>
+
+          <div className="rounded-xl bg-blue-50/70 border border-blue-200 p-3.5">
+            <div className="flex items-center justify-between text-[11px] font-extrabold uppercase text-blue-800">
+              <span>Công nợ phát sinh trong kỳ</span>
+              <Clock className="w-4 h-4 text-blue-600" />
+            </div>
+            <div className="text-xl font-black font-mono text-blue-900 mt-1">
+              {formatVND(s?.initialDebtInPeriod || 0)}
+            </div>
+            <div className="text-[11px] text-blue-800 mt-1">
+              Còn chưa thu trong kỳ:{" "}
+              <strong className="font-mono">{formatVND(s?.outstandingDebtInPeriod || 0)}</strong> (
+              {s?.debtOrdersInPeriod || 0} đơn)
+            </div>
+          </div>
+
+          <div className="rounded-xl bg-emerald-50/70 border border-emerald-200 p-3.5">
+            <div className="flex items-center justify-between text-[11px] font-extrabold uppercase text-emerald-800">
+              <span>Đã thu hồi công nợ</span>
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            </div>
+            <div className="text-xl font-black font-mono text-emerald-800 mt-1">
+              {formatVND(dm?.summary?.totalCollectedDebt || 0)}
+            </div>
+            <div className="text-[11px] text-emerald-800 mt-1">
+              Đã tất toán xong:{" "}
+              <strong>{dm?.summary?.settledDebtOrdersCount || 0}</strong> đơn công nợ
+            </div>
+          </div>
+        </div>
+
+        {/* Bộ lọc trạng thái nợ & Tìm kiếm */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+          <div className="flex flex-wrap gap-1.5">
+            {(
+              [
+                { id: "HAS_DEBT", label: "Đang còn nợ" },
+                { id: "OVERDUE", label: "Quá hạn hẹn trả" },
+                { id: "UNPAID", label: "Chưa trả đợt nào" },
+                { id: "PARTIAL", label: "Đã trả một phần" },
+                { id: "SETTLED", label: "Đã tất toán xong" },
+                { id: "ALL", label: "Tất cả đơn công nợ" },
+              ] as const
+            ).map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setDebtFilter(f.id)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  debtFilter === f.id
+                    ? f.id === "OVERDUE"
+                      ? "bg-red-600 text-white shadow-sm"
+                      : "bg-slate-900 text-white shadow-sm"
+                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="relative w-full sm:w-72">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={debtSearch}
+              onChange={(e) => setDebtSearch(e.target.value)}
+              placeholder="Tìm mã đơn, tên khách, SĐT..."
+              className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-300 text-xs"
+            />
+          </div>
+        </div>
+
+        {/* TAB 1: DANH SÁCH ĐƠN CÔNG NỢ (CHỈ XEM THÔNG TIN) */}
+        {debtTab === "ORDERS" ? (
+          <div className="overflow-x-auto border border-slate-200 rounded-xl">
+            <table className="w-full text-xs">
+              <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[11px]">
+                <tr>
+                  <th className="text-left px-3 py-2.5">Mã đơn / Ngày mua</th>
+                  <th className="text-left px-3 py-2.5">Khách hàng</th>
+                  <th className="text-right px-3 py-2.5">Tổng đơn</th>
+                  <th className="text-right px-3 py-2.5">Đã thu</th>
+                  <th className="text-right px-3 py-2.5">Còn nợ</th>
+                  <th className="text-center px-3 py-2.5">Hạn hẹn trả</th>
+                  <th className="text-center px-3 py-2.5">Trạng thái & Lịch sử</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {filteredDebtOrders.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="text-center py-8 text-slate-400">
+                      Không có đơn công nợ nào khớp bộ lọc hiện tại.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredDebtOrders.map((o) => (
+                    <tr
+                      key={o._id}
+                      className={`hover:bg-slate-50 ${
+                        o.isOverdue && o.debtAmount > 0 ? "bg-red-50/40" : ""
+                      }`}
+                    >
+                      <td className="px-3 py-2.5">
+                        <div className="font-mono font-extrabold text-slate-900">{o.orderCode}</div>
+                        <div className="text-[11px] text-slate-500">
+                          {formatDateTime(o.createdAt)}
+                        </div>
+                        {(o.confirmedByName || o.createdByName) && (
+                          <div className="text-[10px] text-slate-400">
+                            Thu ngân: {o.confirmedByName || o.createdByName}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <div className="font-bold text-slate-900">{o.customerName}</div>
+                        <div className="font-mono text-[11px] text-blue-700 font-semibold">
+                          {formatPhone(o.customerPhone)}
+                        </div>
+                        {o.note && (
+                          <div className="text-[11px] text-slate-500 italic mt-0.5 max-w-xs truncate">
+                            Ghi chú: {o.note}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-900">
+                        {formatVND(o.totalAmount)}
+                        <div className="text-[10px] text-slate-400 font-normal">
+                          Nợ gốc: {formatVND(o.initialDebtAmount)}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-mono font-bold text-emerald-700">
+                        {formatVND(o.paidAmount)}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-mono font-black text-amber-700 text-sm">
+                        {formatVND(o.debtAmount)}
+                      </td>
+                      <td className="px-3 py-2.5 text-center">
+                        {o.debtDueDate ? (
+                          <div>
+                            <div className="font-mono font-bold text-slate-800">
+                              {new Date(o.debtDueDate).toLocaleDateString("vi-VN")}
+                            </div>
+                            {o.isOverdue && o.debtAmount > 0 && (
+                              <span className="inline-block mt-0.5 px-2 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-extrabold">
+                                Quá hạn {o.daysOverdue} ngày
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 text-[11px]">Không hẹn</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5 text-center">
+                        <span
+                          className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                            o.debtAmount <= 0 || o.debtStatus === "SETTLED"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : o.debtStatus === "PARTIAL"
+                              ? "bg-blue-100 text-blue-800"
+                              : "bg-amber-100 text-amber-800"
+                          }`}
+                        >
+                          {o.debtAmount <= 0 || o.debtStatus === "SETTLED"
+                            ? "Đã tất toán"
+                            : o.debtStatus === "PARTIAL"
+                            ? "Trả 1 phần"
+                            : "Chưa trả nợ"}
+                        </span>
+                        {o.debtPayments && o.debtPayments.length > 0 && (
+                          <div className="mt-1 space-y-0.5 text-[10px] text-slate-600 text-left bg-slate-50 rounded p-1.5 border border-slate-200 max-w-[230px] mx-auto">
+                            {o.debtPayments.map((dp, i) => (
+                              <div key={i} className="flex justify-between gap-1">
+                                <span className="font-mono font-bold text-emerald-700">
+                                  +{formatVND(dp.amount)} ({dp.method})
+                                </span>
+                                <span className="text-slate-400">
+                                  {new Date(dp.paidAt).toLocaleDateString("vi-VN")}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          /* TAB 2: GOM NHÓM THEO KHÁCH HÀNG (SĐT) — CHỈ XEM THÔNG TIN */
+          <div className="overflow-x-auto border border-slate-200 rounded-xl">
+            <table className="w-full text-xs">
+              <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[11px]">
+                <tr>
+                  <th className="text-left px-3 py-2.5">Khách hàng / SĐT</th>
+                  <th className="text-center px-3 py-2.5">Số đơn nợ</th>
+                  <th className="text-right px-3 py-2.5">Tổng mua</th>
+                  <th className="text-right px-3 py-2.5">Đã thanh toán</th>
+                  <th className="text-right px-3 py-2.5">Tổng dư nợ còn lại</th>
+                  <th className="text-center px-3 py-2.5">Hạn trả gần nhất</th>
+                  <th className="text-right px-3 py-2.5">Chi tiết đơn</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {filteredDebtCustomers.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="text-center py-8 text-slate-400">
+                      Không có khách hàng công nợ nào khớp bộ lọc.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredDebtCustomers.map((c) => {
+                    const isExpanded = expandedCustomerPhone === c.phone;
+                    const custOrders = c.orders || [];
+                    return (
+                      <React.Fragment key={c.phone}>
+                        <tr
+                          className={`hover:bg-slate-50 ${
+                            c.overdueOrders > 0 && c.totalDebtAmount > 0 ? "bg-red-50/40" : ""
+                          }`}
+                        >
+                          <td className="px-3 py-2.5">
+                            <div className="font-extrabold text-slate-900">{c.customerName}</div>
+                            <div className="font-mono text-xs text-blue-700 font-bold">
+                              {formatPhone(c.phone)}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2.5 text-center">
+                            <span className="font-mono font-extrabold text-amber-800">
+                              {c.activeDebtOrders} đơn đang nợ
+                            </span>
+                            <div className="text-[10px] text-slate-400">
+                              Tổng lịch sử: {c.totalOrders} đơn
+                            </div>
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-800">
+                            {formatVND(c.totalOrderAmount)}
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-mono font-bold text-emerald-700">
+                            {formatVND(c.totalPaidAmount)}
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-mono font-black text-amber-700 text-sm">
+                            {formatVND(c.totalDebtAmount)}
+                          </td>
+                          <td className="px-3 py-2.5 text-center">
+                            {c.nearestDueDate ? (
+                              <div>
+                                <div className="font-mono font-bold text-slate-800">
+                                  {new Date(c.nearestDueDate).toLocaleDateString("vi-VN")}
+                                </div>
+                                {c.overdueOrders > 0 && (
+                                  <span className="inline-block mt-0.5 px-2 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-extrabold">
+                                    {c.overdueOrders} đơn quá hạn
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 text-[11px]">—</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2.5 text-right">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedCustomerPhone(isExpanded ? null : c.phone)
+                              }
+                              className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs transition"
+                            >
+                              {isExpanded ? "Ẩn đơn" : `Xem ${custOrders.length} đơn`}
+                            </button>
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr className="bg-amber-50/40">
+                            <td colSpan={7} className="p-3">
+                              <div className="rounded-xl bg-white border border-amber-200 p-3 space-y-2">
+                                <div className="text-xs font-extrabold text-slate-800">
+                                  Danh sách đơn công nợ của khách {c.customerName} (
+                                  {formatPhone(c.phone)}):
+                                </div>
+                                <div className="divide-y divide-slate-100">
+                                  {custOrders.map((co) => (
+                                    <div
+                                      key={co._id}
+                                      className="py-2 flex flex-wrap items-center justify-between gap-2 text-xs"
+                                    >
+                                      <div>
+                                        <span className="font-mono font-extrabold text-slate-900">
+                                          {co.orderCode}
+                                        </span>{" "}
+                                        <span className="text-slate-500">
+                                          ({formatDateTime(co.createdAt)})
+                                        </span>
+                                        {co.debtDueDate && (
+                                          <span className="ml-2 text-[11px] font-semibold text-amber-800">
+                                            · Hạn trả:{" "}
+                                            {new Date(co.debtDueDate).toLocaleDateString("vi-VN")}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="flex items-center gap-3">
+                                        <span>
+                                          Tổng: <strong className="font-mono">{formatVND(co.totalAmount)}</strong>
+                                        </span>
+                                        <span className="text-emerald-700">
+                                          Đã trả: <strong className="font-mono">{formatVND(co.paidAmount)}</strong>
+                                        </span>
+                                        <span className="text-amber-700">
+                                          Còn nợ: <strong className="font-mono">{formatVND(co.debtAmount)}</strong>
+                                        </span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* HÀNG 2: CÁC BIỂU ĐỒ DOANH THU TRỰC QUAN & CƠ CẤU THANH TOÁN / CATEGORY */}

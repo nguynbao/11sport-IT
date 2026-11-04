@@ -7,7 +7,15 @@ import {
   stockMovementRepo,
 } from '../config/db';
 import { ApiError } from '../utils/errors';
-import { DiscountType, IOrderItem, PaymentMethod } from '../models/Order';
+import {
+  DebtStatus,
+  DiscountType,
+  IDebtPaymentRecord,
+  IOrderItem,
+  ISplitPaymentItem,
+  PaymentMethod,
+  SplitMethod,
+} from '../models/Order';
 import {
   deductStockForSale,
   getFloorStocks,
@@ -18,6 +26,19 @@ import { buildVariantKey } from '../utils/productCode';
 import { filterAndRankBySearch, normalizePhoneDigits } from '../utils/search';
 
 export const ordersCustomersRouter = Router();
+
+function parseDueDateInput(raw: unknown): Date | null {
+  if (!raw) return null;
+  const str = String(raw).trim();
+  if (!str) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(str);
+  if (m) {
+    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 23, 59, 59, 999);
+  }
+  const dt = new Date(str);
+  if (isNaN(dt.getTime())) return null;
+  return dt;
+}
 
 // GET /api/v1/customers/lookup?phone=...
 ordersCustomersRouter.get('/customers/lookup', async (req, res, next) => {
@@ -51,16 +72,41 @@ ordersCustomersRouter.get('/customers/lookup', async (req, res, next) => {
         (normPhone && normalizePhoneDigits(r.customerPhone) === normPhone)
     );
 
+    const nowMs = Date.now();
+    let totalDebtAmount = 0;
+    let unpaidOrdersCount = 0;
+    let overdueOrdersCount = 0;
+
+    for (const o of orders) {
+      if (o.status === 'DRAFT') continue;
+      const debt = Math.max(0, Number(o.debtAmount) || 0);
+      if (debt > 0) {
+        totalDebtAmount += debt;
+        unpaidOrdersCount += 1;
+        if (o.debtDueDate && new Date(o.debtDueDate).getTime() < nowMs) {
+          overdueOrdersCount += 1;
+        }
+      }
+    }
+
     res.json({
       data: {
         found: !!customer,
         customer: customer || null,
         orders,
         returns,
+        debtSummary: {
+          totalDebtAmount,
+          unpaidOrdersCount,
+          overdueOrdersCount,
+        },
       },
       meta: {
         orderCount: orders.length,
         returnCount: returns.length,
+        totalDebtAmount,
+        unpaidOrdersCount,
+        overdueOrdersCount,
       },
     });
   } catch (err) {
@@ -93,9 +139,10 @@ ordersCustomersRouter.get('/customers', async (req, res, next) => {
 // GET /api/v1/orders
 ordersCustomersRouter.get('/orders', async (req, res, next) => {
   try {
-    const { search, phone, status, paymentMethod } = req.query;
+    const { search, phone, status, paymentMethod, debtStatus } = req.query;
     const allOrders = await orderRepo.find({}, { createdAt: -1 });
     const normFilterPhone = phone ? normalizePhoneDigits(String(phone)) : '';
+    const nowMs = Date.now();
 
     const baseFiltered = allOrders.filter((o) => {
       if (phone) {
@@ -108,6 +155,27 @@ ordersCustomersRouter.get('/orders', async (req, res, next) => {
       }
       if (status && o.status !== String(status).toUpperCase()) return false;
       if (paymentMethod && o.paymentMethod !== String(paymentMethod).toUpperCase()) return false;
+      if (debtStatus) {
+        const ds = String(debtStatus).toUpperCase();
+        const debtAmt = Math.max(0, Number(o.debtAmount) || 0);
+        const initDebtAmt = Math.max(0, Number(o.initialDebtAmount) || debtAmt);
+        const oDebtStatus = o.debtStatus || (debtAmt > 0 ? 'UNPAID' : 'NONE');
+        if (ds === 'HAS_DEBT') {
+          if (debtAmt <= 0) return false;
+        } else if (ds === 'ALL_DEBT') {
+          if (initDebtAmt <= 0 && debtAmt <= 0) return false;
+        } else if (ds === 'OVERDUE') {
+          if (
+            debtAmt <= 0 ||
+            !o.debtDueDate ||
+            new Date(o.debtDueDate).getTime() >= nowMs
+          ) {
+            return false;
+          }
+        } else if (oDebtStatus !== ds) {
+          return false;
+        }
+      }
       return true;
     });
 
@@ -118,6 +186,7 @@ ordersCustomersRouter.get('/orders', async (req, res, next) => {
           { text: o.customerName, weight: 1.3 },
           { text: o.createdByName, weight: 0.9 },
           { text: o.confirmedByName, weight: 0.9 },
+          { text: o.paymentMethodDetail || '', weight: 0.8 },
           { text: o.note, weight: 0.7 },
           ...o.items.flatMap((i) => [
             { text: i.productCode, weight: 1.2 },
@@ -205,6 +274,9 @@ async function prepareOrderData(body: any, isDraft: boolean) {
     customerPhone,
     paymentMethod,
     paymentMethodDetail,
+    splitPayments,
+    debtAmount: rawBodyDebtAmount,
+    debtDueDate: rawBodyDebtDueDate,
     hasCardFee,
     billDiscountType,
     billDiscountValue,
@@ -423,6 +495,58 @@ async function prepareOrderData(body: any, isDraft: boolean) {
   const cardFee = applyCardFee ? Math.round(afterBillDiscount * 0.03) : 0;
   const totalAmount = afterBillDiscount + cardFee;
 
+  // Xử lý tách thanh toán & Công nợ (Mua trước trả sau) khi method === 'OTHER'
+  const validSplitMethods: SplitMethod[] = ['CASH', 'BANKING', 'CARD', 'DEBT'];
+  const cleanSplitPayments: ISplitPaymentItem[] = [];
+  if (method === 'OTHER' && Array.isArray(splitPayments)) {
+    for (const sp of splitPayments) {
+      const m = String(sp?.method || '').toUpperCase() as SplitMethod;
+      if (validSplitMethods.includes(m)) {
+        cleanSplitPayments.push({
+          method: m,
+          amount: Math.max(0, Math.round(Number(sp?.amount) || 0)),
+        });
+      }
+    }
+  }
+
+  let debtAmount = 0;
+  if (method === 'OTHER') {
+    const debtFromSplits = cleanSplitPayments
+      .filter((s) => s.method === 'DEBT')
+      .reduce((sum, s) => sum + s.amount, 0);
+    const hasDebtSplit = cleanSplitPayments.some((s) => s.method === 'DEBT');
+    const nonDebtPaidFromSplits = cleanSplitPayments
+      .filter((s) => s.method !== 'DEBT')
+      .reduce((sum, s) => sum + s.amount, 0);
+
+    if (rawBodyDebtAmount !== undefined && rawBodyDebtAmount !== null) {
+      debtAmount = Math.min(totalAmount, Math.max(0, Math.round(Number(rawBodyDebtAmount) || 0)));
+    } else if (debtFromSplits > 0) {
+      debtAmount = Math.min(totalAmount, debtFromSplits);
+    } else if (hasDebtSplit) {
+      // Nếu chọn thẻ Công nợ nhưng để trống số tiền (0), tự hiểu phần còn lại sau khi trừ các phương thức đã trả là Công nợ
+      debtAmount = Math.max(0, totalAmount - nonDebtPaidFromSplits);
+    } else if (/công\s*nợ|trả\s*sau|debt/i.test(cleanPaymentDetail)) {
+      const m = /(?:công\s*nợ|trả\s*sau|debt)[^0-9]*([0-9][0-9.,]*)/i.exec(cleanPaymentDetail);
+      if (m) {
+        const parsed = parseInt(m[1].replace(/[^0-9]/g, ''), 10);
+        if (!isNaN(parsed) && parsed > 0) {
+          debtAmount = Math.min(totalAmount, parsed);
+        }
+      }
+      if (debtAmount === 0) {
+        debtAmount = totalAmount;
+      }
+    }
+  }
+
+  const initialDebtAmount = debtAmount;
+  const paidAmount = Math.max(0, totalAmount - debtAmount);
+  const debtStatus: DebtStatus =
+    debtAmount <= 0 ? 'NONE' : paidAmount <= 0 ? 'UNPAID' : 'PARTIAL';
+  const debtDueDate = debtAmount > 0 ? parseDueDateInput(rawBodyDebtDueDate) : null;
+
   return {
     cleanPhone,
     existingCustomer,
@@ -437,10 +561,16 @@ async function prepareOrderData(body: any, isDraft: boolean) {
     billDiscountAmount,
     method,
     cleanPaymentDetail,
+    cleanSplitPayments,
     applyCardFee,
     cardFeePercent,
     cardFee,
     totalAmount,
+    paidAmount,
+    debtAmount,
+    initialDebtAmount,
+    debtStatus,
+    debtDueDate,
     cleanNote: note && String(note).trim() ? String(note).trim() : 'Giá đã bao gồm thuế',
   };
 }
@@ -533,10 +663,17 @@ ordersCustomersRouter.post('/orders', async (req, res, next) => {
       billDiscountAmount: prepared.billDiscountAmount,
       paymentMethod: prepared.method,
       paymentMethodDetail: prepared.cleanPaymentDetail,
+      splitPayments: prepared.cleanSplitPayments,
       hasCardFee: prepared.applyCardFee,
       cardFeePercent: prepared.cardFeePercent,
       cardFee: prepared.cardFee,
       totalAmount: prepared.totalAmount,
+      paidAmount: prepared.paidAmount,
+      debtAmount: prepared.debtAmount,
+      initialDebtAmount: prepared.initialDebtAmount,
+      debtStatus: prepared.debtStatus,
+      debtDueDate: prepared.debtDueDate,
+      debtPayments: [],
       note: prepared.cleanNote,
       status: isDraft ? 'DRAFT' : 'PAID',
       createdBy: req.user?.userId || 'SALES',
@@ -596,6 +733,9 @@ ordersCustomersRouter.put('/orders/:id', async (req, res, next) => {
       customerPhone: req.body?.customerPhone ?? existingOrder.customerPhone,
       paymentMethod: req.body?.paymentMethod ?? existingOrder.paymentMethod,
       paymentMethodDetail: req.body?.paymentMethodDetail ?? existingOrder.paymentMethodDetail,
+      splitPayments: req.body?.splitPayments ?? existingOrder.splitPayments,
+      debtAmount: req.body?.debtAmount ?? existingOrder.debtAmount,
+      debtDueDate: req.body?.debtDueDate ?? existingOrder.debtDueDate,
       hasCardFee: req.body?.hasCardFee ?? existingOrder.hasCardFee,
       billDiscountType: req.body?.billDiscountType ?? existingOrder.billDiscountType,
       billDiscountValue: req.body?.billDiscountValue ?? existingOrder.billDiscountValue,
@@ -629,10 +769,16 @@ ordersCustomersRouter.put('/orders/:id', async (req, res, next) => {
       billDiscountAmount: prepared.billDiscountAmount,
       paymentMethod: prepared.method,
       paymentMethodDetail: prepared.cleanPaymentDetail,
+      splitPayments: prepared.cleanSplitPayments,
       hasCardFee: prepared.applyCardFee,
       cardFeePercent: prepared.cardFeePercent,
       cardFee: prepared.cardFee,
       totalAmount: prepared.totalAmount,
+      paidAmount: prepared.paidAmount,
+      debtAmount: prepared.debtAmount,
+      initialDebtAmount: prepared.initialDebtAmount,
+      debtStatus: prepared.debtStatus,
+      debtDueDate: prepared.debtDueDate,
       note: prepared.cleanNote,
       status: isDraft ? 'DRAFT' : 'PAID',
       ...(isDraft
@@ -678,6 +824,9 @@ ordersCustomersRouter.post('/orders/:id/confirm', async (req, res, next) => {
       customerPhone: req.body?.customerPhone ?? existingOrder.customerPhone,
       paymentMethod: req.body?.paymentMethod ?? existingOrder.paymentMethod,
       paymentMethodDetail: req.body?.paymentMethodDetail ?? existingOrder.paymentMethodDetail,
+      splitPayments: req.body?.splitPayments ?? existingOrder.splitPayments,
+      debtAmount: req.body?.debtAmount ?? existingOrder.debtAmount,
+      debtDueDate: req.body?.debtDueDate ?? existingOrder.debtDueDate,
       hasCardFee: req.body?.hasCardFee ?? existingOrder.hasCardFee,
       billDiscountType: req.body?.billDiscountType ?? existingOrder.billDiscountType,
       billDiscountValue: req.body?.billDiscountValue ?? existingOrder.billDiscountValue,
@@ -706,10 +855,16 @@ ordersCustomersRouter.post('/orders/:id/confirm', async (req, res, next) => {
       billDiscountAmount: prepared.billDiscountAmount,
       paymentMethod: prepared.method,
       paymentMethodDetail: prepared.cleanPaymentDetail,
+      splitPayments: prepared.cleanSplitPayments,
       hasCardFee: prepared.applyCardFee,
       cardFeePercent: prepared.cardFeePercent,
       cardFee: prepared.cardFee,
       totalAmount: prepared.totalAmount,
+      paidAmount: prepared.paidAmount,
+      debtAmount: prepared.debtAmount,
+      initialDebtAmount: prepared.initialDebtAmount,
+      debtStatus: prepared.debtStatus,
+      debtDueDate: prepared.debtDueDate,
       note: prepared.cleanNote,
       status: 'PAID',
       confirmedBy: req.user?.userId || 'SALES',
@@ -720,6 +875,108 @@ ordersCustomersRouter.post('/orders/:id/confirm', async (req, res, next) => {
     res.json({
       data: updatedOrder,
       meta: {},
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/v1/orders/:id/debt-payment — Chỉ ADMIN trên CMS được xác nhận thu nợ / tất toán công nợ
+ordersCustomersRouter.post('/orders/:id/debt-payment', async (req, res, next) => {
+  try {
+    if (req.user?.role !== 'ADMIN') {
+      throw new ApiError(
+        403,
+        'FORBIDDEN',
+        'Chỉ Quản lý (ADMIN) trên CMS mới được phép xác nhận thu nợ / tất toán công nợ'
+      );
+    }
+
+    const idOrCode = String(req.params.id || '').trim();
+    const existingOrder =
+      (await orderRepo.findById(idOrCode)) ||
+      (await orderRepo.findOne({ orderCode: idOrCode.toUpperCase() }));
+
+    if (!existingOrder) {
+      throw new ApiError(404, 'ORDER_NOT_FOUND', 'Không tìm thấy đơn hàng cần thu nợ');
+    }
+
+    if (existingOrder.status === 'DRAFT') {
+      throw new ApiError(
+        400,
+        'ORDER_IS_DRAFT',
+        'Đơn hàng đang ở trạng thái Bản nháp (DRAFT), chưa phát sinh công nợ thực tế'
+      );
+    }
+
+    const currentDebt = Math.max(0, Number(existingOrder.debtAmount) || 0);
+    if (currentDebt <= 0) {
+      throw new ApiError(
+        400,
+        'ORDER_NO_DEBT',
+        `Đơn hàng ${existingOrder.orderCode} đã thanh toán đủ, không còn dư nợ`
+      );
+    }
+
+    const rawAmount = req.body?.amount;
+    const payAmount =
+      rawAmount === undefined || rawAmount === null || req.body?.payFull === true
+        ? currentDebt
+        : Math.round(Number(rawAmount));
+
+    if (isNaN(payAmount) || payAmount <= 0 || payAmount > currentDebt) {
+      throw new ApiError(
+        400,
+        'INVALID_DEBT_PAYMENT_AMOUNT',
+        `Số tiền thu nợ phải lớn hơn 0 và không vượt quá dư nợ hiện tại (${currentDebt.toLocaleString('vi-VN')} VND)`,
+        { amount: 'Số tiền thu nợ không hợp lệ' }
+      );
+    }
+
+    const rawMethod = String(req.body?.method || 'BANKING').toUpperCase();
+    const validMethods: ('CASH' | 'BANKING' | 'CARD')[] = ['CASH', 'BANKING', 'CARD'];
+    const method: 'CASH' | 'BANKING' | 'CARD' = validMethods.includes(rawMethod as any)
+      ? (rawMethod as 'CASH' | 'BANKING' | 'CARD')
+      : 'BANKING';
+
+    const note = String(req.body?.note || '').trim() || 'Thu công nợ khách hàng';
+    const paymentRecord: IDebtPaymentRecord = {
+      _id: `dp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      amount: payAmount,
+      method,
+      note,
+      paidAt: new Date(),
+      collectedBy: req.user?.userId || 'ADMIN',
+      collectedByName: req.user?.fullName || 'Quản Trị Viên 11Sport',
+    };
+
+    const prevPayments = Array.isArray(existingOrder.debtPayments)
+      ? existingOrder.debtPayments
+      : [];
+    const nextDebtAmount = Math.max(0, currentDebt - payAmount);
+    const totalOrderAmount = Math.max(0, Number(existingOrder.totalAmount) || 0);
+    const nextPaidAmount = Math.max(0, totalOrderAmount - nextDebtAmount);
+    const initialDebt = Math.max(
+      currentDebt,
+      Number(existingOrder.initialDebtAmount) || currentDebt
+    );
+    const nextDebtStatus: DebtStatus = nextDebtAmount === 0 ? 'SETTLED' : 'PARTIAL';
+
+    const updatedOrder = await orderRepo.updateById(existingOrder._id, {
+      paidAmount: nextPaidAmount,
+      debtAmount: nextDebtAmount,
+      initialDebtAmount: initialDebt,
+      debtStatus: nextDebtStatus,
+      debtPayments: [...prevPayments, paymentRecord],
+    });
+
+    res.json({
+      data: updatedOrder,
+      meta: {
+        collectedAmount: payAmount,
+        remainingDebt: nextDebtAmount,
+        debtStatus: nextDebtStatus,
+      },
     });
   } catch (err) {
     next(err);
