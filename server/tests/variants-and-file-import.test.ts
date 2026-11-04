@@ -3,7 +3,15 @@ import request from 'supertest';
 import { createApp } from '../src/app';
 import { connectDatabase, clearDatabase, disconnectDatabase } from '../src/config/db';
 import { seedDatabaseIfNeeded } from '../src/config/seed';
-import { generateProductCode, generateVariantProductCode } from '../src/utils/productCode';
+import {
+  estimateCode128Dots,
+  generateProductCode,
+  generateVariantProductCode,
+  isCompactBarcodeMatchVariant,
+  toCompactBarcode128,
+} from '../src/utils/productCode';
+import { encodeCode128BPattern, encodeCode128RawPattern } from '../src/utils/windowsPrinter';
+import { isScannedCodeMatchServer, matchTagToItems } from '../src/utils/tagMatch';
 
 const app = createApp();
 
@@ -42,6 +50,45 @@ describe('v2.8 & v3.2: Mã gốc + Mã con theo thuộc tính (variantCode = [Ro
     );
     expect(generateVariantProductCode('AKAMITO146857', 'Đỏ', 'L')).toBe('AKAMITO146857DOL');
     expect(generateVariantProductCode('AKAMITO146857', '', '')).toBe('AKAMITO146857');
+
+    // v3.4: Chuẩn hóa mã in tem <= 200 dots (~25.0mm) để có Quiet Zone >= 4.0mm mỗi bên và khớp 2 chiều khi quét
+    const longCodes = [
+      'PJOGABOLA825539DENDO42',
+      'PWIKA804147TRANGXANH40',
+      'GUNDERARMOUR221401XADU42',
+      'PASICS237486SOOVK415',
+      'GASIA221401TRANGXANH41',
+    ];
+    for (const lc of longCodes) {
+      const compact = toCompactBarcode128(lc, 200);
+      const pattern = encodeCode128BPattern(lc, 200);
+      expect(estimateCode128Dots(compact)).toBe(encodeCode128RawPattern(compact).length);
+      expect(pattern.length).toBeLessThanOrEqual(200);
+      expect(isCompactBarcodeMatchVariant(compact, lc)).toBe(true);
+      expect(isScannedCodeMatchServer(compact, lc)).toBe(true);
+    }
+
+    const matchRes = matchTagToItems(
+      [
+        {
+          productCode: 'PJOGABOLA825539',
+          variantCode: 'PJOGABOLA825539DENDO41',
+          productName: 'Giày Jogabola',
+          color: 'Đen Đỏ',
+          size: '41',
+        },
+        {
+          productCode: 'PJOGABOLA825539',
+          variantCode: 'PJOGABOLA825539DENDO42',
+          productName: 'Giày Jogabola',
+          color: 'Đen Đỏ',
+          size: '42',
+        },
+      ],
+      { barcode: toCompactBarcode128('PJOGABOLA825539DENDO42', 200) }
+    );
+    expect(matchRes.index).toBe(1);
+    expect(matchRes.ambiguous).toBe(false);
   });
 
   it('POST /api/v1/imports/parse-file: bóc tách file CSV/Excel thành danh sách hàng có Mã gốc, Mã con (variantCode / barcode), Màu sắc, Size, Số lượng', async () => {

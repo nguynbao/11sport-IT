@@ -3,6 +3,8 @@ import {
   generateVariantProductCode,
   normalizeToCompactUpperCode,
   normalizeToUpperCode,
+  isCompactBarcodeMatchVariant,
+  toCompactBarcode128,
   tokenizeUpperAlphaNum,
 } from './productCode';
 
@@ -178,7 +180,10 @@ export function isScannedCodeMatchServer(rawScanned: string, targetCode?: string
   const cleanTarget = normalizeToCompactUpperCode(targetCode);
   if (!cleanTarget) return false;
   const candidates = getBarcodeCandidatesServer(rawScanned);
-  return candidates.includes(cleanTarget);
+  if (candidates.includes(cleanTarget)) return true;
+  const compactTarget = toCompactBarcode128(cleanTarget, 200);
+  if (compactTarget && candidates.includes(compactTarget)) return true;
+  return candidates.some((cand) => isCompactBarcodeMatchVariant(cand, cleanTarget));
 }
 
 /**
@@ -295,7 +300,12 @@ export function matchTagToItems(items: TagMatchItem[], scan: TagScanInput): TagM
     const itemVariantCode = hasAttr
       ? item.variantCode || generateVariantProductCode(code, item.color, item.size)
       : '';
-    if (itemVariantCode && tagCodes.has(normalizeToCompactUpperCode(itemVariantCode))) {
+    if (
+      itemVariantCode &&
+      (tagCodes.has(normalizeToCompactUpperCode(itemVariantCode)) ||
+        tagCodes.has(toCompactBarcode128(itemVariantCode, 200)) ||
+        Array.from(tagCodes).some((tc) => isCompactBarcodeMatchVariant(tc, itemVariantCode)))
+    ) {
       return 12;
     }
 
