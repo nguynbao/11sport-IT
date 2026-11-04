@@ -139,6 +139,23 @@ export interface OrderItem {
   lineTotal: number;
 }
 
+export type DebtStatus = "NONE" | "UNPAID" | "PARTIAL" | "SETTLED";
+
+export interface SplitPaymentRecord {
+  method: "CASH" | "BANKING" | "CARD" | "DEBT";
+  amount: number;
+}
+
+export interface DebtPaymentRecord {
+  _id?: string;
+  amount: number;
+  method: "CASH" | "BANKING" | "CARD";
+  note?: string;
+  paidAt: string;
+  collectedBy?: string;
+  collectedByName?: string;
+}
+
 export interface Order {
   _id: string;
   orderCode: string;
@@ -147,6 +164,7 @@ export interface Order {
   customerPhone: string;
   paymentMethod: "CASH" | "BANKING" | "CARD" | "OTHER";
   paymentMethodDetail?: string;
+  splitPayments?: SplitPaymentRecord[];
   hasCardFee: boolean;
   rawSubtotal?: number;
   itemDiscountTotal?: number;
@@ -156,6 +174,12 @@ export interface Order {
   billDiscountAmount?: number;
   cardFee: number;
   totalAmount: number;
+  paidAmount?: number;
+  debtAmount?: number;
+  initialDebtAmount?: number;
+  debtStatus?: DebtStatus;
+  debtDueDate?: string | null;
+  debtPayments?: DebtPaymentRecord[];
   note: string;
   status: "DRAFT" | "PAID" | "PARTIALLY_RETURNED" | "FULLY_RETURNED";
   items: OrderItem[];
@@ -260,6 +284,11 @@ export interface RevenueDashboardSummary {
   exchangeTotal: number;
   netReturnImpact: number;
   netRevenue: number;
+  collectedRevenue?: number;
+  outstandingDebtInPeriod?: number;
+  initialDebtInPeriod?: number;
+  debtCollectedInPeriod?: number;
+  debtOrdersInPeriod?: number;
   estimatedCogs: number;
   grossProfit: number;
   grossMarginPercent: number;
@@ -346,6 +375,72 @@ export interface HourlyRevenueTrend {
   grossProfit: number;
 }
 
+export interface DebtOrderRow {
+  _id: string;
+  orderCode: string;
+  customerName: string;
+  customerPhone: string;
+  paymentMethod: string;
+  paymentMethodDetail: string;
+  totalAmount: number;
+  paidAmount: number;
+  debtAmount: number;
+  initialDebtAmount: number;
+  debtStatus: DebtStatus;
+  debtDueDate: string | null;
+  isOverdue: boolean;
+  daysOverdue: number;
+  debtPayments: DebtPaymentRecord[];
+  createdByName: string;
+  confirmedByName: string;
+  createdAt: string;
+  items: OrderItem[];
+  note: string;
+}
+
+export interface DebtCustomerSummary {
+  phone: string;
+  customerName: string;
+  totalOrders: number;
+  activeDebtOrders: number;
+  settledDebtOrders: number;
+  overdueOrders: number;
+  totalOrderAmount: number;
+  totalInitialDebt: number;
+  totalPaidAmount: number;
+  totalDebtAmount: number;
+  nearestDueDate: string | null;
+  lastOrderAt: string | null;
+  orders: DebtOrderRow[];
+  paymentHistory: {
+    _id: string;
+    orderId: string;
+    orderCode: string;
+    amount: number;
+    method: string;
+    note: string;
+    paidAt: string;
+    collectedByName: string;
+  }[];
+}
+
+export interface DebtManagementData {
+  summary: {
+    totalOutstandingDebt: number;
+    totalInitialDebt: number;
+    totalCollectedDebt: number;
+    activeDebtOrdersCount: number;
+    settledDebtOrdersCount: number;
+    activeDebtCustomersCount: number;
+    overdueDebtAmount: number;
+    overdueOrdersCount: number;
+    newDebtInPeriod: number;
+    collectedInPeriod: number;
+  };
+  customers: DebtCustomerSummary[];
+  orders: DebtOrderRow[];
+}
+
 export interface RevenueDashboardData {
   summary: RevenueDashboardSummary;
   byPaymentMethod: RevenueByPaymentMethod[];
@@ -354,6 +449,7 @@ export interface RevenueDashboardData {
   hourlyTrend?: HourlyRevenueTrend[];
   topSellingProducts: ProductSalesAnalysisRow[];
   needsPushProducts: ProductSalesAnalysisRow[];
+  debtManagement?: DebtManagementData;
 }
 
 const KNOWN_BRANDS_FE: { pattern: RegExp; code: string; display: string }[] = [

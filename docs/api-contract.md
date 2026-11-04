@@ -641,3 +641,71 @@
 - **Tương thích quét 2 chiều trên mọi máy (`barcodeScanner.ts` & `tagMatch.ts`)**:
   - Khi quét bằng súng mã vạch ở bất kỳ máy nào (Bán hàng POS, Kiểm kho, Nhập kho), hệ thống khớp chính xác 100% cả **Mã đầy đủ (`variantCode`)** lẫn **Mã rút gọn trên tem (`toCompactBarcode128`)** và mẫu đối chiếu `[Cat][BrandPrefix][6Digits][ShortColor][Size]`.
 
+
+
+### 2.17 Mua Công Nợ (Mua Trước Trả Sau) Tại Quầy POS & Quản Lý Thu Nợ Trên CMS Dashboard *(v3.5)*
+- **Tại quầy POS (`POST /api/v1/orders`, `PUT /api/v1/orders/:id`, `POST /api/v1/orders/:id/confirm`)**:
+  - Trong mục **Thanh toán khác (`paymentMethod === "OTHER"`)**, danh sách ghép hình thức thanh toán hỗ trợ thêm **`DEBT` (`Công nợ - Mua trước trả sau`)** bên cạnh `CASH`, `BANKING`, `CARD`.
+  - Hỗ trợ truyền kèm:
+    - `splitPayments?: { method: "CASH" | "BANKING" | "CARD" | "DEBT"; amount: number }[]`
+    - `paidAmount?: number`: Số tiền thực thu ngay tại quầy (`CASH` + `BANKING` + `CARD`).
+    - `debtAmount?: number`: Số tiền khách mua công nợ (trả sau).
+    - `debtDueDate?: string | null`: Ngày hẹn thanh toán công nợ (`YYYY-MM-DD` hoặc ISO date).
+    - `debtNote?: string`: Ghi chú riêng cho khoản công nợ.
+  - **Các trường công nợ lưu trên `Order`**:
+    - `paidAmount`: Số tiền đã thanh toán lũy kế (`number`, mặc định bằng `totalAmount` nếu đơn không nợ).
+    - `debtAmount`: Số tiền công nợ còn lại chưa thanh toán (`number`, mặc định `0`).
+    - `initialDebtAmount`: Số tiền công nợ gốc lúc chốt đơn (`number`, mặc định `0`).
+    - `debtStatus`: `"NONE" | "UNPAID" | "PARTIAL" | "SETTLED"`
+      - `"NONE"`: Đơn thanh toán đủ ngay từ đầu (`initialDebtAmount === 0`).
+      - `"UNPAID"`: Đơn nợ 100%, chưa thanh toán đồng nào (`paidAmount === 0 && debtAmount > 0`).
+      - `"PARTIAL"`: Khách đã trả trước 1 phần hoặc đã trả nợ 1 phần (`paidAmount > 0 && debtAmount > 0`).
+      - `"SETTLED"`: Đơn từng phát sinh công nợ nhưng đã được Admin thu nợ tất toán đủ 100% (`initialDebtAmount > 0 && debtAmount === 0`).
+    - `debtDueDate`: Hạn thanh toán công nợ (`Date | null`).
+    - `debtPayments`: Mảng lịch sử các lần thu nợ sau khi tạo đơn:
+      ```json
+      [
+        {
+          "_id": "...",
+          "amount": 500000,
+          "method": "CASH | BANKING | CARD",
+          "note": "Khách chuyển khoản trả nợ đợt 1",
+          "paidAt": "2026-11-04T14:30:00.000Z",
+          "collectedBy": "...",
+          "collectedByName": "Quản Trị Viên 11Sport"
+        }
+      ]
+      ```
+- **Cảnh báo nợ cũ khi tra cứu SĐT khách hàng (`GET /api/v1/customers/lookup?phone=...`)**:
+  - Response bổ sung đối tượng `debtSummary`:
+    ```json
+    {
+      "totalDebtAmount": 1500000,
+      "unpaidOrdersCount": 2,
+      "overdueOrdersCount": 1
+    }
+    ```
+- **API Thu nợ / Tất toán công nợ (`POST /api/v1/orders/:id/debt-payment`)**:
+  - **Phân quyền bảo mật**: Chỉ role `ADMIN` (Quản lý trên CMS) được phép thực hiện (`403 FORBIDDEN` nếu role khác).
+  - Body:
+    ```json
+    {
+      "amount": 1500000,
+      "method": "CASH | BANKING | CARD",
+      "note": "Tất toán toàn bộ công nợ"
+    }
+    ```
+  - Quy tắc:
+    - Kiểm tra đơn hàng đã chốt (`status !== "DRAFT"`) và đang còn dư nợ (`debtAmount > 0`, nếu bằng 0 trả `400 ORDER_NO_DEBT`).
+    - Kiểm tra `0 < amount <= debtAmount` (vượt quá dư nợ trả `400 INVALID_DEBT_PAYMENT_AMOUNT`).
+    - Cộng `amount` vào `paidAmount`, trừ `amount` khỏi `debtAmount`, thêm bản ghi vào `debtPayments[]`, và cập nhật `debtStatus` (`"PARTIAL"` nếu `debtAmount > 0`, `"SETTLED"` nếu `debtAmount === 0`).
+- **Thống kê & Quản lý Công nợ trên Dashboard CMS (`GET /api/v1/reports/revenue-dashboard`)**:
+  - **Doanh thu (`orderRevenue` / `netRevenue`)**: Vẫn ghi nhận đầy đủ giá trị đơn hàng đã xuất bán; đồng thời trong `summary` bổ sung:
+    - `collectedRevenue`: Thực thu đã vào quỹ (Tổng giá trị đơn trừ phần đang nợ `outstandingDebtInPeriod`).
+    - `outstandingDebtInPeriod`: Tổng công nợ chưa thu của các đơn phát sinh trong kỳ lọc.
+    - `initialDebtInPeriod`: Tổng công nợ phát sinh ban đầu trong kỳ lọc.
+    - `debtCollectedInPeriod`: Tổng số tiền thu nợ (qua `debtPayments`) phát sinh trong kỳ lọc.
+  - Bổ sung khối `debtManagement` trong response của `/reports/revenue-dashboard`:
+    - `summary`: `{ totalOutstandingDebt, totalInitialDebt, totalCollectedDebt, activeDebtOrdersCount, settledDebtOrdersCount, activeDebtCustomersCount, overdueDebtAmount, overdueOrdersCount, newDebtInPeriod, collectedInPeriod }`
+    - `customers`: Danh sách gom nhóm công nợ theo Khách hàng (`phone`, `customerName`, `totalOrders`, `activeDebtOrders`, `overdueOrders`, `totalOrderAmount`, `totalPaidAmount`, `totalDebtAmount`, `nearestDueDate`, `lastOrderAt`, `orders[]`, `paymentHistory[]`).
+    - `orders`: Danh sách chi tiết các đơn hàng có phát sinh công nợ (`initialDebtAmount > 0 || debtAmount > 0`) kèm cờ `isOverdue`, `daysOverdue` để hiển thị cảnh báo đỏ trên CMS.
