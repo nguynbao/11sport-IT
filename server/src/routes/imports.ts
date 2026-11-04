@@ -28,6 +28,7 @@ import {
   applyFloorDelta,
   getFloorStocks,
   formatProductWithVariant,
+  sanitizeColorHexes,
 } from '../utils/warehouseFloor';
 import { filterAndRankBySearch } from '../utils/search';
 import {
@@ -262,6 +263,7 @@ function normalizeImportItems(
         productName,
         brand,
         color,
+        colorHexes: sanitizeColorHexes(item.colorHexes),
         size,
         categoryId: resolvedCatId,
         unit: item.unit ? String(item.unit).trim() : 'Cái',
@@ -304,6 +306,10 @@ function keepCheckerFields(newItems: IImportReceiptItem[], oldItems: IImportRece
     const old = oldItems[oi];
     return {
       ...item,
+      colorHexes:
+        item.colorHexes && item.colorHexes.length > 0
+          ? item.colorHexes
+          : sanitizeColorHexes(old.colorHexes),
       barcode: item.variantCode || old.barcode || item.barcode || '',
       checkedBy: old.checkedBy || '',
       checkedByName: old.checkedByName || '',
@@ -1480,7 +1486,14 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
       const qtyToAdd = Math.max(0, Math.round(Number(item.actualQuantity)));
       const beforeFloors = getFloorStocks(product);
       const balanceBefore = beforeFloors.stock;
-      const nextFloors = applyFloorDelta(product, targetFloor, qtyToAdd, itemColor, itemSize);
+      const nextFloors = applyFloorDelta(
+        product,
+        targetFloor,
+        qtyToAdd,
+        itemColor,
+        itemSize,
+        item.colorHexes
+      );
       const balanceAfter = nextFloors.stock;
 
       const productUpdate: Record<string, any> = {

@@ -21,6 +21,12 @@ import {
 } from "@/lib/api";
 import BarcodeLabelModal, { BarcodeLabelItem } from "./BarcodeLabelModal";
 import {
+  ColorInputWithPicker,
+  ColorSwatchBadge,
+  getColorBoxBorderStyle,
+  resolveVariantColorHexes,
+} from "./ColorSwatchPicker";
+import {
   Plus,
   Trash2,
   Save,
@@ -282,6 +288,7 @@ export default function ImportTab() {
           productName: it.productName,
           brand: it.brand || extracted.brand || "",
           color: it.color !== undefined ? it.color : extracted.color,
+          colorHexes: Array.isArray(it.colorHexes) ? it.colorHexes : [],
           size: it.size !== undefined ? it.size : extracted.size,
           categoryId: String(it.categoryId || activeCatId || ""),
           unit: it.unit || "Cái",
@@ -463,6 +470,7 @@ export default function ImportTab() {
       const cloned: ImportItem = {
         ...source,
         color: source.color || "",
+        colorHexes: Array.isArray(source.colorHexes) ? [...source.colorHexes] : [],
         size: "",
         expectedQuantity: source.expectedQuantity || 1,
         actualQuantity: 0,
@@ -472,6 +480,35 @@ export default function ImportTab() {
       };
       const next = [...prev.slice(0, index + 1), cloned, ...prev.slice(index + 1)];
       return next.map((it, idx) => ({ ...it, stt: idx + 1 }));
+    });
+  };
+
+  const handleUpdateRowColor = (index: number, nextColor: string, nextHexes: string[]) => {
+    if (isCompleted) return;
+    setItems((prev) => {
+      const next = [...prev];
+      const current = next[index];
+      if (!current) return prev;
+      const updated = {
+        ...current,
+        color: nextColor,
+        colorHexes: nextHexes,
+      };
+      next[index] = updated;
+      // Nếu có các dòng khác cùng Mã SP và cùng tên Màu, đồng bộ luôn bảng màu hiển thị
+      const cleanColorKey = String(nextColor || "").trim().toLowerCase();
+      if (updated.productCode && cleanColorKey && nextHexes.length > 0) {
+        for (let i = 0; i < next.length; i++) {
+          if (
+            i !== index &&
+            next[i].productCode === updated.productCode &&
+            String(next[i].color || "").trim().toLowerCase() === cleanColorKey
+          ) {
+            next[i] = { ...next[i], colorHexes: nextHexes };
+          }
+        }
+      }
+      return next;
     });
   };
 
@@ -1874,7 +1911,7 @@ export default function ImportTab() {
                 <th className="py-3 px-2.5 min-w-[200px]">TÊN SẢN PHẨM</th>
                 <th className="py-3 px-2 min-w-[130px] text-cyan-300">CATEGORY</th>
                 <th className="py-3 px-2 min-w-[105px] text-cyan-300">HÃNG (NN)</th>
-                <th className="py-3 px-2 min-w-[110px] text-amber-300">MÀU SẮC</th>
+                <th className="py-3 px-2 min-w-[155px] text-amber-300">MÀU SẮC (CHỌN MÀU)</th>
                 <th className="py-3 px-2 w-24 min-w-[85px] text-center text-amber-300">
                   SIZE
                 </th>
@@ -2085,16 +2122,17 @@ export default function ImportTab() {
                       />
                     </td>
 
-                    {/* MÀU SẮC */}
+                    {/* MÀU SẮC (Kèm ô nhỏ chọn 1 hoặc nhiều màu trực quan & viền box theo màu) */}
                     <td className="py-2.5 px-2 align-top">
-                      <input
-                        type="text"
-                        list="import-color-suggestions"
+                      <ColorInputWithPicker
                         disabled={isCompleted}
+                        listId="import-color-suggestions"
                         value={row.color || ""}
-                        onChange={(e) => handleUpdateRow(idx, "color", e.target.value)}
+                        colorHexes={row.colorHexes}
+                        onChange={(nextColor, nextHexes) =>
+                          handleUpdateRowColor(idx, nextColor, nextHexes)
+                        }
                         placeholder="VD: Đỏ, Trắng..."
-                        className="w-full px-2.5 py-1.5 rounded border border-slate-300 font-semibold text-slate-900 focus:border-emerald-600 focus:outline-none disabled:bg-slate-100"
                       />
                     </td>
 
@@ -2765,7 +2803,25 @@ export default function ImportTab() {
                           {it.productName}
                         </td>
                         <td className="py-2.5 px-2.5 font-medium text-slate-800">
-                          {it.color || "-"}
+                          {it.color ? (
+                            <span
+                              style={getColorBoxBorderStyle(
+                                resolveVariantColorHexes(it.color, it.colorHexes),
+                                "#f8fafc",
+                                2
+                              )}
+                              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-slate-200 font-bold text-slate-800"
+                            >
+                              <ColorSwatchBadge
+                                hexes={it.colorHexes}
+                                colorName={it.color}
+                                size="xs"
+                              />
+                              <span>{it.color}</span>
+                            </span>
+                          ) : (
+                            "-"
+                          )}
                         </td>
                         <td className="py-2.5 px-2.5 text-center font-mono font-bold text-indigo-700">
                           {it.size || "-"}

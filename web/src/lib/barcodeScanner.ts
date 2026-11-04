@@ -627,6 +627,7 @@ export function useHardwareBarcodeScanner({
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (!e || typeof e.key !== "string") return;
       if (e.ctrlKey || e.altKey || e.metaKey) return;
 
       const target = e.target as HTMLElement | null;
@@ -655,7 +656,7 @@ export function useHardwareBarcodeScanner({
           resetBuffer();
           return;
         }
-        if (e.key.length === 1 && target instanceof HTMLInputElement) {
+        if (e.key?.length === 1 && target instanceof HTMLInputElement) {
           const dGap = bufferRef.current.lastKeyTime
             ? now - bufferRef.current.lastKeyTime
             : 0;
@@ -751,7 +752,7 @@ export function useHardwareBarcodeScanner({
         resetBuffer();
       }
 
-      if (e.key.length === 1) {
+      if (e.key?.length === 1) {
         if (bufferRef.current.chars.length === 0) {
           bufferRef.current.firstKeyTime = now;
           bufferRef.current.startedInEditable = isEditable;

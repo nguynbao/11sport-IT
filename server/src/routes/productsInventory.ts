@@ -17,6 +17,7 @@ import {
   applyFloorDelta,
   summarizeVariants,
   formatProductWithVariant,
+  sanitizeColorHexes,
 } from '../utils/warehouseFloor';
 import { filterAndRankBySearch } from '../utils/search';
 
@@ -215,6 +216,7 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
       brand,
       modelName,
       color,
+      colorHexes: rawColorHexes,
       size,
       variants: rawInputVariants,
       categoryId,
@@ -321,6 +323,7 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
             const childCode = generateVariantProductCode(code, vColor, vSize);
             return {
               color: vColor,
+              colorHexes: sanitizeColorHexes(rv.colorHexes),
               size: vSize,
               variantCode: childCode,
               barcode: childCode,
@@ -382,7 +385,14 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
             stock: sum.stock,
           };
         } else {
-          const floorResult = applyFloorDelta(existing, targetFloor, qty, finalColor, finalSize);
+          const floorResult = applyFloorDelta(
+            existing,
+            targetFloor,
+            qty,
+            finalColor,
+            finalSize,
+            sanitizeColorHexes(rawColorHexes)
+          );
           workingProd = {
             ...workingProd,
             variants: floorResult.variants,
@@ -455,6 +465,7 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
           {
             variantKey: buildVariantKey(finalColor, finalSize),
             color: finalColor,
+            colorHexes: sanitizeColorHexes(rawColorHexes),
             size: finalSize,
             variantCode: singleVariantCode,
             barcode: singleVariantCode,

@@ -10,18 +10,44 @@ export function floorLabel(floor?: any): string {
 }
 
 /**
+ * Chuẩn hóa danh sách mã màu Hex (1 hoặc nhiều màu) của biến thể.
+ */
+export function sanitizeColorHexes(rawHexes?: any): string[] {
+  if (!Array.isArray(rawHexes)) return [];
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const item of rawHexes) {
+    const clean = String(item || '').trim().toUpperCase();
+    if (/^#[0-9A-F]{6}$/.test(clean) || /^#[0-9A-F]{3}$/.test(clean)) {
+      if (!seen.has(clean)) {
+        seen.add(clean);
+        result.push(clean);
+      }
+    }
+  }
+  return result;
+}
+
+/**
  * Chuẩn hóa danh sách variants của sản phẩm (gộp trùng khóa variantKey nếu có).
- * Tự động gắn Mã con (variantCode / barcode) theo thuộc tính (Màu, Size) từ baseCode (Mã gốc).
+ * Tự động gắn Mã con (variantCode / barcode) theo thuộc tính (Màu, Size) từ baseCode (Mã gốc)
+ * và đồng bộ colorHexes giữa các biến thể cùng tên màu.
  */
 export function normalizeVariants(rawVariants?: any[], baseCode?: string): IProductVariant[] {
   if (!Array.isArray(rawVariants) || rawVariants.length === 0) return [];
   const map = new Map<string, IProductVariant>();
   const cleanBaseCode = String(baseCode || '').trim();
+  const colorHexByColorKey = new Map<string, string[]>();
 
   for (const raw of rawVariants) {
     if (!raw || typeof raw !== 'object') continue;
     const color = String(raw.color || '').trim();
     const size = String(raw.size || '').trim();
+    const colorHexes = sanitizeColorHexes(raw.colorHexes);
+    const colorKey = color.toLowerCase();
+    if (colorKey && colorHexes.length > 0) {
+      colorHexByColorKey.set(colorKey, colorHexes);
+    }
     const variantKey = buildVariantKey(color, size);
     const f1 = Math.max(0, Math.round(Number(raw.stockFloor1) || 0));
     const f2 = Math.max(0, Math.round(Number(raw.stockFloor2) || 0));
@@ -41,10 +67,14 @@ export function normalizeVariants(rawVariants?: any[], baseCode?: string): IProd
         existing.variantCode = computedVariantCode;
         existing.barcode = computedVariantCode;
       }
+      if (colorHexes.length > 0) {
+        existing.colorHexes = colorHexes;
+      }
     } else {
       map.set(variantKey, {
         variantKey,
         color,
+        colorHexes,
         size,
         variantCode: computedVariantCode,
         barcode: computedVariantCode,
@@ -55,7 +85,16 @@ export function normalizeVariants(rawVariants?: any[], baseCode?: string): IProd
     }
   }
 
-  return Array.from(map.values());
+  // Đồng bộ colorHexes cho các size cùng màu nếu có ít nhất 1 biến thể cùng màu đã chọn màu
+  const list = Array.from(map.values());
+  for (const v of list) {
+    const colorKey = (v.color || '').trim().toLowerCase();
+    if ((!v.colorHexes || v.colorHexes.length === 0) && colorKey && colorHexByColorKey.has(colorKey)) {
+      v.colorHexes = colorHexByColorKey.get(colorKey);
+    }
+  }
+
+  return list;
 }
 
 /**
@@ -175,13 +214,14 @@ export function getVariantFloorStocks(
   };
 }
 
-/** Cộng (hoặc trừ) số lượng vào một tầng cụ thể (hỗ trợ cả biến thể color + size) */
+/** Cộng (hoặc trừ) số lượng vào một tầng cụ thể (hỗ trợ cả biến thể color + size + colorHexes) */
 export function applyFloorDelta(
   product: any,
   floor: WarehouseFloor,
   delta: number,
   color?: string,
-  size?: string
+  size?: string,
+  colorHexes?: string[]
 ): {
   stockFloor1: number;
   stockFloor2: number;
@@ -195,6 +235,7 @@ export function applyFloorDelta(
   const balanceBefore = current.stock;
   const cleanColor = String(color || '').trim();
   const cleanSize = String(size || '').trim();
+  const cleanHexes = sanitizeColorHexes(colorHexes);
   const hasVariantSpec = Boolean(cleanColor || cleanSize);
 
   // Nếu có truyền color/size hoặc sản phẩm đang quản lý theo variants
@@ -207,6 +248,7 @@ export function applyFloorDelta(
       variants.push({
         variantKey: 'DEFAULT',
         color: '',
+        colorHexes: [],
         size: '',
         variantCode: baseCode,
         barcode: baseCode,
@@ -226,6 +268,7 @@ export function applyFloorDelta(
       targetVariant = {
         variantKey: targetKey,
         color: cleanColor,
+        colorHexes: cleanHexes,
         size: cleanSize,
         variantCode: childCode,
         barcode: childCode,
@@ -234,6 +277,18 @@ export function applyFloorDelta(
         stock: 0,
       };
       variants.push(targetVariant);
+    } else if (cleanHexes.length > 0) {
+      targetVariant.colorHexes = cleanHexes;
+    }
+
+    // Nếu biến thể này có chọn màu mới, đồng bộ cho các size cùng màu trong sản phẩm
+    if (cleanColor && cleanHexes.length > 0) {
+      const lowerColor = cleanColor.toLowerCase();
+      for (const v of variants) {
+        if ((v.color || '').trim().toLowerCase() === lowerColor) {
+          v.colorHexes = cleanHexes;
+        }
+      }
     }
 
     if (floor === 'FLOOR_2') {

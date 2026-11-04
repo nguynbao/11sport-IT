@@ -44,6 +44,8 @@ export type WarehouseFloor = "FLOOR_1" | "FLOOR_2";
 export interface ProductVariant {
   variantKey?: string;
   color: string;
+  /** Danh sách 1 hoặc nhiều mã màu Hex hiển thị trực quan & viền box */
+  colorHexes?: string[];
   size: string;
   /** Mã con riêng theo thuộc tính (Màu, Size): [Mã gốc][MÀU][SIZE] (VD: GASIA221401DO38) */
   variantCode?: string;
@@ -60,6 +62,7 @@ export interface Product {
   brand?: string;
   modelName?: string;
   color?: string;
+  colorHexes?: string[];
   size?: string;
   categoryId: string | Category;
   categoryCode?: string;
@@ -90,6 +93,7 @@ export interface ImportItem {
   productName: string;
   brand?: string;
   color?: string;
+  colorHexes?: string[];
   size?: string;
   categoryId?: string;
   unit: string;
