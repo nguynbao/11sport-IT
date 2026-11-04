@@ -612,3 +612,13 @@
   - **Kiểm kho (CMS & Web)**: Khi bắn Mã Con (VD: `GASIA221401DO38`), hệ thống nhận diện chính xác cả sản phẩm lẫn đúng biến thể `(Đỏ, 38)`, đếm kiểm `+1` vào đúng biến thể đó (`scannedVariantCounts`) và đồng thời cộng vào tổng đã quét của sản phẩm.
   - **Nhập kho (`ImportTab` & `POST /imports/:id/scan-check` / `scan-tag`)**: Mỗi dòng trong phiếu nhập có `variantCode` / `barcode` theo đúng `(productCode, color, size)` của dòng đó. Khi bắn Mã Con, hệ thống khớp thẳng 1-1 vào đúng dòng biến thể mà không bị trùng lặp hay phải bấm phím `1..9` chọn dòng.
   - **Bán hàng POS (`PosTab`)**: Khi bắn Mã Con (VD: `GASIA221401DO38`), hệ thống thêm thẳng `+1` của đúng biến thể `Đỏ - Size 38` vào giỏ hàng POS ngay lập tức, không cần bật Popup hỏi chọn Size/Màu.
+
+
+### 2.15 Chọn & Hiển Thị 1 Hoặc Nhiều Mã Màu Trực Quan (`colorHexes`) Cho Biến Thể Sản Phẩm *(v3.3)*
+- **Trường dữ liệu `colorHexes?: string[]`**:
+  - Được bổ sung vào `IProductVariant` (`Product.variants[]`) và `IImportReceiptItem` (`ImportReceipt.items[]`).
+  - Cho phép lưu 1 hoặc nhiều mã màu Hex (`#RRGGBB`, VD: `["#FFFFFF", "#18181B", "#78350F"]` cho phối màu `White/black coffe`, hoặc `["#16A34A"]` cho `Green`).
+- **Đồng bộ xuyên suốt API**:
+  - `POST /api/v1/products` & `PATCH /api/v1/products/:id`: Nhận `colorHexes` trên sản phẩm đơn lẻ hoặc từng phần tử trong `variants[]`. Các biến thể cùng tên `color` trong cùng một sản phẩm tự động đồng bộ `colorHexes` với nhau để hiển thị đồng nhất trên khung nhóm màu.
+  - `POST /api/v1/imports`, `PUT /api/v1/imports/:id` & `POST /api/v1/imports/:id/complete`: Bảo toàn `colorHexes` của từng dòng hàng nhập kho và tự động cập nhật `colorHexes` vào `Product.variants[]` khi hoàn thành phiếu nhập.
+  - Nếu người dùng chỉ nhập tên màu (VD: `White/black coffe`, `Soft oat/vintage khaki`, `Đỏ/Trắng`) mà chưa chọn tay `colorHexes`, hệ thống tự động suy luận danh sách mã màu Hex tương ứng từ tên màu.

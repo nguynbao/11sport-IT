@@ -16,6 +16,12 @@ import {
 } from "@/lib/api";
 import BarcodeLabelModal, { BarcodeLabelItem } from "./BarcodeLabelModal";
 import {
+  ColorInputWithPicker,
+  ColorSwatchBadge,
+  getColorBoxBorderStyle,
+  resolveVariantColorHexes,
+} from "./ColorSwatchPicker";
+import {
   cleanBarcodeCode,
   findProductAndVariantByScannedBarcode,
   findProductByScannedBarcode,
@@ -57,7 +63,16 @@ export default function InventoryTab() {
   // Mở rộng xem/thêm Màu sắc & Size của từng Mã sản phẩm
   const [expandedProdIds, setExpandedProdIds] = useState<Set<string>>(new Set());
   const [newVariantDrafts, setNewVariantDrafts] = useState<
-    Record<string, { color: string; size: string; quantity: number; floor: "FLOOR_1" | "FLOOR_2" }>
+    Record<
+      string,
+      {
+        color: string;
+        colorHexes?: string[];
+        size: string;
+        quantity: number;
+        floor: "FLOOR_1" | "FLOOR_2";
+      }
+    >
   >({});
   const [addingVariantProdId, setAddingVariantProdId] = useState<string | null>(null);
 
@@ -214,6 +229,7 @@ export default function InventoryTab() {
   const handleAddVariantToProduct = async (product: Product) => {
     const draft = newVariantDrafts[product._id] || {
       color: "",
+      colorHexes: [],
       size: "",
       quantity: 0,
       floor: "FLOOR_1" as const,
@@ -240,6 +256,7 @@ export default function InventoryTab() {
           categoryId: catId,
           unit: product.unit,
           color: cleanColor,
+          colorHexes: resolveVariantColorHexes(cleanColor, draft.colorHexes),
           size: cleanSize,
           quantity: isAdmin ? qty : 0,
           targetWarehouse: draft.floor,
@@ -248,7 +265,7 @@ export default function InventoryTab() {
       });
       setNewVariantDrafts((prev) => ({
         ...prev,
-        [product._id]: { color: "", size: "", quantity: 0, floor: "FLOOR_1" },
+        [product._id]: { color: "", colorHexes: [], size: "", quantity: 0, floor: "FLOOR_1" },
       }));
       await loadInventory();
       setPriceStatusMsg(
@@ -973,61 +990,138 @@ export default function InventoryTab() {
                           )}
                         </td>
                         <td className="py-3 px-3">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            {variants.length > 0 ? (
-                              variants.map((v, vIdx) => {
-                                const vQty =
-                                  effectiveWarehouse === "FLOOR_1"
-                                    ? v.stockFloor1
-                                    : effectiveWarehouse === "FLOOR_2"
-                                      ? v.stockFloor2
-                                      : v.stock;
-                                const childCode =
-                                  v.variantCode ||
-                                  generateVariantProductCode(p.code, v.color, v.size);
-                                const vScanned = scannedVariantCounts[p._id]?.[childCode] || 0;
-                                const label =
-                                  [v.color, v.size ? `Size ${v.size}` : ""]
-                                    .filter(Boolean)
-                                    .join(" - ") || "Mặc định";
-                                return (
-                                  <span
-                                    key={`${v.variantKey || vIdx}`}
-                                    title={`Mã con: ${childCode}`}
-                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold border ${lastScannedVariantCode === childCode
-                                      ? "bg-emerald-600 text-white border-emerald-700 ring-2 ring-emerald-300"
-                                      : vQty > 0
-                                        ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                                        : "bg-slate-100 text-slate-500 border-slate-200"
-                                      }`}
-                                  >
-                                    <span>{label}:</span>
-                                    <span className="font-mono font-extrabold">{vQty}</span>
-                                    {vScanned > 0 && (
-                                      <span className="ml-0.5 px-1 rounded bg-teal-700 text-white font-mono text-[9px]">
-                                        Quét:{vScanned}
-                                      </span>
-                                    )}
-                                  </span>
-                                );
-                              })
-                            ) : (
+                          <div className="space-y-1.5">
+                            {variants.length > 0 ? (() => {
+                              const byColor = new Map<string, ProductVariant[]>();
+                              for (const v of variants) {
+                                const cKey = (v.color || "").trim() || "Mặc định";
+                                const list = byColor.get(cKey) || [];
+                                list.push(v);
+                                byColor.set(cKey, list);
+                              }
+                              const colorGroups = Array.from(byColor.entries()).map(([colorLabel, vars]) => {
+                                const sortedVars = [...vars].sort((a, b) => {
+                                  const sa = parseFloat(String(a.size || "").replace(",", "."));
+                                  const sb = parseFloat(String(b.size || "").replace(",", "."));
+                                  if (!isNaN(sa) && !isNaN(sb) && sa !== sb) return sa - sb;
+                                  return String(a.size || "").localeCompare(String(b.size || ""), "vi");
+                                });
+                                return { colorLabel, vars: sortedVars };
+                              });
+
+                              const MAX_GROUPS_PREVIEW = 2;
+                              const visibleGroups = isExpanded
+                                ? colorGroups
+                                : colorGroups.slice(0, MAX_GROUPS_PREVIEW);
+                              const hiddenGroupsCount = Math.max(
+                                0,
+                                colorGroups.length - visibleGroups.length
+                              );
+
+                              return (
+                                <div className="space-y-1">
+                                  {visibleGroups.map(({ colorLabel, vars }) => {
+                                    const displayVars = isExpanded ? vars : vars.slice(0, 6);
+                                    const hiddenVarsCount = Math.max(0, vars.length - displayVars.length);
+                                    const explicitGroupHexes = vars.find(
+                                      (v) => Array.isArray(v.colorHexes) && v.colorHexes.length > 0
+                                    )?.colorHexes;
+                                    const groupHexes = resolveVariantColorHexes(
+                                      colorLabel,
+                                      explicitGroupHexes
+                                    );
+                                    return (
+                                      <div
+                                        key={colorLabel}
+                                        style={getColorBoxBorderStyle(groupHexes, "#f8fafc", 2)}
+                                        className="flex flex-wrap items-center gap-1 bg-slate-50/90 border border-slate-200/80 rounded-md px-2 py-1"
+                                      >
+                                        <span className="text-[11px] font-extrabold text-slate-800 mr-1 flex items-center gap-1.5">
+                                          <ColorSwatchBadge
+                                            hexes={groupHexes}
+                                            colorName={colorLabel}
+                                            size="xs"
+                                          />
+                                          <span>{colorLabel}:</span>
+                                        </span>
+                                        {displayVars.map((v, vIdx) => {
+                                          const vQty =
+                                            effectiveWarehouse === "FLOOR_1"
+                                              ? v.stockFloor1
+                                              : effectiveWarehouse === "FLOOR_2"
+                                                ? v.stockFloor2
+                                                : v.stock;
+                                          const childCode =
+                                            v.variantCode ||
+                                            generateVariantProductCode(p.code, v.color, v.size);
+                                          const vScanned = scannedVariantCounts[p._id]?.[childCode] || 0;
+                                          return (
+                                            <span
+                                              key={`${v.variantKey || vIdx}`}
+                                              title={`Mã con: ${childCode}`}
+                                              className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold border ${lastScannedVariantCode === childCode
+                                                ? "bg-emerald-600 text-white border-emerald-700 ring-2 ring-emerald-300"
+                                                : vQty > 0
+                                                  ? "bg-white text-emerald-800 border-emerald-200"
+                                                  : "bg-slate-100 text-slate-400 border-slate-200"
+                                                }`}
+                                            >
+                                              <span>{v.size || "Freesize"}</span>
+                                              <span className="font-mono font-extrabold">({vQty})</span>
+                                              {vScanned > 0 && (
+                                                <span className="ml-0.5 px-1 rounded bg-teal-700 text-white font-mono text-[9px]">
+                                                  Quét:{vScanned}
+                                                </span>
+                                              )}
+                                            </span>
+                                          );
+                                        })}
+                                        {hiddenVarsCount > 0 && (
+                                          <button
+                                            type="button"
+                                            onClick={() => toggleExpandProduct(p._id)}
+                                            className="text-[10px] font-extrabold text-indigo-700 hover:underline px-1"
+                                          >
+                                            +{hiddenVarsCount} size...
+                                          </button>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                  {hiddenGroupsCount > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleExpandProduct(p._id)}
+                                      className="text-[10px] font-extrabold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded transition"
+                                    >
+                                      +{hiddenGroupsCount} màu khác ({variants.length} mã con)...
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })() : (
                               <span className="text-xs text-slate-400 italic">
                                 Chưa chia Size/Màu
                               </span>
                             )}
-                            <button
-                              type="button"
-                              onClick={() => toggleExpandProduct(p._id)}
-                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold transition"
-                            >
-                              {isExpanded ? (
-                                <ChevronDown className="w-3.5 h-3.5" />
-                              ) : (
-                                <ChevronRight className="w-3.5 h-3.5" />
-                              )}
-                              <span>{isExpanded ? "Thu gọn" : "Chi tiết / +Size,Màu"}</span>
-                            </button>
+                            <div>
+                              <button
+                                type="button"
+                                onClick={() => toggleExpandProduct(p._id)}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold transition"
+                              >
+                                {isExpanded ? (
+                                  <ChevronDown className="w-3.5 h-3.5" />
+                                ) : (
+                                  <ChevronRight className="w-3.5 h-3.5" />
+                                )}
+                                <span>
+                                  {isExpanded
+                                    ? "Thu gọn bảng mã con"
+                                    : `Chi tiết (${variants.length} mã con) / +Size,Màu`}
+                                </span>
+                              </button>
+                            </div>
                           </div>
                         </td>
                         <td className="py-3 px-3 text-xs text-slate-600">{catName}</td>
@@ -1221,7 +1315,21 @@ export default function InventoryTab() {
                                               )}
                                             </td>
                                             <td className="py-2 px-3 font-bold text-slate-800">
-                                              {v.color || "Mặc định"}
+                                              <span
+                                                style={getColorBoxBorderStyle(
+                                                  resolveVariantColorHexes(v.color, v.colorHexes),
+                                                  "#f8fafc",
+                                                  2
+                                                )}
+                                                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-slate-200"
+                                              >
+                                                <ColorSwatchBadge
+                                                  hexes={v.colorHexes}
+                                                  colorName={v.color || "Mặc định"}
+                                                  size="xs"
+                                                />
+                                                <span>{v.color || "Mặc định"}</span>
+                                              </span>
                                             </td>
                                             <td className="py-2 px-3 font-mono font-bold text-indigo-700">
                                               {v.size || "FREESIZE"}
@@ -1268,19 +1376,23 @@ export default function InventoryTab() {
                                 <div className="flex flex-wrap items-end gap-2 bg-white p-2.5 rounded-lg border border-slate-200">
                                   <div>
                                     <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                                      Màu sắc mới
+                                      Màu sắc mới (Chọn 1 hoặc nhiều màu)
                                     </label>
-                                    <input
-                                      type="text"
+                                    <ColorInputWithPicker
                                       value={draft.color}
-                                      onChange={(e) =>
+                                      colorHexes={draft.colorHexes}
+                                      onChange={(nextColor, nextHexes) =>
                                         setNewVariantDrafts((prev) => ({
                                           ...prev,
-                                          [p._id]: { ...draft, color: e.target.value },
+                                          [p._id]: {
+                                            ...draft,
+                                            color: nextColor,
+                                            colorHexes: nextHexes,
+                                          },
                                         }))
                                       }
-                                      placeholder="VD: Đỏ, Trắng, Đen..."
-                                      className="px-2.5 py-1.5 rounded border border-slate-300 text-xs w-36"
+                                      placeholder="VD: Đỏ, Trắng/Đen..."
+                                      className="w-48"
                                     />
                                   </div>
                                   <div>

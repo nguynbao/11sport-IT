@@ -9,6 +9,8 @@ export interface IProductVariant {
   /** Mã vạch Code128 in trên tem nhãn của biến thể này (= variantCode) */
   barcode?: string;
   color: string;
+  /** Danh sách 1 hoặc nhiều mã màu Hex hiển thị trực quan & làm viền box (VD: ["#FFFFFF", "#18181B"]) */
+  colorHexes?: string[];
   size: string;
   stockFloor1: number;
   stockFloor2: number;
@@ -48,6 +50,7 @@ const ProductVariantSchema = new Schema<IProductVariant>(
     variantCode: { type: String, default: '', trim: true, uppercase: true },
     barcode: { type: String, default: '', trim: true, uppercase: true },
     color: { type: String, default: '', trim: true },
+    colorHexes: { type: [String], default: [] },
     size: { type: String, default: '', trim: true },
     stockFloor1: { type: Number, default: 0, min: 0 },
     stockFloor2: { type: Number, default: 0, min: 0 },

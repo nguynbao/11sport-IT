@@ -4,6 +4,12 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import ExportExcelButton from "./ExportExcelButton";
 import BarcodeLabelModal, { BarcodeLabelItem } from "./BarcodeLabelModal";
 import {
+  ColorInputWithPicker,
+  ColorSwatchBadge,
+  getColorBoxBorderStyle,
+  resolveVariantColorHexes,
+} from "./ColorSwatchPicker";
+import {
   cleanBarcodeCode,
   findProductAndVariantByScannedBarcode,
   findProductByScannedBarcode,
@@ -75,6 +81,7 @@ interface AdminImportRow {
   categoryId: string;
   brand: string;
   color: string;
+  colorHexes?: string[];
   size: string;
   unit: string;
   quantity: number;
@@ -215,9 +222,25 @@ export default function InventoryModule() {
 
   // Quản lý Phân loại (Màu sắc • Size • Tồn kho từng tầng) & In Tem Label
   const [expandedVariantProdId, setExpandedVariantProdId] = useState<string | null>(null);
+  const [cmsVarColorFilter, setCmsVarColorFilter] = useState<string>("ALL");
+  const [cmsVarSearch, setCmsVarSearch] = useState<string>("");
   const [editingVariants, setEditingVariants] = useState<Record<string, ProductVariant[]>>({});
+
+  useEffect(() => {
+    setCmsVarColorFilter("ALL");
+    setCmsVarSearch("");
+  }, [expandedVariantProdId]);
   const [newVariantInputs, setNewVariantInputs] = useState<
-    Record<string, { color: string; size: string; stockFloor1: number; stockFloor2: number }>
+    Record<
+      string,
+      {
+        color: string;
+        colorHexes?: string[];
+        size: string;
+        stockFloor1: number;
+        stockFloor2: number;
+      }
+    >
   >({});
   const [savingVariantsProdId, setSavingVariantsProdId] = useState<string | null>(null);
   const [showLabelModal, setShowLabelModal] = useState(false);
@@ -344,6 +367,7 @@ export default function InventoryModule() {
             variantCode: v.variantCode,
             barcode: v.barcode,
             color: v.color || "",
+            colorHexes: Array.isArray(v.colorHexes) ? v.colorHexes : [],
             size: v.size || "",
             stockFloor1: Number(v.stockFloor1 ?? 0),
             stockFloor2: Number(v.stockFloor2 ?? 0),
@@ -809,11 +833,39 @@ export default function InventoryModule() {
       if (!source) return prev;
       const cloned: AdminImportRow = {
         ...source,
+        colorHexes: Array.isArray(source.colorHexes) ? [...source.colorHexes] : [],
         size: "",
         isConfirmed: false,
       };
       const next = [...prev.slice(0, index + 1), cloned, ...prev.slice(index + 1)];
       return next.map((r, idx) => ({ ...r, stt: idx + 1 }));
+    });
+  };
+
+  const handleUpdateAdminRowColor = (
+    index: number,
+    nextColor: string,
+    nextHexes: string[]
+  ) => {
+    setAdminImportRows((prev) => {
+      const next = [...prev];
+      const cur = next[index];
+      if (!cur) return prev;
+      const updated = { ...cur, color: nextColor, colorHexes: nextHexes };
+      next[index] = updated;
+      const cleanColorKey = String(nextColor || "").trim().toLowerCase();
+      if (updated.productCode && cleanColorKey && nextHexes.length > 0) {
+        for (let i = 0; i < next.length; i++) {
+          if (
+            i !== index &&
+            next[i].productCode === updated.productCode &&
+            String(next[i].color || "").trim().toLowerCase() === cleanColorKey
+          ) {
+            next[i] = { ...next[i], colorHexes: nextHexes };
+          }
+        }
+      }
+      return next;
     });
   };
 
@@ -989,6 +1041,7 @@ export default function InventoryModule() {
           productName: r.productName.trim(),
           brand: r.brand.trim(),
           color: r.color.trim(),
+          colorHexes: resolveVariantColorHexes(r.color, r.colorHexes),
           size: r.size.trim().toUpperCase(),
           categoryId: r.categoryId || newProdCatId || categories[0]?._id,
           unit: r.unit.trim() || "Cái",
@@ -1071,6 +1124,7 @@ export default function InventoryModule() {
         body: JSON.stringify({
           variants: varsToSave.map((v) => ({
             color: String(v.color || "").trim(),
+            colorHexes: resolveVariantColorHexes(v.color, v.colorHexes),
             size: String(v.size || "").trim().toUpperCase(),
             stockFloor1: Math.max(0, Math.round(Number(v.stockFloor1 || 0))),
             stockFloor2: Math.max(0, Math.round(Number(v.stockFloor2 || 0))),
@@ -1096,11 +1150,13 @@ export default function InventoryModule() {
   const handleAddVariantToProduct = async (prod: Product) => {
     const draft = newVariantInputs[prod._id] || {
       color: "",
+      colorHexes: [],
       size: "",
       stockFloor1: activeWarehouse === "FLOOR_2" ? 0 : 1,
       stockFloor2: activeWarehouse === "FLOOR_2" ? 1 : 0,
     };
     const color = draft.color.trim();
+    const colorHexes = resolveVariantColorHexes(color, draft.colorHexes);
     const size = draft.size.trim().toUpperCase();
     if (!color && !size) {
       setStatusMsg({
@@ -1120,6 +1176,8 @@ export default function InventoryModule() {
     if (existingIdx >= 0) {
       current[existingIdx] = {
         ...current[existingIdx],
+        colorHexes:
+          colorHexes.length > 0 ? colorHexes : current[existingIdx].colorHexes,
         stockFloor1: (Number(current[existingIdx].stockFloor1) || 0) + f1,
         stockFloor2: (Number(current[existingIdx].stockFloor2) || 0) + f2,
         stock:
@@ -1131,6 +1189,7 @@ export default function InventoryModule() {
     } else {
       current.push({
         color,
+        colorHexes,
         size,
         stockFloor1: f1,
         stockFloor2: f2,
@@ -1140,7 +1199,7 @@ export default function InventoryModule() {
     setEditingVariants((prev) => ({ ...prev, [prod._id]: current }));
     setNewVariantInputs((prev) => ({
       ...prev,
-      [prod._id]: { color: "", size: "", stockFloor1: 1, stockFloor2: 0 },
+      [prod._id]: { color: "", colorHexes: [], size: "", stockFloor1: 1, stockFloor2: 0 },
     }));
     await handleSaveProductVariants(prod, current);
   };
@@ -2811,61 +2870,148 @@ export default function InventoryModule() {
                               }
                               className="w-full px-2.5 py-1.5 rounded border border-slate-300 font-semibold text-slate-900 whitespace-pre-wrap break-words leading-snug resize-y"
                             />
-                            <div className="flex flex-wrap items-center gap-1">
-                              {namedVars.map((v, vIdx) => {
-                                const childCode =
-                                  v.variantCode ||
-                                  generateVariantProductCode(p.code, v.color, v.size);
-                                const vScanned = scannedVariantCounts[p._id]?.[childCode] || 0;
-                                return (
-                                  <span
-                                    key={`${v.color}-${v.size}-${vIdx}`}
-                                    title={`Mã con in tem: ${childCode}`}
-                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-bold ${lastScannedVariantCode === childCode
-                                      ? "bg-emerald-600 text-white border-emerald-700 ring-2 ring-emerald-300"
-                                      : "bg-indigo-50 text-indigo-800 border-indigo-200"
-                                      }`}
-                                  >
-                                    <span>
-                                      {[v.color, v.size ? `Size ${v.size}` : ""]
-                                        .filter(Boolean)
-                                        .join(" • ") || "Mặc định"}
-                                    </span>
-                                    <span
-                                      className={`font-mono font-extrabold ${lastScannedVariantCode === childCode
-                                        ? "text-white"
-                                        : "text-emerald-700"
-                                        }`}
-                                    >
-                                      :{activeWarehouse === "FLOOR_2" ? v.stockFloor2 : activeWarehouse === "FLOOR_1" ? v.stockFloor1 : (v.stockFloor1 || 0) + (v.stockFloor2 || 0)}
-                                    </span>
-                                    {vScanned > 0 && (
-                                      <span className="ml-0.5 px-1 rounded bg-teal-700 text-white font-mono text-[9px]">
-                                        Quét:{vScanned}
-                                      </span>
-                                    )}
-                                  </span>
-                                );
-                              })}
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setExpandedVariantProdId(isVarExpanded ? null : p._id)
+                            <div className="space-y-1">
+                              {namedVars.length > 0 && (() => {
+                                const byColor = new Map<string, ProductVariant[]>();
+                                for (const v of namedVars) {
+                                  const cKey = (v.color || "").trim() || "Mặc định";
+                                  const list = byColor.get(cKey) || [];
+                                  list.push(v);
+                                  byColor.set(cKey, list);
                                 }
-                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-extrabold transition ${isVarExpanded
-                                  ? "bg-indigo-600 text-white border-indigo-700"
-                                  : "bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border-slate-300"
-                                  }`}
-                              >
-                                <span>
-                                  🎨 Size/Màu ({namedVars.length}) · +Thêm
-                                </span>
-                                {isVarExpanded ? (
-                                  <ChevronUp className="w-3 h-3" />
-                                ) : (
-                                  <ChevronDown className="w-3 h-3" />
-                                )}
-                              </button>
+                                const colorGroups = Array.from(byColor.entries()).map(([colorLabel, vars]) => {
+                                  const sortedVars = [...vars].sort((a, b) => {
+                                    const sa = parseFloat(String(a.size || "").replace(",", "."));
+                                    const sb = parseFloat(String(b.size || "").replace(",", "."));
+                                    if (!isNaN(sa) && !isNaN(sb) && sa !== sb) return sa - sb;
+                                    return String(a.size || "").localeCompare(String(b.size || ""), "vi");
+                                  });
+                                  return { colorLabel, vars: sortedVars };
+                                });
+
+                                const MAX_GROUPS_PREVIEW = 2;
+                                const visibleGroups = isVarExpanded
+                                  ? colorGroups
+                                  : colorGroups.slice(0, MAX_GROUPS_PREVIEW);
+                                const hiddenGroupsCount = Math.max(
+                                  0,
+                                  colorGroups.length - visibleGroups.length
+                                );
+
+                                return (
+                                  <div className="space-y-1">
+                                    {visibleGroups.map(({ colorLabel, vars }) => {
+                                      const displayVars = isVarExpanded ? vars : vars.slice(0, 6);
+                                      const hiddenVarsCount = Math.max(0, vars.length - displayVars.length);
+                                      const explicitGroupHexes = vars.find(
+                                        (v) => Array.isArray(v.colorHexes) && v.colorHexes.length > 0
+                                      )?.colorHexes;
+                                      const groupHexes = resolveVariantColorHexes(
+                                        colorLabel,
+                                        explicitGroupHexes
+                                      );
+                                      return (
+                                        <div
+                                          key={colorLabel}
+                                          style={getColorBoxBorderStyle(groupHexes, "#f8fafc", 2)}
+                                          className="flex flex-wrap items-center gap-1 bg-slate-50/90 border border-slate-200/80 rounded px-2 py-1"
+                                        >
+                                          <span className="text-[10px] font-extrabold text-slate-800 mr-0.5 flex items-center gap-1.5">
+                                            <ColorSwatchBadge
+                                              hexes={groupHexes}
+                                              colorName={colorLabel}
+                                              size="xs"
+                                            />
+                                            <span>{colorLabel}:</span>
+                                          </span>
+                                          {displayVars.map((v, vIdx) => {
+                                            const childCode =
+                                              v.variantCode ||
+                                              generateVariantProductCode(p.code, v.color, v.size);
+                                            const vScanned = scannedVariantCounts[p._id]?.[childCode] || 0;
+                                            const vQty =
+                                              activeWarehouse === "FLOOR_2"
+                                                ? v.stockFloor2
+                                                : activeWarehouse === "FLOOR_1"
+                                                  ? v.stockFloor1
+                                                  : (v.stockFloor1 || 0) + (v.stockFloor2 || 0);
+                                            return (
+                                              <span
+                                                key={`${v.color}-${v.size}-${vIdx}`}
+                                                title={`Mã con in tem: ${childCode}`}
+                                                className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[10px] font-bold ${lastScannedVariantCode === childCode
+                                                  ? "bg-emerald-600 text-white border-emerald-700 ring-2 ring-emerald-300"
+                                                  : Number(vQty) > 0
+                                                    ? "bg-white text-indigo-900 border-indigo-200"
+                                                    : "bg-slate-100 text-slate-400 border-slate-200"
+                                                  }`}
+                                              >
+                                                <span>{v.size || "Freesize"}</span>
+                                                <span
+                                                  className={`font-mono font-extrabold ${lastScannedVariantCode === childCode
+                                                    ? "text-white"
+                                                    : "text-emerald-700"
+                                                    }`}
+                                                >
+                                                  ({vQty})
+                                                </span>
+                                                {vScanned > 0 && (
+                                                  <span className="ml-0.5 px-1 rounded bg-teal-700 text-white font-mono text-[9px]">
+                                                    Quét:{vScanned}
+                                                  </span>
+                                                )}
+                                              </span>
+                                            );
+                                          })}
+                                          {hiddenVarsCount > 0 && (
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                setExpandedVariantProdId(isVarExpanded ? null : p._id)
+                                              }
+                                              className="text-[10px] font-extrabold text-indigo-700 hover:underline px-1"
+                                            >
+                                              +{hiddenVarsCount} size...
+                                            </button>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                    {hiddenGroupsCount > 0 && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setExpandedVariantProdId(isVarExpanded ? null : p._id)
+                                        }
+                                        className="text-[10px] font-extrabold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded transition"
+                                      >
+                                        +{hiddenGroupsCount} màu khác ({namedVars.length} mã con)...
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+                              <div>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setExpandedVariantProdId(isVarExpanded ? null : p._id)
+                                  }
+                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-extrabold transition ${isVarExpanded
+                                    ? "bg-indigo-600 text-white border-indigo-700"
+                                    : "bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border-slate-300"
+                                    }`}
+                                >
+                                  <span>
+                                    🎨 Quản lý Size/Màu ({namedVars.length} mã con) · +Thêm
+                                  </span>
+                                  {isVarExpanded ? (
+                                    <ChevronUp className="w-3 h-3" />
+                                  ) : (
+                                    <ChevronDown className="w-3 h-3" />
+                                  )}
+                                </button>
+                              </div>
                             </div>
                           </td>
                           <td className="py-3 px-2.5 align-top">
@@ -3090,9 +3236,86 @@ export default function InventoryModule() {
                                   </button>
                                 </div>
 
-                                <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                                {/* Thanh lọc nhanh theo Màu sắc & Tìm kiếm Size/Mã con khi có nhiều biến thể */}
+                                {prodVariants.length > 3 && (() => {
+                                  const colorMap = new Map<string, number>();
+                                  prodVariants.forEach((v) => {
+                                    const c = (v.color || "").trim() || "Mặc định";
+                                    colorMap.set(c, (colorMap.get(c) || 0) + 1);
+                                  });
+                                  const colorEntries = Array.from(colorMap.entries());
+                                  return (
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50 px-3 py-2 rounded-lg border border-slate-200">
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        <span className="text-[11px] font-bold text-slate-500 mr-1">
+                                          Lọc theo màu:
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => setCmsVarColorFilter("ALL")}
+                                          className={`px-2 py-0.5 rounded text-[11px] font-extrabold border transition ${cmsVarColorFilter === "ALL"
+                                            ? "bg-slate-900 text-white border-slate-900"
+                                            : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
+                                            }`}
+                                        >
+                                          Tất cả ({prodVariants.length})
+                                        </button>
+                                        {colorEntries.map(([cName, cnt]) => {
+                                          const explicitHexes = prodVariants.find(
+                                            (v) =>
+                                              ((v.color || "").trim() || "Mặc định") === cName &&
+                                              Array.isArray(v.colorHexes) &&
+                                              v.colorHexes.length > 0
+                                          )?.colorHexes;
+                                          const cHexes = resolveVariantColorHexes(
+                                            cName,
+                                            explicitHexes
+                                          );
+                                          const isSelectedTab = cmsVarColorFilter === cName;
+                                          return (
+                                            <button
+                                              key={cName}
+                                              type="button"
+                                              onClick={() => setCmsVarColorFilter(cName)}
+                                              style={
+                                                !isSelectedTab
+                                                  ? getColorBoxBorderStyle(cHexes, "#ffffff", 2)
+                                                  : undefined
+                                              }
+                                              className={`px-2 py-0.5 rounded text-[11px] font-bold border transition inline-flex items-center gap-1.5 ${isSelectedTab
+                                                ? "bg-indigo-600 text-white border-indigo-700"
+                                                : "bg-white text-slate-800 border-slate-300 hover:bg-indigo-50"
+                                                }`}
+                                            >
+                                              <ColorSwatchBadge
+                                                hexes={cHexes}
+                                                colorName={cName}
+                                                size="xs"
+                                              />
+                                              <span>
+                                                {cName} ({cnt})
+                                              </span>
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                      <div className="relative w-full sm:w-52 shrink-0">
+                                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2" />
+                                        <input
+                                          type="text"
+                                          value={cmsVarSearch}
+                                          onChange={(e) => setCmsVarSearch(e.target.value)}
+                                          placeholder="Tìm mã con, màu, size..."
+                                          className="w-full pl-8 pr-2.5 py-1 rounded border border-slate-300 bg-white text-xs focus:border-indigo-600 focus:outline-none"
+                                        />
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+
+                                <div className="overflow-x-auto max-h-80 overflow-y-auto border border-slate-200 rounded-lg">
                                   <table className="w-full text-xs text-left">
-                                    <thead className="bg-slate-800 text-white uppercase text-[10px]">
+                                    <thead className="bg-slate-800 text-white uppercase text-[10px] sticky top-0 z-10">
                                       <tr>
                                         <th className="py-2 px-2.5 w-10 text-center">#</th>
                                         <th className="py-2 px-2.5">Mã con</th>
@@ -3113,7 +3336,25 @@ export default function InventoryModule() {
                                           </td>
                                         </tr>
                                       ) : (
-                                        prodVariants.map((v, vIdx) => {
+                                        prodVariants
+                                          .map((v, vIdx) => ({ v, vIdx }))
+                                          .filter(({ v }) => {
+                                            const c = (v.color || "").trim() || "Mặc định";
+                                            if (cmsVarColorFilter !== "ALL" && c !== cmsVarColorFilter) {
+                                              return false;
+                                            }
+                                            const q = cmsVarSearch.trim().toLowerCase();
+                                            if (!q) return true;
+                                            const childCode = generateVariantProductCode(
+                                              p.code,
+                                              v.color,
+                                              v.size
+                                            );
+                                            return `${c} ${v.size || ""} ${childCode}`
+                                              .toLowerCase()
+                                              .includes(q);
+                                          })
+                                          .map(({ v, vIdx }) => {
                                           const childCode = generateVariantProductCode(
                                             p.code,
                                             v.color,
@@ -3143,20 +3384,41 @@ export default function InventoryModule() {
                                                 )}
                                               </td>
                                               <td className="py-1.5 px-2.5">
-                                                <input
-                                                  type="text"
-                                                  list="cms-color-suggestions"
+                                                <ColorInputWithPicker
+                                                  compact
+                                                  listId="cms-color-suggestions"
                                                   value={v.color}
-                                                  onChange={(e) => {
-                                                    const next = [...prodVariants];
-                                                    next[vIdx] = { ...next[vIdx], color: e.target.value };
+                                                  colorHexes={v.colorHexes}
+                                                  onChange={(nextColor, nextHexes) => {
+                                                    const next = prodVariants.map((item, idx) => {
+                                                      if (idx === vIdx) {
+                                                        return {
+                                                          ...item,
+                                                          color: nextColor,
+                                                          colorHexes: nextHexes,
+                                                        };
+                                                      }
+                                                      const cleanC = String(nextColor || "")
+                                                        .trim()
+                                                        .toLowerCase();
+                                                      if (
+                                                        cleanC &&
+                                                        nextHexes.length > 0 &&
+                                                        String(item.color || "")
+                                                          .trim()
+                                                          .toLowerCase() === cleanC
+                                                      ) {
+                                                        return { ...item, colorHexes: nextHexes };
+                                                      }
+                                                      return item;
+                                                    });
                                                     setEditingVariants((prev) => ({
                                                       ...prev,
                                                       [p._id]: next,
                                                     }));
                                                   }}
                                                   placeholder="VD: Đỏ, Trắng..."
-                                                  className="w-36 px-2 py-1 rounded border border-slate-300 font-semibold"
+                                                  className="w-44"
                                                 />
                                               </td>
                                               <td className="py-1.5 px-2.5">
@@ -3268,20 +3530,24 @@ export default function InventoryModule() {
                                 <div className="flex flex-wrap items-end gap-2 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
                                   <div>
                                     <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
-                                      + Màu sắc mới
+                                      + Màu sắc mới (Chọn 1 hoặc nhiều màu)
                                     </label>
-                                    <input
-                                      type="text"
-                                      list="cms-color-suggestions"
+                                    <ColorInputWithPicker
+                                      listId="cms-color-suggestions"
                                       value={newVarDraft.color}
-                                      onChange={(e) =>
+                                      colorHexes={newVarDraft.colorHexes}
+                                      onChange={(nextColor, nextHexes) =>
                                         setNewVariantInputs((prev) => ({
                                           ...prev,
-                                          [p._id]: { ...newVarDraft, color: e.target.value },
+                                          [p._id]: {
+                                            ...newVarDraft,
+                                            color: nextColor,
+                                            colorHexes: nextHexes,
+                                          },
                                         }))
                                       }
                                       placeholder="VD: Xanh, Đen..."
-                                      className="w-36 px-2.5 py-1.5 rounded border border-slate-300 text-xs bg-white"
+                                      className="w-48"
                                     />
                                   </div>
                                   <div>
@@ -5247,7 +5513,7 @@ export default function InventoryModule() {
                       <th className="py-3 px-2.5 min-w-[210px]">TÊN SẢN PHẨM</th>
                       <th className="py-3 px-2 min-w-[130px] text-cyan-300">CATEGORY</th>
                       <th className="py-3 px-2 min-w-[105px] text-cyan-300">HÃNG (NN)</th>
-                      <th className="py-3 px-2 min-w-[110px] text-amber-300">MÀU SẮC</th>
+                      <th className="py-3 px-2 min-w-[155px] text-amber-300">MÀU SẮC (CHỌN MÀU)</th>
                       <th className="py-3 px-2 w-24 min-w-[80px] text-center text-amber-300">
                         SIZE
                       </th>
@@ -5454,17 +5720,16 @@ export default function InventoryModule() {
                             />
                           </td>
 
-                          {/* MÀU SẮC */}
+                          {/* MÀU SẮC (Kèm ô nhỏ chọn 1 hoặc nhiều màu trực quan & viền box) */}
                           <td className="py-2.5 px-2 align-top">
-                            <input
-                              type="text"
-                              list="cms-color-suggestions"
+                            <ColorInputWithPicker
+                              listId="cms-color-suggestions"
                               value={row.color}
-                              onChange={(e) =>
-                                handleUpdateAdminRow(idx, "color", e.target.value)
+                              colorHexes={row.colorHexes}
+                              onChange={(nextColor, nextHexes) =>
+                                handleUpdateAdminRowColor(idx, nextColor, nextHexes)
                               }
                               placeholder="VD: Đỏ, Trắng..."
-                              className="w-full px-2 py-1.5 rounded border border-slate-300 font-semibold text-slate-900 focus:border-emerald-600 focus:outline-none"
                             />
                           </td>
 
