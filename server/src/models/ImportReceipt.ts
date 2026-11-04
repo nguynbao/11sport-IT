@@ -19,6 +19,8 @@ export interface IImportReceiptItem {
   productName: string;
   brand?: string;
   color?: string;
+  /** Danh sách 1 hoặc nhiều mã màu Hex hiển thị trực quan & làm viền box (VD: ["#FFFFFF", "#18181B"]) */
+  colorHexes?: string[];
   size?: string;
   categoryId: string;
   unit: string;
@@ -73,6 +75,7 @@ const ImportReceiptItemSchema = new Schema<IImportReceiptItem>(
     productName: { type: String, required: true },
     brand: { type: String, default: '' },
     color: { type: String, default: '' },
+    colorHexes: { type: [String], default: [] },
     size: { type: String, default: '' },
     categoryId: { type: String, default: '' },
     unit: { type: String, default: 'Cái' },
