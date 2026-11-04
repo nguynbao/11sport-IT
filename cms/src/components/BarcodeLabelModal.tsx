@@ -1,7 +1,14 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Product, apiRequest, formatNumberDots, generateVariantProductCode, parseNumberDots } from "@/lib/api";
+import {
+  Product,
+  apiRequest,
+  formatNumberDots,
+  generateVariantProductCode,
+  parseNumberDots,
+  toCompactBarcode128
+} from "@/lib/api";
 import {
   Printer,
   X,
@@ -61,16 +68,16 @@ type SystemPrinterInfo = {
   IsThermal: boolean;
 };
 
-// Cấu hình cố định chuẩn máy in tem 2 cột 70 × 20 mm (2 tem 35 × 20 mm / hàng)
+// Cấu hình cố định chuẩn máy in tem 2 cột 70 × 20 mm (2 tem 34×20mm + khe giữa 2mm)
 const FIXED_LABEL_CONFIG = {
   id: "70x20_2up",
   name: "Tem đôi 2 cột 70 × 20 mm (2 tem 35×20mm / hàng)",
   columns: 2 as const,
   pageWidthMm: 70,
   pageHeightMm: 20,
-  labelWidthMm: 34.5,
+  labelWidthMm: 34,
   labelHeightMm: 20,
-  colGapMm: 1
+  colGapMm: 2
 };
 
 const CODE128_PATTERNS: string[] = [
@@ -176,99 +183,31 @@ function encodeCode128RawPattern(rawText: string): string {
   return codes.map((c) => CODE128_PATTERNS[c] || "").join("");
 }
 
-function encodeCode128Bars(rawText: string, maxDots = 258): string {
-  const pat = encodeCode128RawPattern(rawText);
-  const numSymbols = Math.floor((pat.length - 2) / 11);
-  if (numSymbols <= 0) return pat;
+/**
+ * Mã hóa chuỗi Code 128 nguyên bản 1-bit Pixel-Aligned ở 203 DPI:
+ * - Tự động chuẩn hóa qua toCompactBarcode128 (<= 200 dots ~ 25.0mm) để có Quiet Zone >= 4.0mm mỗi bên.
+ * - Chỉ nhân hệ số nguyên (1x hoặc 2x), không bao giờ dùng hệ số lẻ gây biến dạng vạch.
+ */
+function encodeCode128Bars(rawText: string, maxDots = 200): string {
+  const safeMaxDots = Math.max(120, Math.min(212, Number(maxDots) || 200));
+  const compactText = toCompactBarcode128(rawText, safeMaxDots);
+  const pat = encodeCode128RawPattern(compactText);
+  if (!pat) return "";
 
-  let symW = Math.floor((maxDots - 4) / numSymbols);
-  if (symW > 24) symW = 24;
-  if (symW < 16) symW = 11;
-
-  if (symW === 11) {
-    return pat;
+  if (pat.length * 2 <= Math.min(safeMaxDots, 178)) {
+    let doubled = "";
+    for (let i = 0; i < pat.length; i++) {
+      doubled += pat[i] === "1" ? "11" : "00";
+    }
+    return doubled;
   }
 
-  let out = "";
-  for (let sIdx = 0; sIdx < numSymbols; sIdx++) {
-    const symPat = pat.slice(sIdx * 11, sIdx * 11 + 11);
-    const m: number[] = [];
-    let i = 0;
-    while (i < 11) {
-      const ch = symPat[i];
-      let r = 1;
-      while (i + r < 11 && symPat[i + r] === ch) r++;
-      m.push(r);
-      i += r;
-    }
-
-    if (symW === 22) {
-      for (let k = 0; k < 6; k++) {
-        out += (k % 2 === 0 ? "1" : "0").repeat(m[k] * 2);
-      }
-      continue;
-    }
-
-    const minR: number[] = [];
-    const maxR: number[] = [];
-    for (let k = 0; k < 6; k++) {
-      let lo = 1;
-      while (Math.round((lo * 11) / symW) < m[k]) lo++;
-      let hi = lo;
-      while (Math.round(((hi + 1) * 11) / symW) === m[k]) hi++;
-      minR.push(lo);
-      maxR.push(hi);
-    }
-
-    let bestR: number[] = m.map((v) => Math.max(1, Math.round((v * symW) / 11)));
-    let bestCost = 1e9;
-
-    for (let r0 = minR[0]; r0 <= maxR[0]; r0++) {
-      for (let r1 = minR[1]; r1 <= maxR[1]; r1++) {
-        for (let r2 = minR[2]; r2 <= maxR[2]; r2++) {
-          for (let r3 = minR[3]; r3 <= maxR[3]; r3++) {
-            for (let r4 = minR[4]; r4 <= maxR[4]; r4++) {
-              const r5 = symW - (r0 + r1 + r2 + r3 + r4);
-              if (r5 >= minR[5] && r5 <= maxR[5]) {
-                const rr = [r0, r1, r2, r3, r4, r5];
-                let ok = true;
-                for (let k = 0; k < 4; k++) {
-                  if (Math.round(((rr[k] + rr[k + 1]) * 11) / symW) !== m[k] + m[k + 1]) {
-                    ok = false;
-                    break;
-                  }
-                }
-                if (ok) {
-                  let cost = 0;
-                  for (let k = 0; k < 6; k++) {
-                    const diff = (rr[k] * 11) / symW - m[k];
-                    cost += diff * diff;
-                  }
-                  if (cost < bestCost) {
-                    bestCost = cost;
-                    bestR = rr;
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-
-    for (let k = 0; k < 6; k++) {
-      out += (k % 2 === 0 ? "1" : "0").repeat(bestR[k]);
-    }
-  }
-
-  const finalBarPx = Math.max(2, Math.round((2 * symW) / 11));
-  out += "1".repeat(finalBarPx);
-  return out;
+  return pat;
 }
 
 function renderCode128SvgString(rawText: string, height = 46): string {
-  const pattern = encodeCode128Bars(rawText, 258);
-  const quietZoneUnits = 4;
+  const pattern = encodeCode128Bars(rawText, 200);
+  const quietZoneUnits = 14;
   const exactWidthPx = pattern.length + quietZoneUnits * 2;
 
   const rects: string[] = [];
@@ -296,13 +235,14 @@ function renderCode128SvgString(rawText: string, height = 46): string {
 
 /**
  * Kết xuất Vector SVG chuẩn từng dot 203 DPI (1 dot = 25.4/203 ≈ 0.12512mm) cho in qua trình duyệt (Ctrl+P).
- * Không dùng PNG co giãn hay CSS filter để tránh trình duyệt rasterize gây uốn lượn vạch trên máy in nhiệt.
+ * Giữ chiều rộng vạch <= 200 dots (~25.0mm) kèm Quiet Zone trắng tích hợp để khi bóc dán lên sản phẩm luôn quét nhạy 100%.
  */
-function renderCode128PrintSvgFor203Dpi(rawText: string, labelWidthMm = 34.5): string {
-  const maxBarDots = Math.round((labelWidthMm - 2.0) * 8); // Trừa 1mm quiet-zone mỗi bên (~260 dots)
+function renderCode128PrintSvgFor203Dpi(rawText: string, labelWidthMm = 34): string {
+  const maxBarDots = Math.min(200, Math.round((labelWidthMm - 7.5) * 8));
   const pattern = encodeCode128Bars(rawText, maxBarDots);
   const dotsPerUnit = Math.max(1, Math.min(2, Math.floor(maxBarDots / pattern.length) || 1));
-  const totalBarDots = pattern.length * dotsPerUnit;
+  const quietZoneDots = 12;
+  const totalBarDots = pattern.length * dotsPerUnit + quietZoneDots * 2;
   const exactBarWidthMm = (totalBarDots * 25.4) / 203;
   const viewBoxHeight = 100;
 
@@ -314,7 +254,7 @@ function renderCode128PrintSvgFor203Dpi(rawText: string, labelWidthMm = 34.5): s
       while (i + run < pattern.length && pattern[i + run] === "1") {
         run++;
       }
-      const x = i * dotsPerUnit;
+      const x = quietZoneDots + i * dotsPerUnit;
       const w = run * dotsPerUnit;
       rects.push(
         `<rect x="${x}" y="0" width="${w}" height="${viewBoxHeight}" fill="#000000" shape-rendering="crispEdges" />`
@@ -410,8 +350,10 @@ export default function BarcodeLabelModal({
     setPrintStatusMsg(null);
     try {
       const endpoints = [
+        "http://localhost:4000/api/v1/system/printers",
         "http://localhost:4000/api/v1/printers",
         "/api/printers",
+        "/api/v1/system/printers",
         "/api/v1/printers"
       ];
       let list: SystemPrinterInfo[] = [];
@@ -567,7 +509,7 @@ export default function BarcodeLabelModal({
           if (qty <= 0) return null;
           const effPrice = getEffectiveItemPrice(item);
           return {
-            code: sanitizeAscii(item.code),
+            code: toCompactBarcode128(sanitizeAscii(item.code), 200),
             name: showProductName ? item.name : "",
             priceText:
               showPrice && effPrice > 0
@@ -604,8 +546,10 @@ export default function BarcodeLabelModal({
       });
 
       const endpoints = [
+        "http://localhost:4000/api/v1/system/printers/print-labels",
         "http://localhost:4000/api/v1/printers/print-labels",
         "/api/printers",
+        "/api/v1/system/printers/print-labels",
         "/api/v1/printers/print-labels"
       ];
 
@@ -666,9 +610,10 @@ export default function BarcodeLabelModal({
     normalizedItems.forEach((item) => {
       const qty = quantities[item.id] || 0;
       const effPrice = getEffectiveItemPrice(item);
+      const compactCode = toCompactBarcode128(sanitizeAscii(item.code), 200);
       for (let i = 0; i < qty; i++) {
         expandedLabels.push({
-          code: sanitizeAscii(item.code),
+          code: compactCode,
           name: item.name,
           price: effPrice
         });
@@ -768,8 +713,8 @@ export default function BarcodeLabelModal({
       height: ${safePrintHeightMm}mm;
       max-height: ${safePrintHeightMm}mm;
       display: grid;
-      grid-template-columns: 34.5mm 34.5mm;
-      column-gap: 1mm;
+      grid-template-columns: 34mm 34mm;
+      column-gap: 2mm;
       align-items: stretch;
       justify-content: space-between;
       page-break-after: always;
@@ -782,9 +727,9 @@ export default function BarcodeLabelModal({
       break-after: auto;
     }
     .label-cell {
-      width: 34.5mm;
+      width: 34mm;
       height: ${safePrintHeightMm}mm;
-      padding: 0.15mm 0.4mm;
+      padding: 0.15mm 2.2mm;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
@@ -841,9 +786,9 @@ export default function BarcodeLabelModal({
       width: 100%;
       flex-shrink: 0;
       font-family: "Courier New", Consolas, monospace;
-      font-size: 6.5pt;
+      font-size: 6.4pt;
       font-weight: 800;
-      letter-spacing: 0.08em;
+      letter-spacing: 0.06em;
       line-height: 1.05;
       white-space: nowrap;
       overflow: hidden;
@@ -895,7 +840,7 @@ export default function BarcodeLabelModal({
 
   const renderSingleStickerPreview = (item: NormalizedLabelItem | undefined, indexLabel: string) => {
     if (!item) return null;
-    const cleanCode = sanitizeAscii(item.code);
+    const cleanCode = toCompactBarcode128(sanitizeAscii(item.code), 200);
     const effPrice = getEffectiveItemPrice(item);
     const effective203Px = getEffectiveNameFontPx(item.name, nameFontSizePx);
     const previewNameFontPx = Math.round(effective203Px * 0.62 * 10) / 10;
@@ -912,7 +857,7 @@ export default function BarcodeLabelModal({
           backgroundColor: "#ffffff",
           border: "1.5px dashed #64748b",
           borderRadius: 6,
-          padding: "3px 5px",
+          padding: "3px 8px",
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
@@ -984,14 +929,14 @@ export default function BarcodeLabelModal({
 
         <div
           style={{
-            width: "96%",
+            width: "88%",
             height: previewBarHeight,
             display: "flex",
             alignItems: "center",
             justifyContent: "center"
           }}
           dangerouslySetInnerHTML={{
-            __html: renderCode128SvgString(item.code, previewBarHeight)
+            __html: renderCode128SvgString(cleanCode, previewBarHeight)
           }}
         />
 
@@ -1003,7 +948,7 @@ export default function BarcodeLabelModal({
             fontSize: 10.2,
             fontWeight: 800,
             lineHeight: 1.05,
-            letterSpacing: "0.08em",
+            letterSpacing: "0.06em",
             whiteSpace: "nowrap",
             overflow: "hidden"
           }}
@@ -1535,6 +1480,7 @@ export default function BarcodeLabelModal({
                 {normalizedItems.map((item) => {
                   const qty = quantities[item.id] || 0;
                   const effPrice = getEffectiveItemPrice(item);
+                  const compactCode = toCompactBarcode128(sanitizeAscii(item.code), 200);
                   return (
                     <div
                       key={item.id}
@@ -1586,8 +1532,9 @@ export default function BarcodeLabelModal({
                               padding: "1px 6px",
                               borderRadius: 4
                             }}
+                            title={compactCode !== item.code ? `Mã gốc đầy đủ: ${item.code}` : undefined}
                           >
-                            {item.code}
+                            {compactCode}
                           </span>
                           <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                             <span style={{ fontSize: 11, fontWeight: 600, color: "#475569" }}>Giá:</span>
@@ -1812,14 +1759,14 @@ export default function BarcodeLabelModal({
                 }}
               >
                 <MonitorCheck size={14} />
-                Đã cố định chuẩn máy in 2 cột 70 × 20 mm:
+                Đã cố định chuẩn máy in 2 cột 70 × 20 mm (Chống tràn & Chống mất mã):
               </div>
               <ul style={{ margin: 0, paddingLeft: 16 }}>
                 <li>
-                  Mỗi hàng giấy in song song <strong>2 tem (Trái & Phải, mỗi tem 35×20mm)</strong>, không còn bị lệch vào khe giữa 2 cột.
+                  Mỗi hàng giấy in song song <strong>2 tem (Trái 34mm – Khe giữa 2mm – Phải 34mm)</strong>, tự động bù lề cứng Driver và khóa vùng vẽ riêng từng tem.
                 </li>
                 <li>
-                  Đã lược bỏ phần Phân loại/ĐVT để mã vạch 1D rộng và cao tối đa trên tem 35×20mm, giúp máy quét bắt nhạy ngay lập tức.
+                  Mã vạch chuẩn <strong>1-bit 203 DPI nguyên bản</strong> với vùng trắng tĩnh (Quiet Zone) <strong>≥ 4.0mm hai bên</strong> giúp khi bóc dán lên sản phẩm bất kỳ máy quét nào cũng bắt nhạy tức thì.
                 </li>
               </ul>
             </div>

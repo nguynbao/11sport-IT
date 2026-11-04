@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { generateVariantProductCode } from "./api";
+import {
+  generateVariantProductCode,
+  isCompactBarcodeMatchVariant,
+  toCompactBarcode128,
+} from "./api";
 
 /**
  * Chuẩn hóa chuỗi mã vạch về dạng IN HOA VIẾT LIỀN (chỉ giữ A-Z và 0-9).
@@ -211,6 +215,9 @@ export function isScannedCodeMatch(
   const candidates = getBarcodeCandidates(rawScanned);
   for (const t of targets) {
     if (candidates.includes(t)) return true;
+    const compactT = toCompactBarcode128(t, 200);
+    if (compactT && candidates.includes(compactT)) return true;
+    if (candidates.some((cand) => isCompactBarcodeMatchVariant(cand, t))) return true;
   }
 
   const deStuttered = collapseUnikeyBackspaceStutter(rawScanned.trim());

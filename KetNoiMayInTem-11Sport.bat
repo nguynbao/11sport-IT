@@ -147,7 +147,7 @@ function Test-IsThermal([string]$name, [string]$driver) {
   return $false
 }
 
-function ConvertTo-Code128Pattern([string]$rawCode, [int]$maxDots = 258) {
+function ConvertTo-Code128RawPattern([string]$rawCode) {
   $clean = ($rawCode -replace '[^\x20-\x7E]', '').Trim()
   if ([string]::IsNullOrEmpty($clean)) { $clean = "ITEM" }
 
@@ -202,73 +202,121 @@ function ConvertTo-Code128Pattern([string]$rawCode, [int]$maxDots = 258) {
   foreach ($c in $codes) {
     [void]$sb.Append($script:Code128Patterns[$c])
   }
-  $pat = $sb.ToString()
+  return $sb.ToString()
+}
 
-  $numSymbols = [int][Math]::Floor(($pat.Length - 2) / 11)
-  if ($numSymbols -le 0) { return $pat }
-  $symW = [int][Math]::Floor(($maxDots - 4) / $numSymbols)
-  if ($symW -gt 24) { $symW = 24 }
-  if ($symW -lt 16) { $symW = 11 }
-  if ($symW -eq 11) { return $pat }
+function ConvertTo-CompactColorToken([string]$colorPart, [int]$maxLen) {
+  $clean = (($colorPart.ToUpperInvariant()) -replace '[^A-Z0-9]', '')
+  if ([string]::IsNullOrEmpty($clean) -or $clean.Length -le $maxLen) { return $clean }
+  if ($maxLen -le 1) { return $clean.Substring(0, 1) }
 
-  $out = ""
-  for ($sIdx = 0; $sIdx -lt $numSymbols; $sIdx++) {
-    $symPat = $pat.Substring($sIdx * 11, 11)
-    $m = @()
-    $i = 0
-    while ($i -lt 11) {
-      $ch = $symPat[$i]; $r = 1
-      while (($i + $r) -lt 11 -and $symPat[$i + $r] -eq $ch) { $r++ }
-      $m += $r; $i += $r
-    }
-    if ($symW -eq 22) {
-      for ($k = 0; $k -lt 6; $k++) {
-        $bit = if (($k % 2) -eq 0) { '1' } else { '0' }
-        $out += ($bit.ToString() * ($m[$k] * 2))
-      }
-      continue
-    }
-    $minR = @(); $maxR = @()
-    for ($k = 0; $k -lt 6; $k++) {
-      $lo = 1; while ([int][Math]::Round(($lo * 11.0) / $symW) -lt $m[$k]) { $lo++ }
-      $hi = $lo; while ([int][Math]::Round((($hi + 1) * 11.0) / $symW) -eq $m[$k]) { $hi++ }
-      $minR += $lo; $maxR += $hi
-    }
-    $bestR = $m; $bestCost = 999999.0
-    for ($r0 = $minR[0]; $r0 -le $maxR[0]; $r0++) {
-     for ($r1 = $minR[1]; $r1 -le $maxR[1]; $r1++) {
-      for ($r2 = $minR[2]; $r2 -le $maxR[2]; $r2++) {
-       for ($r3 = $minR[3]; $r3 -le $maxR[3]; $r3++) {
-        for ($r4 = $minR[4]; $r4 -le $maxR[4]; $r4++) {
-         $r5 = $symW - ($r0 + $r1 + $r2 + $r3 + $r4)
-         if ($r5 -ge $minR[5] -and $r5 -le $maxR[5]) {
-           $rr = @($r0, $r1, $r2, $r3, $r4, $r5)
-           $ok = $true
-           for ($k = 0; $k -lt 4; $k++) {
-             if ([int][Math]::Round((($rr[$k] + $rr[$k+1]) * 11.0) / $symW) -ne ($m[$k] + $m[$k+1])) { $ok = $false; break }
-           }
-           if ($ok) {
-             $cost = 0.0
-             for ($k = 0; $k -lt 6; $k++) {
-               $diff = (($rr[$k] * 11.0) / $symW) - $m[$k]
-               $cost += ($diff * $diff)
-             }
-             if ($cost -lt $bestCost) { $bestCost = $cost; $bestR = $rr }
-           }
-         }
-        }
-       }
-      }
-     }
-    }
-    for ($k = 0; $k -lt 6; $k++) {
-      $bit = if (($k % 2) -eq 0) { '1' } else { '0' }
-      $out += ($bit.ToString() * $bestR[$k])
+  $known = @(
+    @('^TRANGXANH|^TRXANH|^TRXAN|^TRXA', 'TX'),
+    @('^TRANGDO|^TRDO', 'TD'),
+    @('^TRANGDEN|^TRDEN', 'TDE'),
+    @('^TRANGVANG|^TRVA', 'TV'),
+    @('^DENDO|^DEDO', 'DD'),
+    @('^DENTRANG|^DETR', 'DT'),
+    @('^DENVANG|^DEVA', 'DV'),
+    @('^XANHDUONG|^XADU', 'XD'),
+    @('^XANHDEN|^XADE', 'XDE'),
+    @('^XANHLA|^XALA', 'XL'),
+    @('^XANHNGOC|^XANGO', 'XN'),
+    @('^XANHTRANG|^XATR', 'XT'),
+    @('^WHBCOF|^WHBCO', 'WBC'),
+    @('^WHBLUE', 'WBL'),
+    @('^SOOVKH|^SOOVK', 'SVK'),
+    @('^BLGOL', 'BG'),
+    @('^GREIGESO|^GRSOO', 'GSO'),
+    @('^WHSTGR', 'WSG'),
+    @('^WHCAFE', 'WCF')
+  )
+  foreach ($pair in $known) {
+    if ($clean -match $pair[0]) {
+      $short = [string]$pair[1]
+      if ($short.Length -le $maxLen) { return $short }
+      return $short.Substring(0, $maxLen)
     }
   }
-  $finalBarPx = [Math]::Max(2, [int][Math]::Round((2.0 * $symW) / 11.0))
-  $out += ('1' * $finalBarPx)
-  return $out
+  if ($maxLen -eq 2) {
+    $mid = [int][Math]::Floor($clean.Length / 2.0)
+    return ($clean[0].ToString() + $clean[$mid].ToString())
+  }
+  return ($clean.Substring(0, $maxLen - 1) + $clean[$clean.Length - 1].ToString())
+}
+
+function ConvertTo-CompactBarcode128([string]$rawCode, [int]$maxDots = 200) {
+  $clean = ((($rawCode -replace '[^\x20-\x7E]', '').ToUpperInvariant()) -replace '[^A-Z0-9]', '')
+  if ([string]::IsNullOrEmpty($clean)) { return "ITEM" }
+  if ((ConvertTo-Code128RawPattern $clean).Length -le $maxDots) { return $clean }
+
+  if ($clean -notmatch '^([A-Z])([A-Z]+?)(\d{6})([A-Z0-9]*)$') {
+    $trimmed = $clean
+    while ($trimmed.Length -gt 8 -and (ConvertTo-Code128RawPattern $trimmed).Length -gt $maxDots) {
+      $trimmed = $trimmed.Substring(0, $trimmed.Length - 1)
+    }
+    return $trimmed
+  }
+
+  $cat = $Matches[1]
+  $brand = $Matches[2]
+  $sixDigits = $Matches[3]
+  $suffix = $Matches[4]
+
+  $colorPart = ""
+  $sizePart = ""
+  if (-not [string]::IsNullOrEmpty($suffix)) {
+    if ($suffix -match '^(.*?)(FREESIZE|XXS|XS|2XL|3XL|4XL|XXL|XXXL|XL|[234]\d(?:5)?|[2345]U|S|M|L)$') {
+      $colorPart = $Matches[1]
+      $sizePart = $Matches[2]
+    } else {
+      $colorPart = $suffix
+    }
+  }
+
+  $sizeTokens = if ($sizePart -eq 'FREESIZE') { @('FREESIZE', 'FS') } else { @($sizePart) }
+  foreach ($sz in $sizeTokens) {
+    if (-not [string]::IsNullOrEmpty($colorPart)) {
+      foreach ($cLen in @(3, 2)) {
+        $sc = ConvertTo-CompactColorToken $colorPart $cLen
+        $cand = "$cat$brand$sixDigits$sc$sz"
+        if ((ConvertTo-Code128RawPattern $cand).Length -le $maxDots) {
+          return $cand
+        }
+      }
+    }
+
+    $sc2 = ConvertTo-CompactColorToken $colorPart 2
+    $startB = [Math]::Min($brand.Length, 5)
+    for ($bLen = $startB; $bLen -ge 2; $bLen--) {
+      $sb = $brand.Substring(0, $bLen)
+      foreach ($cLen in @(3, 2)) {
+        $sc = ConvertTo-CompactColorToken $colorPart $cLen
+        $cand = "$cat$sb$sixDigits$sc$sz"
+        if ((ConvertTo-Code128RawPattern $cand).Length -le $maxDots) {
+          return $cand
+        }
+      }
+    }
+  }
+
+  $finalSz = if ($sizePart -eq 'FREESIZE') { 'FS' } else { $sizePart }
+  $sc1 = ConvertTo-CompactColorToken $colorPart 1
+  $sb2 = if ($brand.Length -ge 2) { $brand.Substring(0, 2) } else { $brand }
+  return "$cat$sb2$sixDigits$sc1$finalSz"
+}
+
+function ConvertTo-Code128Pattern([string]$rawCode, [int]$maxDots = 200) {
+  $compact = ConvertTo-CompactBarcode128 $rawCode $maxDots
+  $pat = ConvertTo-Code128RawPattern $compact
+  if (($pat.Length * 2) -le [Math]::Min($maxDots, 178)) {
+    $sb2 = New-Object System.Text.StringBuilder
+    for ($i = 0; $i -lt $pat.Length; $i++) {
+      [void]$sb2.Append($(if ($pat[$i] -eq '1') { "11" } else { "00" }))
+    }
+    return $sb2.ToString()
+  }
+  return $pat
 }
 
 function Sync-PrinterPaperSize([string]$printerName, [double]$wMm, [double]$hMm) {
@@ -354,135 +402,149 @@ function Get-FittedFontPx($g, [string]$family, [string]$text, [float]$maxPx, [fl
   return New-Object System.Drawing.Font($family, $minPx, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
 }
 
-function Draw-SingleSticker($g, $sticker, [int]$cellX, [int]$cellW, [int]$cellH, [double]$pxPerMmX, [double]$pxPerMmY) {
+function Draw-SingleSticker($g, $sticker, [int]$cellX, [int]$cellY, [int]$cellW, [int]$cellH, [double]$pxPerMmX, [double]$pxPerMmY) {
   if ($null -eq $sticker) { return }
 
-  $brushBlack = [System.Drawing.Brushes]::Black
-  $brushWhite = [System.Drawing.Brushes]::White
+  $clipRect = New-Object System.Drawing.Rectangle($cellX, $cellY, $cellW, $cellH)
+  $g.SetClip($clipRect)
 
-  $sfCenter = New-Object System.Drawing.StringFormat
-  $sfCenter.Alignment = [System.Drawing.StringAlignment]::Center
-  $sfCenter.LineAlignment = [System.Drawing.StringAlignment]::Center
-  $sfCenter.Trimming = [System.Drawing.StringTrimming]::EllipsisCharacter
-  $sfCenter.FormatFlags = [System.Drawing.StringFormatFlags]::NoWrap -bor [System.Drawing.StringFormatFlags]::NoClip
+  try {
+    $brushBlack = [System.Drawing.Brushes]::Black
+    $brushWhite = [System.Drawing.Brushes]::White
 
-  $sfCode = New-Object System.Drawing.StringFormat
-  $sfCode.Alignment = [System.Drawing.StringAlignment]::Center
-  $sfCode.LineAlignment = [System.Drawing.StringAlignment]::Center
-  $sfCode.Trimming = [System.Drawing.StringTrimming]::None
-  $sfCode.FormatFlags = [System.Drawing.StringFormatFlags]::NoWrap -bor [System.Drawing.StringFormatFlags]::NoClip
+    $sfCenter = New-Object System.Drawing.StringFormat
+    $sfCenter.Alignment = [System.Drawing.StringAlignment]::Center
+    $sfCenter.LineAlignment = [System.Drawing.StringAlignment]::Center
+    $sfCenter.Trimming = [System.Drawing.StringTrimming]::EllipsisCharacter
+    $sfCenter.FormatFlags = [System.Drawing.StringFormatFlags]::NoWrap
 
-  $scaleY = $pxPerMmY / 8.0
-  $padX = [Math]::Max(2, [int][Math]::Round(0.4 * $pxPerMmX))
-  $innerX = $cellX + $padX
-  $innerW = $cellW - ($padX * 2)
+    $sfCode = New-Object System.Drawing.StringFormat
+    $sfCode.Alignment = [System.Drawing.StringAlignment]::Center
+    $sfCode.LineAlignment = [System.Drawing.StringAlignment]::Center
+    $sfCode.Trimming = [System.Drawing.StringTrimming]::None
+    $sfCode.FormatFlags = [System.Drawing.StringFormatFlags]::NoWrap
 
-  $y = 0
+    $scaleY = $pxPerMmY / 8.0
+    $padX = [Math]::Max(14, [int][Math]::Round(1.8 * $pxPerMmX))
+    $innerX = $cellX + $padX
+    $innerW = $cellW - ($padX * 2)
 
-  if (-not [string]::IsNullOrWhiteSpace($sticker.shopName)) {
-    $shopH = [int][Math]::Round(19 * $scaleY)
-    $fontShop = Get-FittedFontPx $g 'Arial' ([string]$sticker.shopName) ([float](19 * $scaleY)) ([float](14 * $scaleY)) $innerW
-    $rectShop = New-Object System.Drawing.RectangleF($innerX, $y, $innerW, $shopH)
-    $g.DrawString([string]$sticker.shopName, $fontShop, $brushBlack, $rectShop, $sfCenter)
-    $fontShop.Dispose()
-    $lineH = [Math]::Max(2, [int][Math]::Round(2 * $scaleY))
-    $g.FillRectangle($brushBlack, $innerX, $y + $shopH, $innerW, $lineH)
-    $y += $shopH + $lineH + 1
-  } else {
-    $y += [int][Math]::Round(2 * $scaleY)
-  }
+    $y = $cellY
 
-  if (-not [string]::IsNullOrWhiteSpace($sticker.name)) {
-    $customPx = if ($null -ne $sticker.nameFontSizePx) { [float]$sticker.nameFontSizePx } else { 0.0 }
-    $wrapName = if ($null -ne $sticker.wrapProductName) { [bool]$sticker.wrapProductName } else { $true }
-
-    if ($customPx -gt 0) {
-      $fontName = New-Object System.Drawing.Font('Arial', [float]($customPx * $scaleY), [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
+    if (-not [string]::IsNullOrWhiteSpace($sticker.shopName)) {
+      $shopH = [int][Math]::Round(19 * $scaleY)
+      $fontShop = Get-FittedFontPx $g 'Arial' ([string]$sticker.shopName) ([float](19 * $scaleY)) ([float](14 * $scaleY)) $innerW
+      $rectShop = New-Object System.Drawing.RectangleF($innerX, $y, $innerW, $shopH)
+      $g.DrawString([string]$sticker.shopName, $fontShop, $brushBlack, $rectShop, $sfCenter)
+      $fontShop.Dispose()
+      $lineH = [Math]::Max(2, [int][Math]::Round(2 * $scaleY))
+      $g.FillRectangle($brushBlack, $innerX, $y + $shopH, $innerW, $lineH)
+      $y += $shopH + $lineH + 1
     } else {
-      $fontName = Get-FittedFontPx $g 'Arial' ([string]$sticker.name) ([float](25 * $scaleY)) ([float](13 * $scaleY)) $innerW
+      $y += [int][Math]::Round(2 * $scaleY)
     }
 
-    $singleLineSz = $g.MeasureString([string]$sticker.name, $fontName)
-    $needsTwoLines = $wrapName -and ($singleLineSz.Width -gt ($innerW + 2))
+    if (-not [string]::IsNullOrWhiteSpace($sticker.name)) {
+      $customPx = if ($null -ne $sticker.nameFontSizePx) { [float]$sticker.nameFontSizePx } else { 0.0 }
+      $wrapName = if ($null -ne $sticker.wrapProductName) { [bool]$sticker.wrapProductName } else { $true }
 
-    if ($needsTwoLines) {
-      $sfWrap = New-Object System.Drawing.StringFormat
-      $sfWrap.Alignment = [System.Drawing.StringAlignment]::Center
-      $sfWrap.LineAlignment = [System.Drawing.StringAlignment]::Center
-      $sfWrap.Trimming = [System.Drawing.StringTrimming]::EllipsisCharacter
-      $lineHeightPx = [int][Math]::Ceiling($fontName.GetHeight($g))
-      $nameH = [Math]::Min([int][Math]::Round(36 * $scaleY), [Math]::Max([int][Math]::Round(26 * $scaleY), [int][Math]::Round($lineHeightPx * 2.05)))
-      $rectName = New-Object System.Drawing.RectangleF($innerX, $y, $innerW, $nameH)
-      $g.DrawString([string]$sticker.name, $fontName, $brushBlack, $rectName, $sfWrap)
-      $sfWrap.Dispose()
-      $y += $nameH + 1
-    } else {
-      $lineHeightPx = [int][Math]::Ceiling($fontName.GetHeight($g))
-      $nameH = [Math]::Max([int][Math]::Round(20 * $scaleY), [Math]::Min([int][Math]::Round(30 * $scaleY), $lineHeightPx + 2))
-      $rectName = New-Object System.Drawing.RectangleF($innerX, $y, $innerW, $nameH)
-      $g.DrawString([string]$sticker.name, $fontName, $brushBlack, $rectName, $sfCenter)
-      $y += $nameH + 1
-    }
-    $fontName.Dispose()
-  } else {
-    $y += [int][Math]::Round(2 * $scaleY)
-  }
-
-  $hasPrice = -not [string]::IsNullOrWhiteSpace($sticker.priceText)
-  $codeH = [int][Math]::Round(17 * $scaleY)
-  $priceH = if ($hasPrice) { [int][Math]::Round(26 * $scaleY) } else { [int][Math]::Round(2 * $scaleY) }
-
-  $barTop = $y
-  $barHeight = [Math]::Max([int][Math]::Round(42 * $scaleY), $cellH - $barTop - $codeH - $priceH - 1)
-  $pattern = [string]$sticker.pattern
-
-  if ($pattern.Length -gt 0) {
-    $quietZonePx = [Math]::Max(8, [int][Math]::Round(1.0 * $pxPerMmX))
-    $maxBarW = $cellW - ($quietZonePx * 2)
-    $modulePx = [int][Math]::Floor($maxBarW / $pattern.Length)
-    if ($modulePx -lt 1) { $modulePx = 1 }
-    if ($modulePx -gt 2) { $modulePx = 2 }
-
-    $totalBarPx = $pattern.Length * $modulePx
-    $startX = $cellX + [int][Math]::Floor(($cellW - $totalBarPx) / 2.0)
-
-    $g.FillRectangle($brushWhite, $cellX, $barTop, $cellW, $barHeight)
-
-    $i = 0
-    while ($i -lt $pattern.Length) {
-      if ($pattern[$i] -eq '1') {
-        $run = 1
-        while (($i + $run) -lt $pattern.Length -and $pattern[$i + $run] -eq '1') {
-          $run++
-        }
-        $barX = $startX + ($i * $modulePx)
-        $barW = $run * $modulePx
-        $g.FillRectangle($brushBlack, $barX, $barTop, $barW, $barHeight)
-        $i += $run
+      if ($customPx -gt 0) {
+        $fontName = New-Object System.Drawing.Font('Arial', [float]($customPx * $scaleY), [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
       } else {
-        $i++
+        $fontName = Get-FittedFontPx $g 'Arial' ([string]$sticker.name) ([float](25 * $scaleY)) ([float](13 * $scaleY)) $innerW
+      }
+
+      $singleLineSz = $g.MeasureString([string]$sticker.name, $fontName)
+      $needsTwoLines = $wrapName -and ($singleLineSz.Width -gt ($innerW + 2))
+
+      if ($needsTwoLines) {
+        $sfWrap = New-Object System.Drawing.StringFormat
+        $sfWrap.Alignment = [System.Drawing.StringAlignment]::Center
+        $sfWrap.LineAlignment = [System.Drawing.StringAlignment]::Center
+        $sfWrap.Trimming = [System.Drawing.StringTrimming]::EllipsisCharacter
+        $lineHeightPx = [int][Math]::Ceiling($fontName.GetHeight($g))
+        $nameH = [Math]::Min([int][Math]::Round(36 * $scaleY), [Math]::Max([int][Math]::Round(26 * $scaleY), [int][Math]::Round($lineHeightPx * 2.05)))
+        $rectName = New-Object System.Drawing.RectangleF($innerX, $y, $innerW, $nameH)
+        $g.DrawString([string]$sticker.name, $fontName, $brushBlack, $rectName, $sfWrap)
+        $sfWrap.Dispose()
+        $y += $nameH + 1
+      } else {
+        $lineHeightPx = [int][Math]::Ceiling($fontName.GetHeight($g))
+        $nameH = [Math]::Max([int][Math]::Round(20 * $scaleY), [Math]::Min([int][Math]::Round(30 * $scaleY), $lineHeightPx + 2))
+        $rectName = New-Object System.Drawing.RectangleF($innerX, $y, $innerW, $nameH)
+        $g.DrawString([string]$sticker.name, $fontName, $brushBlack, $rectName, $sfCenter)
+        $y += $nameH + 1
+      }
+      $fontName.Dispose()
+    } else {
+      $y += [int][Math]::Round(2 * $scaleY)
+    }
+
+    $hasPrice = -not [string]::IsNullOrWhiteSpace($sticker.priceText)
+    $codeH = [int][Math]::Round(16 * $scaleY)
+    $priceH = if ($hasPrice) { [int][Math]::Round(24 * $scaleY) } else { [int][Math]::Round(2 * $scaleY) }
+    $bottomPad = [int][Math]::Round(3 * $scaleY)
+
+    $barTop = $y
+    $availBarH = ($cellY + $cellH) - $barTop - $codeH - $priceH - $bottomPad - 1
+    $barHeight = [Math]::Max([int][Math]::Round(28 * $scaleY), $availBarH)
+    if (($barTop + $barHeight + $codeH + $priceH + $bottomPad) -gt ($cellY + $cellH)) {
+      $barHeight = [Math]::Max([int][Math]::Round(22 * $scaleY), ($cellY + $cellH) - $barTop - $codeH - $priceH - $bottomPad)
+    }
+    $pattern = [string]$sticker.pattern
+
+    if ($pattern.Length -gt 0) {
+      $quietZonePx = [Math]::Max(26, [int][Math]::Round(3.25 * $pxPerMmX))
+      $maxBarW = [Math]::Min([int][Math]::Round(26.5 * $pxPerMmX), $cellW - ($quietZonePx * 2))
+      $modulePx = [int][Math]::Floor($maxBarW / $pattern.Length)
+      if ($modulePx -lt 1) { $modulePx = 1 }
+      if ($modulePx -gt 2) { $modulePx = 2 }
+
+      $totalBarPx = $pattern.Length * $modulePx
+      $startX = [Math]::Max($cellX + $quietZonePx, $cellX + [int][Math]::Floor(($cellW - $totalBarPx) / 2.0))
+
+      $g.FillRectangle($brushWhite, $cellX, $barTop, $cellW, $barHeight)
+
+      $i = 0
+      while ($i -lt $pattern.Length) {
+        if ($pattern[$i] -eq '1') {
+          $run = 1
+          while (($i + $run) -lt $pattern.Length -and $pattern[$i + $run] -eq '1') {
+            $run++
+          }
+          $barX = $startX + ($i * $modulePx)
+          $barW = $run * $modulePx
+          if (($barX + $barW) -le ($cellX + $cellW - $quietZonePx + 4)) {
+            $g.FillRectangle($brushBlack, $barX, $barTop, $barW, $barHeight)
+          }
+          $i += $run
+        } else {
+          $i++
+        }
       }
     }
+    $y = $barTop + $barHeight + 1
+
+    $rawCodeStr = [string]$sticker.code
+    $spacedCode = ($rawCodeStr.ToCharArray()) -join ' '
+    $fontCode = Get-FittedFontPx $g 'Consolas' $spacedCode ([float](17 * $scaleY)) ([float](11 * $scaleY)) $innerW
+    $rectCode = New-Object System.Drawing.RectangleF($innerX, $y, $innerW, $codeH)
+    $g.DrawString($spacedCode, $fontCode, $brushBlack, $rectCode, $sfCode)
+    $fontCode.Dispose()
+    $y += $codeH
+
+    if ($hasPrice) {
+      $fontPrice = Get-FittedFontPx $g 'Arial' ([string]$sticker.priceText) ([float](28 * $scaleY)) ([float](18 * $scaleY)) $innerW
+      $rectPrice = New-Object System.Drawing.RectangleF($innerX, $y, $innerW, $priceH)
+      $g.DrawString([string]$sticker.priceText, $fontPrice, $brushBlack, $rectPrice, $sfCenter)
+      $fontPrice.Dispose()
+    }
+
+    $sfCenter.Dispose()
+    $sfCode.Dispose()
+  } finally {
+    $g.ResetClip()
   }
-  $y = $barTop + $barHeight + 1
-
-  $rawCodeStr = [string]$sticker.code
-  $spacedCode = ($rawCodeStr.ToCharArray()) -join ' '
-  $fontCode = Get-FittedFontPx $g 'Consolas' $spacedCode ([float](18 * $scaleY)) ([float](12 * $scaleY)) $innerW
-  $rectCode = New-Object System.Drawing.RectangleF($innerX, $y, $innerW, $codeH)
-  $g.DrawString($spacedCode, $fontCode, $brushBlack, $rectCode, $sfCode)
-  $fontCode.Dispose()
-  $y += $codeH
-
-  if ($hasPrice) {
-    $fontPrice = Get-FittedFontPx $g 'Arial' ([string]$sticker.priceText) ([float](28 * $scaleY)) ([float](18 * $scaleY)) $innerW
-    $rectPrice = New-Object System.Drawing.RectangleF($innerX, $y, $innerW, $priceH)
-    $g.DrawString([string]$sticker.priceText, $fontPrice, $brushBlack, $rectPrice, $sfCenter)
-    $fontPrice.Dispose()
-  }
-
-  $sfCenter.Dispose()
-  $sfCode.Dispose()
 }
 
 # 1. Auto-configure all detected thermal printers to 70x20mm 2-column right on startup!
@@ -535,7 +597,7 @@ while ($listener.IsListening) {
 
     $path = $req.Url.AbsolutePath.ToLowerInvariant()
 
-    if ($req.HttpMethod -eq "GET" -and ($path -eq "/api/v1/printers" -or $path -eq "/api/printers")) {
+    if ($req.HttpMethod -eq "GET" -and ($path -eq "/api/v1/system/printers" -or $path -eq "/api/v1/printers" -or $path -eq "/api/printers")) {
       $printers = Get-LocalPrintersList
       $payload = @{
         success = $true
@@ -553,16 +615,33 @@ while ($listener.IsListening) {
       continue
     }
 
-    if ($req.HttpMethod -eq "POST" -and ($path -eq "/api/v1/printers/print-labels" -or $path -eq "/api/printers")) {
+    if ($req.HttpMethod -eq "POST" -and ($path -eq "/api/v1/system/printers/print-labels" -or $path -eq "/api/v1/printers/print-labels" -or $path -eq "/api/printers")) {
       $reader = New-Object System.IO.StreamReader($req.InputStream, [System.Text.Encoding]::UTF8)
       $bodyStr = $reader.ReadToEnd()
       $reader.Close()
 
       $body = $bodyStr | ConvertFrom-Json
       $printerName = [string]$body.printerName
+      $syncOnly = [bool]$body.syncOnly
       $shopName = if ($null -ne $body.shopName) { [string]$body.shopName } else { "11SPORT" }
       $wMm = if ($body.paperWidthMm) { [double]$body.paperWidthMm } else { 70.0 }
       $hMm = if ($body.paperHeightMm) { [double]$body.paperHeightMm } else { 20.0 }
+
+      $patchedDmBytes = Sync-PrinterPaperSize $printerName $wMm $hMm
+
+      if ($syncOnly) {
+        $respSync = @{
+          success = $true
+          data = @{ printedLabels = 0; printedPages = 0; printerName = $printerName; syncedDriver = $true }
+          message = "Đã đồng bộ khổ giấy 70×20mm cho máy in $printerName"
+        } | ConvertTo-Json -Compress
+        $bufSync = [System.Text.Encoding]::UTF8.GetBytes($respSync)
+        $res.ContentType = "application/json; charset=utf-8"
+        $res.StatusCode = 200
+        $res.OutputStream.Write($bufSync, 0, $bufSync.Length)
+        $res.Close()
+        continue
+      }
 
       $showProductName = if ($null -ne $body.options -and $null -ne $body.options.showProductName) { [bool]$body.options.showProductName } else { $true }
       $nameFontSizePx = if ($null -ne $body.options -and $null -ne $body.options.nameFontSizePx) { [float]$body.options.nameFontSizePx } else { 0.0 }
@@ -571,9 +650,8 @@ while ($listener.IsListening) {
       $stickers = @()
       foreach ($it in $body.items) {
         $qty = [int]$it.quantity
-        $cleanCode = ($it.code -replace '[^\x20-\x7E]', '').Trim()
-        if ([string]::IsNullOrEmpty($cleanCode)) { $cleanCode = "ITEM" }
-        $pat = ConvertTo-Code128Pattern $cleanCode
+        $cleanCode = ConvertTo-CompactBarcode128 ([string]$it.code) 200
+        $pat = ConvertTo-Code128Pattern $cleanCode 200
         $displayName = if ($showProductName) { [string]$it.name } else { "" }
         for ($k = 0; $k -lt $qty; $k++) {
           $stickers += [PSCustomObject]@{
@@ -597,7 +675,6 @@ while ($listener.IsListening) {
         }
       }
 
-      $patchedDmBytes = Sync-PrinterPaperSize $printerName $wMm $hMm
       $wHundredths = [int][Math]::Round($wMm / 25.4 * 100.0)
       $hHundredths = [int][Math]::Round($hMm / 25.4 * 100.0)
 
@@ -639,16 +716,29 @@ while ($listener.IsListening) {
         $pxPerMmX = $dpiX / 25.4
         $pxPerMmY = $dpiY / 25.4
 
+        $hmX = 0
+        $hmY = 0
+        try {
+          $hmX = [int][Math]::Round($e.PageSettings.HardMarginX / 100.0 * $dpiX)
+          $hmY = [int][Math]::Round($e.PageSettings.HardMarginY / 100.0 * $dpiY)
+        } catch {}
+        if ($hmX -lt 0) { $hmX = 0 }
+        if ($hmX -gt 16) { $hmX = 16 }
+        if ($hmY -lt 0) { $hmY = 0 }
+        if ($hmY -gt 16) { $hmY = 16 }
+
         $W = [int][Math]::Round($wMm * $pxPerMmX)
         $H = [int][Math]::Round($hMm * $pxPerMmY)
 
         $row = $rows[$script:rowIdx]
-        $cellW = [int][Math]::Round(34.5 * $pxPerMmX)
-        $rightX = $W - $cellW
+        $cellW = [int][Math]::Round(34.0 * $pxPerMmX)
+        $leftX = 0 - $hmX
+        $rightX = ($W - $cellW) - $hmX
+        $topY = 0 - $hmY
 
-        Draw-SingleSticker $g $row.left 0 $cellW $H $pxPerMmX $pxPerMmY
+        Draw-SingleSticker $g $row.left $leftX $topY $cellW $H $pxPerMmX $pxPerMmY
         if ($null -ne $row.right) {
-          Draw-SingleSticker $g $row.right $rightX $cellW $H $pxPerMmX $pxPerMmY
+          Draw-SingleSticker $g $row.right $rightX $topY $cellW $H $pxPerMmX $pxPerMmY
         }
 
         $script:rowIdx++

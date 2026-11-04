@@ -622,3 +622,22 @@
   - `POST /api/v1/products` & `PATCH /api/v1/products/:id`: Nhận `colorHexes` trên sản phẩm đơn lẻ hoặc từng phần tử trong `variants[]`. Các biến thể cùng tên `color` trong cùng một sản phẩm tự động đồng bộ `colorHexes` với nhau để hiển thị đồng nhất trên khung nhóm màu.
   - `POST /api/v1/imports`, `PUT /api/v1/imports/:id` & `POST /api/v1/imports/:id/complete`: Bảo toàn `colorHexes` của từng dòng hàng nhập kho và tự động cập nhật `colorHexes` vào `Product.variants[]` khi hoàn thành phiếu nhập.
   - Nếu người dùng chỉ nhập tên màu (VD: `White/black coffe`, `Soft oat/vintage khaki`, `Đỏ/Trắng`) mà chưa chọn tay `colorHexes`, hệ thống tự động suy luận danh sách mã màu Hex tương ứng từ tên màu.
+
+
+### 2.16 Chuẩn Hóa In Tem Nhiệt Code 128 Sắc Nét 203 DPI & Rút Gọn Mã Quét Chống Tràn Lề (`toCompactBarcode128`) *(v3.4)*
+- **Vấn đề giải quyết**:
+  1. **Chống lem/tràn mã vạch qua tem bên cạnh**: Trên cuộn giấy 2 tem `70×20mm` (`35×20mm`/tem), các mã con quá dài (20–24 ký tự như `PJOGABOLA825539DENDO42`, `PWIKA804147TRANGXANH40`) hoặc thuật toán kéo giãn nhân tạo (`maxDots = 258`, hệ số lẻ `symW = 16..21`) làm dải vạch rộng tới `32–36mm`, tràn qua khe giữa hoặc bị lệch lề cứng (`HardMarginX = 1.25mm` trên driver `Xprinter XP-350B`).
+  2. **Chống mất mã khi bóc dán lên sản phẩm**: Khi dải vạch sát mép tem (`< 1mm`), lúc bóc tem khỏi đế và dán lên bề mặt sản phẩm tối màu/cong, vạch Start/Stop ngoài cùng bị thiếu vùng trắng tĩnh (**Quiet Zone** chuẩn ISO/IEC 15417 tối thiểu `>= 10X`, thực tế `>= 3.5mm` mỗi bên) khiến súng quét không đọc được.
+- **Quy tắc chuẩn hóa (`toCompactBarcode128(rawCode, maxDots = 200)`)**:
+  - Giữ nguyên 100% độ nét nguyên bản `1-bit Pixel-Aligned` ở độ phân giải đầu in nhiệt `203 DPI` (`1 dot = 0.125mm`), **chỉ nhân hệ số nguyên** (`1 dot/module` = `11 dots/symbol` hoặc `2 dots/module` = `22 dots/symbol` khi tổng chiều rộng `<= 184 dots`), tuyệt đối không dùng hệ số lẻ làm biến dạng tỷ lệ vạch/khe trắng.
+  - Giới hạn chiều rộng vạch mã tối đa `<= 200 dots` (`<= 25.0mm`) trên vùng tem `34.0mm`, đảm bảo **Quiet Zone trắng tối thiểu `>= 4.0mm` mỗi bên** ngay trên thân tem sau khi bóc dán.
+  - Với các `variantCode` có độ rộng Code 128 `> 200 dots`, hàm `toCompactBarcode128` tự động rút gọn tất định phần `[Màu]` (VD: `TRANGXANH -> TX`, `DENDO -> DD`, `WHBCOF -> WBC`, `SOOVK -> SVK`) và nếu cần thiết rút gọn tiền tố `[Hãng]` nhưng luôn bảo toàn **`[Chữ cái đầu Loại SP] + [Tiền tố Hãng] + [6 Số Định Danh SP] + [Mã Màu Rút Gọn] + [Size]`** (VD: `PJOGABOLA825539DENDO42` -> `PJOGAB825539DD42` dài `178 dots = 22.3mm`, giảm `11mm` mà vẫn duy nhất 100%).
+- **Bù trừ lề cứng (`HardMarginX / HardMarginY`) & Khóa vùng vẽ (`SetClip`) trên mọi máy in Windows**:
+  - Đồng bộ trên cả 4 kênh in (`server/src/utils/windowsPrinter.ts`, `cms/src/app/api/printers/route.ts`, `web/src/app/api/printers/route.ts`, `KetNoiMayInTem-11Sport.bat`) và CSS trình duyệt (`Ctrl+P` trong `BarcodeLabelModal.tsx`):
+    - Tem trái: `0.0mm .. 34.0mm` (Tâm `17.0mm`).
+    - Khe trắng giữa 2 tem: `34.0mm .. 36.0mm` (`2.0mm` = `16 dots`).
+    - Tem phải: `36.0mm .. 70.0mm` (Tâm `53.0mm`).
+    - Tự động dịch bù `(-HardMarginX, -HardMarginY)` của GDI+ `.NET PrintDocument` để tọa độ vật lý trùng khớp 100% trên mọi driver (`Xprinter XP-350B`, `XP-350BM`, `XP-365B`, `Gprinter`, `Godex`, `Zebra`, `TSC`...) và khóa `Graphics.SetClip(cellRect)` cho từng tem.
+- **Tương thích quét 2 chiều trên mọi máy (`barcodeScanner.ts` & `tagMatch.ts`)**:
+  - Khi quét bằng súng mã vạch ở bất kỳ máy nào (Bán hàng POS, Kiểm kho, Nhập kho), hệ thống khớp chính xác 100% cả **Mã đầy đủ (`variantCode`)** lẫn **Mã rút gọn trên tem (`toCompactBarcode128`)** và mẫu đối chiếu `[Cat][BrandPrefix][6Digits][ShortColor][Size]`.
+
