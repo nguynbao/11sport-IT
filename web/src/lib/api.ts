@@ -157,6 +157,23 @@ export interface OrderItem {
   lineTotal: number;
 }
 
+export type DebtStatus = "NONE" | "UNPAID" | "PARTIAL" | "SETTLED";
+
+export interface SplitPaymentRecord {
+  method: "CASH" | "BANKING" | "CARD" | "DEBT";
+  amount: number;
+}
+
+export interface DebtPaymentRecord {
+  _id?: string;
+  amount: number;
+  method: "CASH" | "BANKING" | "CARD";
+  note?: string;
+  paidAt: string;
+  collectedBy?: string;
+  collectedByName?: string;
+}
+
 export interface Order {
   _id: string;
   orderCode: string;
@@ -166,6 +183,7 @@ export interface Order {
   customerPhone: string;
   paymentMethod: "CASH" | "BANKING" | "CARD" | "OTHER";
   paymentMethodDetail?: string;
+  splitPayments?: SplitPaymentRecord[];
   hasCardFee: boolean;
   rawSubtotal?: number;
   itemDiscountTotal?: number;
@@ -175,6 +193,12 @@ export interface Order {
   billDiscountAmount?: number;
   cardFee: number;
   totalAmount: number;
+  paidAmount?: number;
+  debtAmount?: number;
+  initialDebtAmount?: number;
+  debtStatus?: DebtStatus;
+  debtDueDate?: string | null;
+  debtPayments?: DebtPaymentRecord[];
   note: string;
   status: "DRAFT" | "PAID" | "PARTIALLY_RETURNED" | "FULLY_RETURNED";
   items: OrderItem[];

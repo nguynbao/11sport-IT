@@ -10,8 +10,70 @@ import {
 } from '../config/db';
 import { ApiError } from '../utils/errors';
 import { floorLabel, getFloorStocks } from '../utils/warehouseFloor';
+import { normalizePhoneDigits } from '../utils/search';
 
 export const reportsRouter = Router();
+
+function extractOrderDebtMeta(o: any) {
+  const totalAmount = Math.max(0, Number(o.totalAmount) || 0);
+  let debtAmount = Math.max(0, Number(o.debtAmount) || 0);
+  let initialDebtAmount = Math.max(debtAmount, Number(o.initialDebtAmount) || 0);
+
+  if (
+    initialDebtAmount === 0 &&
+    debtAmount === 0 &&
+    o.paymentMethod === 'OTHER' &&
+    /công\s*nợ|trả\s*sau|debt/i.test(String(o.paymentMethodDetail || ''))
+  ) {
+    const m = /(?:công\s*nợ|trả\s*sau|debt)[^0-9]*([0-9][0-9.,]*)/i.exec(
+      String(o.paymentMethodDetail || '')
+    );
+    if (m) {
+      const parsed = parseInt(m[1].replace(/[^0-9]/g, ''), 10);
+      if (!isNaN(parsed) && parsed > 0) {
+        debtAmount = Math.min(totalAmount, parsed);
+        initialDebtAmount = debtAmount;
+      }
+    }
+  }
+
+  const paidAmount =
+    o.paidAmount !== undefined && o.paidAmount !== null && Number(o.paidAmount) > 0
+      ? Math.min(totalAmount, Math.max(0, Number(o.paidAmount)))
+      : Math.max(0, totalAmount - debtAmount);
+
+  const debtStatus: 'NONE' | 'UNPAID' | 'PARTIAL' | 'SETTLED' =
+    o.debtStatus && o.debtStatus !== 'NONE'
+      ? o.debtStatus
+      : initialDebtAmount <= 0 && debtAmount <= 0
+      ? 'NONE'
+      : debtAmount <= 0
+      ? 'SETTLED'
+      : paidAmount <= 0
+      ? 'UNPAID'
+      : 'PARTIAL';
+
+  const dueDate = o.debtDueDate ? new Date(o.debtDueDate) : null;
+  const validDueDate = dueDate && !isNaN(dueDate.getTime()) ? dueDate : null;
+  const nowMs = Date.now();
+  const isOverdue = Boolean(debtAmount > 0 && validDueDate && validDueDate.getTime() < nowMs);
+  const daysOverdue =
+    isOverdue && validDueDate
+      ? Math.max(1, Math.ceil((nowMs - validDueDate.getTime()) / (24 * 3600 * 1000)))
+      : 0;
+
+  return {
+    totalAmount,
+    paidAmount,
+    debtAmount,
+    initialDebtAmount,
+    debtStatus,
+    debtDueDate: validDueDate ? validDueDate.toISOString() : null,
+    isOverdue,
+    daysOverdue,
+    debtPayments: Array.isArray(o.debtPayments) ? o.debtPayments : [],
+  };
+}
 
 type SalesType = 'ORDER' | 'RETURN' | 'EXCHANGE';
 type WarehouseType =
@@ -331,7 +393,7 @@ reportsRouter.get('/reports/staff-activity', async (req, res, next) => {
   }
 });
 
-// GET /api/v1/reports/revenue-dashboard — Báo cáo Doanh thu chi tiết & Phân tích Sản phẩm bán chạy / cần đẩy mạnh
+// GET /api/v1/reports/revenue-dashboard — Báo cáo Doanh thu chi tiết & Phân tích Sản phẩm bán chạy / cần đẩy mạnh + Quản lý Công nợ
 reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
   try {
     if (req.user?.role !== 'ADMIN') {
@@ -374,7 +436,14 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
     const filteredOrders = orders.filter((o) => {
       if (o.status === 'DRAFT') return false;
       if (!inRange(o.createdAt)) return false;
-      if (filterPayMethod && o.paymentMethod !== filterPayMethod) return false;
+      if (filterPayMethod) {
+        if (filterPayMethod === 'DEBT') {
+          const dm = extractOrderDebtMeta(o);
+          if (dm.initialDebtAmount <= 0 && dm.debtAmount <= 0) return false;
+        } else if (o.paymentMethod !== filterPayMethod) {
+          return false;
+        }
+      }
       if (filterCatId) {
         const hasCat = (o.items || []).some((it) => {
           const p = prodById.get(String(it.productId)) || prodByCode.get(String(it.productCode));
@@ -387,7 +456,7 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
 
     const filteredReturns = returns.filter((r) => {
       if (!inRange(r.createdAt)) return false;
-      if (filterPayMethod && r.refundMethod !== filterPayMethod) return false;
+      if (filterPayMethod && filterPayMethod !== 'DEBT' && r.refundMethod !== filterPayMethod) return false;
       if (filterCatId) {
         const hasCat =
           (r.returnItems || []).some((it: any) => {
@@ -411,6 +480,9 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
     let totalUnitsSold = 0;
     let totalGiftUnits = 0;
     let estimatedCogs = 0;
+    let outstandingDebtInPeriod = 0;
+    let initialDebtInPeriod = 0;
+    let debtOrdersInPeriod = 0;
 
     // Theo dõi thống kê từng sản phẩm
     interface ProdStat {
@@ -578,7 +650,7 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
       CASH: { method: 'CASH', label: 'Tiền mặt', orders: 0, revenue: 0 },
       BANKING: { method: 'BANKING', label: 'Chuyển khoản', orders: 0, revenue: 0 },
       CARD: { method: 'CARD', label: 'Quẹt thẻ', orders: 0, revenue: 0 },
-      OTHER: { method: 'OTHER', label: 'Khác', orders: 0, revenue: 0 },
+      OTHER: { method: 'OTHER', label: 'Khác (Tách / Công nợ)', orders: 0, revenue: 0 },
     };
 
     for (const o of filteredOrders) {
@@ -663,6 +735,15 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
       cardFeeTotal += effectiveCardFee;
       orderRevenue += effectiveOrderRev;
       estimatedCogs += orderIncludedCogs;
+
+      const dm = extractOrderDebtMeta(o);
+      if (dm.initialDebtAmount > 0 || dm.debtAmount > 0) {
+        debtOrdersInPeriod += 1;
+        const ratio =
+          filterCatId && orderTotal > 0 ? Math.min(1, effectiveOrderRev / orderTotal) : 1;
+        outstandingDebtInPeriod += Math.round(dm.debtAmount * ratio);
+        initialDebtInPeriod += Math.round(dm.initialDebtAmount * ratio);
+      }
 
       day.unitsSold += orderIncludedUnits;
       day.grossRevenue += filterCatId ? orderIncludedGross : Number(o.rawSubtotal ?? o.subtotal) || 0;
@@ -758,6 +839,7 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
     }
 
     const netRevenue = orderRevenue + netReturnImpact;
+    const collectedRevenue = Math.max(0, netRevenue - outstandingDebtInPeriod);
     const grossProfit = netRevenue - estimatedCogs;
     const grossMarginPercent =
       netRevenue > 0 ? Math.round((grossProfit / netRevenue) * 1000) / 10 : 0;
@@ -765,6 +847,195 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
     const paidOrders = filteredOrders.filter((o) => o.status === 'PAID').length;
     const returnedOrders = filteredOrders.filter((o) => o.status !== 'PAID').length;
     const avgOrderValue = totalOrders > 0 ? Math.round(orderRevenue / totalOrders) : 0;
+
+    // ===== TỔNG HỢP QUẢN LÝ CÔNG NỢ (MUA TRƯỚC TRẢ SAU) =====
+    let totalOutstandingDebt = 0;
+    let totalInitialDebt = 0;
+    let totalCollectedDebt = 0;
+    let activeDebtOrdersCount = 0;
+    let settledDebtOrdersCount = 0;
+    let overdueDebtAmount = 0;
+    let overdueOrdersCount = 0;
+    let debtCollectedInPeriod = 0;
+
+    interface DebtOrderRow {
+      _id: string;
+      orderCode: string;
+      customerName: string;
+      customerPhone: string;
+      paymentMethod: string;
+      paymentMethodDetail: string;
+      totalAmount: number;
+      paidAmount: number;
+      debtAmount: number;
+      initialDebtAmount: number;
+      debtStatus: 'NONE' | 'UNPAID' | 'PARTIAL' | 'SETTLED';
+      debtDueDate: string | null;
+      isOverdue: boolean;
+      daysOverdue: number;
+      debtPayments: any[];
+      createdByName: string;
+      confirmedByName: string;
+      createdAt: string;
+      items: any[];
+      note: string;
+    }
+
+    const debtOrders: DebtOrderRow[] = [];
+    const customerDebtMap = new Map<
+      string,
+      {
+        phone: string;
+        customerName: string;
+        totalOrders: number;
+        activeDebtOrders: number;
+        settledDebtOrders: number;
+        overdueOrders: number;
+        totalOrderAmount: number;
+        totalInitialDebt: number;
+        totalPaidAmount: number;
+        totalDebtAmount: number;
+        nearestDueDate: string | null;
+        lastOrderAt: string | null;
+        orders: DebtOrderRow[];
+        paymentHistory: {
+          _id: string;
+          orderId: string;
+          orderCode: string;
+          amount: number;
+          method: string;
+          note: string;
+          paidAt: string;
+          collectedByName: string;
+        }[];
+      }
+    >();
+
+    for (const o of orders) {
+      if (o.status === 'DRAFT') continue;
+      const dm = extractOrderDebtMeta(o);
+
+      for (const dp of dm.debtPayments) {
+        if (inRange(dp.paidAt)) {
+          debtCollectedInPeriod += Math.max(0, Number(dp.amount) || 0);
+        }
+      }
+
+      if (dm.initialDebtAmount <= 0 && dm.debtAmount <= 0) continue;
+
+      totalOutstandingDebt += dm.debtAmount;
+      totalInitialDebt += dm.initialDebtAmount;
+      totalCollectedDebt += Math.max(0, dm.initialDebtAmount - dm.debtAmount);
+
+      if (dm.debtAmount > 0) {
+        activeDebtOrdersCount += 1;
+        if (dm.isOverdue) {
+          overdueOrdersCount += 1;
+          overdueDebtAmount += dm.debtAmount;
+        }
+      } else {
+        settledDebtOrdersCount += 1;
+      }
+
+      const row: DebtOrderRow = {
+        _id: String(o._id),
+        orderCode: o.orderCode,
+        customerName: o.customerName || 'Khách hàng',
+        customerPhone: o.customerPhone || '',
+        paymentMethod: o.paymentMethod,
+        paymentMethodDetail: o.paymentMethodDetail || '',
+        totalAmount: dm.totalAmount,
+        paidAmount: dm.paidAmount,
+        debtAmount: dm.debtAmount,
+        initialDebtAmount: dm.initialDebtAmount,
+        debtStatus: dm.debtStatus,
+        debtDueDate: dm.debtDueDate,
+        isOverdue: dm.isOverdue,
+        daysOverdue: dm.daysOverdue,
+        debtPayments: dm.debtPayments,
+        createdByName: o.createdByName || '',
+        confirmedByName: o.confirmedByName || o.createdByName || '',
+        createdAt: o.createdAt ? new Date(o.createdAt).toISOString() : new Date().toISOString(),
+        items: o.items || [],
+        note: o.note || '',
+      };
+      debtOrders.push(row);
+
+      const normPhone = normalizePhoneDigits(o.customerPhone || '') || o.customerPhone || o.customerName || String(o._id);
+      if (!customerDebtMap.has(normPhone)) {
+        customerDebtMap.set(normPhone, {
+          phone: o.customerPhone || normPhone,
+          customerName: o.customerName || 'Khách hàng',
+          totalOrders: 0,
+          activeDebtOrders: 0,
+          settledDebtOrders: 0,
+          overdueOrders: 0,
+          totalOrderAmount: 0,
+          totalInitialDebt: 0,
+          totalPaidAmount: 0,
+          totalDebtAmount: 0,
+          nearestDueDate: null,
+          lastOrderAt: null,
+          orders: [],
+          paymentHistory: [],
+        });
+      }
+      const cGroup = customerDebtMap.get(normPhone)!;
+      if (o.customerName) cGroup.customerName = o.customerName;
+      cGroup.totalOrders += 1;
+      if (dm.debtAmount > 0) {
+        cGroup.activeDebtOrders += 1;
+        if (dm.isOverdue) cGroup.overdueOrders += 1;
+        if (dm.debtDueDate) {
+          if (
+            !cGroup.nearestDueDate ||
+            new Date(dm.debtDueDate).getTime() < new Date(cGroup.nearestDueDate).getTime()
+          ) {
+            cGroup.nearestDueDate = dm.debtDueDate;
+          }
+        }
+      } else {
+        cGroup.settledDebtOrders += 1;
+      }
+      cGroup.totalOrderAmount += dm.totalAmount;
+      cGroup.totalInitialDebt += dm.initialDebtAmount;
+      cGroup.totalPaidAmount += dm.paidAmount;
+      cGroup.totalDebtAmount += dm.debtAmount;
+      if (
+        !cGroup.lastOrderAt ||
+        new Date(row.createdAt).getTime() > new Date(cGroup.lastOrderAt).getTime()
+      ) {
+        cGroup.lastOrderAt = row.createdAt;
+      }
+      cGroup.orders.push(row);
+
+      for (const dp of dm.debtPayments) {
+        cGroup.paymentHistory.push({
+          _id: String(dp._id || `${o._id}_${dp.paidAt}`),
+          orderId: String(o._id),
+          orderCode: o.orderCode,
+          amount: Number(dp.amount) || 0,
+          method: dp.method || 'BANKING',
+          note: dp.note || '',
+          paidAt: dp.paidAt ? new Date(dp.paidAt).toISOString() : row.createdAt,
+          collectedByName: dp.collectedByName || 'Quản Trị Viên',
+        });
+      }
+    }
+
+    const debtCustomers = Array.from(customerDebtMap.values())
+      .map((c) => ({
+        ...c,
+        paymentHistory: c.paymentHistory.sort(
+          (a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime()
+        ),
+      }))
+      .sort((a, b) => {
+        if (b.totalDebtAmount !== a.totalDebtAmount) return b.totalDebtAmount - a.totalDebtAmount;
+        return b.totalInitialDebt - a.totalInitialDebt;
+      });
+
+    const activeDebtCustomersCount = debtCustomers.filter((c) => c.totalDebtAmount > 0).length;
 
     // Cơ cấu phương thức thanh toán
     const byPaymentMethod = Object.values(paymentStats).map((pm) => ({
@@ -964,6 +1235,11 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
           exchangeTotal,
           netReturnImpact,
           netRevenue,
+          collectedRevenue,
+          outstandingDebtInPeriod,
+          initialDebtInPeriod,
+          debtCollectedInPeriod,
+          debtOrdersInPeriod,
           estimatedCogs,
           grossProfit,
           grossMarginPercent,
@@ -981,6 +1257,22 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
         hourlyTrend,
         topSellingProducts,
         needsPushProducts,
+        debtManagement: {
+          summary: {
+            totalOutstandingDebt,
+            totalInitialDebt,
+            totalCollectedDebt,
+            activeDebtOrdersCount,
+            settledDebtOrdersCount,
+            activeDebtCustomersCount,
+            overdueDebtAmount,
+            overdueOrdersCount,
+            newDebtInPeriod: initialDebtInPeriod,
+            collectedInPeriod: debtCollectedInPeriod,
+          },
+          customers: debtCustomers,
+          orders: debtOrders,
+        },
       },
       meta: {
         from: from || null,

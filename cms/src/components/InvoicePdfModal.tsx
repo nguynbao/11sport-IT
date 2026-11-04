@@ -427,6 +427,38 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
                   {formatVND(calcTotalAmount)}
                 </span>
               </div>
+
+              {((Number(order.debtAmount) || 0) > 0 ||
+                (Number(order.initialDebtAmount) || 0) > 0) && (
+                <div className="pt-1.5 border-t border-dashed border-black space-y-1 text-[11px]">
+                  <div className="flex justify-between items-center whitespace-nowrap gap-2">
+                    <span className="font-semibold">Đã thanh toán:</span>
+                    <span className="font-mono font-bold">
+                      {formatVND(
+                        Math.max(
+                          0,
+                          Number(order.paidAmount) ||
+                            calcTotalAmount - (Number(order.debtAmount) || 0)
+                        )
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center whitespace-nowrap gap-2 font-extrabold">
+                    <span>CÒN NỢ (TRẢ SAU):</span>
+                    <span className="font-mono font-black">
+                      {formatVND(Math.max(0, Number(order.debtAmount) || 0))}
+                    </span>
+                  </div>
+                  {order.debtDueDate && (Number(order.debtAmount) || 0) > 0 && (
+                    <div className="flex justify-between items-center whitespace-nowrap gap-2">
+                      <span className="font-semibold">Hạn hẹn trả:</span>
+                      <span className="font-mono font-bold">
+                        {new Date(order.debtDueDate).toLocaleDateString("vi-VN")}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Ghi chú thuế & lời cảm ơn */}

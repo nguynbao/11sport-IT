@@ -93,7 +93,7 @@ const getCartLineKey = (productId: string, color?: string, size?: string): strin
   `${productId}__${String(color || "").trim().toLowerCase()}__${String(size || "").trim().toUpperCase()}`;
 
 type SortByOption = "CATEGORY" | "NAME_ASC" | "PRICE_ASC" | "PRICE_DESC" | "STOCK_DESC";
-type SplitMethodType = "CASH" | "BANKING" | "CARD";
+type SplitMethodType = "CASH" | "BANKING" | "CARD" | "DEBT";
 
 interface SplitPaymentItem {
   method: SplitMethodType;
@@ -104,6 +104,7 @@ const SPLIT_METHOD_OPTIONS: { value: SplitMethodType; label: string }[] = [
   { value: "CASH", label: "Tiền mặt" },
   { value: "BANKING", label: "Chuyển khoản" },
   { value: "CARD", label: "Card" },
+  { value: "DEBT", label: "Công nợ (Trả sau)" },
 ];
 
 // ===== Nhiều đơn hàng song song (đơn nháp) =====
@@ -124,6 +125,7 @@ interface DraftOrderData {
   customerOrders: Order[];
   paymentMethod: PaymentMethodType;
   splitPayments: SplitPaymentItem[];
+  debtDueDate?: string;
   hasCardFee: boolean;
   note: string;
 }
@@ -144,6 +146,7 @@ const createEmptyDraftData = (): DraftOrderData => ({
   customerOrders: [],
   paymentMethod: "CASH",
   splitPayments: [],
+  debtDueDate: "",
   hasCardFee: true,
   note: DEFAULT_NOTE,
 });
@@ -236,6 +239,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
   // Thanh toán
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>("CASH");
   const [splitPayments, setSplitPayments] = useState<SplitPaymentItem[]>([]);
+  const [debtDueDate, setDebtDueDate] = useState<string>("");
   const [showSplitDropdown, setShowSplitDropdown] = useState<boolean>(false);
   const [hasCardFee, setHasCardFee] = useState<boolean>(true);
   const [note, setNote] = useState(DEFAULT_NOTE);
@@ -270,6 +274,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     customerOrders,
     paymentMethod,
     splitPayments,
+    debtDueDate,
     hasCardFee,
     note,
   });
@@ -285,6 +290,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     setCustomerOrders(Array.isArray(d.customerOrders) ? d.customerOrders : []);
     setPaymentMethod(d.paymentMethod || "CASH");
     setSplitPayments(Array.isArray(d.splitPayments) ? d.splitPayments : []);
+    setDebtDueDate(typeof d.debtDueDate === "string" ? d.debtDueDate : "");
     setHasCardFee(d.hasCardFee !== false);
     setNote(typeof d.note === "string" ? d.note : DEFAULT_NOTE);
     setShowSplitDropdown(false);
@@ -309,6 +315,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
             customerOrders,
             paymentMethod,
             splitPayments,
+            debtDueDate,
             hasCardFee,
             note,
           }
@@ -327,6 +334,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       customerOrders,
       paymentMethod,
       splitPayments,
+      debtDueDate,
       hasCardFee,
       note,
     ]
@@ -1643,6 +1651,35 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     paymentMethod === "CARD" && hasCardFee ? Math.round(afterBillDiscount * 0.03) : 0;
   const totalAmount = afterBillDiscount + cardFee;
 
+  useEffect(() => {
+    if (paymentMethod !== "OTHER") return;
+    setSplitPayments((prev) => {
+      if (!prev.some((s) => s.method === "DEBT")) return prev;
+      const nonDebtSum = prev
+        .filter((s) => s.method !== "DEBT")
+        .reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+      const expectedDebt = Math.max(0, totalAmount - nonDebtSum);
+      const curDebt = prev.find((s) => s.method === "DEBT")?.amount ?? 0;
+      if (curDebt === expectedDebt) return prev;
+      return prev.map((s) => (s.method === "DEBT" ? { ...s, amount: expectedDebt } : s));
+    });
+  }, [totalAmount, paymentMethod]);
+
+  const currentDebtAmount = useMemo(() => {
+    if (paymentMethod !== "OTHER") return 0;
+    return Math.min(
+      totalAmount,
+      splitPayments
+        .filter((sp) => sp.method === "DEBT")
+        .reduce((sum, sp) => sum + Math.max(0, Number(sp.amount) || 0), 0)
+    );
+  }, [paymentMethod, splitPayments, totalAmount]);
+
+  const currentPaidNowAmount = useMemo(() => {
+    if (paymentMethod !== "OTHER") return totalAmount;
+    return Math.max(0, totalAmount - currentDebtAmount);
+  }, [paymentMethod, totalAmount, currentDebtAmount]);
+
   const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg("");
@@ -1705,6 +1742,9 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
         customerName: customerName.trim(),
         paymentMethod,
         paymentMethodDetail: formattedSplitDetail,
+        splitPayments: paymentMethod === "OTHER" ? splitPayments : [],
+        debtAmount: currentDebtAmount,
+        debtDueDate: currentDebtAmount > 0 && debtDueDate ? debtDueDate : null,
         hasCardFee: paymentMethod === "CARD" ? hasCardFee : false,
         billDiscountType: cleanBillDiscountValue > 0 ? billDiscountType : "NONE",
         billDiscountValue: cleanBillDiscountValue,
@@ -1804,6 +1844,9 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
         customerName: customerName.trim(),
         paymentMethod,
         paymentMethodDetail: formattedSplitDetail,
+        splitPayments: paymentMethod === "OTHER" ? splitPayments : [],
+        debtAmount: currentDebtAmount,
+        debtDueDate: currentDebtAmount > 0 && debtDueDate ? debtDueDate : null,
         hasCardFee: paymentMethod === "CARD" ? hasCardFee : false,
         billDiscountType: cleanBillDiscountValue > 0 ? billDiscountType : "NONE",
         billDiscountValue: cleanBillDiscountValue,
@@ -1944,6 +1987,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       ord.customerName === "Khách lẻ (Bản nháp)" ? "" : ord.customerName || ""
     );
     setPaymentMethod((ord.paymentMethod as PaymentMethodType) || "CASH");
+    setSplitPayments(Array.isArray(ord.splitPayments) ? (ord.splitPayments as SplitPaymentItem[]) : []);
+    setDebtDueDate(
+      ord.debtDueDate ? new Date(ord.debtDueDate).toISOString().slice(0, 10) : ""
+    );
     setHasCardFee(ord.hasCardFee !== false);
     setNote(ord.note || DEFAULT_NOTE);
     setSuccessMsg(
@@ -2783,6 +2830,87 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
               </div>
             </div>
 
+            {(() => {
+              const unpaidOrders = customerOrders.filter(
+                (o) => o.status !== "DRAFT" && (Number(o.debtAmount) || 0) > 0
+              );
+              if (unpaidOrders.length === 0) return null;
+              const totalDebt = unpaidOrders.reduce(
+                (sum, o) => sum + (Number(o.debtAmount) || 0),
+                0
+              );
+              const nowMs = Date.now();
+              const overdueCount = unpaidOrders.filter(
+                (o) => o.debtDueDate && new Date(o.debtDueDate).getTime() < nowMs
+              ).length;
+
+              return (
+                <div
+                  className={`p-3 rounded-xl border space-y-1.5 text-xs ${
+                    overdueCount > 0
+                      ? "bg-red-50 border-red-300 text-red-900"
+                      : "bg-amber-50 border-amber-300 text-amber-900"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2 font-extrabold">
+                    <span className="flex items-center gap-1.5">
+                      <AlertCircle
+                        className={`w-4 h-4 shrink-0 ${
+                          overdueCount > 0 ? "text-red-600" : "text-amber-600"
+                        }`}
+                      />
+                      Cảnh báo: Khách đang có {unpaidOrders.length} đơn công nợ chưa thanh toán!
+                    </span>
+                    <span className="font-mono text-sm px-2 py-0.5 rounded bg-white border border-current font-black">
+                      Tổng nợ: {formatVND(totalDebt)}
+                    </span>
+                  </div>
+                  {overdueCount > 0 && (
+                    <div className="text-[11px] font-bold text-red-700">
+                      🚨 Có {overdueCount} đơn đã quá hạn hẹn trả công nợ!
+                    </div>
+                  )}
+                  <div className="space-y-1 pt-1">
+                    {unpaidOrders.slice(0, 3).map((ord) => {
+                      const isOv =
+                        ord.debtDueDate && new Date(ord.debtDueDate).getTime() < nowMs;
+                      return (
+                        <div
+                          key={ord._id}
+                          className="flex flex-wrap items-center justify-between gap-2 bg-white/90 px-2.5 py-1 rounded border border-slate-200 text-[11px]"
+                        >
+                          <span className="font-mono font-bold text-slate-900">
+                            {ord.orderCode || ord.code}
+                          </span>
+                          <span className="font-mono font-extrabold text-red-600">
+                            Còn nợ: {formatVND(Number(ord.debtAmount) || 0)}
+                          </span>
+                          {ord.debtDueDate && (
+                            <span
+                              className={`font-semibold ${
+                                isOv ? "text-red-700 font-bold" : "text-slate-600"
+                              }`}
+                            >
+                              Hạn:{" "}
+                              {new Date(ord.debtDueDate).toLocaleDateString("vi-VN")}
+                              {isOv ? " (Quá hạn)" : ""}
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => onOpenInvoice(ord)}
+                            className="text-blue-600 hover:underline font-bold"
+                          >
+                            Xem đơn
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+
             {customerOrders.length > 0 && (
               <div className="pt-2 border-t border-slate-200">
                 <div className="text-[11px] font-semibold text-slate-600 flex items-center gap-1 mb-1.5">
@@ -2802,6 +2930,11 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                       <span className="font-mono font-bold text-emerald-700">
                         {formatVND(ord.totalAmount)}
                       </span>
+                      {(Number(ord.debtAmount) || 0) > 0 && (
+                        <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 font-mono font-bold text-[10px]">
+                          Nợ: {formatVND(Number(ord.debtAmount) || 0)}
+                        </span>
+                      )}
                       <button
                         type="button"
                         onClick={() => onOpenInvoice(ord)}
@@ -3366,84 +3499,140 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                 const remainingOptions = SPLIT_METHOD_OPTIONS.filter(
                   (opt) => !selectedMethods.includes(opt.value)
                 );
+                const hasDebtOption = selectedMethods.includes("DEBT");
+
+                const addDaysToInputDate = (days: number) => {
+                  const d = new Date();
+                  d.setDate(d.getDate() + days);
+                  const yyyy = d.getFullYear();
+                  const mm = String(d.getMonth() + 1).padStart(2, "0");
+                  const dd = String(d.getDate()).padStart(2, "0");
+                  return `${yyyy}-${mm}-${dd}`;
+                };
 
                 return (
                   <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      {splitPayments.map((sp) => {
-                        const label =
-                          SPLIT_METHOD_OPTIONS.find((o) => o.value === sp.method)?.label ||
-                          sp.method;
-                        return (
-                          <div
-                            key={sp.method}
-                            className="h-9 px-3 rounded-lg bg-emerald-600 text-white text-xs font-bold flex items-center gap-2 shadow-xs"
-                          >
-                            <span>{label}</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSplitPayments((prev) =>
-                                  prev.filter((item) => item.method !== sp.method)
-                                );
-                              }}
-                              className="w-4 h-4 rounded-full bg-emerald-700 hover:bg-emerald-800 flex items-center justify-center text-white"
-                              title="Xóa phương thức này"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </div>
-                        );
-                      })}
-
-                      {remainingOptions.length > 0 && (
-                        <div className="relative">
-                          <button
-                            type="button"
-                            onClick={() => setShowSplitDropdown((prev) => !prev)}
-                            className="h-9 min-w-[44px] px-3 rounded-lg border-2 border-dashed border-emerald-500 bg-white hover:bg-emerald-50 text-emerald-700 font-extrabold text-sm flex items-center justify-center gap-1 transition"
-                            title="Thêm phương thức thanh toán"
-                          >
-                            <Plus className="w-4 h-4" />
-                          </button>
-
-                          {showSplitDropdown && (
-                            <div className="absolute left-0 top-10 z-20 w-44 rounded-xl bg-white border border-slate-200 shadow-lg py-1 overflow-hidden">
-                              {remainingOptions.map((opt) => (
-                                <button
-                                  key={opt.value}
-                                  type="button"
-                                  onClick={() => {
-                                    setSplitPayments((prev) => [
-                                      ...prev,
-                                      { method: opt.value, amount: 0 },
-                                    ]);
-                                    setShowSplitDropdown(false);
-                                  }}
-                                  className="w-full px-3 py-2 text-left text-xs font-bold text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 flex items-center justify-between transition"
-                                >
-                                  <span>{opt.label}</span>
-                                  <Plus className="w-3.5 h-3.5 text-emerald-600" />
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {splitPayments.length > 0 && (
-                      <div className="space-y-2 pt-1 border-t border-slate-200/80">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         {splitPayments.map((sp) => {
                           const label =
                             SPLIT_METHOD_OPTIONS.find((o) => o.value === sp.method)?.label ||
                             sp.method;
+                          const isDebt = sp.method === "DEBT";
                           return (
                             <div
                               key={sp.method}
-                              className="flex items-center justify-between gap-3"
+                              className={`h-9 px-3 rounded-lg text-white text-xs font-bold flex items-center gap-2 shadow-xs ${
+                                isDebt ? "bg-amber-600" : "bg-emerald-600"
+                              }`}
                             >
-                              <span className="text-xs font-bold text-slate-800 w-28 shrink-0">
+                              <span>{label}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSplitPayments((prev) =>
+                                    prev.filter((item) => item.method !== sp.method)
+                                  );
+                                }}
+                                className={`w-4 h-4 rounded-full flex items-center justify-center text-white ${
+                                  isDebt
+                                    ? "bg-amber-700 hover:bg-amber-800"
+                                    : "bg-emerald-700 hover:bg-emerald-800"
+                                }`}
+                                title="Xóa phương thức này"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          );
+                        })}
+
+                        {remainingOptions.length > 0 && (
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={() => setShowSplitDropdown((prev) => !prev)}
+                              className="h-9 min-w-[44px] px-3 rounded-lg border-2 border-dashed border-emerald-500 bg-white hover:bg-emerald-50 text-emerald-700 font-extrabold text-sm flex items-center justify-center gap-1 transition"
+                              title="Thêm phương thức thanh toán"
+                            >
+                              <Plus className="w-4 h-4" />
+                            </button>
+
+                            {showSplitDropdown && (
+                              <div className="absolute left-0 top-10 z-20 w-52 rounded-xl bg-white border border-slate-200 shadow-lg py-1 overflow-hidden">
+                                {remainingOptions.map((opt) => (
+                                  <button
+                                    key={opt.value}
+                                    type="button"
+                                    onClick={() => {
+                                      setSplitPayments((prev) => {
+                                        if (opt.value === "DEBT") {
+                                          const nonDebtSum = prev
+                                            .filter((item) => item.method !== "DEBT")
+                                            .reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+                                          const remaining = Math.max(0, totalAmount - nonDebtSum);
+                                          return [...prev, { method: opt.value, amount: remaining }];
+                                        }
+                                        return [...prev, { method: opt.value, amount: 0 }];
+                                      });
+                                      setShowSplitDropdown(false);
+                                    }}
+                                    className={`w-full px-3 py-2 text-left text-xs font-bold flex items-center justify-between transition ${
+                                      opt.value === "DEBT"
+                                        ? "text-amber-800 bg-amber-50/60 hover:bg-amber-100"
+                                        : "text-slate-700 hover:bg-emerald-50 hover:text-emerald-700"
+                                    }`}
+                                  >
+                                    <span>{opt.label}</span>
+                                    <Plus
+                                      className={`w-3.5 h-3.5 ${
+                                        opt.value === "DEBT" ? "text-amber-600" : "text-emerald-600"
+                                      }`}
+                                    />
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {!hasDebtOption && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSplitPayments((prev) => {
+                              const nonDebtSum = prev
+                                .filter((item) => item.method !== "DEBT")
+                                .reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+                              const remaining = Math.max(0, totalAmount - nonDebtSum);
+                              return [...prev, { method: "DEBT", amount: remaining }];
+                            });
+                          }}
+                          className="px-2.5 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 text-[11px] font-extrabold transition"
+                        >
+                          + Mua công nợ (Trả sau)
+                        </button>
+                      )}
+                    </div>
+
+                    {splitPayments.length > 0 && (
+                      <div className="space-y-2 pt-2 border-t border-slate-200/80">
+                        {splitPayments.map((sp) => {
+                          const label =
+                            SPLIT_METHOD_OPTIONS.find((o) => o.value === sp.method)?.label ||
+                            sp.method;
+                          const isDebt = sp.method === "DEBT";
+                          return (
+                            <div
+                              key={sp.method}
+                              className="flex items-center justify-between gap-2"
+                            >
+                              <span
+                                className={`text-xs font-bold w-32 shrink-0 ${
+                                  isDebt ? "text-amber-800" : "text-slate-800"
+                                }`}
+                              >
                                 {label} :
                               </span>
                               <div className="relative flex-1">
@@ -3453,24 +3642,116 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                                   value={sp.amount > 0 ? formatNumberDots(sp.amount) : ""}
                                   onChange={(e) => {
                                     const val = parseNumberDots(e.target.value);
-                                    setSplitPayments((prev) =>
-                                      prev.map((item) =>
+                                    setSplitPayments((prev) => {
+                                      const next = prev.map((item) =>
                                         item.method === sp.method
                                           ? { ...item, amount: val }
                                           : item
-                                      )
-                                    );
+                                      );
+                                      // Nếu sửa phương thức trả trước (Tiền mặt / CK / Thẻ) mà có dòng Công nợ -> tự động tính phần còn thiếu vào Công nợ
+                                      if (sp.method !== "DEBT" && next.some((i) => i.method === "DEBT")) {
+                                        const nonDebtSum = next
+                                          .filter((i) => i.method !== "DEBT")
+                                          .reduce((sum, i) => sum + (Number(i.amount) || 0), 0);
+                                        const autoDebt = Math.max(0, totalAmount - nonDebtSum);
+                                        return next.map((i) =>
+                                          i.method === "DEBT" ? { ...i, amount: autoDebt } : i
+                                        );
+                                      }
+                                      return next;
+                                    });
                                   }}
                                   placeholder="0"
-                                  className="w-full pl-3 pr-12 py-1.5 rounded-lg border border-slate-300 bg-white font-mono font-bold text-right text-xs text-slate-900 focus:border-emerald-600 focus:outline-none"
+                                  className={`w-full pl-3 pr-12 py-1.5 rounded-lg border bg-white font-mono font-bold text-right text-xs focus:outline-none ${
+                                    isDebt
+                                      ? "border-amber-400 text-amber-900 focus:border-amber-600"
+                                      : "border-slate-300 text-slate-900 focus:border-emerald-600"
+                                  }`}
                                 />
                                 <span className="absolute right-3 top-1.5 text-[11px] font-bold text-slate-400">
                                   VND
                                 </span>
                               </div>
+                              {isDebt && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSplitPayments((prev) => {
+                                      const nonDebtSum = prev
+                                        .filter((i) => i.method !== "DEBT")
+                                        .reduce((sum, i) => sum + (Number(i.amount) || 0), 0);
+                                      return prev.map((i) =>
+                                        i.method === "DEBT"
+                                          ? { ...i, amount: Math.max(0, totalAmount - nonDebtSum) }
+                                          : i
+                                      );
+                                    });
+                                  }}
+                                  className="px-2 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 text-[10px] font-bold shrink-0"
+                                  title="Tự động điền số tiền còn thiếu vào ô Công nợ"
+                                >
+                                  Phần còn lại
+                                </button>
+                              )}
                             </div>
                           );
                         })}
+                      </div>
+                    )}
+
+                    {hasDebtOption && (
+                      <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 space-y-2 text-xs">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-extrabold text-amber-900">
+                            📅 Ngày hẹn trả công nợ (tùy chọn):
+                          </span>
+                          <div className="flex flex-wrap items-center gap-1">
+                            {[
+                              { label: "+3 ngày", days: 3 },
+                              { label: "+7 ngày", days: 7 },
+                              { label: "+14 ngày", days: 14 },
+                              { label: "+30 ngày", days: 30 },
+                            ].map((preset) => (
+                              <button
+                                key={preset.days}
+                                type="button"
+                                onClick={() => setDebtDueDate(addDaysToInputDate(preset.days))}
+                                className="px-2 py-0.5 rounded bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-bold"
+                              >
+                                {preset.label}
+                              </button>
+                            ))}
+                            {debtDueDate && (
+                              <button
+                                type="button"
+                                onClick={() => setDebtDueDate("")}
+                                className="px-2 py-0.5 rounded bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-[10px] font-bold"
+                              >
+                                Xóa
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <input
+                          type="date"
+                          value={debtDueDate}
+                          onChange={(e) => setDebtDueDate(e.target.value)}
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-amber-300 bg-white text-slate-900 font-mono text-xs"
+                        />
+                        <div className="flex items-center justify-between pt-1 border-t border-amber-200/80 text-[11px]">
+                          <span className="text-slate-700">
+                            Trả trước tại quầy:{" "}
+                            <strong className="font-mono text-emerald-700">
+                              {formatVND(currentPaidNowAmount)}
+                            </strong>
+                          </span>
+                          <span className="text-amber-900">
+                            Còn nợ (Trả sau):{" "}
+                            <strong className="font-mono text-red-600">
+                              {formatVND(currentDebtAmount)}
+                            </strong>
+                          </span>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -3578,6 +3859,18 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                 {formatVND(totalAmount)}
               </span>
             </div>
+            {paymentMethod === "OTHER" && currentDebtAmount > 0 && (
+              <div className="pt-1.5 border-t border-slate-800 space-y-1 text-xs">
+                <div className="flex justify-between text-emerald-300">
+                  <span>Thực thu ngay tại quầy:</span>
+                  <span className="font-mono font-bold">{formatVND(currentPaidNowAmount)}</span>
+                </div>
+                <div className="flex justify-between text-amber-300 font-bold">
+                  <span>Ghi nhận Công nợ (Trả sau):</span>
+                  <span className="font-mono">{formatVND(currentDebtAmount)}</span>
+                </div>
+              </div>
+            )}
           </div>
 
           <button
