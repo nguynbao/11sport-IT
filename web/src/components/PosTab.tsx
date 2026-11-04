@@ -2155,19 +2155,21 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                     <div
                       key={colorLabel}
                       style={getColorBoxBorderStyle(groupHexes, "#f8fafc", 2)}
-                      className="rounded-lg bg-slate-50/90 border border-slate-200/80 px-2 py-1.5 space-y-1"
+                      className={`rounded-lg bg-slate-50/90 border border-slate-200/80 px-2.5 py-1.5 space-y-1.5 ${
+                        groupStock > 0 ? "" : "opacity-60"
+                      }`}
                     >
-                      <div className="flex items-center justify-between gap-1 text-[10px]">
-                        <span className="font-extrabold text-slate-800 truncate flex items-center gap-1.5">
+                      <div className="flex items-start justify-between gap-2 text-[11px]">
+                        <span className="font-bold text-slate-800 flex items-center gap-1.5 min-w-0">
                           <ColorSwatchBadge
                             hexes={groupHexes}
                             colorName={colorLabel}
                             size="xs"
                           />
-                          <span className="truncate">{colorLabel}</span>
+                          <span className="break-words leading-tight">{colorLabel}</span>
                         </span>
-                        <span className="font-mono font-bold text-slate-500 shrink-0">
-                          {vars.length} size · Tồn: {groupStock}
+                        <span className="font-mono text-[10px] font-bold text-slate-500 shrink-0">
+                          Tồn: <strong className={groupStock > 0 ? "text-emerald-700" : "text-slate-400"}>{groupStock}</strong>
                         </span>
                       </div>
                       <div className="flex flex-wrap gap-1">
@@ -2187,22 +2189,29 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                                 handleAddToCart(p, v.color, v.size);
                               }}
                               title={`Mã con: ${childCode} • Bấm để thêm nhanh ${formatVariantLabel(v.color, v.size)}`}
-                              className={`inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded border transition ${vStock <= 0
+                              className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md border transition shrink-0 ${vStock <= 0
                                 ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed line-through"
                                 : inCart > 0
                                   ? "bg-indigo-600 text-white border-indigo-700 shadow-xs"
-                                  : "bg-white hover:bg-indigo-50 text-indigo-900 border-indigo-200 shadow-2xs"
+                                  : "bg-white hover:bg-emerald-50 hover:border-emerald-400 text-slate-900 border-slate-300 shadow-2xs"
                                 }`}
                             >
-                              <span>{v.size || "Freesize"}</span>
+                              <span className="font-extrabold tracking-tight">
+                                {v.size || "Freesize"}
+                              </span>
                               <span
-                                className={`font-mono text-[9px] font-extrabold ${inCart > 0 ? "text-amber-200" : "text-emerald-700"
-                                  }`}
+                                className={`font-mono text-[10px] font-bold ${
+                                  vStock <= 0
+                                    ? "text-slate-400"
+                                    : inCart > 0
+                                      ? "text-amber-200"
+                                      : "text-emerald-700"
+                                }`}
                               >
                                 ({vStock})
                               </span>
                               {inCart > 0 && (
-                                <span className="ml-0.5 px-1 rounded bg-white/20 text-white font-mono text-[9px]">
+                                <span className="px-1 rounded bg-white/20 text-white font-mono text-[9px]">
                                   ✓{inCart}
                                 </span>
                               )}
@@ -2213,7 +2222,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                           <button
                             type="button"
                             onClick={(e) => toggleExpandCardVariants(p._id, e)}
-                            className="inline-flex items-center text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-indigo-100/80 hover:bg-indigo-200 text-indigo-800 border border-indigo-200 transition"
+                            className="inline-flex items-center text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition shrink-0"
                           >
                             +{hiddenSizes} size...
                           </button>
@@ -3927,12 +3936,40 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
             return text.includes(qNorm);
           });
 
+        // Gom nhóm theo Màu sắc để không lặp lại tên màu ở từng ô và giúp Size luôn hiển thị to, rõ
+        const groupedModalColors = (() => {
+          const map = new Map<string, { v: ProductVariant; originalIdx: number }[]>();
+          for (const item of filteredVars) {
+            const c = (item.v.color || "").trim() || "Mặc định";
+            const list = map.get(c) || [];
+            list.push(item);
+            map.set(c, list);
+          }
+          return Array.from(map.entries()).map(([colorName, items]) => {
+            const sortedItems = [...items].sort((a, b) => {
+              const sa = parseFloat(String(a.v.size || "").replace(",", "."));
+              const sb = parseFloat(String(b.v.size || "").replace(",", "."));
+              if (!isNaN(sa) && !isNaN(sb) && sa !== sb) return sa - sb;
+              return String(a.v.size || "").localeCompare(String(b.v.size || ""), "vi");
+            });
+            const totalStock = sortedItems.reduce(
+              (sum, it) => sum + Math.max(0, Number(it.v.stockFloor1 ?? it.v.stock) || 0),
+              0
+            );
+            const explicitHexes = sortedItems.find(
+              (it) => Array.isArray(it.v.colorHexes) && it.v.colorHexes.length > 0
+            )?.v.colorHexes;
+            const colorHexes = resolveVariantColorHexes(colorName, explicitHexes);
+            return { colorName, items: sortedItems, totalStock, colorHexes };
+          });
+        })();
+
         return (
           <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
             <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden flex flex-col max-h-[88vh]">
               <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between gap-3 shrink-0">
-                <div>
-                  <div className="flex items-center gap-2">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="text-[11px] font-mono text-emerald-400 font-bold">
                       Mã SP chung: {variantPickerProduct.code}
                     </span>
@@ -3940,14 +3977,14 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                       {allVars.length} mã con · {colorTabs.length} màu
                     </span>
                   </div>
-                  <h3 className="font-extrabold text-base mt-0.5">
+                  <h3 className="font-extrabold text-base mt-0.5 break-words">
                     {variantPickerProduct.name}
                   </h3>
                 </div>
                 <button
                   type="button"
                   onClick={() => setVariantPickerProduct(null)}
-                  className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-white"
+                  className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-white shrink-0"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -3956,7 +3993,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
               <div className="px-4 sm:px-5 py-3 bg-slate-50 border-b border-slate-200 space-y-2.5 shrink-0">
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
                   <span>
-                    Chọn <strong>Màu sắc &amp; Size</strong> để thêm vào giỏ hàng:
+                    Bấm trực tiếp vào <strong>ô Size</strong> bên dưới từng màu để thêm vào giỏ:
                   </span>
                   <span className="font-mono font-extrabold text-emerald-700 text-sm">
                     Giá: {formatVND(variantPickerProduct.sellingPrice)}
@@ -3971,7 +4008,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                         type="button"
                         onClick={() => setPickerColorFilter("ALL")}
                         className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold border transition ${pickerColorFilter === "ALL"
-                          ? "bg-slate-900 text-white border-slate-900"
+                          ? "bg-slate-900 text-white border-slate-900 shadow-xs"
                           : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
                           }`}
                       >
@@ -3998,7 +4035,9 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                             }
                             className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition flex items-center gap-1.5 ${isSelectedTab
                               ? "bg-indigo-600 text-white border-indigo-700 shadow-xs"
-                              : "bg-white text-slate-800 border-slate-300 hover:bg-indigo-50"
+                              : cStock > 0
+                                ? "bg-white text-slate-800 border-slate-300 hover:bg-indigo-50"
+                                : "bg-white text-slate-400 border-slate-200 opacity-70"
                               }`}
                           >
                             <ColorSwatchBadge hexes={cHexes} colorName={cName} size="xs" />
@@ -4006,7 +4045,9 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                             <span
                               className={`font-mono text-[10px] px-1 rounded ${isSelectedTab
                                 ? "bg-white/20 text-white"
-                                : "bg-slate-100 text-emerald-700"
+                                : cStock > 0
+                                  ? "bg-emerald-50 text-emerald-700 font-extrabold"
+                                  : "bg-slate-200 text-slate-500"
                                 }`}
                             >
                               {cStock}
@@ -4030,100 +4071,143 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                 )}
               </div>
 
-              <div className="p-4 sm:p-5 overflow-y-auto flex-1">
-                {filteredVars.length === 0 ? (
+              <div className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-3.5">
+                {groupedModalColors.length === 0 ? (
                   <div className="py-8 text-center text-xs text-slate-400">
                     Không có phân loại nào khớp bộ lọc.
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {filteredVars.map(({ v, originalIdx }) => {
-                      const vFloor1 = Math.max(0, Number(v.stockFloor1 ?? v.stock) || 0);
-                      const inCartQty = getCartVariantQty(
-                        variantPickerProduct._id,
-                        v.color,
-                        v.size
-                      );
-                      const canPick = vFloor1 > 0 && inCartQty < vFloor1;
-                      const varHexes = resolveVariantColorHexes(v.color, v.colorHexes);
-
-                      return (
-                        <button
-                          key={`${v.color}-${v.size}-${originalIdx}`}
-                          type="button"
-                          disabled={!canPick}
-                          style={
-                            canPick
-                              ? getColorBoxBorderStyle(varHexes, "#ffffff", 3)
-                              : undefined
-                          }
-                          onClick={() => {
-                            const added = handleAddToCart(variantPickerProduct, v.color, v.size);
-                            if (added) {
-                              playScannerBeep("success");
-                              const vLabel = formatVariantLabel(v.color, v.size);
-                              setLastScanBanner({
-                                type: "success",
-                                code: variantPickerProduct.code,
-                                message: `Đã chọn ${vLabel} của "${variantPickerProduct.name}" (+1 vào giỏ hàng)`,
-                                time: new Date().toLocaleTimeString("vi-VN", {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                  second: "2-digit",
-                                }),
-                              });
-                              setVariantPickerProduct(null);
-                            }
-                          }}
-                          className={`p-3 rounded-xl border text-left transition flex items-center justify-between gap-2 ${canPick
-                            ? "border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/40 bg-white cursor-pointer"
-                            : "border-slate-200 bg-slate-50 opacity-50 cursor-not-allowed"
-                            }`}
-                        >
-                          <div className="flex items-start gap-2 min-w-0">
-                            <div className="min-w-0">
-                              <div className="font-extrabold text-xs text-slate-900 truncate flex items-center gap-1.5">
-                                <ColorSwatchBadge
-                                  hexes={varHexes}
-                                  colorName={v.color}
-                                  size="xs"
-                                />
-                                <span className="truncate">
-                                  {v.color || "Mặc định"}
-                                  {v.size ? ` • Size ${v.size}` : ""}
-                                </span>
-                              </div>
-                              <div className="font-mono text-[10px] font-bold text-indigo-700 mt-0.5 truncate">
-                                Mã con:{" "}
-                                {v.variantCode ||
-                                  generateVariantProductCode(
-                                    variantPickerProduct.code,
-                                    v.color,
-                                    v.size
-                                  )}
-                              </div>
-                              <div className="text-[11px] text-slate-500 mt-0.5">
-                                Tồn Tầng 1:{" "}
-                                <strong className="font-mono text-emerald-700">
-                                  {vFloor1} {variantPickerProduct.unit}
-                                </strong>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="text-right shrink-0">
-                            {inCartQty > 0 && (
-                              <div className="text-[10px] font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded mb-1">
-                                Trong giỏ: {inCartQty}
-                              </div>
-                            )}
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-[11px] font-bold">
-                              <Plus className="w-3 h-3" /> Chọn
+                  groupedModalColors.map(({ colorName, items, totalStock, colorHexes }) => {
+                    return (
+                      <div
+                        key={colorName}
+                        style={getColorBoxBorderStyle(colorHexes, "#ffffff", 3)}
+                        className={`rounded-xl border border-slate-200 bg-white p-3 space-y-2.5 ${
+                          totalStock <= 0 ? "opacity-55" : ""
+                        }`}
+                      >
+                        {/* Tiêu đề Nhóm Màu — hiển thị 1 lần duy nhất, tên màu dài tự xuống dòng, không bao giờ che Size */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 pb-1.5 border-b border-slate-200/80">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <ColorSwatchBadge hexes={colorHexes} colorName={colorName} size="sm" />
+                            <span className="font-extrabold text-sm text-slate-900 break-words">
+                              {colorName}
+                            </span>
+                            <span className="text-[11px] font-medium text-slate-500 shrink-0">
+                              ({items.length} size)
                             </span>
                           </div>
-                        </button>
-                      );
-                    })}
-                  </div>
+                          <span
+                            className={`text-xs font-mono font-extrabold px-2 py-0.5 rounded-md border shrink-0 ${
+                              totalStock > 0
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                : "bg-slate-100 text-slate-500 border-slate-200"
+                            }`}
+                          >
+                            Tồn T1: {totalStock} {variantPickerProduct.unit}
+                          </span>
+                        </div>
+
+                        {/* Lưới các ô chọn Size: Số Size cực to, rõ nét, nhìn thấy ngay lập tức */}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                          {items.map(({ v, originalIdx }) => {
+                            const vFloor1 = Math.max(0, Number(v.stockFloor1 ?? v.stock) || 0);
+                            const inCartQty = getCartVariantQty(
+                              variantPickerProduct._id,
+                              v.color,
+                              v.size
+                            );
+                            const canPick = vFloor1 > 0 && inCartQty < vFloor1;
+                            const childCode =
+                              v.variantCode ||
+                              generateVariantProductCode(
+                                variantPickerProduct.code,
+                                v.color,
+                                v.size
+                              );
+
+                            return (
+                              <button
+                                key={`${v.color}-${v.size}-${originalIdx}`}
+                                type="button"
+                                disabled={!canPick}
+                                title={`Mã con: ${childCode} • ${formatVariantLabel(v.color, v.size)}`}
+                                onClick={() => {
+                                  const added = handleAddToCart(variantPickerProduct, v.color, v.size);
+                                  if (added) {
+                                    playScannerBeep("success");
+                                    const vLabel = formatVariantLabel(v.color, v.size);
+                                    setLastScanBanner({
+                                      type: "success",
+                                      code: variantPickerProduct.code,
+                                      message: `Đã chọn ${vLabel} của "${variantPickerProduct.name}" (+1 vào giỏ hàng)`,
+                                      time: new Date().toLocaleTimeString("vi-VN", {
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                        second: "2-digit",
+                                      }),
+                                    });
+                                    setVariantPickerProduct(null);
+                                  }
+                                }}
+                                className={`relative p-2.5 rounded-xl border text-left transition flex flex-col justify-between gap-1.5 ${
+                                  canPick
+                                    ? inCartQty > 0
+                                      ? "border-indigo-500 bg-indigo-50/40 hover:bg-indigo-50 cursor-pointer shadow-2xs"
+                                      : "border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/50 bg-white cursor-pointer shadow-2xs"
+                                    : "border-slate-200 bg-slate-100/70 opacity-55 cursor-not-allowed"
+                                }`}
+                              >
+                                <div className="flex items-baseline justify-between gap-1">
+                                  <div className="flex items-baseline gap-1 shrink-0">
+                                    <span className="text-[10px] font-bold uppercase text-slate-400">
+                                      Size
+                                    </span>
+                                    <span
+                                      className={`font-mono text-base sm:text-lg font-black leading-none ${
+                                        vFloor1 <= 0
+                                          ? "text-slate-400 line-through"
+                                          : "text-slate-900"
+                                      }`}
+                                    >
+                                      {v.size || "Free"}
+                                    </span>
+                                  </div>
+
+                                </div>
+
+                                <div className="flex items-center justify-between gap-1 pt-1 border-t border-slate-100">
+                                  <span
+                                    className={`text-[11px] font-mono font-bold ${
+                                      vFloor1 > 0 ? "text-emerald-700" : "text-slate-400"
+                                    }`}
+                                  >
+                                    {vFloor1 > 0
+                                      ? `Còn ${vFloor1} ${variantPickerProduct.unit}`
+                                      : "Hết hàng"}
+                                  </span>
+
+                                  {inCartQty > 0 ? (
+                                    <span className="text-[10px] font-mono font-extrabold text-white bg-indigo-600 px-1.5 py-0.5 rounded shrink-0">
+                                      Đã chọn: {inCartQty}
+                                    </span>
+                                  ) : canPick ? (
+                                    <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md bg-emerald-600 text-white text-[10px] font-bold shrink-0">
+                                      <Plus className="w-2.5 h-2.5" /> Chọn
+                                    </span>
+                                  ) : null}
+                                </div>
+
+                                <div className="font-mono text-[9px] text-slate-400 truncate">
+                                  {childCode}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })
                 )}
               </div>
 
