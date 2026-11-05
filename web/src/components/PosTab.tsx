@@ -2196,9 +2196,11 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                                   : "bg-white hover:bg-emerald-50 hover:border-emerald-400 text-slate-900 border-slate-300 shadow-2xs"
                                 }`}
                             >
-                              <span className="font-extrabold tracking-tight">
-                                {v.size || "Freesize"}
-                              </span>
+                              {Boolean(v.size?.trim()) && (
+                                <span className="font-extrabold tracking-tight">
+                                  {v.size.trim()}
+                                </span>
+                              )}
                               <span
                                 className={`font-mono text-[10px] font-bold ${
                                   vStock <= 0
@@ -4093,9 +4095,11 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                             <span className="font-extrabold text-sm text-slate-900 break-words">
                               {colorName}
                             </span>
-                            <span className="text-[11px] font-medium text-slate-500 shrink-0">
-                              ({items.length} size)
-                            </span>
+                            {items.some((x) => Boolean(x.v.size?.trim())) && (
+                              <span className="text-[11px] font-medium text-slate-500 shrink-0">
+                                ({items.filter((x) => Boolean(x.v.size?.trim())).length} size)
+                              </span>
+                            )}
                           </div>
                           <span
                             className={`text-xs font-mono font-extrabold px-2 py-0.5 rounded-md border shrink-0 ${
@@ -4159,21 +4163,34 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                                 }`}
                               >
                                 <div className="flex items-baseline justify-between gap-1">
-                                  <div className="flex items-baseline gap-1 shrink-0">
-                                    <span className="text-[10px] font-bold uppercase text-slate-400">
-                                      Size
-                                    </span>
-                                    <span
-                                      className={`font-mono text-base sm:text-lg font-black leading-none ${
-                                        vFloor1 <= 0
-                                          ? "text-slate-400 line-through"
-                                          : "text-slate-900"
-                                      }`}
-                                    >
-                                      {v.size || "Free"}
-                                    </span>
-                                  </div>
-
+                                  {Boolean(v.size?.trim()) ? (
+                                    <div className="flex items-baseline gap-1 shrink-0">
+                                      <span className="text-[10px] font-bold uppercase text-slate-400">
+                                        Size
+                                      </span>
+                                      <span
+                                        className={`font-mono text-base sm:text-lg font-black leading-none ${
+                                          vFloor1 <= 0
+                                            ? "text-slate-400 line-through"
+                                            : "text-slate-900"
+                                        }`}
+                                      >
+                                        {v.size.trim()}
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-baseline gap-1 shrink-0">
+                                      <span
+                                        className={`text-sm font-extrabold leading-none ${
+                                          vFloor1 <= 0
+                                            ? "text-slate-400 line-through"
+                                            : "text-slate-900"
+                                        }`}
+                                      >
+                                        {v.color || colorName}
+                                      </span>
+                                    </div>
+                                  )}
                                 </div>
 
                                 <div className="flex items-center justify-between gap-1 pt-1 border-t border-slate-100">
