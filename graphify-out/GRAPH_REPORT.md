@@ -1,17 +1,17 @@
 # Graph Report - 11sport-IT  (2026-11-05)
 
 ## Corpus Check
-- 119 files · ~241,432 words
+- 119 files · ~241,536 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 11 file(s) not represented in the graph (top: (none) 3, .example 3, .css 2)
 
 ## Summary
-- 1155 nodes · 2727 edges · 63 communities (53 shown, 10 thin omitted)
+- 1155 nodes · 2731 edges · 64 communities (54 shown, 10 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 33 edges (avg confidence: 0.93)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `a27147cc`
+- Built from commit: `9852853d`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -32,6 +32,7 @@
 - productsInventory.ts
 - ordersCustomers.ts
 - productCode.ts
+- ReturnExchangeTab.tsx
 - PosTab.tsx
 - createApp
 - promotions.ts
@@ -101,15 +102,15 @@
 ## Import Cycles
 - None detected.
 
-## Communities (63 total, 10 thin omitted)
+## Communities (64 total, 10 thin omitted)
 
 ### Community 0 - "4. Kiểm tra Sức khỏe Hệ thống (Healthcheck & Giám sát)"
 Cohesion: 0.67
 Nodes (3): 4.1 Điểm kiểm tra (Endpoints), 4.2 Cảnh báo & Giám sát khuyến nghị (Production/Staging), 4. Kiểm tra Sức khỏe Hệ thống (Healthcheck & Giám sát)
 
 ### Community 1 - "cms/src/app/page.tsx"
-Cohesion: 0.13
-Nodes (40): CMS_MENU_ITEMS, CmsDashboardPage(), CmsModuleType, CategoryModule(), DebtManagementModule(), DebtManagementModuleProps, ExportExcelButton(), ExportExcelButtonProps (+32 more)
+Cohesion: 0.11
+Nodes (46): CMS_MENU_ITEMS, CmsDashboardPage(), CmsModuleType, CategoryModule(), DebtManagementModule(), DebtManagementModuleProps, ExportExcelButton(), ExportExcelButtonProps (+38 more)
 
 ### Community 2 - "db.ts"
 Cohesion: 0.09
@@ -117,11 +118,11 @@ Nodes (28): mongoose, customerRepo, importReceiptRepo, orderRepo, productRepo, r
 
 ### Community 3 - "ImportTab.tsx"
 Cohesion: 0.13
-Nodes (36): Tiến độ dự án 11 Sport, BarcodeLabelItem, BarcodeLabelModal(), BarcodeLabelModalProps, CODE128_PATTERNS, encodeCode128Bars(), encodeCode128RawPattern(), escapeHtml() (+28 more)
+Nodes (35): Tiến độ dự án 11 Sport, BarcodeLabelItem, BarcodeLabelModal(), BarcodeLabelModalProps, CODE128_PATTERNS, encodeCode128Bars(), encodeCode128RawPattern(), escapeHtml() (+27 more)
 
 ### Community 4 - "web/src/app/page.tsx"
-Cohesion: 0.16
-Nodes (32): getDefaultTabForRole(), getRoleDisplayName(), TABS_CONFIG, WebPosHomePage(), AccountProfileTab(), AccountProfileTabProps, CustomerTab(), CustomerTabProps (+24 more)
+Cohesion: 0.24
+Nodes (18): getDefaultTabForRole(), getRoleDisplayName(), TABS_CONFIG, WebPosHomePage(), AccountProfileTab(), AccountProfileTabProps, DrawerMenu(), DrawerMenuProps (+10 more)
 
 ### Community 5 - "windowsPrinter.ts"
 Cohesion: 0.05
@@ -145,7 +146,7 @@ Nodes (34): cors, mongodb-memory-server, ts-node-dev, @types/cors, @types/expres
 
 ### Community 10 - "web/src/lib/api.ts"
 Cohesion: 0.10
-Nodes (34): buildCompactColorTokenFE(), compactColorTokenForBarcode(), DebtPaymentRecord, DebtStatus, EffectivePromotionStatus, estimateCode128Dots(), extractVariantFromText(), generateSixDigitsFromSeed() (+26 more)
+Nodes (33): buildCompactColorTokenFE(), compactColorTokenForBarcode(), DebtPaymentRecord, DebtStatus, EffectivePromotionStatus, estimateCode128Dots(), extractVariantFromText(), generateSixDigitsFromSeed() (+25 more)
 
 ### Community 11 - "cms/package.json"
 Cohesion: 0.08
@@ -166,6 +167,10 @@ Nodes (24): DebtPaymentRecordSchema, DebtStatus, DiscountType, IDebtPaymentRecor
 ### Community 15 - "productCode.ts"
 Cohesion: 0.06
 Nodes (84): tesseract.js, tesseract.js@^5.1.1, ensureStandardProductCodesMigrated(), applyMatchedScan(), enrichReceiptRoles(), findRowByKnownBarcode(), importsRouter, inferReceiptActorRole() (+76 more)
+
+### Community 16 - "ReturnExchangeTab.tsx"
+Cohesion: 0.28
+Nodes (15): CustomerTab(), CustomerTabProps, InvoicePdfModal(), InvoicePdfModalProps, PosTabProps, ReturnExchangeTab(), ReturnItemForm, cleanPhoneDigits() (+7 more)
 
 ### Community 17 - "PosTab.tsx"
 Cohesion: 0.13
@@ -196,8 +201,8 @@ Cohesion: 0.11
 Nodes (17): compilerOptions, allowJs, esModuleInterop, incremental, isolatedModules, jsx, lib, module (+9 more)
 
 ### Community 25 - "cms/src/components/BarcodeLabelModal.tsx"
-Cohesion: 0.13
-Nodes (21): BarcodeLabelItem, BarcodeLabelModal(), BarcodeLabelModalProps, CODE128_PATTERNS, encodeCode128Bars(), encodeCode128RawPattern(), escapeHtml(), FIXED_LABEL_CONFIG (+13 more)
+Cohesion: 0.20
+Nodes (15): BarcodeLabelItem, BarcodeLabelModal(), BarcodeLabelModalProps, CODE128_PATTERNS, encodeCode128Bars(), encodeCode128RawPattern(), escapeHtml(), FIXED_LABEL_CONFIG (+7 more)
 
 ### Community 26 - "excel.ts"
 Cohesion: 0.20
@@ -212,8 +217,8 @@ Cohesion: 0.27
 Nodes (14): CameraScannerModal(), CameraScannerModalProps, compressImageToDataUrl(), createEmptyOcrItem(), loadImageFromFile(), mapApiItems(), mergeOcrItemsList(), PreviewKind (+6 more)
 
 ### Community 29 - "TagCheckScannerModal.tsx"
-Cohesion: 0.20
-Nodes (15): Candidate, detectBarcodeFromCanvas(), expectedOf(), feedback(), isFullRow(), Phase, ResultKind, scannedOf() (+7 more)
+Cohesion: 0.19
+Nodes (16): Candidate, detectBarcodeFromCanvas(), expectedOf(), feedback(), isFullRow(), Phase, ResultKind, scannedOf() (+8 more)
 
 ### Community 30 - "compilerOptions"
 Cohesion: 0.14
@@ -330,7 +335,7 @@ _Questions this graph is uniquely positioned to answer:_
 - **What connects `PATH` to the rest of the system?**
   _1 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `cms/src/app/page.tsx` be split into smaller, more focused modules?**
-  _Cohesion score 0.12816326530612246 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.11278195488721804 - nodes in this community are weakly interconnected._
 - **Why does `2.14 Mã Con Theo Thuộc Tính Biến Thể (`variantCode`) — In Tem & Quét Kiểm Kho / Bán Hàng POS *(v3.2)*` connect `PosTab.tsx` to `2. Danh sách Endpoints`, `ImportTab.tsx`, `ImportReceipt.ts`?**
   _High betweenness centrality (0.213) - this node is a cross-community bridge._
 - **Are the 2 inferred relationships involving `PosTab()` (e.g. with `2.14 Mã Con Theo Thuộc Tính Biến Thể (`variantCode`) — In Tem & Quét Kiểm Kho / Bán Hàng POS *(v3.2)*` and `2. Bảng Ma trận Test Cases chi tiết (AC-01 đến AC-07 & Biên/Lỗi)`) actually correct?**
