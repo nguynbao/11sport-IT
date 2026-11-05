@@ -11,6 +11,37 @@ Write-Host "=== [11Sport DevOps] Kiem tra moi truong Node.js ===" -ForegroundCol
 node -v
 npm -v
 
+Write-Host "=== [11Sport DevOps] Kiem tra Git Pre-Commit Hook (Graphify) ===" -ForegroundColor Cyan
+$PreCommitHookPath = Join-Path $RootDir ".git\hooks\pre-commit"
+$PreCommitSourcePath = Join-Path $RootDir "scripts\pre-commit-graphify.sh"
+$GraphJsonPath = Join-Path $RootDir "graphify-out\graph.json"
+
+$HookAlreadyInstalled = $false
+if (Test-Path $PreCommitHookPath) {
+    $HookContent = Get-Content $PreCommitHookPath -Raw -ErrorAction SilentlyContinue
+    if ($HookContent -match "graphify-pre-commit-hook") {
+        $HookAlreadyInstalled = $true
+    }
+}
+
+if ($HookAlreadyInstalled) {
+    Write-Host "-> Pre-commit hook Graphify da duoc kich hoat san. Bo qua buoc cai dat." -ForegroundColor Green
+} else {
+    if (Test-Path $PreCommitSourcePath) {
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $PreCommitHookPath) | Out-Null
+        Copy-Item -Path $PreCommitSourcePath -Destination $PreCommitHookPath -Force
+        Write-Host "-> Da cai dat Git pre-commit hook Graphify (.git/hooks/pre-commit)." -ForegroundColor Green
+    }
+    if (-not (Test-Path $GraphJsonPath)) {
+        if (Get-Command "graphify" -ErrorAction SilentlyContinue) {
+            Write-Host "-> Khoi tao do thi tri thuc Graphify lan dau..." -ForegroundColor Yellow
+            Push-Location $RootDir
+            graphify update . --force
+            Pop-Location
+        }
+    }
+}
+
 Write-Host "=== [11Sport DevOps] Kiem tra MongoDB (Port 27017) ===" -ForegroundColor Cyan
 $mongoService = Get-Service -Name "MongoDB" -ErrorAction SilentlyContinue
 if ($mongoService -and $mongoService.Status -eq "Running") {
