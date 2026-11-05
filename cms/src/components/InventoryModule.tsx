@@ -1024,6 +1024,14 @@ export default function InventoryModule() {
       return;
     }
 
+    const missingColorRow = validRows.find((r) => !String(r.color || "").trim());
+    if (missingColorRow) {
+      alert(
+        `Dòng #${missingColorRow.stt} ("${missingColorRow.productName}") chưa điền Màu sắc! Vui lòng điền Màu sắc (bắt buộc) cho tất cả sản phẩm trước khi nhập kho.`
+      );
+      return;
+    }
+
     setSubmittingAdminImport(true);
     const floorText = newProdWarehouse === "FLOOR_2" ? "Kho Tầng 2" : "Kho Tầng 1";
     try {
@@ -1158,10 +1166,10 @@ export default function InventoryModule() {
     const color = draft.color.trim();
     const colorHexes = resolveVariantColorHexes(color, draft.colorHexes);
     const size = draft.size.trim().toUpperCase();
-    if (!color && !size) {
+    if (!color) {
       setStatusMsg({
         type: "error",
-        text: "Vui lòng nhập Màu sắc hoặc Size để thêm phân loại mới.",
+        text: "Vui lòng nhập Màu sắc (bắt buộc) để thêm phân loại mới vào kho.",
       });
       return;
     }
@@ -1343,6 +1351,12 @@ export default function InventoryModule() {
       { text: p.code, weight: 1.5 },
       { text: p.name, weight: 1.3 },
       { text: p.categoryName, weight: 0.9 },
+      ...(Array.isArray(p.variants)
+        ? p.variants.map((v) => ({
+            text: `${v.variantCode || generateVariantProductCode(p.code, v.color, v.size)} ${v.color || ""} ${v.size || ""}`,
+            weight: 1.4,
+          }))
+        : []),
     ]);
   }, [products, transferDirection, debouncedTransferSearch]);
 
@@ -1351,6 +1365,78 @@ export default function InventoryModule() {
     const f1 = Number(p.stockFloor1 ?? p.stock) || 0;
     const f2 = Number(p.stockFloor2) || 0;
     return transferDirection === "F1_TO_F2" ? f1 : f2;
+  };
+
+  const getVariantSourceFloorStock = (
+    v?: { stockFloor1?: number; stockFloor2?: number; stock?: number },
+    dir: "F1_TO_F2" | "F2_TO_F1" = transferDirection
+  ): number => {
+    if (!v) return 0;
+    const f1 = Number(v.stockFloor1 ?? v.stock ?? 0);
+    const f2 = Number(v.stockFloor2 ?? 0);
+    return dir === "F1_TO_F2" ? f1 : f2;
+  };
+
+  const getProductSourceVariants = (
+    p?: Product,
+    dir: "F1_TO_F2" | "F2_TO_F1" = transferDirection
+  ) => {
+    const vars = Array.isArray(p?.variants) ? p!.variants! : [];
+    const withStock = vars.filter((v) => getVariantSourceFloorStock(v, dir) > 0);
+    return withStock.length > 0 ? withStock : vars;
+  };
+
+  const getSourceVariantFloorStock = (
+    p?: Product,
+    color?: string,
+    size?: string
+  ): number => {
+    if (!p) return 0;
+    const cNorm = String(color || "").trim().toLowerCase();
+    const sNorm = String(size || "").trim().toUpperCase();
+    const vars = Array.isArray(p.variants) ? p.variants : [];
+    if (vars.length > 0 && (cNorm || sNorm)) {
+      const exact = vars.find(
+        (v) =>
+          String(v.color || "").trim().toLowerCase() === cNorm &&
+          String(v.size || "").trim().toUpperCase() === sNorm
+      );
+      if (exact) {
+        return getVariantSourceFloorStock(exact);
+      }
+      if (cNorm && !sNorm) {
+        const byColor = vars.filter(
+          (v) => String(v.color || "").trim().toLowerCase() === cNorm
+        );
+        if (byColor.length > 0) {
+          return byColor.reduce((sum, v) => sum + getVariantSourceFloorStock(v), 0);
+        }
+      }
+    }
+    return getSourceFloorStock(p);
+  };
+
+  const getTransferItemKey = (productId: string, color?: string, size?: string) =>
+    `${productId}__${String(color || "").trim().toLowerCase()}__${String(size || "").trim().toUpperCase()}`;
+
+  const syncDefaultTransferVariantForProduct = (
+    prod?: Product,
+    dir: "F1_TO_F2" | "F2_TO_F1" = transferDirection
+  ) => {
+    const availVars = getProductSourceVariants(prod, dir);
+    if (availVars.length > 0) {
+      setTransferColor(availVars[0].color || "");
+      setTransferSize(availVars[0].size || "");
+    } else {
+      setTransferColor(prod?.color || "");
+      setTransferSize(prod?.size || "");
+    }
+  };
+
+  const handleSelectTransferProduct = (prodId: string) => {
+    setTransferProductId(prodId);
+    const prod = products.find((p) => p._id === prodId);
+    syncDefaultTransferVariantForProduct(prod, transferDirection);
   };
 
   const handleChangeTransferDirection = (dir: "F1_TO_F2" | "F2_TO_F1") => {
@@ -1362,11 +1448,18 @@ export default function InventoryModule() {
       const f2 = Number(p.stockFloor2) || 0;
       return (dir === "F1_TO_F2" ? f1 : f2) > 0;
     });
-    setTransferProductId(avail[0]?._id || "");
+    const firstProd = avail[0];
+    setTransferProductId(firstProd?._id || "");
+    syncDefaultTransferVariantForProduct(firstProd, dir);
     setTransferQty(1);
   };
 
-  const handleAddTransferItem = (prodId?: string, qtyToAdd?: number) => {
+  const handleAddTransferItem = (
+    prodId?: string,
+    qtyToAdd?: number,
+    explicitColor?: string,
+    explicitSize?: string
+  ) => {
     setStatusMsg(null);
     const targetId = prodId || transferProductId || sourceFloorProducts[0]?._id;
     if (!targetId) {
@@ -1378,61 +1471,157 @@ export default function InventoryModule() {
     }
     const prod = products.find((p) => p._id === targetId);
     if (!prod) return;
-    const maxAvail = getSourceFloorStock(prod);
+
+    const prodVars = getProductSourceVariants(prod);
+    let chosenColor =
+      explicitColor !== undefined
+        ? explicitColor
+        : targetId === (transferProductId || sourceFloorProducts[0]?._id)
+          ? transferColor
+          : "";
+    let chosenSize =
+      explicitSize !== undefined
+        ? explicitSize
+        : targetId === (transferProductId || sourceFloorProducts[0]?._id)
+          ? transferSize
+          : "";
+
+    if (!chosenColor && !chosenSize && prodVars.length > 0) {
+      chosenColor = prodVars[0].color || "";
+      chosenSize = prodVars[0].size || "";
+    }
+
+    const cleanColor = String(chosenColor || "").trim();
+    const cleanSize = String(chosenSize || "").trim().toUpperCase();
+    const maxAvail = getSourceVariantFloorStock(prod, cleanColor, cleanSize);
+
     if (maxAvail <= 0) {
+      const variantText = [cleanColor ? `Màu ${cleanColor}` : "", cleanSize ? `Size ${cleanSize}` : ""]
+        .filter(Boolean)
+        .join(" - ");
       setStatusMsg({
         type: "error",
-        text: `Sản phẩm "${prod.name}" không còn tồn ở kho đầu dời.`,
+        text: `Sản phẩm "${prod.name}"${variantText ? ` (${variantText})` : ""} không còn tồn ở kho đầu dời.`,
       });
       return;
     }
     const addQty = Math.max(1, Math.round(Number(qtyToAdd ?? transferQty) || 1));
+    const targetKey = getTransferItemKey(targetId, cleanColor, cleanSize);
 
     setTransferItems((prev) => {
-      const existing = prev.find((i) => i.productId === targetId);
+      const existing = prev.find(
+        (i) => getTransferItemKey(i.productId, i.color, i.size) === targetKey
+      );
       if (existing) {
         const nextQty = Math.min(maxAvail, existing.quantity + addQty);
         return prev.map((i) =>
-          i.productId === targetId ? { ...i, quantity: nextQty } : i
+          getTransferItemKey(i.productId, i.color, i.size) === targetKey
+            ? { ...i, quantity: nextQty }
+            : i
         );
       }
       return [
         ...prev,
-        { productId: targetId, quantity: Math.min(maxAvail, addQty) },
+        {
+          productId: targetId,
+          color: cleanColor,
+          size: cleanSize,
+          quantity: Math.min(maxAvail, addQty),
+        },
       ];
     });
     setTransferQty(1);
   };
 
-  const handleUpdateTransferItemQty = (prodId: string, newQty: number) => {
-    const prod = products.find((p) => p._id === prodId);
-    const maxAvail = getSourceFloorStock(prod);
+  const handleUpdateTransferItemVariant = (
+    itemKey: string,
+    nextColor: string,
+    nextSize: string
+  ) => {
+    const cleanColor = String(nextColor || "").trim();
+    const cleanSize = String(nextSize || "").trim().toUpperCase();
+    setTransferItems((prev) => {
+      const target = prev.find(
+        (i) => getTransferItemKey(i.productId, i.color, i.size) === itemKey
+      );
+      if (!target) return prev;
+      const prod = products.find((p) => p._id === target.productId);
+      const maxAvail = Math.max(1, getSourceVariantFloorStock(prod, cleanColor, cleanSize));
+      const newKey = getTransferItemKey(target.productId, cleanColor, cleanSize);
+      if (newKey !== itemKey && prev.some((i) => getTransferItemKey(i.productId, i.color, i.size) === newKey)) {
+        // Gộp số lượng nếu biến thể mới đã có trong danh sách
+        return prev
+          .map((i) => {
+            const k = getTransferItemKey(i.productId, i.color, i.size);
+            if (k === newKey) {
+              return { ...i, quantity: Math.min(maxAvail, i.quantity + target.quantity) };
+            }
+            return i;
+          })
+          .filter((i) => getTransferItemKey(i.productId, i.color, i.size) !== itemKey);
+      }
+      return prev.map((i) =>
+        getTransferItemKey(i.productId, i.color, i.size) === itemKey
+          ? {
+              ...i,
+              color: cleanColor,
+              size: cleanSize,
+              quantity: Math.min(maxAvail, i.quantity),
+            }
+          : i
+      );
+    });
+  };
+
+  const handleUpdateTransferItemQty = (itemKey: string, newQty: number) => {
     if (newQty <= 0) {
-      setTransferItems((prev) => prev.filter((i) => i.productId !== prodId));
+      setTransferItems((prev) =>
+        prev.filter((i) => getTransferItemKey(i.productId, i.color, i.size) !== itemKey)
+      );
       return;
     }
-    const clamped = Math.min(maxAvail, Math.max(1, Math.round(newQty)));
     setTransferItems((prev) =>
-      prev.map((i) =>
-        i.productId === prodId ? { ...i, quantity: clamped } : i
-      )
+      prev.map((i) => {
+        if (getTransferItemKey(i.productId, i.color, i.size) !== itemKey) return i;
+        const prod = products.find((p) => p._id === i.productId);
+        const maxAvail = Math.max(1, getSourceVariantFloorStock(prod, i.color, i.size));
+        const clamped = Math.min(maxAvail, Math.max(1, Math.round(newQty)));
+        return { ...i, quantity: clamped };
+      })
     );
   };
 
-  const handleRemoveTransferItem = (prodId: string) => {
-    setTransferItems((prev) => prev.filter((i) => i.productId !== prodId));
+  const handleRemoveTransferItem = (itemKey: string) => {
+    setTransferItems((prev) =>
+      prev.filter((i) => getTransferItemKey(i.productId, i.color, i.size) !== itemKey)
+    );
   };
 
   const handleCreateTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
     setStatusMsg(null);
 
-    // Nếu danh sách phiếu đang trống mà Admin chọn 1 SP trên thanh chọn nhanh thì lấy luôn SP đó
+    const activeProdId = transferProductId || sourceFloorProducts[0]?._id || "";
+    const activeProd = products.find((p) => p._id === activeProdId);
+    const defaultVars = getProductSourceVariants(activeProd);
+    const fallbackColor =
+      transferColor || (defaultVars.length > 0 ? defaultVars[0].color || "" : "");
+    const fallbackSize =
+      transferSize || (defaultVars.length > 0 ? defaultVars[0].size || "" : "");
+
+    // Nếu danh sách phiếu đang trống mà Admin chọn 1 SP trên thanh chọn nhanh thì lấy luôn SP + Màu/Size đó
     const finalItems =
       transferItems.length > 0
         ? transferItems
-        : transferProductId && Number(transferQty) > 0
-          ? [{ productId: transferProductId, quantity: Math.round(Number(transferQty)) }]
+        : activeProdId && Number(transferQty) > 0
+          ? [
+              {
+                productId: activeProdId,
+                color: fallbackColor,
+                size: fallbackSize,
+                quantity: Math.round(Number(transferQty)),
+              },
+            ]
           : [];
 
     if (finalItems.length === 0) {
@@ -2946,7 +3135,9 @@ export default function InventoryModule() {
                                                     : "bg-slate-100 text-slate-400 border-slate-200"
                                                   }`}
                                               >
-                                                <span>{v.size || "Freesize"}</span>
+                                                {Boolean(v.size?.trim()) && (
+                                                  <span>{v.size.trim()}</span>
+                                                )}
                                                 <span
                                                   className={`font-mono font-extrabold ${lastScannedVariantCode === childCode
                                                     ? "text-white"
@@ -4577,107 +4768,434 @@ export default function InventoryModule() {
                 </div>
               </div>
 
-              {/* Thanh chọn từ dropdown + số lượng + nút Thêm */}
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-                <div className="md:col-span-7">
-                  <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1">
-                    Sản phẩm có tại {transferDirection === "F1_TO_F2" ? "Kho Tầng 1" : "Kho Tầng 2"}
-                  </label>
-                  <select
-                    value={transferProductId || sourceFloorProducts[0]?._id || ""}
-                    onChange={(e) => setTransferProductId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white font-semibold"
-                  >
-                    {sourceFloorProducts.length === 0 ? (
-                      <option value="">
-                        -- Không có sản phẩm nào còn tồn ở kho đầu dời này --
-                      </option>
-                    ) : (
-                      sourceFloorProducts.map((p) => {
-                        const avail = getSourceFloorStock(p);
-                        return (
-                          <option key={p._id} value={p._id}>
-                            {p.name} ({p.code}) — Tồn{" "}
-                            {transferDirection === "F1_TO_F2" ? "Kho Tầng 1" : "Kho Tầng 2"}:{" "}
-                            {avail} {p.unit}
-                          </option>
-                        );
-                      })
-                    )}
-                  </select>
-                </div>
+              {/* Thanh chọn từ dropdown + Màu sắc + Size (Kích cỡ) + số lượng + nút Thêm */}
+              {(() => {
+                const activeTransferProdId =
+                  transferProductId || sourceFloorProducts[0]?._id || "";
+                const selectedTransferProd = products.find(
+                  (p) => p._id === activeTransferProdId
+                );
+                const availVars = getProductSourceVariants(selectedTransferProd);
+                const effectiveColor =
+                  transferColor ||
+                  (availVars.length > 0 && !transferSize
+                    ? availVars[0].color || ""
+                    : "");
+                const effectiveSize =
+                  transferSize ||
+                  (availVars.length > 0 && !transferColor
+                    ? availVars[0].size || ""
+                    : "");
 
-                <div className="md:col-span-2">
-                  <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1">
-                    Số lượng thêm
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={transferQty}
-                    onChange={(e) =>
-                      setTransferQty(Math.max(1, Math.round(Number(e.target.value) || 1)))
-                    }
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono text-sm font-extrabold text-right bg-white"
-                  />
-                </div>
+                // Gom danh sách Màu duy nhất từ các biến thể có tồn tại kho đầu dời
+                const uniqueColorOptions: Array<{
+                  color: string;
+                  totalStock: number;
+                }> = [];
+                for (const v of availVars) {
+                  const cName = String(v.color || "").trim();
+                  const existingColor = uniqueColorOptions.find(
+                    (c) => c.color.toLowerCase() === cName.toLowerCase()
+                  );
+                  const vStock = getVariantSourceFloorStock(v);
+                  if (existingColor) {
+                    existingColor.totalStock += vStock;
+                  } else {
+                    uniqueColorOptions.push({ color: cName, totalStock: vStock });
+                  }
+                }
 
-                <div className="md:col-span-3">
-                  <button
-                    type="button"
-                    disabled={sourceFloorProducts.length === 0}
-                    onClick={() =>
-                      handleAddTransferItem(
-                        transferProductId || sourceFloorProducts[0]?._id,
-                        transferQty
+                // Lọc danh sách các biến thể (Size) tương ứng với Màu đang chọn
+                const varsForSelectedColor =
+                  availVars.filter(
+                    (v) =>
+                      String(v.color || "").trim().toLowerCase() ===
+                      String(effectiveColor || "").trim().toLowerCase()
+                  ).length > 0
+                    ? availVars.filter(
+                        (v) =>
+                          String(v.color || "").trim().toLowerCase() ===
+                          String(effectiveColor || "").trim().toLowerCase()
                       )
-                    }
-                    className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-sm"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Thêm vào phiếu dời kho
-                  </button>
-                </div>
-              </div>
+                    : availVars;
 
-              {/* Danh sách gợi ý bấm chọn nhanh các SP ở Kho đầu dời */}
+                return (
+                  <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-3">
+                    <datalist id="transfer-size-presets">
+                      {["S", "M", "L", "XL", "XXL", "36", "37", "38", "39", "40", "41", "42", "43", "44"].map(
+                        (sz) => (
+                          <option key={sz} value={sz} />
+                        )
+                      )}
+                    </datalist>
+
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                      <div className="md:col-span-4">
+                        <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1">
+                          Sản phẩm có tại{" "}
+                          {transferDirection === "F1_TO_F2"
+                            ? "Kho Tầng 1"
+                            : "Kho Tầng 2"}
+                        </label>
+                        <select
+                          value={activeTransferProdId}
+                          onChange={(e) =>
+                            handleSelectTransferProduct(e.target.value)
+                          }
+                          className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white font-semibold"
+                        >
+                          {sourceFloorProducts.length === 0 ? (
+                            <option value="">
+                              -- Không có sản phẩm nào còn tồn ở kho đầu dời này --
+                            </option>
+                          ) : (
+                            sourceFloorProducts.map((p) => {
+                              const avail = getSourceFloorStock(p);
+                              return (
+                                <option key={p._id} value={p._id}>
+                                  {p.name} ({p.code}) — Tồn{" "}
+                                  {transferDirection === "F1_TO_F2"
+                                    ? "Kho Tầng 1"
+                                    : "Kho Tầng 2"}
+                                  : {avail} {p.unit}
+                                </option>
+                              );
+                            })
+                          )}
+                        </select>
+                      </div>
+
+                      <div className="md:col-span-3">
+                        <label className="block text-[11px] font-bold uppercase text-indigo-700 mb-1">
+                          Màu sắc cần dời
+                        </label>
+                        {uniqueColorOptions.length > 0 ? (
+                          <select
+                            value={String(effectiveColor || "").trim().toLowerCase()}
+                            onChange={(e) => {
+                              const nextColorLower = e.target.value;
+                              const matchedColorVars = availVars.filter(
+                                (v) =>
+                                  String(v.color || "").trim().toLowerCase() ===
+                                  nextColorLower
+                              );
+                              if (matchedColorVars.length > 0) {
+                                setTransferColor(matchedColorVars[0].color || "");
+                                setTransferSize(matchedColorVars[0].size || "");
+                              } else {
+                                setTransferColor("");
+                                setTransferSize("");
+                              }
+                            }}
+                            className="w-full px-3 py-2 rounded-xl border border-indigo-300 text-xs bg-white font-bold text-slate-900"
+                          >
+                            {uniqueColorOptions.map((cOpt, cIdx) => (
+                              <option
+                                key={`${cOpt.color}_${cIdx}`}
+                                value={cOpt.color.toLowerCase()}
+                              >
+                                Màu: {cOpt.color || "Mặc định"} (Tồn:{" "}
+                                {cOpt.totalStock}{" "}
+                                {selectedTransferProd?.unit || "Cái"})
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <ColorInputWithPicker
+                            value={transferColor}
+                            onChange={(nextColor) => setTransferColor(nextColor)}
+                            placeholder="Chọn hoặc nhập màu sắc..."
+                          />
+                        )}
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <label className="block text-[11px] font-bold uppercase text-indigo-700 mb-1">
+                          Size (Kích cỡ)
+                        </label>
+                        {varsForSelectedColor.length > 0 ? (
+                          <select
+                            value={String(effectiveSize || "").trim().toUpperCase()}
+                            onChange={(e) => {
+                              const nextSizeUpper = e.target.value;
+                              const matchedVar = varsForSelectedColor.find(
+                                (v) =>
+                                  String(v.size || "").trim().toUpperCase() ===
+                                  nextSizeUpper
+                              );
+                              if (matchedVar) {
+                                setTransferColor(
+                                  matchedVar.color || effectiveColor || ""
+                                );
+                                setTransferSize(matchedVar.size || "");
+                              } else {
+                                setTransferSize(e.target.value);
+                              }
+                            }}
+                            className="w-full px-3 py-2 rounded-xl border border-indigo-300 text-xs bg-white font-mono font-bold text-slate-900"
+                          >
+                            {varsForSelectedColor.map((v, sIdx) => {
+                              const szTrim = String(v.size || "").trim();
+                              const szVal = szTrim.toUpperCase();
+                              const vStock = getVariantSourceFloorStock(v);
+                              return (
+                                <option key={`${szVal}_${sIdx}`} value={szVal}>
+                                  {szTrim
+                                    ? `Size ${szTrim} (Tồn: ${vStock})`
+                                    : `Không có size (Tồn: ${vStock})`}
+                                </option>
+                              );
+                            })}
+                          </select>
+                        ) : (
+                          <input
+                            type="text"
+                            list="transfer-size-presets"
+                            value={transferSize}
+                            onChange={(e) =>
+                              setTransferSize(e.target.value.toUpperCase())
+                            }
+                            placeholder="Trống = Không size (VD: M, L, 41)"
+                            className="w-full px-3 py-2 rounded-xl border border-indigo-300 text-xs bg-white font-mono font-bold uppercase text-slate-900"
+                          />
+                        )}
+                      </div>
+
+                      <div className="md:col-span-1">
+                        <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1">
+                          SL thêm
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={transferQty}
+                          onChange={(e) =>
+                            setTransferQty(
+                              Math.max(1, Math.round(Number(e.target.value) || 1))
+                            )
+                          }
+                          className="w-full px-2.5 py-2 rounded-xl border border-slate-300 font-mono text-sm font-extrabold text-right bg-white"
+                        />
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <button
+                          type="button"
+                          disabled={sourceFloorProducts.length === 0}
+                          onClick={() =>
+                            handleAddTransferItem(
+                              activeTransferProdId,
+                              transferQty,
+                              effectiveColor,
+                              effectiveSize
+                            )
+                          }
+                          className="w-full py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-sm"
+                        >
+                          <Plus className="w-4 h-4" />
+                          Thêm vào phiếu
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Hiển thị nhanh các chip Màu sắc & Size của sản phẩm đang chọn để bấm chọn trực quan */}
+                    {selectedTransferProd && availVars.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-200/80">
+                        <span className="text-[11px] font-bold text-slate-500 mr-1">
+                          Chọn nhanh Màu &amp; Size của &quot;{selectedTransferProd.name}&quot;:
+                        </span>
+                        {availVars.map((v, vIdx) => {
+                          const vStock = getVariantSourceFloorStock(v);
+                          const isSelectedVar =
+                            String(v.color || "").trim().toLowerCase() ===
+                              String(effectiveColor || "").trim().toLowerCase() &&
+                            String(v.size || "").trim().toUpperCase() ===
+                              String(effectiveSize || "").trim().toUpperCase();
+                          const hexes = resolveVariantColorHexes(
+                            v.color,
+                            v.colorHexes
+                          );
+                          return (
+                            <button
+                              key={`${v.color}-${v.size}-${vIdx}`}
+                              type="button"
+                              onClick={() => {
+                                setTransferColor(v.color || "");
+                                setTransferSize(v.size || "");
+                              }}
+                              style={getColorBoxBorderStyle(
+                                hexes,
+                                isSelectedVar ? "#eef2ff" : "#ffffff",
+                                2
+                              )}
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-bold transition ${
+                                isSelectedVar
+                                  ? "ring-2 ring-indigo-600 text-indigo-950 shadow-xs"
+                                  : "border-slate-200 text-slate-800 hover:bg-slate-100"
+                              }`}
+                            >
+                              <ColorSwatchBadge
+                                hexes={v.colorHexes}
+                                colorName={v.color || "Mặc định"}
+                                size="xs"
+                              />
+                              <span>{v.color || "Mặc định"}</span>
+                              {Boolean(v.size?.trim()) && (
+                                <span className="px-1 py-0.2 rounded bg-indigo-100 text-indigo-800 font-mono text-[10px] font-extrabold">
+                                  Size {v.size?.trim()}
+                                </span>
+                              )}
+                              <span className="font-mono text-[10px] font-extrabold text-emerald-700">
+                                ({vStock})
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Danh sách gợi ý bấm chọn nhanh các SP & Màu sắc ở Kho đầu dời */}
               {sourceFloorProducts.length > 0 && (
                 <div className="border border-slate-200 rounded-xl p-3 bg-white">
                   <div className="text-[11px] font-bold text-slate-500 mb-2">
-                    Bấm nhanh vào sản phẩm bên dưới để đưa vào phiếu dời kho:
+                    Bấm nhanh vào sản phẩm hoặc bấm trực tiếp vào từng Màu sắc bên dưới để đưa vào phiếu dời kho:
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-60 overflow-y-auto pr-1">
                     {sourceFloorProducts.map((p) => {
                       const avail = getSourceFloorStock(p);
-                      const inCart = transferItems.find((i) => i.productId === p._id);
+                      const prodVars = getProductSourceVariants(p);
+                      const totalSelectedForProd = transferItems
+                        .filter((i) => i.productId === p._id)
+                        .reduce((sum, i) => sum + i.quantity, 0);
+
                       return (
-                        <button
+                        <div
                           key={p._id}
-                          type="button"
-                          onClick={() => handleAddTransferItem(p._id, 1)}
-                          className={`p-2.5 rounded-lg border text-left transition flex items-center justify-between gap-2 text-xs ${inCart
-                            ? "border-indigo-500 bg-indigo-50/70"
-                            : "border-slate-200 hover:border-indigo-400 hover:bg-slate-50"
-                            }`}
+                          className={`p-2.5 rounded-lg border text-left transition flex flex-col justify-between gap-2 text-xs ${
+                            totalSelectedForProd > 0
+                              ? "border-indigo-500 bg-indigo-50/50"
+                              : "border-slate-200 hover:border-indigo-300 bg-white"
+                          }`}
                         >
-                          <div className="min-w-0">
-                            <div className="font-bold text-slate-900 truncate">{p.name}</div>
-                            <div className="font-mono text-[10px] text-slate-500 truncate">
-                              {p.code}
+                          <div
+                            onClick={() => {
+                              setTransferProductId(p._id);
+                              if (prodVars.length > 0) {
+                                setTransferColor(prodVars[0].color || "");
+                                setTransferSize(prodVars[0].size || "");
+                                handleAddTransferItem(
+                                  p._id,
+                                  1,
+                                  prodVars[0].color || "",
+                                  prodVars[0].size || ""
+                                );
+                              } else {
+                                handleAddTransferItem(p._id, 1, "", "");
+                              }
+                            }}
+                            className="flex items-start justify-between gap-2 cursor-pointer"
+                          >
+                            <div className="min-w-0">
+                              <div className="font-bold text-slate-900 truncate">
+                                {p.name}
+                              </div>
+                              <div className="font-mono text-[10px] text-slate-500 truncate">
+                                {p.code}
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[11px]">
+                                Tồn: {avail} {p.unit}
+                              </span>
+                              {totalSelectedForProd > 0 && (
+                                <div className="text-[10px] font-extrabold text-indigo-700 mt-0.5">
+                                  Đã chọn: {totalSelectedForProd}
+                                </div>
+                              )}
                             </div>
                           </div>
-                          <div className="text-right shrink-0">
-                            <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[11px]">
-                              Tồn: {avail} {p.unit}
-                            </span>
-                            {inCart && (
-                              <div className="text-[10px] font-extrabold text-indigo-700 mt-0.5">
-                                Đã chọn: {inCart.quantity}
-                              </div>
-                            )}
-                          </div>
-                        </button>
+
+                          {prodVars.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-1 pt-1.5 border-t border-slate-200/70">
+                              {prodVars.map((v, vIdx) => {
+                                const vAvail = getVariantSourceFloorStock(v);
+                                const vKey = getTransferItemKey(
+                                  p._id,
+                                  v.color,
+                                  v.size
+                                );
+                                const inCartVar = transferItems.find(
+                                  (i) =>
+                                    getTransferItemKey(
+                                      i.productId,
+                                      i.color,
+                                      i.size
+                                    ) === vKey
+                                );
+                                const hexes = resolveVariantColorHexes(
+                                  v.color,
+                                  v.colorHexes
+                                );
+                                return (
+                                  <button
+                                    key={`${v.color}-${v.size}-${vIdx}`}
+                                    type="button"
+                                    disabled={vAvail <= 0}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setTransferProductId(p._id);
+                                      setTransferColor(v.color || "");
+                                      setTransferSize(v.size || "");
+                                      handleAddTransferItem(
+                                        p._id,
+                                        1,
+                                        v.color || "",
+                                        v.size || ""
+                                      );
+                                    }}
+                                    style={getColorBoxBorderStyle(
+                                      hexes,
+                                      inCartVar ? "#e0e7ff" : "#ffffff",
+                                      2
+                                    )}
+                                    title={`Bấm để thêm +1 Màu ${v.color || "Mặc định"}${
+                                      v.size?.trim() ? ` - Size ${v.size.trim()}` : ""
+                                    }`}
+                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-bold transition ${
+                                      inCartVar
+                                        ? "ring-1 ring-indigo-600 text-indigo-950"
+                                        : "border-slate-200 text-slate-800 hover:bg-indigo-50"
+                                    }`}
+                                  >
+                                    <ColorSwatchBadge
+                                      hexes={v.colorHexes}
+                                      colorName={v.color || "Mặc định"}
+                                      size="xs"
+                                    />
+                                    <span>{v.color || "Mặc định"}</span>
+                                    {Boolean(v.size?.trim()) && (
+                                      <span className="font-mono font-extrabold text-indigo-700">
+                                        • {v.size?.trim()}
+                                      </span>
+                                    )}
+                                    <span className="font-mono font-extrabold text-emerald-700">
+                                      ({vAvail})
+                                    </span>
+                                    {inCartVar && (
+                                      <span className="px-1 rounded bg-indigo-600 text-white font-mono text-[9px]">
+                                        ✓{inCartVar.quantity}
+                                      </span>
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
                       );
                     })}
                   </div>
@@ -4705,7 +5223,7 @@ export default function InventoryModule() {
 
               {transferItems.length === 0 ? (
                 <div className="py-6 text-center text-xs text-slate-400 border border-dashed border-slate-300 rounded-xl bg-slate-50">
-                  Chưa có sản phẩm nào trong phiếu. Hãy bấm chọn các sản phẩm từ{" "}
+                  Chưa có sản phẩm nào trong phiếu. Hãy bấm chọn các sản phẩm hoặc Màu sắc từ{" "}
                   <strong>
                     {transferDirection === "F1_TO_F2" ? "Kho Tầng 1" : "Kho Tầng 2"}
                   </strong>{" "}
@@ -4719,6 +5237,8 @@ export default function InventoryModule() {
                         <th className="py-2.5 px-3 w-12 text-center">STT</th>
                         <th className="py-2.5 px-3">Mã hàng</th>
                         <th className="py-2.5 px-3">Tên sản phẩm</th>
+                        <th className="py-2.5 px-3">Màu sắc</th>
+                        <th className="py-2.5 px-3">Size (Kích cỡ)</th>
                         <th className="py-2.5 px-3 text-center">ĐVT</th>
                         <th className="py-2.5 px-3 text-right">
                           Tồn tại {transferDirection === "F1_TO_F2" ? "Kho Tầng 1" : "Kho Tầng 2"}
@@ -4731,17 +5251,212 @@ export default function InventoryModule() {
                       {transferItems.map((item, idx) => {
                         const prod = products.find((p) => p._id === item.productId);
                         if (!prod) return null;
-                        const maxAvail = getSourceFloorStock(prod);
+                        const itemKey = getTransferItemKey(
+                          item.productId,
+                          item.color,
+                          item.size
+                        );
+                        const prodVars = getProductSourceVariants(prod);
+                        const uniqueColors = Array.from(
+                          new Set(
+                            prodVars.map((v) => String(v.color || "").trim())
+                          )
+                        );
+                        const sizesForColor =
+                          prodVars.filter(
+                            (v) =>
+                              String(v.color || "").trim().toLowerCase() ===
+                              String(item.color || "").trim().toLowerCase()
+                          ).length > 0
+                            ? prodVars.filter(
+                                (v) =>
+                                  String(v.color || "").trim().toLowerCase() ===
+                                  String(item.color || "").trim().toLowerCase()
+                              )
+                            : prodVars;
+
+                        const matchedVar = (prod.variants || []).find(
+                          (v) =>
+                            String(v.color || "").trim().toLowerCase() ===
+                              String(item.color || "").trim().toLowerCase() &&
+                            String(v.size || "").trim().toUpperCase() ===
+                              String(item.size || "").trim().toUpperCase()
+                        );
+                        const maxAvail = getSourceVariantFloorStock(
+                          prod,
+                          item.color,
+                          item.size
+                        );
+                        const childCode =
+                          item.color || item.size
+                            ? generateVariantProductCode(
+                                prod.code,
+                                item.color,
+                                item.size
+                              )
+                            : prod.code;
+                        const hexes = resolveVariantColorHexes(
+                          item.color,
+                          matchedVar?.colorHexes
+                        );
+
                         return (
-                          <tr key={item.productId} className="hover:bg-slate-50">
+                          <tr key={itemKey} className="hover:bg-slate-50">
                             <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-500">
                               {idx + 1}
                             </td>
                             <td className="py-2.5 px-3 font-mono font-bold text-slate-800">
-                              {prod.code}
+                              <div>{childCode}</div>
+                              {(item.color || item.size) && (
+                                <div className="text-[10px] font-normal text-slate-400">
+                                  Mã gốc: {prod.code}
+                                </div>
+                              )}
                             </td>
                             <td className="py-2.5 px-3 font-semibold text-slate-900">
                               {prod.name}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {item.color ? (
+                                  <span
+                                    style={getColorBoxBorderStyle(
+                                      hexes,
+                                      "#f8fafc",
+                                      2
+                                    )}
+                                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-slate-200 font-bold text-slate-800"
+                                  >
+                                    <ColorSwatchBadge
+                                      hexes={matchedVar?.colorHexes}
+                                      colorName={item.color}
+                                      size="xs"
+                                    />
+                                    <span>{item.color}</span>
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400 italic">
+                                    Mặc định
+                                  </span>
+                                )}
+
+                                {uniqueColors.length > 1 && (
+                                  <select
+                                    value={String(item.color || "")
+                                      .trim()
+                                      .toLowerCase()}
+                                    onChange={(e) => {
+                                      const nextColorLower = e.target.value;
+                                      const matchedColorVars = prodVars.filter(
+                                        (v) =>
+                                          String(v.color || "")
+                                            .trim()
+                                            .toLowerCase() === nextColorLower
+                                      );
+                                      if (matchedColorVars.length > 0) {
+                                        const keepSameSize =
+                                          matchedColorVars.find(
+                                            (v) =>
+                                              String(v.size || "")
+                                                .trim()
+                                                .toUpperCase() ===
+                                              String(item.size || "")
+                                                .trim()
+                                                .toUpperCase()
+                                          ) || matchedColorVars[0];
+                                        handleUpdateTransferItemVariant(
+                                          itemKey,
+                                          keepSameSize.color || "",
+                                          keepSameSize.size || ""
+                                        );
+                                      }
+                                    }}
+                                    className="px-2 py-1 rounded border border-slate-300 text-[11px] bg-white font-semibold text-slate-700"
+                                    title="Đổi màu sắc cần dời"
+                                  >
+                                    {uniqueColors.map((cName, cIdx) => (
+                                      <option
+                                        key={`${cName}_${cIdx}`}
+                                        value={cName.toLowerCase()}
+                                      >
+                                        Đổi màu: {cName || "Mặc định"}
+                                      </option>
+                                    ))}
+                                  </select>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {Boolean(item.size?.trim()) ? (
+                                  <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-xs font-extrabold">
+                                    {item.size?.trim()}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400 italic">
+                                    —
+                                  </span>
+                                )}
+
+                                {sizesForColor.length > 1 ? (
+                                  <select
+                                    value={String(item.size || "")
+                                      .trim()
+                                      .toUpperCase()}
+                                    onChange={(e) => {
+                                      const nextSizeUpper = e.target.value;
+                                      const picked = sizesForColor.find(
+                                        (v) =>
+                                          String(v.size || "")
+                                            .trim()
+                                            .toUpperCase() === nextSizeUpper
+                                      );
+                                      if (picked) {
+                                        handleUpdateTransferItemVariant(
+                                          itemKey,
+                                          picked.color || item.color || "",
+                                          picked.size || ""
+                                        );
+                                      }
+                                    }}
+                                    className="px-2 py-1 rounded border border-indigo-300 text-[11px] bg-white font-mono font-bold text-indigo-900"
+                                    title="Chọn / đổi Size cần dời"
+                                  >
+                                    {sizesForColor.map((v, sIdx) => {
+                                      const sz = String(v.size || "").trim();
+                                      return (
+                                        <option
+                                          key={`${sz}_${sIdx}`}
+                                          value={sz.toUpperCase()}
+                                        >
+                                          {sz
+                                            ? `Size ${sz} (Tồn: ${getVariantSourceFloorStock(
+                                                v
+                                              )})`
+                                            : `Không size (Tồn: ${getVariantSourceFloorStock(
+                                                v
+                                              )})`}
+                                        </option>
+                                      );
+                                    })}
+                                  </select>
+                                ) : prodVars.length === 0 ? (
+                                  <input
+                                    type="text"
+                                    list="transfer-size-presets"
+                                    value={item.size || ""}
+                                    onChange={(e) =>
+                                      handleUpdateTransferItemVariant(
+                                        itemKey,
+                                        item.color || "",
+                                        e.target.value.toUpperCase()
+                                      )
+                                    }
+                                    placeholder="Chọn size..."
+                                    className="w-24 px-2 py-1 rounded border border-slate-300 text-[11px] bg-white font-mono font-bold uppercase text-slate-800"
+                                  />
+                                ) : null}
+                              </div>
                             </td>
                             <td className="py-2.5 px-3 text-center">{prod.unit}</td>
                             <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-700">
@@ -4755,7 +5470,7 @@ export default function InventoryModule() {
                                 value={item.quantity}
                                 onChange={(e) =>
                                   handleUpdateTransferItemQty(
-                                    item.productId,
+                                    itemKey,
                                     Number(e.target.value)
                                   )
                                 }
@@ -4765,7 +5480,7 @@ export default function InventoryModule() {
                             <td className="py-2.5 px-3 text-center">
                               <button
                                 type="button"
-                                onClick={() => handleRemoveTransferItem(item.productId)}
+                                onClick={() => handleRemoveTransferItem(itemKey)}
                                 className="p-1.5 rounded-lg text-red-600 hover:bg-red-50"
                                 title="Xóa khỏi phiếu"
                               >
@@ -4800,7 +5515,7 @@ export default function InventoryModule() {
                     className="w-full py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-extrabold text-xs shadow-lg flex items-center justify-center gap-2 transition"
                   >
                     <ArrowLeftRight className="w-4 h-4" />
-                    Xác nhận Tạo Phiếu Xuất Kho ({transferItems.length} SP)
+                    Xác nhận Tạo Phiếu Xuất Kho ({transferItems.length} dòng)
                   </button>
                 </div>
               </div>
@@ -4811,10 +5526,10 @@ export default function InventoryModule() {
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
             <div>
               <h3 className="font-bold text-slate-900 text-sm">
-                Lịch sử Phiếu Xuất Kho Chuyển Tầng (PXK — Bấm vào dòng phiếu để xem chi tiết sản phẩm dời kho)
+                Lịch sử Phiếu Xuất Kho Chuyển Tầng (PXK — Bấm vào dòng phiếu để xem chi tiết sản phẩm & màu sắc dời kho)
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Mỗi phiếu xuất kho chuyển tầng (`PXK-...`) có thể bao gồm 1 hoặc nhiều sản phẩm. Bấm vào một phiếu để mở xem danh sách chi tiết từng mặt hàng đã dời.
+                Mỗi phiếu xuất kho chuyển tầng (`PXK-...`) có thể bao gồm 1 hoặc nhiều sản phẩm / màu sắc. Bấm vào một phiếu để mở xem danh sách chi tiết từng mặt hàng đã dời.
               </p>
             </div>
             <div className="overflow-x-auto border border-slate-200 rounded-xl">
@@ -4936,6 +5651,8 @@ export default function InventoryModule() {
                                         <th className="py-2 px-3 text-center w-12">STT</th>
                                         <th className="py-2 px-3">Mã hàng</th>
                                         <th className="py-2 px-3">Tên sản phẩm</th>
+                                        <th className="py-2 px-3">Màu sắc</th>
+                                        <th className="py-2 px-3 text-center">Size</th>
                                         <th className="py-2 px-3 text-center">ĐVT</th>
                                         <th className="py-2 px-3">Từ Kho</th>
                                         <th className="py-2 px-3">Sang Kho</th>
@@ -4946,16 +5663,70 @@ export default function InventoryModule() {
                                     <tbody className="divide-y divide-slate-200">
                                       {items.map((it, idx) => {
                                         const prod = productByCode.get(it.productCode);
+                                        const itColor = String(it.color || "").trim();
+                                        const itSize = String(it.size || "").trim();
+                                        const childCode =
+                                          itColor || itSize
+                                            ? generateVariantProductCode(
+                                                it.productCode,
+                                                itColor,
+                                                itSize
+                                              )
+                                            : it.productCode;
+                                        const matchedVar = (prod?.variants || []).find(
+                                          (v) =>
+                                            String(v.color || "").trim().toLowerCase() ===
+                                              itColor.toLowerCase()
+                                        );
+                                        const hexes = resolveVariantColorHexes(
+                                          itColor,
+                                          matchedVar?.colorHexes
+                                        );
                                         return (
                                           <tr key={it._id || idx} className="hover:bg-slate-50">
                                             <td className="py-2 px-3 text-center font-mono">
                                               {idx + 1}
                                             </td>
                                             <td className="py-2 px-3 font-mono font-bold text-slate-800">
-                                              {it.productCode}
+                                              <div>{childCode}</div>
+                                              {(itColor || itSize) && (
+                                                <div className="text-[10px] font-normal text-slate-400">
+                                                  Gốc: {it.productCode}
+                                                </div>
+                                              )}
                                             </td>
                                             <td className="py-2 px-3 font-semibold text-slate-900">
                                               {it.productName}
+                                            </td>
+                                            <td className="py-2 px-3">
+                                              {itColor ? (
+                                                <span
+                                                  style={getColorBoxBorderStyle(
+                                                    hexes,
+                                                    "#f8fafc",
+                                                    2
+                                                  )}
+                                                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-slate-200 font-bold text-slate-800"
+                                                >
+                                                  <ColorSwatchBadge
+                                                    hexes={matchedVar?.colorHexes}
+                                                    colorName={itColor}
+                                                    size="xs"
+                                                  />
+                                                  <span>{itColor}</span>
+                                                </span>
+                                              ) : (
+                                                <span className="text-slate-400">-</span>
+                                              )}
+                                            </td>
+                                            <td className="py-2 px-3 text-center">
+                                              {Boolean(itSize) ? (
+                                                <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-200 font-mono font-extrabold">
+                                                  {itSize}
+                                                </span>
+                                              ) : (
+                                                <span className="text-slate-400">—</span>
+                                              )}
                                             </td>
                                             <td className="py-2 px-3 text-center">
                                               {(it as any).unit || prod?.unit || "Cái"}
@@ -5513,7 +6284,7 @@ export default function InventoryModule() {
                       <th className="py-3 px-2.5 min-w-[210px]">TÊN SẢN PHẨM</th>
                       <th className="py-3 px-2 min-w-[130px] text-cyan-300">CATEGORY</th>
                       <th className="py-3 px-2 min-w-[105px] text-cyan-300">HÃNG (NN)</th>
-                      <th className="py-3 px-2 min-w-[155px] text-amber-300">MÀU SẮC (CHỌN MÀU)</th>
+                      <th className="py-3 px-2 min-w-[155px] text-amber-300">MÀU SẮC (BẮT BUỘC) *</th>
                       <th className="py-3 px-2 w-24 min-w-[80px] text-center text-amber-300">
                         SIZE
                       </th>
@@ -5720,7 +6491,7 @@ export default function InventoryModule() {
                             />
                           </td>
 
-                          {/* MÀU SẮC (Kèm ô nhỏ chọn 1 hoặc nhiều màu trực quan & viền box) */}
+                          {/* MÀU SẮC (Bắt buộc điền — kèm ô nhỏ chọn 1 hoặc nhiều màu trực quan & viền box) */}
                           <td className="py-2.5 px-2 align-top">
                             <ColorInputWithPicker
                               listId="cms-color-suggestions"
@@ -5729,8 +6500,13 @@ export default function InventoryModule() {
                               onChange={(nextColor, nextHexes) =>
                                 handleUpdateAdminRowColor(idx, nextColor, nextHexes)
                               }
-                              placeholder="VD: Đỏ, Trắng..."
+                              placeholder="Bắt buộc chọn/nhập màu *"
                             />
+                            {row.productName.trim() !== "" && !String(row.color || "").trim() && (
+                              <div className="mt-1 text-[10px] font-bold text-red-600">
+                                * Bắt buộc điền màu sắc
+                              </div>
+                            )}
                           </td>
 
                           {/* SIZE */}

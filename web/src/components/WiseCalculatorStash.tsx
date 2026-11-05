@@ -206,10 +206,10 @@ export default function WiseCalculatorStash() {
   };
 
   return (
-    <div className="fixed bottom-5 right-0 z-50 flex flex-col items-end print:hidden select-none">
+    <div className="fixed bottom-5 left-0 z-50 flex flex-col items-start print:hidden select-none">
       {/* Cửa sổ nhỏ Máy tính Đổi tiền đơn giản */}
       {isOpen && (
-        <div className="mb-2.5 mr-2 sm:mr-4 w-[320px] sm:w-[340px] max-w-[calc(100vw-16px)] bg-slate-900 text-white rounded-2xl shadow-2xl border border-slate-700 overflow-hidden">
+        <div className="mb-2.5 ml-2 sm:ml-4 w-[320px] sm:w-[340px] max-w-[calc(100vw-16px)] bg-slate-900 text-white rounded-2xl shadow-2xl border border-slate-700 overflow-hidden">
           {/* Header gọn */}
           <div className="bg-slate-950 px-3.5 py-2.5 border-b border-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -423,23 +423,8 @@ export default function WiseCalculatorStash() {
         </div>
       )}
 
-      {/* Nút Logo Tròn (Hình Máy Tính) dạng Stash mặc định ở góc phải dưới */}
+      {/* Nút Logo Tròn (Hình Máy Tính) dạng Stash mặc định ở góc trái dưới */}
       <div className="flex items-center">
-        {!isOpen && (
-          <button
-            type="button"
-            onClick={() => setIsStashedEdge((v) => !v)}
-            title={isStashedEdge ? "Kéo nút ra" : "Né gọn vào mép (Stash)"}
-            className="h-8 w-5 rounded-l-lg bg-slate-900/90 hover:bg-slate-800 text-emerald-400 border border-r-0 border-emerald-500/40 flex items-center justify-center shadow-md transition"
-          >
-            {isStashedEdge ? (
-              <ChevronLeft className="w-3.5 h-3.5" />
-            ) : (
-              <ChevronRight className="w-3.5 h-3.5" />
-            )}
-          </button>
-        )}
-
         <button
           type="button"
           onClick={() => setIsOpen((v) => !v)}
@@ -447,14 +432,29 @@ export default function WiseCalculatorStash() {
           aria-label="Mở máy tính đổi tiền nhanh"
           className={`group relative flex items-center gap-2 bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-700 hover:from-emerald-400 hover:to-teal-600 text-white shadow-2xl border-2 border-white/90 transition-all duration-300 ${
             isOpen
-              ? "mr-3 sm:mr-4 w-13 h-13 p-3.5 rounded-full justify-center ring-4 ring-emerald-500/30"
+              ? "ml-3 sm:ml-4 w-13 h-13 p-3.5 rounded-full justify-center ring-4 ring-emerald-500/30"
               : isStashedEdge
-              ? "w-13 h-13 py-3.5 pr-2.5 pl-3.5 rounded-l-full rounded-r-none justify-start translate-x-1 hover:translate-x-0"
-              : "mr-3 w-13 h-13 p-3.5 rounded-full justify-center hover:scale-105"
+              ? "w-13 h-13 py-3.5 pl-2.5 pr-3.5 rounded-r-full rounded-l-none justify-end -translate-x-1 hover:translate-x-0"
+              : "ml-3 w-13 h-13 p-3.5 rounded-full justify-center hover:scale-105"
           }`}
         >
           <Calculator className="w-6 h-6 text-white stroke-[2.2] shrink-0" />
         </button>
+
+        {!isOpen && (
+          <button
+            type="button"
+            onClick={() => setIsStashedEdge((v) => !v)}
+            title={isStashedEdge ? "Kéo nút ra" : "Né gọn vào mép (Stash)"}
+            className="h-8 w-5 rounded-r-lg bg-slate-900/90 hover:bg-slate-800 text-emerald-400 border border-l-0 border-emerald-500/40 flex items-center justify-center shadow-md transition"
+          >
+            {isStashedEdge ? (
+              <ChevronRight className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronLeft className="w-3.5 h-3.5" />
+            )}
+          </button>
+        )}
       </div>
     </div>
   );

@@ -1066,7 +1066,9 @@ export default function InventoryTab() {
                                                   : "bg-slate-100 text-slate-400 border-slate-200"
                                                 }`}
                                             >
-                                              <span>{v.size || "Freesize"}</span>
+                                              {Boolean(v.size?.trim()) && (
+                                                <span>{v.size.trim()}</span>
+                                              )}
                                               <span className="font-mono font-extrabold">({vQty})</span>
                                               {vScanned > 0 && (
                                                 <span className="ml-0.5 px-1 rounded bg-teal-700 text-white font-mono text-[9px]">
@@ -1332,7 +1334,7 @@ export default function InventoryTab() {
                                               </span>
                                             </td>
                                             <td className="py-2 px-3 font-mono font-bold text-indigo-700">
-                                              {v.size || "FREESIZE"}
+                                              {v.size?.trim() || ""}
                                             </td>
                                             <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
                                               {formatVND(Number(priceEdits[p._id] ?? p.sellingPrice ?? 0))}
