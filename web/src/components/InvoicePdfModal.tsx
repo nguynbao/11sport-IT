@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef } from "react";
-import { Order, formatVND, formatDateTime, formatPhone } from "@/lib/api";
+import { Order, formatVND, formatNumberDots, formatDateTime, formatPhone } from "@/lib/api";
 import { Printer, X, FileText, Receipt, Download } from "lucide-react";
 
 interface InvoicePdfModalProps {
@@ -94,6 +94,14 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
       ? Number(order.cardFee) || Math.round(calcAfterBillDisc * 0.03)
       : 0;
   const calcTotalAmount = calcAfterBillDisc + calcCardFee;
+
+  const pricedItems = (order.items || []).map((item) => ({
+    item,
+    pricing: getItemCalculatedPricing(item),
+  }));
+  const paidItems = pricedItems.filter((x) => !x.pricing.isGift);
+  const giftItems = pricedItems.filter((x) => x.pricing.isGift);
+  const totalGiftQty = giftItems.reduce((sum, g) => sum + g.pricing.qty, 0);
 
   const handlePrint = () => {
     if (!printAreaRef.current) {
@@ -325,44 +333,55 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-black text-[11px]">
-                  {order.items?.map((item, idx) => {
+                  {paidItems.map(({ item, pricing }, idx) => {
                     const {
-                      isGift,
                       qty,
                       discAmt,
                       origUnitPrice,
                       netLineTotal,
-                    } = getItemCalculatedPricing(item);
+                    } = pricing;
 
                     return (
-                      <tr key={idx}>
+                      <tr key={`paid-${idx}`}>
                         <td className="border-r border-black py-1.5 px-1.5 font-semibold leading-snug break-words align-middle">
                           <div>
                             {idx + 1}. {item.productName}
                           </div>
-                          {isGift && (
-                            <div className="text-[10px] font-bold text-black mt-0.5">
-                              (🎁 Hàng tặng - Không tính tiền)
-                            </div>
-                          )}
                         </td>
                         <td className="border-r border-black py-1.5 px-1 text-center align-middle font-mono font-bold">
                           {qty}
                         </td>
                         <td className="border-r border-black py-1.5 px-1.5 text-center align-middle font-mono font-semibold whitespace-nowrap">
-                          <div>{isGift ? "0 VND" : formatVND(origUnitPrice)}</div>
-                          {!isGift && discAmt > 0 && (
+                          <div>{formatNumberDots(origUnitPrice)}</div>
+                          {discAmt > 0 && (
                             <div className="text-[10px] font-bold text-black mt-0.5">
-                              (-{formatVND(discAmt)})
+                              (-{formatNumberDots(discAmt)})
                             </div>
                           )}
                         </td>
                         <td className="py-1.5 px-1.5 text-center align-middle font-mono font-extrabold whitespace-nowrap">
-                          {isGift ? "0 VND" : formatVND(netLineTotal)}
+                          {formatNumberDots(netLineTotal)}
                         </td>
                       </tr>
                     );
                   })}
+                  {giftItems.length > 0 && (
+                    <tr className="bg-slate-50/70">
+                      <td
+                        colSpan={4}
+                        className="py-1.5 px-1.5 text-[10.5px] leading-snug break-words align-middle"
+                      >
+                        <span className="font-extrabold">
+                          🎁 Quà tặng kèm ({totalGiftQty} SP - 0đ):{" "}
+                        </span>
+                        <span className="font-semibold">
+                          {giftItems
+                            .map(({ item, pricing }) => `${item.productName} (x${pricing.qty})`)
+                            .join(", ")}
+                        </span>
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
