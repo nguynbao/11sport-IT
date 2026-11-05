@@ -19,3 +19,13 @@ PM -> BA -> Design -> Dev (backend -> frontend, devops song song) -> Tester -> P
 ## Thư mục tài liệu
 docs/requirements/  (BA)   docs/design/ (Design)   docs/api-contract.md (Backend)
 docs/test/ (Tester)        docs/status.md (PM)
+
+## graphify
+
+This project has a knowledge graph at `graphify-out/` with god nodes, community structure, and cross-file relationships.
+
+Rules:
+- When `graphify-out/graph.json` exists, run `graphify query "<question>"` before your first grep, search or source-file read for a codebase question, and put this rule in every subagent prompt that explores code. Read raw files only for lines the graph or an earlier read already located. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than `GRAPH_REPORT.md` or raw grep output.
+- Read `graphify-out/GRAPH_REPORT.md` only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update . --force` (or rely on the Git `pre-commit` hook at `scripts/pre-commit-graphify.sh`) to keep the graph current (AST-only, no API cost).
+- A committed `graphify-out/graph.json` is rewritten whole on every build, so a large diff to it in a pull request is expected. Do not flag it as churn or suggest skipping the graph rebuild or its hooks.

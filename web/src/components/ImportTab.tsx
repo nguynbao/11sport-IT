@@ -419,14 +419,19 @@ export default function ImportTab() {
       if (field === "expectedQuantity") {
         const exp = Math.max(0, Math.round(Number(value) || 0));
         item.expectedQuantity = exp;
-        const actual = Math.max(0, Math.round(Number(item.actualQuantity) || 0));
-        const diff = actual - exp;
-        item.discrepancyNote =
-          diff === 0
-            ? "Khớp đủ"
-            : diff > 0
-              ? `Thừa ${diff} ${item.unit || "Cái"}`
-              : `Thiếu ${Math.abs(diff)} ${item.unit || "Cái"}`;
+        if (item.isConfirmed) {
+          item.actualQuantity = exp;
+          item.discrepancyNote = "Khớp đủ";
+        } else {
+          const actual = Math.max(0, Math.round(Number(item.actualQuantity) || 0));
+          const diff = actual - exp;
+          item.discrepancyNote =
+            diff === 0
+              ? "Khớp đủ"
+              : diff > 0
+                ? `Thừa ${diff} ${item.unit || "Cái"}`
+                : `Thiếu ${Math.abs(diff)} ${item.unit || "Cái"}`;
+        }
       }
 
       if (field === "actualQuantity") {
@@ -441,6 +446,17 @@ export default function ImportTab() {
             : diff > 0
               ? `Thừa ${diff} ${item.unit || "Cái"}`
               : `Thiếu ${Math.abs(diff)} ${item.unit || "Cái"}`;
+      }
+
+      if (field === "isConfirmed") {
+        const confirmed = Boolean(value);
+        item.isConfirmed = confirmed;
+        if (confirmed) {
+          const exp = Math.max(0, Math.round(Number(item.expectedQuantity) || 0));
+          item.actualQuantity = exp;
+          item.isChecked = true;
+          item.discrepancyNote = "Khớp đủ";
+        }
       }
 
       next[index] = item;
@@ -1081,6 +1097,15 @@ export default function ImportTab() {
       setStatusMsg({
         type: "error",
         text: "Vui lòng nhập hoặc import ít nhất 1 dòng hàng hợp lệ.",
+      });
+      return null;
+    }
+
+    const missingColorItem = validItems.find((it) => !String(it.color || "").trim());
+    if (missingColorItem) {
+      setStatusMsg({
+        type: "error",
+        text: `Dòng #${missingColorItem.stt} ("${missingColorItem.productName}") chưa có Màu sắc! Vui lòng điền Màu sắc (bắt buộc) cho tất cả sản phẩm khi nhập kho.`,
       });
       return null;
     }
@@ -1881,11 +1906,16 @@ export default function ImportTab() {
                 type="button"
                 onClick={() => {
                   setItems((prev) =>
-                    prev.map((it) => ({
-                      ...it,
-                      isChecked: true,
-                      isConfirmed: true,
-                    }))
+                    prev.map((it) => {
+                      const exp = Math.max(0, Math.round(Number(it.expectedQuantity) || 0));
+                      return {
+                        ...it,
+                        actualQuantity: exp,
+                        isChecked: true,
+                        isConfirmed: true,
+                        discrepancyNote: "Khớp đủ",
+                      };
+                    })
                   );
                 }}
                 className="px-3 py-1.5 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-900 text-xs font-bold flex items-center gap-1"
@@ -1911,7 +1941,7 @@ export default function ImportTab() {
                 <th className="py-3 px-2.5 min-w-[200px]">TÊN SẢN PHẨM</th>
                 <th className="py-3 px-2 min-w-[130px] text-cyan-300">CATEGORY</th>
                 <th className="py-3 px-2 min-w-[105px] text-cyan-300">HÃNG (NN)</th>
-                <th className="py-3 px-2 min-w-[155px] text-amber-300">MÀU SẮC (CHỌN MÀU)</th>
+                <th className="py-3 px-2 min-w-[155px] text-amber-300">MÀU SẮC (BẮT BUỘC) *</th>
                 <th className="py-3 px-2 w-24 min-w-[85px] text-center text-amber-300">
                   SIZE
                 </th>
@@ -2122,7 +2152,7 @@ export default function ImportTab() {
                       />
                     </td>
 
-                    {/* MÀU SẮC (Kèm ô nhỏ chọn 1 hoặc nhiều màu trực quan & viền box theo màu) */}
+                    {/* MÀU SẮC (Bắt buộc điền — kèm ô nhỏ chọn 1 hoặc nhiều màu trực quan & viền box theo màu) */}
                     <td className="py-2.5 px-2 align-top">
                       <ColorInputWithPicker
                         disabled={isCompleted}
@@ -2132,8 +2162,13 @@ export default function ImportTab() {
                         onChange={(nextColor, nextHexes) =>
                           handleUpdateRowColor(idx, nextColor, nextHexes)
                         }
-                        placeholder="VD: Đỏ, Trắng..."
+                        placeholder="Bắt buộc chọn/nhập màu *"
                       />
+                      {row.productName.trim() !== "" && !String(row.color || "").trim() && (
+                        <div className="mt-1 text-[10px] font-bold text-red-600">
+                          * Bắt buộc điền màu sắc
+                        </div>
+                      )}
                     </td>
 
                     {/* SIZE */}
@@ -2281,9 +2316,7 @@ export default function ImportTab() {
                           disabled={isCompleted}
                           checked={row.isConfirmed}
                           onChange={(e) => {
-                            const checked = e.target.checked;
-                            handleUpdateRow(idx, "isConfirmed", checked);
-                            if (checked) handleUpdateRow(idx, "isChecked", true);
+                            handleUpdateRow(idx, "isConfirmed", e.target.checked);
                           }}
                           className="w-4 h-4 accent-emerald-600 rounded"
                         />
