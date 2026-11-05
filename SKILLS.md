@@ -8,6 +8,7 @@ Kiểm tra số sao và nội dung trên GitHub trước khi cài; chỉ cài sk
 | obra/superpowers | brainstorming, writing-plans, test-driven-development, systematic-debugging, requesting-code-review, verification-before-completion, dispatching-parallel-agents | PM, BA, Backend, Frontend, DevOps, Tester |
 | vercel-labs/agent-skills | react-best-practices, web-design-guidelines | Frontend, Designer |
 | nextlevelbuilder/ui-ux-pro-max-skill (Đã cài đặt) | ui-ux-pro-max, design-system, ui-styling, design, brand, banner-design, slides | Designer, Frontend |
+| Graphify-Labs/graphify (Đã cài đặt) | graphify (đồ thị tri thức codebase & tài liệu: query, path, explain, GRAPH_REPORT) | PM, BA, Backend, Frontend, DevOps, Tester |
 | trailofbits/skills | rà soát bảo mật, phân tích lỗ hổng | Backend, DevOps, Tester |
 | travisvn/awesome-claude-skills, ComposioHQ/awesome-claude-skills | danh mục tham khảo để tìm skill khác | Tất cả |
 

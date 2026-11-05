@@ -1,0 +1,10 @@
+# Exclude AI agent skill bundles and lockfiles from project knowledge graph
+.agents/
+.claude/
+11sport-agents/
+package-lock.json
+**/package-lock.json
+*.ttf
+*.otf
+*.woff
+*.woff2
