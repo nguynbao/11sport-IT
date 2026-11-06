@@ -31,6 +31,7 @@ authStaffRouter.post('/auth/login', async (req, res, next) => {
       username: staff.username,
       fullName: staff.fullName,
       role: staff.role,
+      department: staff.department || (['HR', 'ACCOUNTANT', 'MARKETING', 'ADMIN'].includes(staff.role) ? 'OFFICE' : 'SALES'),
       code: staff.code,
     });
 
@@ -42,8 +43,17 @@ authStaffRouter.post('/auth/login', async (req, res, next) => {
           code: staff.code,
           username: staff.username,
           fullName: staff.fullName,
-          phone: staff.phone,
+          phone: staff.phone || '',
+          email: staff.email || '',
           role: staff.role,
+          department: staff.department || (['HR', 'ACCOUNTANT', 'MARKETING', 'ADMIN'].includes(staff.role) ? 'OFFICE' : 'SALES'),
+          contractType: staff.contractType || 'FULLTIME',
+          citizenId: staff.citizenId || '',
+          address: staff.address || '',
+          contractStartDate: staff.contractStartDate,
+          contractEndDate: staff.contractEndDate,
+          contractFileUrl: staff.contractFileUrl || '',
+          contractFileName: staff.contractFileName || '',
           status: staff.status,
         },
       },
@@ -162,16 +172,32 @@ authStaffRouter.get('/staff', async (req, res, next) => {
 // POST /api/v1/staff
 authStaffRouter.post('/staff', async (req, res, next) => {
   try {
-    const { username, password, fullName, phone, role } = req.body || {};
-    if (!username || !password || !fullName) {
+    const {
+      username,
+      password,
+      fullName,
+      phone,
+      email,
+      role = 'SALES',
+      department,
+      contractType = 'FULLTIME',
+      citizenId,
+      address,
+      contractStartDate,
+      contractEndDate,
+      contractFileUrl,
+      contractFileName,
+    } = req.body || {};
+
+    if (!username || !password) {
       throw new ApiError(400, 'VALIDATION_ERROR', 'Thiếu thông tin bắt buộc của nhân viên', {
         username: !username ? 'Tên đăng nhập bắt buộc' : '',
         password: !password ? 'Mật khẩu bắt buộc' : '',
-        fullName: !fullName ? 'Họ tên bắt buộc' : '',
       });
     }
 
     const cleanUsername = String(username).trim().toLowerCase();
+    const cleanFullName = fullName && String(fullName).trim() ? String(fullName).trim() : cleanUsername;
     const existing = await staffRepo.findOne({ username: cleanUsername });
     if (existing) {
       throw new ApiError(400, 'DUPLICATE_USERNAME', 'Tên đăng nhập đã tồn tại', {
@@ -179,8 +205,16 @@ authStaffRouter.post('/staff', async (req, res, next) => {
       });
     }
 
-    const validRoles = ['SALES', 'WAREHOUSE', 'ADMIN'];
+    const validRoles = ['SALES', 'WAREHOUSE', 'ADMIN', 'HR', 'ACCOUNTANT', 'MARKETING'];
     const staffRole = validRoles.includes(role) ? role : 'SALES';
+    if (staffRole === 'ADMIN' && req.user && req.user.role !== 'ADMIN') {
+      throw new ApiError(
+        403,
+        'FORBIDDEN',
+        'HR không được phép tạo tài khoản có quyền Quản trị viên (ADMIN)'
+      );
+    }
+    const staffDept = department || (['HR', 'ACCOUNTANT', 'MARKETING', 'ADMIN'].includes(staffRole) ? 'OFFICE' : 'SALES');
 
     const count = await staffRepo.countDocuments({});
     const code = `NV${String(count + 1).padStart(3, '0')}`;
@@ -189,9 +223,18 @@ authStaffRouter.post('/staff', async (req, res, next) => {
       code,
       username: cleanUsername,
       passwordHash: hashPassword(String(password)),
-      fullName: String(fullName).trim(),
+      fullName: cleanFullName,
       phone: phone ? String(phone).trim() : '',
+      email: email ? String(email).trim() : '',
       role: staffRole,
+      department: staffDept,
+      contractType,
+      citizenId: citizenId ? String(citizenId).trim() : '',
+      address: address ? String(address).trim() : '',
+      contractStartDate: contractStartDate ? new Date(contractStartDate) : undefined,
+      contractEndDate: contractEndDate ? new Date(contractEndDate) : undefined,
+      contractFileUrl: contractFileUrl ? String(contractFileUrl) : '',
+      contractFileName: contractFileName ? String(contractFileName).trim() : '',
       status: 'ACTIVE',
     });
 
@@ -214,18 +257,76 @@ authStaffRouter.patch('/staff/:id', async (req, res, next) => {
       throw new ApiError(404, 'STAFF_NOT_FOUND', 'Không tìm thấy nhân viên');
     }
 
-    const { fullName, phone, role, status, password } = req.body || {};
+    const {
+      fullName,
+      phone,
+      email,
+      role,
+      department,
+      contractType,
+      citizenId,
+      address,
+      contractStartDate,
+      contractEndDate,
+      contractFileUrl,
+      contractFileName,
+      status,
+      password,
+    } = req.body || {};
     const updateData: Record<string, any> = {};
+
+    if (req.user && req.user.role !== 'ADMIN') {
+      if (staff.role === 'ADMIN') {
+        throw new ApiError(
+          403,
+          'FORBIDDEN',
+          'HR không được phép chỉnh sửa tài khoản Quản trị viên (ADMIN)'
+        );
+      }
+      if (role === 'ADMIN') {
+        throw new ApiError(
+          403,
+          'FORBIDDEN',
+          'HR không được phép cấp quyền Quản trị viên (ADMIN) cho nhân sự'
+        );
+      }
+    }
 
     if (fullName !== undefined) updateData.fullName = String(fullName).trim();
     if (phone !== undefined) updateData.phone = String(phone).trim();
+    if (email !== undefined) updateData.email = String(email).trim();
     if (role !== undefined) {
-      if (!['SALES', 'WAREHOUSE', 'ADMIN'].includes(role)) {
+      if (!['SALES', 'WAREHOUSE', 'ADMIN', 'HR', 'ACCOUNTANT', 'MARKETING'].includes(role)) {
         throw new ApiError(400, 'INVALID_ROLE', 'Vai trò không hợp lệ');
       }
       updateData.role = role;
     }
+    if (department !== undefined) {
+      if (!['OFFICE', 'SALES'].includes(department)) {
+        throw new ApiError(400, 'INVALID_DEPARTMENT', 'Phòng ban không hợp lệ');
+      }
+      updateData.department = department;
+    }
+    if (contractType !== undefined) updateData.contractType = contractType;
+    if (citizenId !== undefined) updateData.citizenId = String(citizenId).trim();
+    if (address !== undefined) updateData.address = String(address).trim();
+    if (contractStartDate !== undefined) updateData.contractStartDate = contractStartDate ? new Date(contractStartDate) : undefined;
+    if (contractEndDate !== undefined) updateData.contractEndDate = contractEndDate ? new Date(contractEndDate) : undefined;
+    if (contractFileUrl !== undefined || contractFileName !== undefined) {
+      if (req.user && !['HR', 'ADMIN'].includes(req.user.role)) {
+        throw new ApiError(
+          403,
+          'FORBIDDEN',
+          'Chỉ Nhân sự (HR) mới được phép tải lên, chỉnh sửa hoặc xóa file hợp đồng'
+        );
+      }
+      if (contractFileUrl !== undefined) updateData.contractFileUrl = String(contractFileUrl);
+      if (contractFileName !== undefined) updateData.contractFileName = String(contractFileName).trim();
+    }
     if (status !== undefined) {
+      if (req.user && req.user.role !== 'ADMIN') {
+        throw new ApiError(403, 'FORBIDDEN', 'Chỉ Quản trị viên (ADMIN) mới được phép khóa hoặc mở khóa tài khoản');
+      }
       if (!['ACTIVE', 'LOCKED'].includes(status)) {
         throw new ApiError(400, 'INVALID_STATUS', 'Trạng thái không hợp lệ');
       }

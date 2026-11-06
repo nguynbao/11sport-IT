@@ -19,6 +19,7 @@ import ReturnExchangeTab from "@/components/ReturnExchangeTab";
 import InvoicePdfModal from "@/components/InvoicePdfModal";
 import AccountProfileTab from "@/components/AccountProfileTab";
 import WiseCalculatorStash from "@/components/WiseCalculatorStash";
+import HeaderAttendanceBar from "@/components/HeaderAttendanceBar";
 import DrawerMenu, {
   TabType,
   TabConfig,
@@ -86,6 +87,9 @@ function getDefaultTabForRole(role: UserRole): TabType {
 
 function getRoleDisplayName(role?: UserRole): string {
   if (role === "ADMIN") return "Quản lý (ADMIN)";
+  if (role === "HR") return "Nhân sự (HR)";
+  if (role === "ACCOUNTANT") return "Kế toán (ACCOUNTANT)";
+  if (role === "MARKETING") return "Marketing (MARKETING)";
   if (role === "WAREHOUSE") return "Thủ kho (WAREHOUSE)";
   return "NV Bán hàng (SALES)";
 }
@@ -98,6 +102,7 @@ export default function WebPosHomePage() {
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [invoiceOrder, setInvoiceOrder] = useState<Order | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [showAttendanceModal, setShowAttendanceModal] = useState(false);
 
   // State form Login
   const [username, setUsername] = useState("");
@@ -304,6 +309,11 @@ export default function WebPosHomePage() {
             </div>
           </div>
 
+          {/* Thanh Chấm công trực tiếp nằm ở giữa Header (Play / Pause & Đồng hồ giờ làm) */}
+          <div className="flex-1 flex items-center justify-center px-1">
+            <HeaderAttendanceBar currentUser={currentUser} />
+          </div>
+
           {/* Thông tin tài khoản đang đăng nhập & Đăng xuất */}
           <div className="flex items-center gap-1.5 md:gap-2.5 shrink-0">
             <div className="hidden md:flex items-center gap-2 bg-slate-800 px-3.5 py-2 rounded-xl border border-slate-700">
@@ -447,7 +457,10 @@ export default function WebPosHomePage() {
         currentUser={currentUser}
         activeDrawerPage={activeDrawerPage}
         onOpenProfile={() => setActiveDrawerPage("PROFILE")}
-        onOpenAttendance={() => setActiveDrawerPage("ATTENDANCE")}
+        onOpenAttendance={() => {
+          setDrawerOpen(false);
+          setActiveDrawerPage("PROFILE");
+        }}
         onLogout={handleLogout}
         getRoleDisplayName={getRoleDisplayName}
         cmsUrl={

@@ -34,15 +34,20 @@
 ### 2.1 Xác thực & Nhân viên (`/auth`, `/staff`)
 - `POST /api/v1/auth/login`
   - Body: `{ "username": "string", "password": "string" }`
-  - Response: `{ "data": { "token": "string", "user": { "_id": "...", "code": "NV001", "username": "sales1", "fullName": "Nguyễn Văn Bán", "role": "SALES | WAREHOUSE | ADMIN", "status": "ACTIVE | LOCKED" } } }`
+  - Response: `{ "data": { "token": "string", "user": { "_id": "...", "code": "NV001", "username": "sales1", "fullName": "Nguyễn Văn Bán", "role": "ADMIN | HR | ACCOUNTANT | MARKETING | SALES", "department": "OFFICE | SALES", "status": "ACTIVE | LOCKED" } } }`
 - `POST /api/v1/auth/change-password` *(v2.3)*
   - Đổi mật khẩu của tài khoản đang đăng nhập.
   - Body: `{ "currentPassword": "string", "newPassword": "string" }`
   - Quy tắc: Kiểm tra `currentPassword` khớp mật khẩu hiện tại (sai → `400 INVALID_CURRENT_PASSWORD`), `newPassword` tối thiểu 4 ký tự (`400 VALIDATION_ERROR`).
   - Response: `{ "data": { "changed": true, "username": "admin", "fullName": "Quản Trị Viên 11Sport" }, "meta": {} }`
-- `GET /api/v1/staff` — Danh sách nhân viên (CMS)
-- `POST /api/v1/staff` — Tạo nhân viên mới (`username`, `password`, `fullName`, `phone`, `role`)
-- `PATCH /api/v1/staff/:id` — Cập nhật thông tin, phân quyền (`role`), khóa/mở khóa tài khoản (`status: "ACTIVE" | "LOCKED"`), hoặc cấp lại mật khẩu mới (`password`)
+- `GET /api/v1/staff` — Danh sách nhân viên (CMS: role `ADMIN` hoặc `HR`)
+- `POST /api/v1/staff` — Tạo nhân viên mới (`username`, `password`, `fullName`, `phone`, `role`, `department`, `contractType`, `citizenId`, `contractStartDate`, `contractEndDate`, `contractFileUrl`, `contractFileName`):
+  - `ADMIN` tạo tài khoản nhanh với `username`, `password`, `role` (được cấp mọi role kể cả `ADMIN`; nếu bỏ trống `fullName` hệ thống tự lấy theo `username`).
+  - `HR` tạo tài khoản kèm hồ sơ nhân sự chi tiết và tải file hợp đồng (`contractFileUrl`, `contractFileName`), nhưng **không được phép** cấp `role: "ADMIN"` (trả `403 FORBIDDEN`).
+- `PATCH /api/v1/staff/:id` — Cập nhật thông tin nhân sự & phân quyền:
+  - `HR` được chỉnh sửa toàn bộ thông tin hồ sơ nhân sự (`fullName`, `phone`, `email`, `citizenId`, `address`, `department`, `contractType`, `contractStartDate`, `contractEndDate`, `contractFileUrl`, `contractFileName`, `password`) — bao gồm tải lên mới, thay thế hoặc xóa file hợp đồng (`contractFileUrl: ""`, `contractFileName: ""`) — và đổi `role` giữa `SALES | HR | ACCOUNTANT | MARKETING`, nhưng **không được phép** nâng quyền user thành `ADMIN` hoặc chỉnh sửa tài khoản `ADMIN` (`403 FORBIDDEN`), và **không được phép** khóa/mở khóa tài khoản (`status`).
+  - Nhân viên thông thường trên Web chỉ được xem/tải về file hợp đồng (`contractFileUrl`, `contractFileName`), không được phép tự chỉnh sửa hoặc xóa file hợp đồng (`403 FORBIDDEN`).
+  - `ADMIN` được phép cấp mọi `role` (bao gồm `ADMIN`) và khóa/mở khóa tài khoản (`status: "ACTIVE" | "LOCKED"`).
 
 ### 2.2 Danh mục - Category (`/categories`)
 - `GET /api/v1/categories`
@@ -709,3 +714,71 @@
     - `summary`: `{ totalOutstandingDebt, totalInitialDebt, totalCollectedDebt, activeDebtOrdersCount, settledDebtOrdersCount, activeDebtCustomersCount, overdueDebtAmount, overdueOrdersCount, newDebtInPeriod, collectedInPeriod }`
     - `customers`: Danh sách gom nhóm công nợ theo Khách hàng (`phone`, `customerName`, `totalOrders`, `activeDebtOrders`, `overdueOrders`, `totalOrderAmount`, `totalPaidAmount`, `totalDebtAmount`, `nearestDueDate`, `lastOrderAt`, `orders[]`, `paymentHistory[]`).
     - `orders`: Danh sách chi tiết các đơn hàng có phát sinh công nợ (`initialDebtAmount > 0 || debtAmount > 0`) kèm cờ `isOverdue`, `daysOverdue` để hiển thị cảnh báo đỏ trên CMS.
+
+---
+
+### 2.13 Quản trị Nhân sự, Chấm công & Xếp ca HRM (`/attendance`, `/leave-requests`, `/shifts`, `/holidays`) *(v4.0)*
+
+#### A. Chấm công (`/attendance`)
+- `POST /api/v1/attendance/check-in`
+  - Body: `{ "latitude": number, "longitude": number, "clientIp"?: string, "shiftCode"?: "SHIFT_1 | SHIFT_2" }`
+  - Headers: `Authorization: Bearer <token>`
+  - Logic xác thực:
+    - Tự động nhận diện ca làm việc theo giờ bấm Check-in (không hiện dropdown chọn Ca 1 / Ca 2 trên Header): Với nhân viên `SALES`, nếu không truyền `shiftCode`, hệ thống tự động gán `SHIFT_1` (`08:30 - 17:30`) nếu check-in trước `11:30`, và gán `SHIFT_2` (`12:00 - 21:00`) nếu check-in từ `11:30` trở đi. Khối `OFFICE` mặc định `SHIFT_1`.
+    - Nếu nhân viên có đơn `WFH` được `HR` duyệt trong ngày hôm nay: Bỏ qua kiểm tra GPS & IP (ghi nhận `checkInType: "WFH"`).
+    - **Kiểm tra 2 Cơ sở theo cặp (`Location 1 đi với Mạng 1`, `Location 2 đi với Mạng 2`)**:
+      - Nếu không có đơn WFH: Vị trí GPS và IP Wi-Fi của nhân viên phải đồng thời khớp với **Cơ sở 1 (`ATTENDANCE_OFFICE_LAT/LNG` + `ATTENDANCE_ALLOWED_IPS`)** HOẶC đồng thời khớp với **Cơ sở 2 (`ATTENDANCE_OFFICE_2_LAT/LNG` + `ATTENDANCE_ALLOWED_IPS_2`)**.
+      - Nếu đứng ở Location 1 nhưng dùng Mạng 2 (hoặc ngược lại đứng ở Location 2 nhưng dùng Mạng 1) -> Trả lỗi `400 WIFI_IP_NOT_ALLOWED`. Nếu nằm ngoài bán kính của cả 2 cơ sở -> Trả lỗi `400 LOCATION_OUT_OF_RANGE`.
+    - Làm tròn check-in sớm: Nếu check-in trước giờ bắt đầu ca (`08:30` hoặc `12:00`), mốc tính công `workStartTime` tự động quy về `08:30` hoặc `12:00`.
+  - Response: `{ "data": { "attendance": { "id": "...", "date": "2026-11-05", "shiftCode": "SHIFT_1 | SHIFT_2", "checkInTime": "...", "workStartTime": "...", "status": "ON_TIME | LATE", "lateMinutes": 0, "checkInType": "STANDARD | WFH" } } }`
+
+- `POST /api/v1/attendance/check-out`
+  - Body: `{ "forceEarly": boolean, "earlyReason": string, "latitude"?: number, "longitude"?: number, "clientIp"?: string }`
+  - Logic xác thực:
+    - Kiểm tra vị trí & mạng 2 cơ sở (`Location 1 + Mạng 1` hoặc `Location 2 + Mạng 2`) tương tự lúc Check-in đối với nhân viên làm việc tại cơ sở (`checkInType !== "WFH"`).
+    - Chặn bấm Check-out & Bàn giao ca khi chưa đủ giờ làm việc của ca (`17:30` đối với Ca 1, `21:00` đối với Ca 2), trừ khi nhân viên có đơn xin về sớm (`type: "EARLY"`) đã được `HR` duyệt trong ngày.
+    - Nếu nhân viên là `SALES` và đã đủ giờ kết ca: Khi bấm nút Pause (Check-out) trên Header mà chưa lập biên bản bàn giao Kho Tầng 1 trong ca, trả `400 HANDOVER_REQUIRED` để giao diện tự động mở popup Bàn giao ca (`ShiftHandoverModal`) mà không cần nút `Bàn giao K1` trên Header. Sau khi gửi biên bản bàn giao, tự động hoàn tất Check-out.
+    - Tự động trừ giờ nghỉ trưa: Với nhân viên `OFFICE`, khoảng thời gian `12:00 - 13:30` (1.5h) được tự động loại khỏi giờ làm thực tế.
+  - Response: `{ "data": { "attendance": { "id": "...", "checkOutTime": "...", "totalWorkHours": 7.5, "status": "COMPLETED | EARLY_LEAVE" } } }`
+
+- `GET /api/v1/attendance/today`
+  - Trả về trạng thái chấm công của nhân viên hôm nay, ca được phân công, trạng thái WFH, và thông tin bàn giao ca (nếu là Sales).
+
+- `GET /api/v1/attendance/history`
+  - Query: `?month=11&year=2026&staffId=...`
+  - Phân quyền: Nhân viên tự xem lịch sử của mình; `HR` và `ADMIN` xem được của toàn bộ nhân viên.
+
+- `GET /api/v1/attendance/config`
+  - Trả về cấu hình vị trí GPS và danh sách IP Wi-Fi/LAN công ty (chỉ đọc từ biến môi trường `.env` trên Server: `ATTENDANCE_OFFICE_NAME`, `ATTENDANCE_OFFICE_LAT`, `ATTENDANCE_OFFICE_LNG`, `ATTENDANCE_MAX_DISTANCE_METERS`, `ATTENDANCE_REQUIRE_GPS`, `ATTENDANCE_REQUIRE_IP`, `ATTENDANCE_ALLOWED_IPS`), kèm `detectedClientIp`. Không cho phép chỉnh sửa qua UI/API (HR và Admin đều không được sửa trên giao diện).
+  - Response: `{ "data": { "config": { "officeName": "...", "officeLat": 16.0352, "officeLng": 108.2185, "maxDistanceMeters": 50, "allowedIps": ["127.0.0.1", "::1"], "requireGps": true, "requireIp": false }, "detectedClientIp": "127.0.0.1" } }`
+
+#### B. Đơn từ & Phê duyệt WFH / Nghỉ phép (`/leave-requests`)
+- `POST /api/v1/leave-requests`
+  - Tạo đơn xin nghỉ (`type: "WFH" | "OFF" | "LATE" | "EARLY"`), `date`, `reason`.
+  - Ràng buộc: Chỉ nhân viên `OFFICE` mới được nộp đơn `WFH`.
+- `GET /api/v1/leave-requests`
+  - HR xem danh sách đơn chờ duyệt; nhân viên xem danh sách đơn của mình.
+- `PATCH /api/v1/leave-requests/:id`
+  - HR duyệt hoặc từ chối đơn: `{ "status": "APPROVED" | "REJECTED", "reviewNote": "string" }`.
+
+#### C. Xếp ca & Bàn giao Kho Tầng 1 (`/shifts`)
+- `POST /api/v1/shifts/preferences`
+  - Sales nộp đăng ký ca tuần tới vào Thứ 6: `{ "weekStart": "2026-11-09", "preferences": [{ "date": "2026-11-09", "isOff": false, "preferredShift": "SHIFT_1 | SHIFT_2" }] }`.
+- `GET /api/v1/shifts/schedule`
+  - Xem bảng lịch ca của tuần: `?weekStart=2026-11-09`.
+- `POST /api/v1/shifts/auto-assign`
+  - HR kích hoạt tự động xếp ca dựa trên preferences Thứ 6: `{ "weekStart": "2026-11-09" }`.
+- `PUT /api/v1/shifts/assign`
+  - HR kéo - thả (Drag & Drop) hoặc chỉnh sửa phân ca: `{ "shiftAssignmentId": "...", "staffId": "...", "date": "...", "shiftCode": "SHIFT_1 | SHIFT_2" }`.
+- `POST /api/v1/shifts/handover`
+  - Sales Ca 1 tạo biên bản bàn giao Kho Tầng 1:
+    - Body: `{ "cashBalance": 17420000, "discrepancies": [{ "productCode": "GASIA221401DO38", "expected": 10, "actual": 9, "note": "Hàng mẫu trưng bày" }] }`
+- `POST /api/v1/shifts/handover/:id/confirm`
+  - Sales Ca 2 (đã check-in) bấm xác nhận nhận bàn giao ca: `{ "accept": true, "note": "string" }` -> Mở khóa nút Check-out cho Ca 1.
+
+#### D. Cấu hình Ngày Lễ (`/holidays`)
+- `GET /api/v1/holidays`
+  - Danh sách các ngày lễ trong năm kèm tên chú thích bên dưới (phục vụ hiển thị trên Calendar).
+- `POST /api/v1/holidays` (Role `HR` hoặc `ADMIN`)
+  - Body: `{ "date": "2026-01-01", "name": "Tết Dương Lịch", "note": "Nghỉ lễ toàn quốc" }`.
+- `DELETE /api/v1/holidays/:id` (Role `HR` hoặc `ADMIN`).

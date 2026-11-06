@@ -16,7 +16,9 @@ function resolveApiBaseUrl(): string {
   return RENDER_API_BASE_URL;
 }
 
-export type UserRole = "SALES" | "WAREHOUSE" | "ADMIN";
+export type UserRole = "SALES" | "WAREHOUSE" | "ADMIN" | "HR" | "ACCOUNTANT" | "MARKETING";
+export type Department = "OFFICE" | "SALES";
+export type ContractType = "FULLTIME" | "PARTTIME" | "PROBATION";
 
 export interface StaffUser {
   _id: string;
@@ -24,9 +26,76 @@ export interface StaffUser {
   username: string;
   fullName: string;
   phone?: string;
+  email?: string;
+  citizenId?: string;
+  address?: string;
   role: UserRole;
+  department?: Department;
+  contractType?: ContractType;
+  contractStartDate?: string;
+  contractEndDate?: string;
+  contractFileUrl?: string;
+  contractFileName?: string;
   status: "ACTIVE" | "LOCKED";
   createdAt?: string;
+}
+
+export interface Holiday {
+  _id: string;
+  date: string;
+  name: string;
+  note?: string;
+}
+
+export interface LeaveRequest {
+  _id: string;
+  staffId: string;
+  staffCode: string;
+  staffName: string;
+  department: Department;
+  type: "WFH" | "OFF" | "LATE" | "EARLY";
+  date: string;
+  reason: string;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  reviewedBy?: string;
+  reviewedAt?: string;
+  reviewNote?: string;
+  createdAt?: string;
+}
+
+export interface ShiftAssignment {
+  _id: string;
+  weekStart: string;
+  date: string;
+  dayOfWeek: number;
+  staffId: string;
+  staffCode: string;
+  staffName: string;
+  shiftCode: "SHIFT_1" | "SHIFT_2" | "OFF";
+  preferenceShift?: "SHIFT_1" | "SHIFT_2" | "OFF";
+  isOffRequested?: boolean;
+  assignedBy: "AUTO" | "HR";
+  notes?: string;
+}
+
+export interface AttendanceRecord {
+  _id: string;
+  staffId: string;
+  staffCode: string;
+  staffName: string;
+  department: Department;
+  date: string;
+  shiftCode: "SHIFT_1" | "SHIFT_2";
+  checkInTime: string;
+  workStartTime: string;
+  checkOutTime?: string;
+  checkInType: "STANDARD" | "WFH";
+  status: "ON_TIME" | "LATE" | "EARLY_LEAVE" | "COMPLETED";
+  lateMinutes: number;
+  earlyMinutes: number;
+  lunchPauseMinutes: number;
+  totalWorkHours: number;
+  notes?: string;
 }
 
 export interface Category {
@@ -1328,4 +1397,103 @@ export function isCompactBarcodeMatchVariant(scannedRaw: string, targetVariantCo
     }
   }
   return false;
+}
+
+// ============================================================
+// HRM & Attendance APIs (v4.0)
+// ============================================================
+
+export async function fetchHolidays(): Promise<Holiday[]> {
+  const res = await apiRequest<Holiday[]>("/holidays");
+  return res.data;
+}
+
+export async function createHolidayApi(data: { date: string; name: string; note?: string }): Promise<Holiday> {
+  const res = await apiRequest<Holiday>("/holidays", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  return res.data;
+}
+
+export async function deleteHolidayApi(id: string): Promise<boolean> {
+  const res = await apiRequest<{ success: boolean }>(`/holidays/${id}`, {
+    method: "DELETE",
+  });
+  return res.data.success;
+}
+
+export async function fetchLeaveRequests(params?: { status?: string; type?: string; date?: string; staffId?: string }): Promise<LeaveRequest[]> {
+  const query = new URLSearchParams();
+  if (params?.status) query.set("status", params.status);
+  if (params?.type) query.set("type", params.type);
+  if (params?.date) query.set("date", params.date);
+  if (params?.staffId) query.set("staffId", params.staffId);
+  const qStr = query.toString();
+  const res = await apiRequest<LeaveRequest[]>(`/leave-requests${qStr ? `?${qStr}` : ""}`);
+  return res.data;
+}
+
+export async function reviewLeaveRequestApi(id: string, status: "APPROVED" | "REJECTED", reviewNote?: string): Promise<LeaveRequest> {
+  const res = await apiRequest<LeaveRequest>(`/leave-requests/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ status, reviewNote }),
+  });
+  return res.data;
+}
+
+export async function fetchShiftSchedule(weekStart?: string): Promise<{ assignments: ShiftAssignment[]; staffList: StaffUser[] }> {
+  const query = weekStart ? `?weekStart=${weekStart}` : "";
+  const res = await apiRequest<{ assignments: ShiftAssignment[]; staffList: StaffUser[] }>(`/shifts/schedule${query}`);
+  return res.data;
+}
+
+export async function assignShiftApi(data: { staffId: string; date: string; weekStart?: string; dayOfWeek?: number; shiftCode: "SHIFT_1" | "SHIFT_2" | "OFF" }): Promise<ShiftAssignment> {
+  const res = await apiRequest<ShiftAssignment>("/shifts/assign", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+  return res.data;
+}
+
+export async function fetchAttendanceHistory(params?: { staffId?: string; month?: string; year?: string }): Promise<AttendanceRecord[]> {
+  const query = new URLSearchParams();
+  if (params?.staffId) query.set("staffId", params.staffId);
+  if (params?.month) query.set("month", params.month);
+  if (params?.year) query.set("year", params.year);
+  const qStr = query.toString();
+  const res = await apiRequest<AttendanceRecord[]>(`/attendance/history${qStr ? `?${qStr}` : ""}`);
+  return res.data;
+}
+
+export interface AttendanceConfig {
+  _id?: string;
+  key?: string;
+  officeName: string;
+  officeLat: number;
+  officeLng: number;
+  maxDistanceMeters: number;
+  allowedIps: string[];
+  requireGps: boolean;
+  requireIp: boolean;
+  updatedBy?: string;
+  updatedAt?: string;
+}
+
+export async function fetchAttendanceConfig(): Promise<{
+  config: AttendanceConfig;
+  detectedClientIp: string;
+}> {
+  const res = await apiRequest<{ config: AttendanceConfig; detectedClientIp: string }>("/attendance/config");
+  return res.data;
+}
+
+export async function updateAttendanceConfigApi(
+  payload: Partial<AttendanceConfig>
+): Promise<{ config: AttendanceConfig; detectedClientIp: string }> {
+  const res = await apiRequest<{ config: AttendanceConfig; detectedClientIp: string }>("/attendance/config", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+  return res.data;
 }

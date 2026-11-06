@@ -23,9 +23,9 @@ import { filterAndRankBySearch } from '../utils/search';
 
 export const productsInventoryRouter = Router();
 
-// Quản lý/Admin (role ADMIN) quản lý toàn bộ giá & tồn; Thủ kho (role WAREHOUSE) cũng được phép nhập/cập nhật giá bán
-const isPriceManager = (role?: string) => role === 'ADMIN';
-const canEditSellingPrice = (role?: string) => role === 'ADMIN' || role === 'WAREHOUSE';
+// Quản lý/Admin (role ADMIN) quản lý toàn bộ giá & tồn; Thủ kho/Kế toán (role WAREHOUSE | ACCOUNTANT) cũng được phép nhập/cập nhật giá bán
+const isPriceManager = (role?: string) => role === 'ADMIN' || role === 'ACCOUNTANT';
+const canEditSellingPrice = (role?: string) => role === 'ADMIN' || role === 'WAREHOUSE' || role === 'ACCOUNTANT';
 
 function inferActorRole(
   explicitRole?: string,
@@ -35,7 +35,7 @@ function inferActorRole(
   fallback = 'ADMIN'
 ): string {
   const cleanRole = String(explicitRole || '').trim().toUpperCase();
-  if (cleanRole === 'ADMIN' || cleanRole === 'WAREHOUSE' || cleanRole === 'SALES') {
+  if (cleanRole === 'ADMIN' || cleanRole === 'WAREHOUSE' || cleanRole === 'ACCOUNTANT' || cleanRole === 'HR' || cleanRole === 'MARKETING' || cleanRole === 'SALES') {
     return cleanRole;
   }
   const uid = String(userId || '').trim();

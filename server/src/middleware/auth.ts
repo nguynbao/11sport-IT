@@ -39,6 +39,7 @@ export async function attachUserContext(
           username: staff.username,
           fullName: staff.fullName,
           role: staff.role,
+          department: staff.department,
           code: staff.code,
         };
         return next();
@@ -53,6 +54,7 @@ export async function attachUserContext(
         username: defaultStaff.username,
         fullName: defaultStaff.fullName,
         role: defaultStaff.role,
+        department: defaultStaff.department,
         code: defaultStaff.code,
       };
     }

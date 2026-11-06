@@ -19,7 +19,9 @@ function resolveApiBaseUrl(): string {
   return RENDER_API_BASE_URL;
 }
 
-export type UserRole = "SALES" | "WAREHOUSE" | "ADMIN";
+export type UserRole = "SALES" | "WAREHOUSE" | "ADMIN" | "HR" | "ACCOUNTANT" | "MARKETING";
+export type Department = "OFFICE" | "SALES";
+export type ContractType = "FULLTIME" | "PARTTIME" | "PROBATION";
 
 export interface StaffUser {
   _id: string;
@@ -27,7 +29,16 @@ export interface StaffUser {
   username: string;
   fullName: string;
   phone?: string;
+  email?: string;
+  citizenId?: string;
+  address?: string;
   role: UserRole;
+  department?: Department;
+  contractType?: ContractType;
+  contractStartDate?: string;
+  contractEndDate?: string;
+  contractFileUrl?: string;
+  contractFileName?: string;
   status: "ACTIVE" | "LOCKED";
 }
 
@@ -1147,4 +1158,109 @@ export function isCompactBarcodeMatchVariant(scannedRaw: string, targetVariantCo
     }
   }
   return false;
+}
+
+// ============================================================
+// HRM, Attendance & Shift Handover APIs (v4.0)
+// ============================================================
+
+export interface AttendanceData {
+  _id: string;
+  staffId: string;
+  staffCode: string;
+  staffName: string;
+  department: Department;
+  date: string;
+  shiftCode: "SHIFT_1" | "SHIFT_2";
+  checkInTime: string;
+  workStartTime: string;
+  checkOutTime?: string;
+  checkInType: "STANDARD" | "WFH";
+  status: "ON_TIME" | "LATE" | "EARLY_LEAVE" | "COMPLETED";
+  lateMinutes: number;
+  earlyMinutes: number;
+  totalWorkHours: number;
+}
+
+export async function checkInApi(params: {
+  latitude?: number;
+  longitude?: number;
+  shiftCode?: "SHIFT_1" | "SHIFT_2";
+  bypassNetwork?: boolean;
+}): Promise<{ attendance: AttendanceData; isWfh: boolean; message: string }> {
+  const res = await apiRequest<{ attendance: AttendanceData; isWfh: boolean; message: string }>(
+    "/attendance/check-in",
+    {
+      method: "POST",
+      body: JSON.stringify(params),
+    }
+  );
+  return res.data;
+}
+
+export async function checkOutApi(params?: {
+  forceEarly?: boolean;
+  earlyReason?: string;
+  latitude?: number;
+  longitude?: number;
+  bypassNetwork?: boolean;
+}): Promise<{ attendance: AttendanceData; message: string }> {
+  const res = await apiRequest<{ attendance: AttendanceData; message: string }>(
+    "/attendance/check-out",
+    {
+      method: "POST",
+      body: JSON.stringify(params || {}),
+    }
+  );
+  return res.data;
+}
+
+export async function getTodayAttendanceApi(): Promise<{
+  date: string;
+  attendance: AttendanceData | null;
+  isWfhToday: boolean;
+  isEarlyApprovedToday?: boolean;
+  handoverStatus: "PENDING" | "ACCEPTED" | null;
+}> {
+  const res = await apiRequest<{
+    date: string;
+    attendance: AttendanceData | null;
+    isWfhToday: boolean;
+    isEarlyApprovedToday?: boolean;
+    handoverStatus: "PENDING" | "ACCEPTED" | null;
+  }>("/attendance/today");
+  return res.data;
+}
+
+export async function createHandoverApi(data: {
+  date?: string;
+  shiftCode?: "SHIFT_1" | "SHIFT_2";
+  cashBalance: number;
+  discrepancies: Array<{ productCode: string; expected: number; actual: number; note?: string }>;
+  notes?: string;
+}): Promise<any> {
+  const res = await apiRequest("/shifts/handover", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  return res.data;
+}
+
+export async function confirmHandoverApi(id: string, accept: boolean, note?: string): Promise<any> {
+  const res = await apiRequest(`/shifts/handover/${id}/confirm`, {
+    method: "POST",
+    body: JSON.stringify({ accept, note }),
+  });
+  return res.data;
+}
+
+export async function submitShiftPreferencesApi(data: {
+  weekStart: string;
+  preferences: Array<{ date: string; dayOfWeek: number; isOffRequested: boolean; preferenceShift: string }>;
+}): Promise<any> {
+  const res = await apiRequest("/shifts/preferences", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  return res.data;
 }
