@@ -4,19 +4,17 @@ import React, { useState, useEffect } from "react";
 import {
   Holiday,
   LeaveRequest,
-  ShiftAssignment,
-  AttendanceRecord,
   StaffUser,
   fetchHolidays,
+  syncVietnamHolidaysApi,
   createHolidayApi,
   deleteHolidayApi,
   fetchLeaveRequests,
   reviewLeaveRequestApi,
-  fetchShiftSchedule,
-  assignShiftApi,
-  fetchAttendanceHistory,
 } from "@/lib/api";
 import StaffModule from "./StaffModule";
+import AttendanceTimesheetModule from "./AttendanceTimesheetModule";
+import ShiftScheduleModule from "./ShiftScheduleModule";
 import {
   Calendar as CalendarIcon,
   CheckCircle2,
@@ -42,13 +40,18 @@ type SubTab = "CALENDAR" | "LEAVE_REQUESTS" | "SHIFTS" | "ATTENDANCE_LOG" | "STA
 export default function HrmAttendanceModule({ currentUser }: { currentUser: StaffUser | null }) {
   const [activeTab, setActiveTab] = useState<SubTab>("CALENDAR");
 
-  // Tab 1: Holidays
+  // Tab 1: Holidays & Monthly Calendar
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [holidayDate, setHolidayDate] = useState("");
   const [holidayName, setHolidayName] = useState("");
   const [holidayNote, setHolidayNote] = useState("");
+  const [holidayIsOfficial, setHolidayIsOfficial] = useState<boolean>(true);
   const [showAddHolidayModal, setShowAddHolidayModal] = useState(false);
   const [holidayLoading, setHolidayLoading] = useState(false);
+  const [syncingVn, setSyncingVn] = useState(false);
+
+  const [calendarYear, setCalendarYear] = useState<number>(() => new Date().getFullYear());
+  const [calendarMonth, setCalendarMonth] = useState<number>(() => new Date().getMonth()); // 0..11
 
   // Tab 2: Leave Requests
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
@@ -56,21 +59,6 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
   const [reqFilterType, setReqFilterType] = useState<string>("ALL");
   const [reviewNoteInput, setReviewNoteInput] = useState<{ [id: string]: string }>({});
 
-  // Tab 3: Shift Scheduling
-  const [weekStart, setWeekStart] = useState<string>(() => {
-    const d = new Date();
-    const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Thứ Hai tuần này
-    const mon = new Date(d.setDate(diff));
-    return mon.toISOString().slice(0, 10);
-  });
-  const [assignments, setAssignments] = useState<ShiftAssignment[]>([]);
-  const [salesStaffList, setSalesStaffList] = useState<StaffUser[]>([]);
-  const [draggedStaff, setDraggedStaff] = useState<StaffUser | null>(null);
-
-  // Tab 4: Attendance Log
-  const [attendanceLogs, setAttendanceLogs] = useState<AttendanceRecord[]>([]);
-  const [logFilterDate, setLogFilterDate] = useState<string>("");
 
   const [loading, setLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -83,20 +71,16 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
   // Load data based on tab
   useEffect(() => {
     if (activeTab === "CALENDAR") {
-      loadHolidays();
+      loadHolidays(calendarYear);
     } else if (activeTab === "LEAVE_REQUESTS") {
       loadRequests();
-    } else if (activeTab === "SHIFTS") {
-      loadShifts();
-    } else if (activeTab === "ATTENDANCE_LOG") {
-      loadAttendance();
     }
-  }, [activeTab, weekStart]);
+  }, [activeTab, calendarYear]);
 
-  const loadHolidays = async () => {
+  const loadHolidays = async (yearParam = calendarYear) => {
     setLoading(true);
     try {
-      const data = await fetchHolidays();
+      const data = await fetchHolidays(yearParam);
       setHolidays(data);
     } catch (e: any) {
       showToast("Lỗi tải danh sách ngày lễ");
@@ -105,18 +89,61 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
     }
   };
 
+  const handleSyncVietnamHolidays = async () => {
+    setSyncingVn(true);
+    try {
+      const res = await syncVietnamHolidaysApi(calendarYear);
+      showToast(`Đã đồng bộ ${res.totalVietnamHolidays} ngày lễ Việt Nam năm ${calendarYear}`);
+      await loadHolidays(calendarYear);
+    } catch (err: any) {
+      alert(err.message || "Lỗi đồng bộ ngày lễ Việt Nam");
+    } finally {
+      setSyncingVn(false);
+    }
+  };
+
+  const handlePrevMonth = () => {
+    if (calendarMonth === 0) {
+      setCalendarMonth(11);
+      setCalendarYear((y) => y - 1);
+    } else {
+      setCalendarMonth((m) => m - 1);
+    }
+  };
+
+  const handleNextMonth = () => {
+    if (calendarMonth === 11) {
+      setCalendarMonth(0);
+      setCalendarYear((y) => y + 1);
+    } else {
+      setCalendarMonth((m) => m + 1);
+    }
+  };
+
+  const handleGoToday = () => {
+    const now = new Date();
+    setCalendarYear(now.getFullYear());
+    setCalendarMonth(now.getMonth());
+  };
+
   const handleCreateHoliday = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!holidayDate || !holidayName) return;
     setHolidayLoading(true);
     try {
-      await createHolidayApi({ date: holidayDate, name: holidayName, note: holidayNote });
+      await createHolidayApi({
+        date: holidayDate,
+        name: holidayName,
+        note: holidayNote,
+        isOfficialDayOff: holidayIsOfficial,
+      });
       showToast("Đã thêm ngày lễ mới thành công");
       setShowAddHolidayModal(false);
       setHolidayDate("");
       setHolidayName("");
       setHolidayNote("");
-      loadHolidays();
+      setHolidayIsOfficial(true);
+      loadHolidays(calendarYear);
     } catch (err: any) {
       alert(err.message || "Lỗi tạo ngày lễ");
     } finally {
@@ -129,7 +156,7 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
     try {
       await deleteHolidayApi(id);
       showToast("Đã xóa ngày lễ");
-      loadHolidays();
+      loadHolidays(calendarYear);
     } catch (err: any) {
       alert(err.message || "Lỗi xóa");
     }
@@ -161,63 +188,81 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
     }
   };
 
-  const loadShifts = async () => {
-    setLoading(true);
-    try {
-      const res = await fetchShiftSchedule(weekStart);
-      setAssignments(res.assignments);
-      setSalesStaffList(res.staffList.filter((s) => s.role === "SALES" || s.department === "SALES"));
-    } catch (e) {
-      showToast("Lỗi tải lịch làm việc");
-    } finally {
-      setLoading(false);
+
+  // Lưới lịch theo tháng (42 ô vuông bo cạnh: 6 hàng x 7 cột từ Chủ Nhật -> Thứ Bảy)
+  const holidayMap = React.useMemo(() => {
+    const m = new Map<string, Holiday>();
+    for (const h of holidays) {
+      if (h?.date) m.set(h.date, h);
     }
+    return m;
+  }, [holidays]);
+
+  const calendarCells = React.useMemo(() => {
+    const firstDayOfMonth = new Date(calendarYear, calendarMonth, 1);
+    const startWeekday = firstDayOfMonth.getDay(); // 0 (Cn) -> 6 (T7)
+    const gridStartDate = new Date(calendarYear, calendarMonth, 1 - startWeekday);
+
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
+      now.getDate()
+    ).padStart(2, "0")}`;
+
+    return Array.from({ length: 42 }, (_, idx) => {
+      const cellDate = new Date(gridStartDate);
+      cellDate.setDate(gridStartDate.getDate() + idx);
+      const y = cellDate.getFullYear();
+      const m = cellDate.getMonth() + 1;
+      const d = cellDate.getDate();
+      const dateStr = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      const isCurrentMonth = cellDate.getMonth() === calendarMonth && y === calendarYear;
+      const isToday = dateStr === todayStr;
+      const weekday = cellDate.getDay();
+      const holiday = holidayMap.get(dateStr);
+
+      return {
+        dateStr,
+        dayNumber: d,
+        monthNumber: m,
+        yearNumber: y,
+        isCurrentMonth,
+        isToday,
+        weekday,
+        holiday,
+      };
+    });
+  }, [calendarYear, calendarMonth, holidayMap]);
+
+  const currentMonthPrefix = `${calendarYear}-${String(calendarMonth + 1).padStart(2, "0")}-`;
+  const currentMonthHolidays = React.useMemo(
+    () => holidays.filter((h) => h.date.startsWith(currentMonthPrefix)),
+    [holidays, currentMonthPrefix]
+  );
+  const currentYearHolidays = React.useMemo(
+    () => holidays.filter((h) => h.date.startsWith(`${calendarYear}-`)),
+    [holidays, calendarYear]
+  );
+
+  // Kiểm tra chính xác Ngày Nghỉ Lễ Chính Thức (được tăng lương) vs Lễ Sự Kiện / Kỷ Niệm (không tăng lương)
+  const checkIsOfficialHoliday = (h?: Holiday): boolean => {
+    if (!h) return false;
+    const mmdd = h.date.slice(5);
+    const eventMmdd = ["03-08", "06-01", "10-20", "11-20", "12-24", "12-25", "02-14"];
+    if (eventMmdd.includes(mmdd)) return false;
+    if (/nguyên tiêu|vu lan|trung thu|phụ nữ|nhà giáo|thiếu nhi|giáng sinh|noel/i.test(h.name)) {
+      return false;
+    }
+    if (typeof h.isOfficialDayOff === "boolean") {
+      return h.isOfficialDayOff;
+    }
+    return true;
   };
 
-  const handleDropShift = async (dateStr: string, dayOfWeek: number, shiftCode: "SHIFT_1" | "SHIFT_2" | "OFF") => {
-    if (!draggedStaff) return;
-    try {
-      await assignShiftApi({
-        staffId: draggedStaff._id,
-        date: dateStr,
-        weekStart,
-        dayOfWeek,
-        shiftCode,
-      });
-      showToast(`Đã phân ${draggedStaff.fullName} vào ${shiftCode === "SHIFT_1" ? "Ca 1" : shiftCode === "SHIFT_2" ? "Ca 2" : "Nghỉ"}`);
-      loadShifts();
-    } catch (err: any) {
-      alert(err.message || "Lỗi phân ca");
-    } finally {
-      setDraggedStaff(null);
-    }
-  };
-
-  const loadAttendance = async () => {
-    setLoading(true);
-    try {
-      const data = await fetchAttendanceHistory();
-      setAttendanceLogs(data);
-    } catch (e) {
-      showToast("Lỗi tải lịch sử chấm công");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Tạo 7 ngày trong tuần từ weekStart
-  const daysOfWeek = Array.from({ length: 7 }, (_, i) => {
-    const base = new Date(weekStart);
-    base.setDate(base.getDate() + i);
-    const dateStr = base.toISOString().slice(0, 10);
-    const dayNames = ["Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy", "Chủ Nhật"];
-    return {
-      index: i + 1,
-      name: dayNames[i],
-      dateStr,
-      displayDate: `${base.getDate()}/${base.getMonth() + 1}`,
-    };
-  });
+  const officialCountInYear = React.useMemo(
+    () => currentYearHolidays.filter((h) => checkIsOfficialHoliday(h)).length,
+    [currentYearHolidays]
+  );
+  const eventCountInYear = currentYearHolidays.length - officialCountInYear;
 
   return (
     <div className="space-y-6">
@@ -289,57 +334,323 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
 
       {/* ================= TAB 1: CALENDAR & HOLIDAYS ================= */}
       {activeTab === "CALENDAR" && (
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 space-y-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-            <div>
-              <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                <CalendarIcon className="w-6 h-6 text-emerald-600" />
-                Cấu Hình Lịch Ngày Lễ & Ghi Chú
+        <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200 space-y-4">
+          {/* Header gọn gàng */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-3.5 border-b border-slate-100">
+            <div className="flex items-center gap-2.5">
+              <CalendarIcon className="w-5 h-5 text-emerald-600" />
+              <h2 className="text-base sm:text-lg font-bold text-slate-900">
+                Lịch Công Ty & Ngày Lễ
               </h2>
-              <p className="text-sm text-slate-500 mt-1">
-                Các ngày lễ được cấu hình ở đây sẽ hiển thị tên ngày lễ ghi chú bên dưới trên lịch toàn công ty.
-              </p>
             </div>
-            <button
-              onClick={() => setShowAddHolidayModal(true)}
-              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold text-sm shadow-md transition flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              Thêm Ngày Lễ Mới
-            </button>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSyncVietnamHolidays}
+                disabled={syncingVn}
+                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold text-xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {syncingVn ? "Đang đồng bộ..." : `Đồng bộ Lễ VN ${calendarYear}`}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setHolidayDate(
+                    `${calendarYear}-${String(calendarMonth + 1).padStart(2, "0")}-01`
+                  );
+                  setHolidayName("");
+                  setHolidayNote("");
+                  setShowAddHolidayModal(true);
+                }}
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Thêm Ngày Lễ
+              </button>
+            </div>
           </div>
 
-          {loading ? (
-            <div className="py-12 text-center text-slate-400">Đang tải danh sách ngày lễ...</div>
-          ) : holidays.length === 0 ? (
-            <div className="py-12 text-center text-slate-400">Chưa có ngày lễ nào được cấu hình trong năm.</div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {holidays.map((h) => (
-                <div
-                  key={h._id}
-                  className="p-5 rounded-2xl border border-rose-100 bg-rose-50/50 hover:bg-rose-50 transition relative group"
-                >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <span className="px-3 py-1 bg-rose-100 text-rose-700 text-xs font-bold rounded-lg uppercase tracking-wide">
-                        {h.date}
-                      </span>
-                      <h3 className="text-base font-bold text-slate-900 mt-2.5">{h.name}</h3>
-                      {h.note && <p className="text-xs text-slate-500 mt-1">{h.note}</p>}
-                    </div>
+          {/* Bố cục 2 cột: Bên trái là Cuốn lịch tháng thu gọn, Bên phải là Danh sách ngày lễ trong năm */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+            {/* CỘT TRÁI (7/12): CUỐN LỊCH THEO THÁNG NHỎ GỌN */}
+            <div className="lg:col-span-7 xl:col-span-8 bg-slate-50/50 border border-slate-200/80 rounded-2xl p-3.5 sm:p-4 space-y-3">
+              {/* Thanh điều hướng Tháng / Năm */}
+              <div className="flex items-center justify-between px-1">
+                <div className="flex items-center gap-2.5">
+                  <h3 className="text-lg sm:text-xl font-extrabold text-slate-900">
+                    Tháng {calendarMonth + 1}, {calendarYear}
+                  </h3>
+                  {currentMonthHolidays.length > 0 && (
+                    <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 text-[11px] font-bold">
+                      {currentMonthHolidays.length} lễ
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handleGoToday}
+                    className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs transition cursor-pointer"
+                  >
+                    Hôm nay
+                  </button>
+
+                  <div className="flex items-center bg-white rounded-lg border border-slate-200 p-0.5">
                     <button
-                      onClick={() => handleDeleteHoliday(h._id)}
-                      className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-100/80 rounded-lg transition"
-                      title="Xóa ngày lễ"
+                      type="button"
+                      onClick={handlePrevMonth}
+                      title="Tháng trước"
+                      className="p-1 rounded-md hover:bg-slate-100 text-slate-600 transition cursor-pointer"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleNextMonth}
+                      title="Tháng sau"
+                      className="p-1 rounded-md hover:bg-slate-100 text-slate-600 transition cursor-pointer"
+                    >
+                      <ChevronRight className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
-              ))}
+              </div>
+
+              {/* Hàng thứ: Cn T2 T3 T4 T5 T6 T7 */}
+              <div className="grid grid-cols-7 gap-1.5 text-center">
+                {["Cn", "T2", "T3", "T4", "T5", "T6", "T7"].map((dayLabel, idx) => (
+                  <div
+                    key={dayLabel}
+                    className={`py-1 text-[11px] font-bold uppercase tracking-wider ${idx === 0
+                      ? "text-rose-600"
+                      : idx === 6
+                        ? "text-amber-700"
+                        : "text-slate-500"
+                      }`}
+                  >
+                    {dayLabel}
+                  </div>
+                ))}
+              </div>
+
+              {/* Lưới 42 ô vuông bo cạnh thu gọn */}
+              <div className="grid grid-cols-7 gap-1.5">
+                {calendarCells.map((cell) => {
+                  const hasHoliday = Boolean(cell.holiday);
+                  const isOfficial = checkIsOfficialHoliday(cell.holiday);
+
+                  return (
+                    <div
+                      key={cell.dateStr}
+                      title={
+                        hasHoliday && cell.holiday
+                          ? `${cell.holiday.name} (${isOfficial
+                            ? "Nghỉ lễ chính thức - Được tính tăng lương"
+                            : "Lễ sự kiện / Kỷ niệm - Không tăng lương"
+                          })`
+                          : `Ngày ${cell.dayNumber}/${cell.monthNumber}/${cell.yearNumber}`
+                      }
+                      onClick={() => {
+                        if (!hasHoliday) {
+                          setHolidayDate(cell.dateStr);
+                          setHolidayName("");
+                          setHolidayNote("");
+                          setHolidayIsOfficial(true);
+                          setShowAddHolidayModal(true);
+                        }
+                      }}
+                      className={`group relative overflow-hidden rounded-xl p-1.5 sm:p-2 h-[66px] sm:h-[76px] flex flex-col justify-between transition ${!cell.isCurrentMonth
+                        ? "bg-slate-100/40 border border-slate-200/80 text-slate-300 opacity-65"
+                        : hasHoliday
+                          ? isOfficial
+                            ? "bg-rose-50 border-2 border-rose-400 hover:border-rose-500 shadow-2xs"
+                            : "bg-amber-50/85 border-2 border-amber-400 hover:border-amber-500 shadow-2xs"
+                          : cell.isToday
+                            ? "bg-blue-50/80 border-2 border-blue-500 ring-2 ring-blue-500/20 shadow-xs"
+                            : "bg-white border-2 border-slate-300 hover:border-emerald-500 shadow-2xs cursor-pointer"
+                        }`}
+                    >
+                      {/* Label chéo góc trên phải rõ nét: phân biệt LỄ (Đỏ) vs SỰ KIỆN (Vàng cam) */}
+                      {hasHoliday && (
+                        <div
+                          className={`pointer-events-none absolute top-[7px] -right-[22px] w-[76px] text-center py-[1.5px] text-[7px] leading-tight font-black uppercase tracking-tight text-white rotate-45 shadow-2xs ${isOfficial ? "bg-rose-600" : "bg-amber-500"
+                            }`}
+                        >
+                          {isOfficial ? "Lễ" : "Sự kiện"}
+                        </div>
+                      )}
+
+                      {/* Số ngày Dương lịch */}
+                      <div className="flex items-center justify-between z-10">
+                        <span
+                          className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${cell.isToday
+                            ? "bg-blue-600 text-white shadow-2xs"
+                            : !cell.isCurrentMonth
+                              ? "text-slate-300 font-medium"
+                              : hasHoliday
+                                ? isOfficial
+                                  ? "text-rose-700 font-extrabold"
+                                  : "text-amber-800 font-extrabold"
+                                : cell.weekday === 0
+                                  ? "text-rose-600"
+                                  : "text-slate-700"
+                            }`}
+                        >
+                          {cell.dayNumber}
+                        </span>
+
+                        {hasHoliday && cell.holiday && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteHoliday(cell.holiday!._id);
+                            }}
+                            title="Xóa ngày lễ"
+                            className="opacity-0 group-hover:opacity-100 p-0.5 rounded bg-white/90 text-slate-400 hover:text-rose-600 transition z-20 mr-3 cursor-pointer"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Tên ngày lễ gọn 1 dòng */}
+                      <div className="z-10">
+                        {hasHoliday && cell.holiday ? (
+                          <div
+                            className={`text-[10px] font-bold truncate leading-tight ${isOfficial ? "text-rose-800" : "text-amber-900"
+                              }`}
+                          >
+                            {cell.holiday.name}
+                          </div>
+                        ) : cell.isToday ? (
+                          <div className="text-[9px] font-bold text-blue-600 truncate">
+                            Hôm nay
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Chú thích nhỏ dưới chân lịch */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] text-slate-600">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="inline-flex items-center gap-1 font-semibold text-rose-700">
+                    <span className="w-2.5 h-2.5 rounded-xs bg-rose-600 inline-block" />
+                    Nghỉ lễ chính thức
+                  </span>
+                  <span className="inline-flex items-center gap-1 font-semibold text-amber-800">
+                    <span className="w-2.5 h-2.5 rounded-xs bg-amber-500 inline-block" />
+                    Lễ sự kiện / Kỷ niệm
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block" />
+                    Hôm nay
+                  </span>
+                </div>
+              </div>
             </div>
-          )}
+
+            {/* CỘT PHẢI (5/12): DANH SÁCH NGÀY LỄ TRONG NĂM THU GỌN */}
+            <div className="lg:col-span-5 xl:col-span-4 border border-slate-200/90 rounded-2xl bg-white overflow-hidden flex flex-col">
+              <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between gap-2">
+                <h4 className="text-xs sm:text-sm font-bold text-slate-800">
+                  Ngày lễ năm {calendarYear}
+                </h4>
+                <div className="flex items-center gap-1.5 text-[10px] font-bold">
+                  <span className="px-2 py-0.5 rounded-md bg-rose-100 text-rose-700">
+                    {officialCountInYear} lễ chính thức
+                  </span>
+                  <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800">
+                    {eventCountInYear} sự kiện
+                  </span>
+                </div>
+              </div>
+
+              {loading ? (
+                <div className="py-10 text-center text-slate-400 text-xs">
+                  Đang tải lịch ngày lễ...
+                </div>
+              ) : currentYearHolidays.length === 0 ? (
+                <div className="py-10 text-center text-slate-400 text-xs">
+                  Chưa có ngày lễ nào trong năm {calendarYear}.
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100 max-h-[460px] overflow-y-auto">
+                  {currentYearHolidays.map((h) => {
+                    const [yStr, mStr, dStr] = h.date.split("-");
+                    const hMonth = Number(mStr) - 1;
+                    const isSelectedMonth = hMonth === calendarMonth;
+                    const isOfficial = checkIsOfficialHoliday(h);
+
+                    return (
+                      <div
+                        key={h._id}
+                        onClick={() => {
+                          setCalendarYear(Number(yStr));
+                          setCalendarMonth(hMonth);
+                        }}
+                        className={`group px-3.5 py-2.5 flex items-center justify-between gap-2 transition cursor-pointer ${isSelectedMonth
+                          ? isOfficial
+                            ? "bg-rose-50/40 hover:bg-rose-50/80"
+                            : "bg-amber-50/40 hover:bg-amber-50/80"
+                          : "hover:bg-slate-50"
+                          }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span
+                            className={`shrink-0 w-11 py-1 text-center text-[11px] font-extrabold rounded-lg border ${isOfficial
+                              ? "bg-rose-50 text-rose-700 border-rose-200"
+                              : "bg-amber-50 text-amber-800 border-amber-200"
+                              }`}
+                          >
+                            {dStr}/{mStr}
+                          </span>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-bold text-slate-800 truncate">
+                                {h.name}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 mt-0.5 text-[10px]">
+                              <span
+                                className={`px-1.5 py-0.2 rounded font-bold ${isOfficial
+                                  ? "bg-rose-100 text-rose-700"
+                                  : "bg-amber-100 text-amber-800"
+                                  }`}
+                              >
+                                {isOfficial ? "Chính thức" : "Sự kiện"}
+                              </span>
+                              {h.lunarDate && (
+                                <span className="text-slate-400 font-medium">{h.lunarDate}</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteHoliday(h._id);
+                          }}
+                          title="Xóa ngày lễ"
+                          className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition shrink-0 cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
 
           {/* Modal Thêm ngày lễ */}
           {showAddHolidayModal && (
@@ -370,12 +681,52 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Phân loại ngày lễ *
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setHolidayIsOfficial(true)}
+                        className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${holidayIsOfficial
+                          ? "bg-rose-50 border-rose-500 text-rose-900 ring-1 ring-rose-500/30"
+                          : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                          }`}
+                      >
+                        <div className="text-xs font-bold flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-xs bg-rose-600 inline-block" />
+                          Nghỉ lễ chính thức
+                        </div>
+                        <div className="text-[10px] text-rose-700 mt-0.5 font-medium">
+                          Được tính tăng lương
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setHolidayIsOfficial(false)}
+                        className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${!holidayIsOfficial
+                          ? "bg-amber-50 border-amber-500 text-amber-900 ring-1 ring-amber-500/30"
+                          : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                          }`}
+                      >
+                        <div className="text-xs font-bold flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-xs bg-amber-500 inline-block" />
+                          Lễ sự kiện / Kỷ niệm
+                        </div>
+                        <div className="text-[10px] text-amber-800 mt-0.5 font-medium">
+                          Không tính tăng lương
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
                       Tên ngày lễ *
                     </label>
                     <input
                       type="text"
                       required
-                      placeholder="VD: Tết Dương Lịch, Quốc Khánh 2/9..."
+                      placeholder="VD: Nghỉ Du Lịch Công Ty, Tết Dương Lịch..."
                       value={holidayName}
                       onChange={(e) => setHolidayName(e.target.value)}
                       className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
@@ -424,9 +775,6 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
                 <FileText className="w-6 h-6 text-emerald-600" />
                 Phê Duyệt Đơn Từ (WFH, Nghỉ phép, Đi trễ/Về sớm)
               </h2>
-              <p className="text-sm text-slate-500 mt-1">
-                Khi đơn WFH được HR duyệt, nhân viên khối Văn phòng sẽ được phép chấm công từ xa mà không bị chặn GPS/LAN.
-              </p>
             </div>
 
             {/* Filters */}
@@ -558,244 +906,11 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
         </div>
       )}
 
-      {/* ================= TAB 3: DRAG & DROP SHIFTS ================= */}
-      {activeTab === "SHIFTS" && (
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 space-y-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-            <div>
-              <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                <Users className="w-6 h-6 text-emerald-600" />
-                Xếp Ca Tuần Cho Khối Bán Hàng
-              </h2>
-              <p className="text-sm text-slate-500 mt-1">
-                Kéo thẻ nhân viên từ cột danh sách bên phải thả vào ô Ca 1 hoặc Ca 2 để phân ca trực showroom.
-              </p>
-            </div>
+      {/* ================= TAB 3: XẾP CA TUẦN (Sửa / Lưu) ================= */}
+      {activeTab === "SHIFTS" && <ShiftScheduleModule />}
 
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-semibold text-slate-500">Tuần bắt đầu:</span>
-              <input
-                type="date"
-                value={weekStart}
-                onChange={(e) => setWeekStart(e.target.value)}
-                className="px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none font-mono"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            {/* Ma trận 7 ngày (3 cột đầu) */}
-            <div className="lg:col-span-3 overflow-x-auto">
-              <div className="min-w-[700px] border border-slate-200 rounded-2xl overflow-hidden">
-                <div className="grid grid-cols-7 bg-slate-100 text-slate-800 text-center font-bold text-xs py-3 border-b border-slate-200">
-                  {daysOfWeek.map((d) => (
-                    <div key={d.dateStr}>
-                      <div>{d.name}</div>
-                      <div className="text-slate-400 font-normal font-mono">{d.displayDate}</div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Hàng Ca 1 */}
-                <div className="border-b border-slate-200 bg-amber-50/20">
-                  <div className="p-2 text-xs font-bold text-amber-800 bg-amber-100/60 uppercase tracking-wider">
-                    Ca 1: 08:30 - 17:30
-                  </div>
-                  <div className="grid grid-cols-7 min-h-[110px] divide-x divide-slate-200">
-                    {daysOfWeek.map((d) => {
-                      const assignedHere = assignments.filter(
-                        (a) => a.date === d.dateStr && a.shiftCode === "SHIFT_1"
-                      );
-                      return (
-                        <div
-                          key={`ca1-${d.dateStr}`}
-                          onDragOver={(e) => e.preventDefault()}
-                          onDrop={() => handleDropShift(d.dateStr, d.index, "SHIFT_1")}
-                          className="p-2 space-y-1.5 hover:bg-amber-100/30 transition flex flex-col items-center justify-start"
-                        >
-                          {assignedHere.map((a) => (
-                            <div
-                              key={a._id}
-                              className="w-full bg-white border border-amber-200 rounded-lg p-1.5 text-center shadow-xs text-xs font-semibold text-slate-800"
-                            >
-                              {a.staffName}
-                            </div>
-                          ))}
-                          <div className="text-[10px] text-slate-300 italic pointer-events-none mt-auto">
-                            + Kéo thả vào đây
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Hàng Ca 2 */}
-                <div className="bg-indigo-50/20">
-                  <div className="p-2 text-xs font-bold text-indigo-800 bg-indigo-100/60 uppercase tracking-wider">
-                    Ca 2: 12:00 - 21:00
-                  </div>
-                  <div className="grid grid-cols-7 min-h-[110px] divide-x divide-slate-200">
-                    {daysOfWeek.map((d) => {
-                      const assignedHere = assignments.filter(
-                        (a) => a.date === d.dateStr && a.shiftCode === "SHIFT_2"
-                      );
-                      return (
-                        <div
-                          key={`ca2-${d.dateStr}`}
-                          onDragOver={(e) => e.preventDefault()}
-                          onDrop={() => handleDropShift(d.dateStr, d.index, "SHIFT_2")}
-                          className="p-2 space-y-1.5 hover:bg-indigo-100/30 transition flex flex-col items-center justify-start"
-                        >
-                          {assignedHere.map((a) => (
-                            <div
-                              key={a._id}
-                              className="w-full bg-white border border-indigo-200 rounded-lg p-1.5 text-center shadow-xs text-xs font-semibold text-slate-800"
-                            >
-                              {a.staffName}
-                            </div>
-                          ))}
-                          <div className="text-[10px] text-slate-300 italic pointer-events-none mt-auto">
-                            + Kéo thả vào đây
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Sidebar danh sách nhân sự kéo thả */}
-            <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50 space-y-4">
-              <h3 className="font-bold text-sm text-slate-800 flex items-center gap-2">
-                <Users className="w-4 h-4 text-emerald-600" />
-                Nhân Sự Showroom
-              </h3>
-              <p className="text-xs text-slate-500">Giữ chuột và kéo nhân viên vào các ô ca trong bảng tuần.</p>
-
-              <div className="space-y-2">
-                {salesStaffList.map((s) => (
-                  <div
-                    key={s._id}
-                    draggable
-                    onDragStart={() => setDraggedStaff(s)}
-                    className="p-3 bg-white border border-slate-200 rounded-xl shadow-xs cursor-grab active:cursor-grabbing hover:border-emerald-500 hover:shadow-md transition flex items-center justify-between"
-                  >
-                    <div>
-                      <div className="font-bold text-sm text-slate-900">{s.fullName}</div>
-                      <div className="text-xs text-slate-400 font-mono">{s.code}</div>
-                    </div>
-                    <span className="text-[10px] px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-semibold">
-                      Sales
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ================= TAB 4: ATTENDANCE LOG ================= */}
-      {activeTab === "ATTENDANCE_LOG" && (
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 space-y-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-            <div>
-              <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                <Clock className="w-6 h-6 text-emerald-600" />
-                Nhật Ký Chấm Công Toàn Công Ty
-              </h2>
-              <p className="text-sm text-slate-500 mt-1">
-                Theo dõi thời gian vào/ra, tính toán giờ làm việc tự động trừ nghỉ trưa và trạng thái WFH.
-              </p>
-            </div>
-          </div>
-
-          {loading ? (
-            <div className="py-12 text-center text-slate-400">Đang tải nhật ký chấm công...</div>
-          ) : attendanceLogs.length === 0 ? (
-            <div className="py-12 text-center text-slate-400">Chưa có dữ liệu chấm công.</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm text-slate-600">
-                <thead className="bg-slate-50 text-slate-700 uppercase font-semibold text-xs border-b border-slate-200">
-                  <tr>
-                    <th className="py-3 px-4">Ngày</th>
-                    <th className="py-3 px-4">Nhân viên</th>
-                    <th className="py-3 px-4">Phòng ban</th>
-                    <th className="py-3 px-4">Ca</th>
-                    <th className="py-3 px-4">Giờ vào</th>
-                    <th className="py-3 px-4">Giờ ra</th>
-                    <th className="py-3 px-4">Tổng giờ</th>
-                    <th className="py-3 px-4">Hình thức</th>
-                    <th className="py-3 px-4">Trạng thái</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {attendanceLogs.map((log) => {
-                    const inTime = log.checkInTime ? new Date(log.checkInTime).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "-";
-                    const outTime = log.checkOutTime ? new Date(log.checkOutTime).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "Chưa ra";
-                    return (
-                      <tr key={log._id} className="hover:bg-slate-50/80 transition">
-                        <td className="py-3.5 px-4 font-mono font-semibold text-slate-900">{log.date}</td>
-                        <td className="py-3.5 px-4">
-                          <div className="font-semibold text-slate-900">{log.staffName}</div>
-                          <div className="text-xs text-slate-400 font-mono">{log.staffCode}</div>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <span
-                            className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${log.department === "OFFICE"
-                              ? "bg-indigo-50 text-indigo-700"
-                              : "bg-amber-50 text-amber-700"
-                              }`}
-                          >
-                            {log.department === "OFFICE" ? "Văn phòng" : "Bán hàng"}
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4 font-semibold text-slate-700">
-                          {log.shiftCode === "SHIFT_1" ? "Ca 1 (8h30-17h30)" : "Ca 2 (12h-21h)"}
-                        </td>
-                        <td className="py-3.5 px-4 font-mono font-bold text-slate-900">{inTime}</td>
-                        <td className="py-3.5 px-4 font-mono font-bold text-slate-900">{outTime}</td>
-                        <td className="py-3.5 px-4 font-mono font-bold text-emerald-600">
-                          {log.totalWorkHours > 0 ? `${log.totalWorkHours}h` : "-"}
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <span
-                            className={`px-2 py-0.5 rounded text-xs font-bold ${log.checkInType === "WFH"
-                              ? "bg-purple-100 text-purple-800"
-                              : "bg-slate-100 text-slate-700"
-                              }`}
-                          >
-                            {log.checkInType === "WFH" ? "🏠 WFH" : "Showroom/LAN"}
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <span
-                            className={`px-2 py-0.5 rounded text-xs font-bold ${log.status === "ON_TIME" || log.status === "COMPLETED"
-                              ? "bg-emerald-100 text-emerald-800"
-                              : "bg-amber-100 text-amber-800"
-                              }`}
-                          >
-                            {log.status === "ON_TIME"
-                              ? "Đúng giờ"
-                              : log.status === "LATE"
-                                ? `Trễ ${log.lateMinutes}p`
-                                : log.status === "EARLY_LEAVE"
-                                  ? `Về sớm ${log.earlyMinutes}p`
-                                  : "Hoàn tất"}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
+      {/* ================= TAB 4: BẢNG CHẤM CÔNG THÁNG TOÀN CÔNG TY ================= */}
+      {activeTab === "ATTENDANCE_LOG" && <AttendanceTimesheetModule />}
 
       {/* ================= TAB 5: TẠO TÀI KHOẢN & QUẢN LÝ NHÂN SỰ ================= */}
       {activeTab === "STAFF_ACCOUNTS" && <StaffModule />}

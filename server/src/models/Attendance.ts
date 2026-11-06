@@ -24,6 +24,10 @@ export interface IAttendance extends Document {
   lunchPauseMinutes: number;
   totalWorkHours: number;
   notes?: string;
+  adjustedBy?: string;
+  adjustedByName?: string;
+  adjustedAt?: Date;
+  adjustReason?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -53,6 +57,10 @@ const AttendanceSchema = new Schema<IAttendance>(
     lunchPauseMinutes: { type: Number, default: 0 },
     totalWorkHours: { type: Number, default: 0 },
     notes: { type: String, default: '' },
+    adjustedBy: { type: String },
+    adjustedByName: { type: String },
+    adjustedAt: { type: Date },
+    adjustReason: { type: String, default: '' },
   },
   { timestamps: true }
 );

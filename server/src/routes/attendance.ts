@@ -12,11 +12,11 @@ import { ShiftCode } from '../models/Attendance';
 
 export const attendanceRouter = Router();
 
-// Tọa độ mặc định Cơ sở 1 & Cơ sở 2 11Sport
+// Tọa độ mặc định Cơ sở 1 & Cơ sở 2 11Sport (89 Lê Thanh Nghị, Hòa Cường, Đà Nẵng)
 const DEFAULT_SHOWROOM_LAT = 16.0352;
 const DEFAULT_SHOWROOM_LNG = 108.2185;
-const DEFAULT_SHOWROOM_2_LAT = 16.0678;
-const DEFAULT_SHOWROOM_2_LNG = 108.2208;
+const DEFAULT_SHOWROOM_2_LAT = 16.0414246;
+const DEFAULT_SHOWROOM_2_LNG = 108.2179426;
 const DEFAULT_MAX_DISTANCE_METERS = 50;
 
 function extractClientIp(req: Request, bodyIp?: string): string {
@@ -38,16 +38,16 @@ function getEnvAttendanceConfig() {
   const officeName =
     process.env.ATTENDANCE_OFFICE_NAME ||
     process.env.ATTENDANCE_OFFICE_1_NAME ||
-    'Cơ sở 1: Showroom & Văn phòng 11Sport - 24 Tố Hữu, Đà Nẵng';
+    'Cơ sở 1: Showroom 11Sport - 24 Tố Hữu, Hoà Cường, Đà Nẵng';
   const officeLat = Number(
     process.env.ATTENDANCE_OFFICE_LAT ??
-      process.env.ATTENDANCE_OFFICE_1_LAT ??
-      DEFAULT_SHOWROOM_LAT
+    process.env.ATTENDANCE_OFFICE_1_LAT ??
+    DEFAULT_SHOWROOM_LAT
   );
   const officeLng = Number(
     process.env.ATTENDANCE_OFFICE_LNG ??
-      process.env.ATTENDANCE_OFFICE_1_LNG ??
-      DEFAULT_SHOWROOM_LNG
+    process.env.ATTENDANCE_OFFICE_1_LNG ??
+    DEFAULT_SHOWROOM_LNG
   );
   const allowedIps = (
     process.env.ATTENDANCE_ALLOWED_IPS ||
@@ -61,7 +61,7 @@ function getEnvAttendanceConfig() {
   // --- Cơ sở 2 (Location 2 + Mạng 2) ---
   const office2Name =
     process.env.ATTENDANCE_OFFICE_2_NAME ||
-    'Cơ sở 2: Chi nhánh 11Sport Cơ sở 2';
+    'Cơ sở 2: Văn phòng 11Sport - 89 Lê Thanh Nghị, Hòa Cường, Đà Nẵng';
   const office2Lat = Number(
     process.env.ATTENDANCE_OFFICE_2_LAT ?? DEFAULT_SHOWROOM_2_LAT
   );
@@ -71,7 +71,7 @@ function getEnvAttendanceConfig() {
   const allowedIps2 = (
     process.env.ATTENDANCE_ALLOWED_IPS_2 ||
     process.env.ATTENDANCE_OFFICE_2_ALLOWED_IPS ||
-    '127.0.0.1,::1,localhost,192.168.2.'
+    '116.110.151.140,192.168.2.207,192.168.2.,127.0.0.1,::1,localhost'
   )
     .split(',')
     .map((ip) => ip.trim())
@@ -261,10 +261,10 @@ attendanceRouter.post('/attendance/check-in', async (req, res, next) => {
     const selectedShift: ShiftCode = !isSalesStaff
       ? 'SHIFT_1'
       : shiftCode === 'SHIFT_1' || shiftCode === 'SHIFT_2'
-      ? shiftCode
-      : totalMinutesNow >= 11 * 60 + 30
-      ? 'SHIFT_2'
-      : 'SHIFT_1';
+        ? shiftCode
+        : totalMinutesNow >= 11 * 60 + 30
+          ? 'SHIFT_2'
+          : 'SHIFT_1';
     const shiftStartMinutes = selectedShift === 'SHIFT_1' ? 8 * 60 + 30 : 12 * 60;
 
     let lateMinutes = 0;
@@ -491,7 +491,14 @@ attendanceRouter.get('/attendance/history', async (req, res, next) => {
       filter.staffId = user.userId;
     }
 
-    const records = await attendanceRepo.find(filter);
+    let records = await attendanceRepo.find(filter);
+    // Lọc theo tháng/năm nếu có truyền (date dạng YYYY-MM-DD)
+    if (year || month) {
+      const y = Number(year) || new Date().getFullYear();
+      const prefix = month ? `${y}-${String(Number(month)).padStart(2, '0')}-` : `${y}-`;
+      records = records.filter((r: any) => String(r.date || '').startsWith(prefix));
+    }
+    records.sort((a: any, b: any) => String(b.date).localeCompare(String(a.date)));
     res.json({
       data: records,
       meta: { total: records.length },

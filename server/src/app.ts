@@ -13,6 +13,7 @@ import { wiseRouter } from './routes/wise';
 import { promotionsRouter } from './routes/promotions';
 import { printersRouter } from './routes/printers';
 import { attendanceRouter } from './routes/attendance';
+import { attendanceTimesheetRouter } from './routes/attendanceTimesheet';
 import { leaveRequestsRouter } from './routes/leaveRequests';
 import { shiftsRouter } from './routes/shifts';
 import { holidaysRouter } from './routes/holidays';
@@ -105,6 +106,7 @@ export function createApp() {
   app.use('/api/v1', promotionsRouter);
   app.use('/api/v1', printersRouter);
   app.use('/api/v1', attendanceRouter);
+  app.use('/api/v1', attendanceTimesheetRouter);
   app.use('/api/v1', leaveRequestsRouter);
   app.use('/api/v1', shiftsRouter);
   app.use('/api/v1', holidaysRouter);

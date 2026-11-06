@@ -745,8 +745,29 @@
   - Trả về trạng thái chấm công của nhân viên hôm nay, ca được phân công, trạng thái WFH, và thông tin bàn giao ca (nếu là Sales).
 
 - `GET /api/v1/attendance/history`
-  - Query: `?month=11&year=2026&staffId=...`
+  - Query: `?month=11&year=2026&staffId=...` (lọc đúng theo tháng/năm nếu truyền).
   - Phân quyền: Nhân viên tự xem lịch sử của mình; `HR` và `ADMIN` xem được của toàn bộ nhân viên.
+
+- `GET /api/v1/attendance/timesheet` (Role `HR` hoặc `ADMIN`) — **Bảng công tháng toàn công ty**
+  - Query: `?month=11&year=2026&department=OFFICE|SALES` (tuỳ chọn).
+  - Trả về ma trận nhân viên × ngày trong tháng + tổng hợp từng người:
+    - `days[]`: `{ date, day, weekday, isToday, holiday?: { name, isOfficialDayOff } }`
+    - `rows[]`: `{ staffId, staffCode, staffName, department, role, cells: { [date]: Cell }, summary }`
+      - `Cell.code`: `ON_TIME | LATE | EARLY | LATE_EARLY | WFH | WORKING | MISSING_OUT | LEAVE | ABSENT | HOLIDAY | DAY_OFF | FUTURE`
+      - `Cell` kèm `attendanceId, shiftCode, checkIn, checkOut, hours, lateMinutes, earlyMinutes, isHolidayWork, adjusted, note`.
+      - `summary`: `{ standardDays, workUnits (công đi làm quy đổi), holidayPaidDays (công nghỉ lễ chính thức hưởng lương), paidUnits (tổng công tính lương = workUnits + holidayPaidDays), totalHours, lateCount, lateMinutes, earlyCount, earlyMinutes, missingCheckout, absentDays, leaveDays, wfhDays, holidayWorkDays, holidayWorkHours }`
+      - `Cell.isPaidHoliday = true` khi là ngày lễ chính thức được nghỉ hưởng nguyên lương.
+    - `overview`: `{ totalStaff, workingNow, checkedInToday, lateToday, notCheckedInToday, missingCheckoutMonth, absentMonth }`
+  - Quy ước: Giờ chuẩn/ngày `OFFICE` = 7.5h (08:30–17:30 trừ nghỉ trưa 1.5h), `SALES` = 9h. Ngày công quy đổi = `min(1, giờ thực tế / giờ chuẩn)`. Ngày làm việc khối `OFFICE` lấy từ `.env` `ATTENDANCE_OFFICE_WORKDAYS` (mặc định `1,2,3,4,5,6` = T2–T7); khối `SALES` theo lịch xếp ca (`OFF` = ngày nghỉ). Ngày nghỉ lễ chính thức không tính vắng; đi làm vào ngày lễ chính thức được đếm `holidayWorkDays` để tính lương lễ.
+  - **Ngày lễ chính thức (Điều 112 BLLĐ 2019)**: chỉ lễ có `isOfficialDayOff = true` rơi vào ngày làm việc trong tuần (T2–T7) mới được nghỉ **hưởng nguyên lương = 1 công** (`holidayPaidDays`), vẫn nằm trong công chuẩn. Lễ sự kiện/kỷ niệm (`isOfficialDayOff = false`) là ngày làm việc bình thường, không tính công. Lễ trùng Chủ nhật không cộng công. Đi làm vào ngày lễ chính thức: không cộng thêm vào `workUnits` (đã có công lễ), giờ làm ghi vào `holidayWorkHours` để trả lương làm thêm ngày lễ.
+
+- `PATCH /api/v1/attendance/:id` (Role `HR` hoặc `ADMIN`) — **Điều chỉnh giờ công** (quên check-out, sai giờ)
+  - Body: `{ "checkIn"?: "08:30", "checkOut"?: "17:30", "shiftCode"?: "SHIFT_1|SHIFT_2", "reason": "string (bắt buộc)" }`
+  - Server tự tính lại `workStartTime`, `lateMinutes`, `earlyMinutes`, `totalWorkHours`, `status`; ghi vết `adjustedBy`, `adjustedByName`, `adjustedAt`, `adjustReason`.
+
+- `POST /api/v1/attendance/manual` (Role `HR` hoặc `ADMIN`) — **Chấm công bù** cho nhân viên quên chấm công
+  - Body: `{ "staffId": "...", "date": "2026-11-05", "shiftCode": "SHIFT_1", "checkIn": "08:30", "checkOut": "17:30", "reason": "string (bắt buộc)" }`
+  - Lỗi: `400 ALREADY_CHECKED_IN` nếu ngày đó đã có bản ghi (dùng PATCH để sửa).
 
 - `GET /api/v1/attendance/config`
   - Trả về cấu hình vị trí GPS và danh sách IP Wi-Fi/LAN công ty (chỉ đọc từ biến môi trường `.env` trên Server: `ATTENDANCE_OFFICE_NAME`, `ATTENDANCE_OFFICE_LAT`, `ATTENDANCE_OFFICE_LNG`, `ATTENDANCE_MAX_DISTANCE_METERS`, `ATTENDANCE_REQUIRE_GPS`, `ATTENDANCE_REQUIRE_IP`, `ATTENDANCE_ALLOWED_IPS`), kèm `detectedClientIp`. Không cho phép chỉnh sửa qua UI/API (HR và Admin đều không được sửa trên giao diện).
@@ -765,7 +786,11 @@
 - `POST /api/v1/shifts/preferences`
   - Sales nộp đăng ký ca tuần tới vào Thứ 6: `{ "weekStart": "2026-11-09", "preferences": [{ "date": "2026-11-09", "isOff": false, "preferredShift": "SHIFT_1 | SHIFT_2" }] }`.
 - `GET /api/v1/shifts/schedule`
-  - Xem bảng lịch ca của tuần: `?weekStart=2026-11-09`.
+  - Xem bảng lịch ca của tuần: `?weekStart=2026-11-09` (lấy toàn bộ phân ca có `date` từ `weekStart` đến `weekStart + 6 ngày`).
+- `PUT /api/v1/shifts/assign/bulk` (Role `HR` hoặc `ADMIN`) — **Lưu toàn bộ thay đổi lịch ca tuần một lần** (chế độ Sửa → Lưu trên CMS)
+  - Body: `{ "weekStart": "2026-11-09", "changes": [{ "staffId": "...", "date": "2026-11-10", "dayOfWeek": 2, "shiftCode": "SHIFT_1 | SHIFT_2 | OFF | null" }] }`
+  - `shiftCode = null` → xoá phân ca của nhân viên ngày đó. Mỗi nhân viên chỉ có 1 ca/ngày (ghi đè nếu đã có).
+  - Response: `{ "data": { "updated": 3, "created": 2, "deleted": 1 } }`
 - `POST /api/v1/shifts/auto-assign`
   - HR kích hoạt tự động xếp ca dựa trên preferences Thứ 6: `{ "weekStart": "2026-11-09" }`.
 - `PUT /api/v1/shifts/assign`
@@ -778,7 +803,10 @@
 
 #### D. Cấu hình Ngày Lễ (`/holidays`)
 - `GET /api/v1/holidays`
-  - Danh sách các ngày lễ trong năm kèm tên chú thích bên dưới (phục vụ hiển thị trên Calendar).
+  - Query: `?year=2026` (mặc định năm hiện tại).
+  - Trả về danh sách các ngày lễ trong năm (hợp nhất giữa các ngày lễ công ty trong DB và lịch lễ Việt Nam theo năm từ API công khai `Nager.Date` + bộ lịch Âm - Dương lịch Việt Nam: Tết Dương Lịch, Tết Nguyên Đán, Giỗ Tổ Hùng Vương 10/3 ÂL, 30/4, 1/5, Quốc Khánh 2/9 và các ngày lễ lớn tại Việt Nam).
+- `POST /api/v1/holidays/sync-vn` (Role `HR` hoặc `ADMIN`)
+  - Body: `{ "year": 2026 }` — Đồng bộ và lưu lịch ngày lễ Việt Nam của năm đó vào DB công ty.
 - `POST /api/v1/holidays` (Role `HR` hoặc `ADMIN`)
   - Body: `{ "date": "2026-01-01", "name": "Tết Dương Lịch", "note": "Nghỉ lễ toàn quốc" }`.
 - `DELETE /api/v1/holidays/:id` (Role `HR` hoặc `ADMIN`).

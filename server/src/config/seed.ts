@@ -272,7 +272,6 @@ export async function seedDatabaseIfNeeded(): Promise<void> {
       department: 'OFFICE',
       status: 'ACTIVE',
       contractType: 'FULLTIME',
-      baseSalary: 20000000,
     });
 
     await staffRepo.create({
@@ -285,7 +284,6 @@ export async function seedDatabaseIfNeeded(): Promise<void> {
       department: 'OFFICE',
       status: 'ACTIVE',
       contractType: 'FULLTIME',
-      baseSalary: 12000000,
     });
 
     await staffRepo.create({
@@ -298,7 +296,6 @@ export async function seedDatabaseIfNeeded(): Promise<void> {
       department: 'SALES',
       status: 'ACTIVE',
       contractType: 'FULLTIME',
-      baseSalary: 8500000,
     });
   }
 
@@ -309,7 +306,6 @@ export async function seedDatabaseIfNeeded(): Promise<void> {
     phone: string;
     role: 'HR' | 'ACCOUNTANT' | 'MARKETING' | 'SALES' | 'ADMIN';
     department: 'OFFICE' | 'SALES';
-    baseSalary: number;
   }) => {
     const existing = await staffRepo.findOne({ username: data.username });
     if (!existing) {
@@ -335,7 +331,6 @@ export async function seedDatabaseIfNeeded(): Promise<void> {
     phone: '0909111222',
     role: 'HR',
     department: 'OFFICE',
-    baseSalary: 15000000,
   });
 
   await ensureStaff({
@@ -344,7 +339,6 @@ export async function seedDatabaseIfNeeded(): Promise<void> {
     phone: '0909000004',
     role: 'HR',
     department: 'OFFICE',
-    baseSalary: 14000000,
   });
 
   await ensureStaff({
@@ -353,7 +347,6 @@ export async function seedDatabaseIfNeeded(): Promise<void> {
     phone: '0909000005',
     role: 'ACCOUNTANT',
     department: 'OFFICE',
-    baseSalary: 13500000,
   });
 
   await ensureStaff({
@@ -362,7 +355,6 @@ export async function seedDatabaseIfNeeded(): Promise<void> {
     phone: '0909000006',
     role: 'MARKETING',
     department: 'OFFICE',
-    baseSalary: 11000000,
   });
 
   // Trên môi trường thực (không phải test memory), tự động chuyển các tài khoản WAREHOUSE cũ sang ACCOUNTANT

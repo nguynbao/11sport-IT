@@ -59,10 +59,15 @@ shiftsRouter.post('/shifts/preferences', async (req, res, next) => {
 shiftsRouter.get('/shifts/schedule', async (req, res, next) => {
   try {
     const { weekStart } = req.query;
-    const filter: Record<string, any> = {};
-    if (weekStart) filter.weekStart = String(weekStart);
-
-    const assignments = await shiftAssignmentRepo.find(filter);
+    let assignments = await shiftAssignmentRepo.find({});
+    if (weekStart) {
+      // Lấy theo khoảng ngày của tuần (tránh sót phân ca lưu với weekStart khác)
+      const startStr = String(weekStart);
+      const [y, m, d] = startStr.split('-').map(Number);
+      const end = new Date(y, m - 1, d + 6);
+      const endStr = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+      assignments = assignments.filter((a: any) => a.date >= startStr && a.date <= endStr);
+    }
     const allStaff = await staffRepo.find({ status: 'ACTIVE' });
 
     res.json({
@@ -77,6 +82,83 @@ shiftsRouter.get('/shifts/schedule', async (req, res, next) => {
         })),
       },
       meta: { total: assignments.length },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/v1/shifts/assign/bulk (HR lưu toàn bộ thay đổi lịch ca tuần một lần)
+shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
+  try {
+    const user = req.user;
+    if (!user || !['ADMIN', 'HR'].includes(user.role)) {
+      throw new ApiError(403, 'FORBIDDEN', 'Chỉ HR hoặc ADMIN mới có quyền xếp ca');
+    }
+
+    const { weekStart, changes } = req.body || {};
+    if (!Array.isArray(changes) || changes.length === 0) {
+      throw new ApiError(400, 'VALIDATION_ERROR', 'Không có thay đổi nào để lưu');
+    }
+    const validCodes = ['SHIFT_1', 'SHIFT_2', 'OFF'];
+    for (const c of changes) {
+      if (!c || !c.staffId || !/^\d{4}-\d{2}-\d{2}$/.test(String(c.date || ''))) {
+        throw new ApiError(400, 'VALIDATION_ERROR', 'Dữ liệu phân ca không hợp lệ');
+      }
+      if (c.shiftCode !== null && !validCodes.includes(c.shiftCode)) {
+        throw new ApiError(400, 'VALIDATION_ERROR', `Mã ca không hợp lệ: ${c.shiftCode}`);
+      }
+    }
+
+    const staffCache = new Map<string, any>();
+    let created = 0;
+    let updated = 0;
+    let deleted = 0;
+
+    for (const c of changes) {
+      const staffId = String(c.staffId);
+      const date = String(c.date);
+      const existing = await shiftAssignmentRepo.findOne({ staffId, date });
+
+      if (c.shiftCode === null) {
+        if (existing) {
+          await shiftAssignmentRepo.deleteById(String(existing._id));
+          deleted++;
+        }
+        continue;
+      }
+
+      if (existing) {
+        await shiftAssignmentRepo.updateById(existing._id, {
+          shiftCode: c.shiftCode,
+          assignedBy: 'HR',
+        });
+        updated++;
+        continue;
+      }
+
+      if (!staffCache.has(staffId)) {
+        staffCache.set(staffId, await staffRepo.findById(staffId));
+      }
+      const staff = staffCache.get(staffId);
+      if (!staff) throw new ApiError(404, 'STAFF_NOT_FOUND', 'Không tìm thấy nhân viên');
+
+      await shiftAssignmentRepo.create({
+        weekStart: weekStart || date,
+        date,
+        dayOfWeek: Number(c.dayOfWeek) || 1,
+        staffId: staff._id,
+        staffCode: staff.code,
+        staffName: staff.fullName,
+        shiftCode: c.shiftCode,
+        assignedBy: 'HR',
+      });
+      created++;
+    }
+
+    res.json({
+      data: { created, updated, deleted },
+      meta: { message: 'Đã lưu lịch ca' },
     });
   } catch (err) {
     next(err);
