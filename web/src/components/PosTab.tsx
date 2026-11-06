@@ -3876,9 +3876,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
             )}
             {paymentMethod === "CARD" && (
               <div className="flex justify-between gap-2 text-xs text-amber-300">
-                <span>
-                  Phí quẹt thẻ ({cardFeePercent === 4 ? "Khách nước ngoài 4%" : "Khách Việt 1.8%"}):
-                </span>
+                <span>Phí quẹt thẻ ({cardFeePercent}%):</span>
                 <span className="font-mono font-semibold">+{formatVND(cardFee)}</span>
               </div>
             )}

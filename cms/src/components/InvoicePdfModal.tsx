@@ -37,15 +37,9 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
       ? "Chuyển khoản (BANKING)"
       : order.paymentMethod === "OTHER"
       ? `Khác (${order.paymentMethodDetail || "Tùy chọn"})`
-      : `Thẻ (CARD)${
-          effectiveCardFeePercent === 4
-            ? " - Khách nước ngoài (4%)"
-            : effectiveCardFeePercent === 1.8
-              ? " - Khách Việt (1.8%)"
-              : effectiveCardFeePercent > 0
-                ? ` - Có phí ${effectiveCardFeePercent}%`
-                : " - Không phí"
-        }`;
+      : effectiveCardFeePercent > 0
+      ? `Thẻ (CARD ${effectiveCardFeePercent}%)`
+      : "Thẻ (CARD)";
 
   const getItemCalculatedPricing = (item: Order["items"][number]) => {
     const isGift = Boolean(item.isGift) || item.discountType === "GIFT";
@@ -447,7 +441,7 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
               {order.paymentMethod === "CARD" && (
                 <div className="flex justify-between items-center whitespace-nowrap gap-2">
                   <span className="font-semibold">
-                    Phí quẹt thẻ ({effectiveCardFeePercent === 4 ? "Khách nước ngoài 4%" : effectiveCardFeePercent === 1.8 ? "Khách Việt 1.8%" : effectiveCardFeePercent > 0 ? `${effectiveCardFeePercent}%` : "0%"}):
+                    Phí quẹt thẻ ({effectiveCardFeePercent > 0 ? `${effectiveCardFeePercent}%` : "0%"}):
                   </span>
                   <span className="font-mono font-bold">
                     +{formatVND(calcCardFee)}
