@@ -216,6 +216,7 @@
       "paymentMethod": "CASH | BANKING | CARD | OTHER",
       "paymentMethodDetail": "Tiền mặt + Chuyển khoản",
       "hasCardFee": true,
+      "cardFeePercent": 1.8,
       "billDiscountType": "NONE | PERCENT | AMOUNT",
       "billDiscountValue": 10,
       "note": "Giá đã bao gồm thuế",
@@ -250,8 +251,8 @@
       - Nếu `billDiscountType === "PERCENT"` (`0..100`): `billDiscountAmount = Math.round(subtotal * billDiscountValue / 100)`.
       - Nếu `billDiscountType === "AMOUNT"`: `billDiscountAmount = Math.min(subtotal, Math.max(0, Math.round(billDiscountValue)))`.
       - Tiền hàng sau giảm giá Bill: `afterBillDiscount = Math.max(0, subtotal - billDiscountAmount)`.
-    - **Phí quẹt thẻ 3% & Tổng thanh toán**:
-      - Nếu `paymentMethod === "CARD"` và `hasCardFee === true`: `cardFee = Math.round(afterBillDiscount * 0.03)`, ngược lại `cardFee = 0`.
+    - **Phí quẹt thẻ (Khách Việt 1.8% / Khách nước ngoài 4%) & Tổng thanh toán**:
+      - Nếu `paymentMethod === "CARD"`: hỗ trợ chọn `cardFeePercent` là `1.8` (Khách Việt 1.8%, mặc định) hoặc `4` (Khách nước ngoài 4%). Khi áp dụng phí thẻ (`hasCardFee !== false` và `cardFeePercent > 0`), `cardFee = Math.round(afterBillDiscount * (cardFeePercent / 100))`, ngược lại `cardFee = 0`.
       - `totalAmount = afterBillDiscount + cardFee`.
     - **Lưu Bản Nháp Hóa Đơn (`status === "DRAFT"` hoặc `isDraft === true`) *(v2.8)***:
       - Mọi nhân viên Sales và Admin đều nhìn thấy toàn bộ danh sách hóa đơn nháp (`GET /api/v1/orders?status=DRAFT`) để phối hợp phục vụ khách.

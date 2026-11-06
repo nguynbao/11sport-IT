@@ -287,7 +287,7 @@ export function exportOrders(orders: Order[]) {
     { header: "Tiền hàng (niêm yết)", value: (o) => Number(o.rawSubtotal || o.subtotal) || 0, format: "money", total: true },
     { header: "Giảm giá SP", value: (o) => Number(o.itemDiscountTotal) || 0, format: "money", total: true },
     { header: "Giảm giá Bill", value: (o) => Number(o.billDiscountAmount) || 0, format: "money", total: true },
-    { header: "Phí thẻ 3%", value: (o) => Number(o.cardFee) || 0, format: "money", total: true },
+    { header: "Phí thẻ", value: (o) => Number(o.cardFee) || 0, format: "money", total: true },
     { header: "Tổng thu", value: (o) => Number(o.totalAmount) || 0, format: "money", total: true },
     { header: "Trạng thái", value: (o) => ORDER_STATUS[o.status] || o.status },
     { header: "Nhân viên bán", value: (o) => o.soldByName || o.createdByName || "" },
