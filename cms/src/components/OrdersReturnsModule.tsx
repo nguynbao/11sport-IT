@@ -240,7 +240,7 @@ export default function OrdersReturnsModule({
                 <th className="py-3 px-3">Người tạo / Chốt</th>
                 <th className="py-3 px-3 text-right">Tiền hàng</th>
                 <th className="py-3 px-3 text-right">Giảm giá</th>
-                <th className="py-3 px-3 text-right">Phí thẻ 3%</th>
+                <th className="py-3 px-3 text-right">Phí thẻ</th>
                 <th className="py-3 px-3 text-right">Tổng thu</th>
                 <th className="py-3 px-3 text-center">Trạng thái</th>
                 <th className="py-3 px-3 text-right">Thao tác / PDF</th>

@@ -270,7 +270,7 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
     expect(poloBlue).toBeDefined();
     const initialStock = poloBlue.stock;
 
-    // Tạo đơn bán hàng thanh toán CARD + hasCardFee = true (phí 3%)
+    // Tạo đơn bán hàng thanh toán CARD + Khách Việt 1.8% (mặc định khi hasCardFee = true)
     const orderRes = await request(app)
       .post('/api/v1/orders')
       .send({
@@ -283,8 +283,9 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
     expect(orderRes.status).toBe(201);
     const createdOrder = orderRes.body.data;
     expect(createdOrder.subtotal).toBe(280000 * 3); // 840,000
-    expect(createdOrder.cardFee).toBe(Math.round(840000 * 0.03)); // 25,200
-    expect(createdOrder.totalAmount).toBe(865200);
+    expect(createdOrder.cardFeePercent).toBe(1.8);
+    expect(createdOrder.cardFee).toBe(Math.round(840000 * 0.018)); // 15,120
+    expect(createdOrder.totalAmount).toBe(855120);
     expect(createdOrder.note).toBe('Giá đã bao gồm thuế');
 
     // Kiểm tra tồn kho đã trừ 3
@@ -407,12 +408,16 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
         customerName: 'Phạm Minh Không Phí',
         customerPhone: '0977888999',
         paymentMethod: 'CARD',
-        hasCardFee: false,
+        hasCardFee: true,
+        cardFeePercent: 4,
         items: [{ productId: sellableProd._id, quantity: 1 }],
       });
     expect(noFeeOrderRes.status).toBe(201);
-    expect(noFeeOrderRes.body.data.cardFee).toBe(0);
-    expect(noFeeOrderRes.body.data.totalAmount).toBe(sellableProd.sellingPrice);
+    expect(noFeeOrderRes.body.data.cardFeePercent).toBe(4);
+    expect(noFeeOrderRes.body.data.cardFee).toBe(Math.round(sellableProd.sellingPrice * 0.04));
+    expect(noFeeOrderRes.body.data.totalAmount).toBe(
+      sellableProd.sellingPrice + Math.round(sellableProd.sellingPrice * 0.04)
+    );
 
     // 4. BR-14: Chặn trả vượt số lượng đã mua
     const exceedReturnRes = await request(app)

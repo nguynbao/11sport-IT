@@ -166,6 +166,7 @@ export interface Order {
   paymentMethodDetail?: string;
   splitPayments?: SplitPaymentRecord[];
   hasCardFee: boolean;
+  cardFeePercent?: number;
   rawSubtotal?: number;
   itemDiscountTotal?: number;
   subtotal: number;

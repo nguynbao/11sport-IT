@@ -269,7 +269,7 @@ export default function ReturnExchangeTab() {
         </h2>
         <p className="text-xs text-slate-500 mt-0.5">
           Nhập mã đơn hàng cần trả/đổi. Hệ thống kiểm tra số lượng đã mua/đã trả, cộng lại kho cho hàng{" "}
-          <strong>Còn bán được (GOOD)</strong> và tính tiền trên giá gốc sản phẩm (không hoàn phí thẻ 3%).
+          <strong>Còn bán được (GOOD)</strong> và tính tiền trên giá gốc sản phẩm (không hoàn phí thẻ).
         </p>
 
         <form onSubmit={handleSearchOrder} className="mt-4 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
@@ -348,7 +348,7 @@ export default function ReturnExchangeTab() {
               <div className="text-xs text-slate-500 mt-0.5">
                 Ngày mua: {formatDateTime(selectedOrder.createdAt)} · Tiền hàng:{" "}
                 <strong className="font-mono">{formatVND(selectedOrder.subtotal)}</strong> · Phí
-                thẻ 3%:{" "}
+                thẻ:{" "}
                 <strong className="font-mono">{formatVND(selectedOrder.cardFee)}</strong> (Không
                 hoàn phí thẻ khi trả/đổi)
               </div>

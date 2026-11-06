@@ -1460,7 +1460,7 @@ export default function RevenueDashboardModule({
               </span>
             </div>
             <div className="flex justify-between">
-              <span>Phí quẹt thẻ thu hộ (3%):</span>
+              <span>Phí quẹt thẻ thu hộ (1.8% / 4%):</span>
               <span className="font-mono font-bold text-slate-300">
                 {formatVND(s?.cardFeeTotal || 0)}
               </span>
