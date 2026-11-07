@@ -16,7 +16,24 @@ function resolveApiBaseUrl(): string {
   return RENDER_API_BASE_URL;
 }
 
-export type UserRole = "SALES" | "WAREHOUSE" | "ADMIN";
+export type UserRole = "SALES" | "WAREHOUSE" | "ADMIN" | "HR" | "ACCOUNTANT" | "MARKETING";
+export type Department = "OFFICE" | "SALES";
+/** INTERN = Thực tập, PROBATION = Thử việc, FULLTIME = Chính thức (PARTTIME: giá trị cũ) */
+export type ContractType = "INTERN" | "PROBATION" | "FULLTIME" | "PARTTIME";
+
+export const CONTRACT_TYPE_OPTIONS: { value: ContractType; label: string; desc: string }[] = [
+  { value: "INTERN", label: "Thực tập (Intern)", desc: "Không có ngày phép có lương" },
+  { value: "PROBATION", label: "Thử việc", desc: "Không có ngày phép có lương" },
+  { value: "FULLTIME", label: "Chính thức", desc: "1 ngày nghỉ phép có lương/tháng" },
+];
+
+export function contractTypeLabel(t?: string | null): string {
+  if (t === "FULLTIME") return "Chính thức";
+  if (t === "PROBATION") return "Thử việc";
+  if (t === "INTERN") return "Thực tập";
+  if (t === "PARTTIME") return "Bán thời gian (cũ)";
+  return "Chưa cập nhật";
+}
 
 export interface StaffUser {
   _id: string;
@@ -24,9 +41,79 @@ export interface StaffUser {
   username: string;
   fullName: string;
   phone?: string;
+  email?: string;
+  citizenId?: string;
+  address?: string;
   role: UserRole;
+  department?: Department;
+  contractType?: ContractType;
+  contractStartDate?: string;
+  contractEndDate?: string;
+  contractFileUrl?: string;
+  contractFileName?: string;
   status: "ACTIVE" | "LOCKED";
   createdAt?: string;
+}
+
+export interface Holiday {
+  _id: string;
+  date: string;
+  name: string;
+  note?: string;
+  isSystemVn?: boolean;
+  isOfficialDayOff?: boolean;
+  lunarDate?: string;
+}
+
+export interface LeaveRequest {
+  _id: string;
+  staffId: string;
+  staffCode: string;
+  staffName: string;
+  department: Department;
+  type: "WFH" | "OFF" | "LATE" | "EARLY" | "PAID_LEAVE";
+  date: string;
+  reason: string;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  reviewedBy?: string;
+  reviewedAt?: string;
+  reviewNote?: string;
+  createdAt?: string;
+}
+
+export interface ShiftAssignment {
+  _id: string;
+  weekStart: string;
+  date: string;
+  dayOfWeek: number;
+  staffId: string;
+  staffCode: string;
+  staffName: string;
+  shiftCode: "SHIFT_1" | "SHIFT_2" | "OFF";
+  preferenceShift?: "SHIFT_1" | "SHIFT_2" | "OFF";
+  isOffRequested?: boolean;
+  assignedBy: "AUTO" | "HR";
+  notes?: string;
+}
+
+export interface AttendanceRecord {
+  _id: string;
+  staffId: string;
+  staffCode: string;
+  staffName: string;
+  department: Department;
+  date: string;
+  shiftCode: "SHIFT_1" | "SHIFT_2";
+  checkInTime: string;
+  workStartTime: string;
+  checkOutTime?: string;
+  checkInType: "STANDARD" | "WFH";
+  status: "ON_TIME" | "LATE" | "EARLY_LEAVE" | "COMPLETED";
+  lateMinutes: number;
+  earlyMinutes: number;
+  lunchPauseMinutes: number;
+  totalWorkHours: number;
+  notes?: string;
 }
 
 export interface Category {
@@ -1329,4 +1416,285 @@ export function isCompactBarcodeMatchVariant(scannedRaw: string, targetVariantCo
     }
   }
   return false;
+}
+
+// ============================================================
+// HRM & Attendance APIs (v4.0)
+// ============================================================
+
+export async function fetchHolidays(year?: number): Promise<Holiday[]> {
+  const q = year ? `?year=${year}` : "";
+  const res = await apiRequest<Holiday[]>(`/holidays${q}`);
+  return res.data;
+}
+
+export async function syncVietnamHolidaysApi(year: number): Promise<{
+  year: number;
+  syncedCount: number;
+  totalVietnamHolidays: number;
+}> {
+  const res = await apiRequest<{
+    year: number;
+    syncedCount: number;
+    totalVietnamHolidays: number;
+  }>("/holidays/sync-vn", {
+    method: "POST",
+    body: JSON.stringify({ year }),
+  });
+  return res.data;
+}
+
+export async function createHolidayApi(data: {
+  date: string;
+  name: string;
+  note?: string;
+  isOfficialDayOff?: boolean;
+}): Promise<Holiday> {
+  const res = await apiRequest<Holiday>("/holidays", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  return res.data;
+}
+
+export async function deleteHolidayApi(id: string): Promise<boolean> {
+  const res = await apiRequest<{ success: boolean }>(`/holidays/${id}`, {
+    method: "DELETE",
+  });
+  return res.data.success;
+}
+
+export async function fetchLeaveRequests(params?: { status?: string; type?: string; date?: string; staffId?: string }): Promise<LeaveRequest[]> {
+  const query = new URLSearchParams();
+  if (params?.status) query.set("status", params.status);
+  if (params?.type) query.set("type", params.type);
+  if (params?.date) query.set("date", params.date);
+  if (params?.staffId) query.set("staffId", params.staffId);
+  const qStr = query.toString();
+  const res = await apiRequest<LeaveRequest[]>(`/leave-requests${qStr ? `?${qStr}` : ""}`);
+  return res.data;
+}
+
+export async function reviewLeaveRequestApi(id: string, status: "APPROVED" | "REJECTED", reviewNote?: string): Promise<LeaveRequest> {
+  const res = await apiRequest<LeaveRequest>(`/leave-requests/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ status, reviewNote }),
+  });
+  return res.data;
+}
+
+export async function fetchShiftSchedule(weekStart?: string): Promise<{ assignments: ShiftAssignment[]; staffList: StaffUser[] }> {
+  const query = weekStart ? `?weekStart=${weekStart}` : "";
+  const res = await apiRequest<{ assignments: ShiftAssignment[]; staffList: StaffUser[] }>(`/shifts/schedule${query}`);
+  return res.data;
+}
+
+export async function assignShiftApi(data: { staffId: string; date: string; weekStart?: string; dayOfWeek?: number; shiftCode: "SHIFT_1" | "SHIFT_2" | "OFF" }): Promise<ShiftAssignment> {
+  const res = await apiRequest<ShiftAssignment>("/shifts/assign", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+  return res.data;
+}
+
+export async function fetchAttendanceHistory(params?: { staffId?: string; month?: string; year?: string }): Promise<AttendanceRecord[]> {
+  const query = new URLSearchParams();
+  if (params?.staffId) query.set("staffId", params.staffId);
+  if (params?.month) query.set("month", params.month);
+  if (params?.year) query.set("year", params.year);
+  const qStr = query.toString();
+  const res = await apiRequest<AttendanceRecord[]>(`/attendance/history${qStr ? `?${qStr}` : ""}`);
+  return res.data;
+}
+
+export interface AttendanceConfig {
+  _id?: string;
+  key?: string;
+  officeName: string;
+  officeLat: number;
+  officeLng: number;
+  maxDistanceMeters: number;
+  allowedIps: string[];
+  requireGps: boolean;
+  requireIp: boolean;
+  updatedBy?: string;
+  updatedAt?: string;
+}
+
+export async function fetchAttendanceConfig(): Promise<{
+  config: AttendanceConfig;
+  detectedClientIp: string;
+}> {
+  const res = await apiRequest<{ config: AttendanceConfig; detectedClientIp: string }>("/attendance/config");
+  return res.data;
+}
+
+export async function updateAttendanceConfigApi(
+  payload: Partial<AttendanceConfig>
+): Promise<{ config: AttendanceConfig; detectedClientIp: string }> {
+  const res = await apiRequest<{ config: AttendanceConfig; detectedClientIp: string }>("/attendance/config", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+  return res.data;
+}
+
+// ============================================================
+// Bảng công tháng (Timesheet) & Điều chỉnh giờ công (HR)
+// ============================================================
+
+export type TimesheetCellCode =
+  | "ON_TIME"
+  | "LATE"
+  | "EARLY"
+  | "LATE_EARLY"
+  | "WFH"
+  | "WORKING"
+  | "MISSING_OUT"
+  | "LEAVE"
+  | "PAID_LEAVE"
+  | "ABSENT"
+  | "HOLIDAY"
+  | "DAY_OFF"
+  | "UNSCHEDULED"
+  | "FUTURE";
+
+export interface TimesheetCell {
+  code: TimesheetCellCode;
+  attendanceId?: string;
+  shiftCode?: "SHIFT_1" | "SHIFT_2" | null;
+  checkIn?: string | null;
+  checkOut?: string | null;
+  hours?: number;
+  lateMinutes?: number;
+  earlyMinutes?: number;
+  checkInType?: "STANDARD" | "WFH";
+  isHolidayWork?: boolean;
+  /** Ngày lễ chính thức được nghỉ hưởng nguyên lương (tính 1 công) */
+  isPaidHoliday?: boolean;
+  adjusted?: boolean;
+  adjustedByName?: string;
+  adjustReason?: string;
+  note?: string;
+}
+
+export interface TimesheetSummary {
+  standardDays: number;
+  workUnits: number;
+  totalHours: number;
+  lateCount: number;
+  lateMinutes: number;
+  earlyCount: number;
+  earlyMinutes: number;
+  missingCheckout: number;
+  absentDays: number;
+  leaveDays: number;
+  wfhDays: number;
+  holidayWorkDays: number;
+  /** Giờ đi làm vào ngày lễ chính thức (trả lương làm thêm >= 300%) */
+  holidayWorkHours: number;
+  /** Số ngày lễ chính thức được nghỉ hưởng nguyên lương (tính công) */
+  holidayPaidDays: number;
+  /** Tổng công tính lương = công đi làm + công lễ hưởng lương + phép có lương */
+  paidUnits: number;
+  overtimeDays?: number;
+  overtimeMinutes?: number;
+  pendingRequests?: number;
+  /** HĐ Chính thức: 1 ngày nghỉ phép có lương/tháng */
+  paidLeaveEntitled?: number;
+  paidLeaveUsed?: number;
+  /** 1 = tháng đã qua mà không dùng -> mất quyền lợi */
+  paidLeaveForfeited?: number;
+}
+
+export interface TimesheetRow {
+  staffId: string;
+  staffCode: string;
+  staffName: string;
+  department: Department;
+  role: UserRole;
+  contractType?: ContractType;
+  standardHours: number;
+  cells: Record<string, TimesheetCell>;
+  summary: TimesheetSummary;
+}
+
+export interface TimesheetDay {
+  date: string;
+  day: number;
+  weekday: number;
+  isToday: boolean;
+  holiday: { name: string; isOfficialDayOff: boolean } | null;
+}
+
+export interface TimesheetData {
+  month: number;
+  year: number;
+  days: TimesheetDay[];
+  rows: TimesheetRow[];
+  overview: {
+    totalStaff: number;
+    workingNow: number;
+    checkedInToday: number;
+    lateToday: number;
+    notCheckedInToday: number;
+    missingCheckoutMonth: number;
+    absentMonth: number;
+  };
+}
+
+export async function fetchTimesheetApi(params: {
+  month: number;
+  year: number;
+  department?: Department | "ALL";
+}): Promise<TimesheetData> {
+  const q = new URLSearchParams({ month: String(params.month), year: String(params.year) });
+  if (params.department && params.department !== "ALL") q.set("department", params.department);
+  const res = await apiRequest<TimesheetData>(`/attendance/timesheet?${q.toString()}`);
+  return res.data;
+}
+
+export async function adjustAttendanceApi(
+  id: string,
+  data: { checkIn?: string; checkOut?: string; shiftCode?: "SHIFT_1" | "SHIFT_2"; reason: string }
+): Promise<AttendanceRecord> {
+  const res = await apiRequest<AttendanceRecord>(`/attendance/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+  return res.data;
+}
+
+export async function createManualAttendanceApi(data: {
+  staffId: string;
+  date: string;
+  shiftCode?: "SHIFT_1" | "SHIFT_2";
+  checkIn: string;
+  checkOut?: string;
+  reason: string;
+}): Promise<AttendanceRecord> {
+  const res = await apiRequest<AttendanceRecord>("/attendance/manual", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  return res.data;
+}
+
+export interface ShiftChange {
+  staffId: string;
+  date: string;
+  dayOfWeek?: number;
+  /** null = xoá phân ca của nhân viên ngày đó */
+  shiftCode: "SHIFT_1" | "SHIFT_2" | "OFF" | null;
+}
+
+export async function saveShiftChangesApi(
+  weekStart: string,
+  changes: ShiftChange[]
+): Promise<{ created: number; updated: number; deleted: number }> {
+  const res = await apiRequest<{ created: number; updated: number; deleted: number }>("/shifts/assign/bulk", {
+    method: "PUT",
+    body: JSON.stringify({ weekStart, changes }),
+  });
+  return res.data;
 }

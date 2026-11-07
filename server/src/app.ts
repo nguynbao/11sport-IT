@@ -1,3 +1,6 @@
+// Chấm công tính theo giờ Việt Nam: cố định múi giờ server (Render mặc định UTC sẽ lệch 7 tiếng)
+process.env.TZ = process.env.TZ || 'Asia/Ho_Chi_Minh';
+
 import express from 'express';
 import cors from 'cors';
 import { getDbMode } from './config/db';
@@ -12,6 +15,11 @@ import { reportsRouter } from './routes/reports';
 import { wiseRouter } from './routes/wise';
 import { promotionsRouter } from './routes/promotions';
 import { printersRouter } from './routes/printers';
+import { attendanceRouter } from './routes/attendance';
+import { attendanceTimesheetRouter } from './routes/attendanceTimesheet';
+import { leaveRequestsRouter } from './routes/leaveRequests';
+import { shiftsRouter } from './routes/shifts';
+import { holidaysRouter } from './routes/holidays';
 
 export function createApp() {
   const app = express();
@@ -100,6 +108,11 @@ export function createApp() {
   app.use('/api/v1', wiseRouter);
   app.use('/api/v1', promotionsRouter);
   app.use('/api/v1', printersRouter);
+  app.use('/api/v1', attendanceRouter);
+  app.use('/api/v1', attendanceTimesheetRouter);
+  app.use('/api/v1', leaveRequestsRouter);
+  app.use('/api/v1', shiftsRouter);
+  app.use('/api/v1', holidaysRouter);
 
   // 404 Not Found
   app.use((req, res) => {

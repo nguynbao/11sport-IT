@@ -895,14 +895,14 @@ ordersCustomersRouter.post('/orders/:id/confirm', async (req, res, next) => {
   }
 });
 
-// POST /api/v1/orders/:id/debt-payment — Chỉ ADMIN trên CMS được xác nhận thu nợ / tất toán công nợ
+// POST /api/v1/orders/:id/debt-payment — Chỉ ADMIN hoặc ACCOUNTANT trên CMS được xác nhận thu nợ / tất toán công nợ
 ordersCustomersRouter.post('/orders/:id/debt-payment', async (req, res, next) => {
   try {
-    if (req.user?.role !== 'ADMIN') {
+    if (!['ADMIN', 'ACCOUNTANT'].includes(req.user?.role || '')) {
       throw new ApiError(
         403,
         'FORBIDDEN',
-        'Chỉ Quản lý (ADMIN) trên CMS mới được phép xác nhận thu nợ / tất toán công nợ'
+        'Chỉ Quản lý (ADMIN) hoặc Kế toán (ACCOUNTANT) trên CMS mới được phép xác nhận thu nợ / tất toán công nợ'
       );
     }
 
