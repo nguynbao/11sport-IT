@@ -234,7 +234,7 @@ export default function CustomerTab({ onOpenInvoice }: CustomerTabProps) {
                       <th className="py-3 px-4">Ngày mua</th>
                       <th className="py-3 px-4">Chi tiết sản phẩm</th>
                       <th className="py-3 px-4">Thanh toán</th>
-                      <th className="py-3 px-4 text-right">Phí thẻ 3%</th>
+                      <th className="py-3 px-4 text-right">Phí thẻ</th>
                       <th className="py-3 px-4 text-right">Tổng tiền</th>
                       <th className="py-3 px-4 text-center">Trạng thái</th>
                       <th className="py-3 px-4 text-right">Xuất PDF</th>

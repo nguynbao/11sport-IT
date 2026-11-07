@@ -21,6 +21,15 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
     order.createdByName ||
     (typeof order.soldBy === "string" ? order.soldBy : "Nhân viên 11Sport");
 
+  const effectiveCardFeePercent =
+    order.paymentMethod === "CARD"
+      ? Number(order.cardFeePercent) > 0
+        ? Number(order.cardFeePercent)
+        : order.hasCardFee
+          ? 1.8
+          : 0
+      : 0;
+
   const paymentMethodLabel =
     order.paymentMethod === "CASH"
       ? "Tiền mặt (CASH)"
@@ -28,7 +37,9 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
       ? "Chuyển khoản (BANKING)"
       : order.paymentMethod === "OTHER"
       ? `Khác (${order.paymentMethodDetail || "Tùy chọn"})`
-      : `Thẻ (CARD)${order.hasCardFee ? " - Có phí 3%" : " - Không phí"}`;
+      : effectiveCardFeePercent > 0
+      ? `Thẻ (CARD ${effectiveCardFeePercent}%)`
+      : "Thẻ (CARD)";
 
   const getItemCalculatedPricing = (item: Order["items"][number]) => {
     const isGift = Boolean(item.isGift) || item.discountType === "GIFT";
@@ -87,7 +98,7 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
   const calcAfterBillDisc = Math.max(0, calcSubtotal - calcBillDisc);
   const calcCardFee =
     order.paymentMethod === "CARD" && order.hasCardFee
-      ? Number(order.cardFee) || Math.round(calcAfterBillDisc * 0.03)
+      ? Number(order.cardFee) || Math.round((calcAfterBillDisc * effectiveCardFeePercent) / 100)
       : 0;
   const calcTotalAmount = calcAfterBillDisc + calcCardFee;
 
@@ -430,7 +441,7 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
               {order.paymentMethod === "CARD" && (
                 <div className="flex justify-between items-center whitespace-nowrap gap-2">
                   <span className="font-semibold">
-                    Phí quẹt thẻ {order.hasCardFee ? "(3%)" : "(0%)"}:
+                    Phí quẹt thẻ ({effectiveCardFeePercent > 0 ? `${effectiveCardFeePercent}%` : "0%"}):
                   </span>
                   <span className="font-mono font-bold">
                     +{formatVND(calcCardFee)}

@@ -278,6 +278,7 @@ async function prepareOrderData(body: any, isDraft: boolean) {
     debtAmount: rawBodyDebtAmount,
     debtDueDate: rawBodyDebtDueDate,
     hasCardFee,
+    cardFeePercent: rawCardFeePercent,
     billDiscountType,
     billDiscountValue,
     note,
@@ -490,9 +491,20 @@ async function prepareOrderData(body: any, isDraft: boolean) {
       : 0;
 
   const afterBillDiscount = Math.max(0, subtotal - billDiscountAmount);
-  const applyCardFee = method === 'CARD' && Boolean(hasCardFee);
-  const cardFeePercent = applyCardFee ? 3 : 0;
-  const cardFee = applyCardFee ? Math.round(afterBillDiscount * 0.03) : 0;
+  let resolvedCardFeePercent = 0;
+  if (method === 'CARD') {
+    const parsedPct = Number(rawCardFeePercent);
+    if (rawCardFeePercent !== undefined && rawCardFeePercent !== null && !isNaN(parsedPct) && parsedPct >= 0) {
+      resolvedCardFeePercent = parsedPct;
+    } else if (hasCardFee === false) {
+      resolvedCardFeePercent = 0;
+    } else {
+      resolvedCardFeePercent = 1.8;
+    }
+  }
+  const applyCardFee = method === 'CARD' && resolvedCardFeePercent > 0;
+  const cardFeePercent = applyCardFee ? resolvedCardFeePercent : 0;
+  const cardFee = applyCardFee ? Math.round((afterBillDiscount * cardFeePercent) / 100) : 0;
   const totalAmount = afterBillDiscount + cardFee;
 
   // Xử lý tách thanh toán & Công nợ (Mua trước trả sau) khi method === 'OTHER'
@@ -737,6 +749,7 @@ ordersCustomersRouter.put('/orders/:id', async (req, res, next) => {
       debtAmount: req.body?.debtAmount ?? existingOrder.debtAmount,
       debtDueDate: req.body?.debtDueDate ?? existingOrder.debtDueDate,
       hasCardFee: req.body?.hasCardFee ?? existingOrder.hasCardFee,
+      cardFeePercent: req.body?.cardFeePercent ?? existingOrder.cardFeePercent,
       billDiscountType: req.body?.billDiscountType ?? existingOrder.billDiscountType,
       billDiscountValue: req.body?.billDiscountValue ?? existingOrder.billDiscountValue,
       note: req.body?.note ?? existingOrder.note,
@@ -828,6 +841,7 @@ ordersCustomersRouter.post('/orders/:id/confirm', async (req, res, next) => {
       debtAmount: req.body?.debtAmount ?? existingOrder.debtAmount,
       debtDueDate: req.body?.debtDueDate ?? existingOrder.debtDueDate,
       hasCardFee: req.body?.hasCardFee ?? existingOrder.hasCardFee,
+      cardFeePercent: req.body?.cardFeePercent ?? existingOrder.cardFeePercent,
       billDiscountType: req.body?.billDiscountType ?? existingOrder.billDiscountType,
       billDiscountValue: req.body?.billDiscountValue ?? existingOrder.billDiscountValue,
       note: req.body?.note ?? existingOrder.note,

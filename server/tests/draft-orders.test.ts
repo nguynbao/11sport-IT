@@ -270,5 +270,42 @@ describe('Draft Orders (status = DRAFT) & Item Discount Pricing Tests', () => {
     expect(confirmedOrder.confirmedByName).toBeTruthy();
     expect(confirmedOrder.confirmedByName).not.toBe(confirmedOrder.createdByName);
     expect(confirmedOrder.confirmedAt).toBeTruthy();
+
+    // Kiểm thử phí quẹt thẻ: Khách Việt 1.8% và Khách nước ngoài 4%
+    const vnCardRes = await request(app)
+      .post('/api/v1/orders')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        status: 'DRAFT',
+        customerName: 'Khách Việt Quẹt Thẻ',
+        customerPhone: '0905111222',
+        paymentMethod: 'CARD',
+        hasCardFee: true,
+        cardFeePercent: 1.8,
+        items: [{ productId, quantity: 1 }],
+      });
+    expect(vnCardRes.status).toBe(201);
+    expect(vnCardRes.body.data.hasCardFee).toBe(true);
+    expect(vnCardRes.body.data.cardFeePercent).toBe(1.8);
+    expect(vnCardRes.body.data.cardFee).toBe(Math.round(120000 * 0.018)); // 2.160 VND
+    expect(vnCardRes.body.data.totalAmount).toBe(122160);
+
+    const foreignCardRes = await request(app)
+      .post('/api/v1/orders')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        status: 'DRAFT',
+        customerName: 'Foreign Customer Card',
+        customerPhone: '0905333444',
+        paymentMethod: 'CARD',
+        hasCardFee: true,
+        cardFeePercent: 4,
+        items: [{ productId, quantity: 1 }],
+      });
+    expect(foreignCardRes.status).toBe(201);
+    expect(foreignCardRes.body.data.hasCardFee).toBe(true);
+    expect(foreignCardRes.body.data.cardFeePercent).toBe(4);
+    expect(foreignCardRes.body.data.cardFee).toBe(Math.round(120000 * 0.04)); // 4.800 VND
+    expect(foreignCardRes.body.data.totalAmount).toBe(124800);
   });
 });

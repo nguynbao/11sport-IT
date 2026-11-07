@@ -127,6 +127,7 @@ interface DraftOrderData {
   splitPayments: SplitPaymentItem[];
   debtDueDate?: string;
   hasCardFee: boolean;
+  cardFeePercent?: number;
   note: string;
 }
 
@@ -148,6 +149,7 @@ const createEmptyDraftData = (): DraftOrderData => ({
   splitPayments: [],
   debtDueDate: "",
   hasCardFee: true,
+  cardFeePercent: 1.8,
   note: DEFAULT_NOTE,
 });
 
@@ -242,6 +244,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
   const [debtDueDate, setDebtDueDate] = useState<string>("");
   const [showSplitDropdown, setShowSplitDropdown] = useState<boolean>(false);
   const [hasCardFee, setHasCardFee] = useState<boolean>(true);
+  const [cardFeePercent, setCardFeePercent] = useState<number>(1.8);
   const [note, setNote] = useState(DEFAULT_NOTE);
 
   const [submitting, setSubmitting] = useState(false);
@@ -276,6 +279,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     splitPayments,
     debtDueDate,
     hasCardFee,
+    cardFeePercent,
     note,
   });
 
@@ -291,7 +295,8 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     setPaymentMethod(d.paymentMethod || "CASH");
     setSplitPayments(Array.isArray(d.splitPayments) ? d.splitPayments : []);
     setDebtDueDate(typeof d.debtDueDate === "string" ? d.debtDueDate : "");
-    setHasCardFee(d.hasCardFee !== false);
+    setHasCardFee(true);
+    setCardFeePercent(Number(d.cardFeePercent) === 4 ? 4 : 1.8);
     setNote(typeof d.note === "string" ? d.note : DEFAULT_NOTE);
     setShowSplitDropdown(false);
     setLookingUp(false);
@@ -317,6 +322,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
             splitPayments,
             debtDueDate,
             hasCardFee,
+            cardFeePercent,
             note,
           }
           : d
@@ -336,6 +342,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       splitPayments,
       debtDueDate,
       hasCardFee,
+      cardFeePercent,
       note,
     ]
   );
@@ -1648,7 +1655,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
 
   const afterBillDiscount = Math.max(0, subtotal - billDiscountAmount);
   const cardFee =
-    paymentMethod === "CARD" && hasCardFee ? Math.round(afterBillDiscount * 0.03) : 0;
+    paymentMethod === "CARD" ? Math.round((afterBillDiscount * cardFeePercent) / 100) : 0;
   const totalAmount = afterBillDiscount + cardFee;
 
   useEffect(() => {
@@ -1745,7 +1752,8 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
         splitPayments: paymentMethod === "OTHER" ? splitPayments : [],
         debtAmount: currentDebtAmount,
         debtDueDate: currentDebtAmount > 0 && debtDueDate ? debtDueDate : null,
-        hasCardFee: paymentMethod === "CARD" ? hasCardFee : false,
+        hasCardFee: paymentMethod === "CARD",
+        cardFeePercent: paymentMethod === "CARD" ? cardFeePercent : 0,
         billDiscountType: cleanBillDiscountValue > 0 ? billDiscountType : "NONE",
         billDiscountValue: cleanBillDiscountValue,
         note: note.trim() || "Giá đã bao gồm thuế",
@@ -1847,7 +1855,8 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
         splitPayments: paymentMethod === "OTHER" ? splitPayments : [],
         debtAmount: currentDebtAmount,
         debtDueDate: currentDebtAmount > 0 && debtDueDate ? debtDueDate : null,
-        hasCardFee: paymentMethod === "CARD" ? hasCardFee : false,
+        hasCardFee: paymentMethod === "CARD",
+        cardFeePercent: paymentMethod === "CARD" ? cardFeePercent : 0,
         billDiscountType: cleanBillDiscountValue > 0 ? billDiscountType : "NONE",
         billDiscountValue: cleanBillDiscountValue,
         note: note.trim() || "Giá đã bao gồm thuế",
@@ -1991,7 +2000,8 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     setDebtDueDate(
       ord.debtDueDate ? new Date(ord.debtDueDate).toISOString().slice(0, 10) : ""
     );
-    setHasCardFee(ord.hasCardFee !== false);
+    setHasCardFee(true);
+    setCardFeePercent(Number(ord.cardFeePercent) === 4 ? 4 : 1.8);
     setNote(ord.note || DEFAULT_NOTE);
     setSuccessMsg(
       `Đang mở bản nháp ${ord.orderCode || ord.code} (Người tạo: ${ord.createdByName || "Nhân viên"}).`
@@ -3776,30 +3786,36 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <label
-                    className={`min-h-[40px] flex items-center gap-2 p-2 rounded-lg border cursor-pointer text-xs font-semibold ${hasCardFee
+                    className={`min-h-[40px] flex items-center gap-2 p-2 rounded-lg border cursor-pointer text-xs font-semibold ${cardFeePercent === 4
                       ? "border-amber-600 bg-white text-amber-900"
                       : "border-amber-200 text-slate-600"
                       }`}
                   >
                     <input
                       type="radio"
-                      checked={hasCardFee}
-                      onChange={() => setHasCardFee(true)}
+                      checked={cardFeePercent === 4}
+                      onChange={() => {
+                        setHasCardFee(true);
+                        setCardFeePercent(4);
+                      }}
                     />
-                    Có phí 3% (+{formatVND(Math.round(afterBillDiscount * 0.03))})
+                    Khách nước ngoài 4% (+{formatVND(Math.round(afterBillDiscount * 0.04))})
                   </label>
                   <label
-                    className={`min-h-[40px] flex items-center gap-2 p-2 rounded-lg border cursor-pointer text-xs font-semibold ${!hasCardFee
+                    className={`min-h-[40px] flex items-center gap-2 p-2 rounded-lg border cursor-pointer text-xs font-semibold ${cardFeePercent !== 4
                       ? "border-amber-600 bg-white text-amber-900"
                       : "border-amber-200 text-slate-600"
                       }`}
                   >
                     <input
                       type="radio"
-                      checked={!hasCardFee}
-                      onChange={() => setHasCardFee(false)}
+                      checked={cardFeePercent !== 4}
+                      onChange={() => {
+                        setHasCardFee(true);
+                        setCardFeePercent(1.8);
+                      }}
                     />
-                    Không phí (0 VND)
+                    Khách Việt 1.8% (+{formatVND(Math.round(afterBillDiscount * 0.018))})
                   </label>
                 </div>
               </div>
@@ -3860,7 +3876,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
             )}
             {paymentMethod === "CARD" && (
               <div className="flex justify-between gap-2 text-xs text-amber-300">
-                <span>Phí quẹt thẻ ({hasCardFee ? "3%" : "0%"}):</span>
+                <span>Phí quẹt thẻ ({cardFeePercent}%):</span>
                 <span className="font-mono font-semibold">+{formatVND(cardFee)}</span>
               </div>
             )}
