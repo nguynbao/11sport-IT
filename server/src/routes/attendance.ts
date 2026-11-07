@@ -229,9 +229,9 @@ attendanceRouter.post('/attendance/check-in', async (req, res, next) => {
       throw new ApiError(400, 'ALREADY_CHECKED_IN', 'Hôm nay bạn đã chấm công check-in rồi');
     }
 
-    const { latitude, longitude, clientIp, shiftCode, bypassNetwork = false } = req.body || {};
+    const { latitude, longitude, clientIp, shiftCode } = req.body || {};
 
-    // 1. Kiểm tra đơn WFH đã duyệt hôm nay (Chỉ dành cho khối OFFICE)
+    // 1. Kiểm tra đơn WFH đã duyệt hôm nay (Áp dụng cho cả khối OFFICE và SALES) — xác minh hoàn toàn phía server
     const approvedWfh = await leaveRequestRepo.findOne({
       staffId: staff._id,
       date: todayStr,
@@ -239,12 +239,12 @@ attendanceRouter.post('/attendance/check-in', async (req, res, next) => {
       status: 'APPROVED',
     });
 
-    const isWfh = Boolean(approvedWfh && staff.department === 'OFFICE');
+    const isWfh = Boolean(approvedWfh);
     const config = getEnvAttendanceConfig();
     const detectedIp = extractClientIp(req, clientIp);
 
-    // 2. Nếu không phải WFH và không bypass -> Kiểm tra cặp (Location 1 + Mạng 1) hoặc (Location 2 + Mạng 2)
-    if (!isWfh && !bypassNetwork) {
+    // 2. Nếu không phải WFH (đã xác minh server-side) -> Kiểm tra cặp (Location 1 + Mạng 1) hoặc (Location 2 + Mạng 2)
+    if (!isWfh) {
       verifyBranchLocationAndNetwork(latitude, longitude, detectedIp, config);
     }
 
@@ -337,12 +337,17 @@ attendanceRouter.post('/attendance/check-out', async (req, res, next) => {
       latitude,
       longitude,
       clientIp,
-      bypassNetwork = false,
     } = req.body || {};
 
-    // Kiểm tra vị trí & mạng (Location 1 đi với Mạng 1, Location 2 đi với Mạng 2) nếu không phải ca WFH
-    const isWfh = attendance.checkInType === 'WFH';
-    if (!isWfh && !bypassNetwork) {
+    // Kiểm tra vị trí & mạng (Location 1 đi với Mạng 1, Location 2 đi với Mạng 2) nếu không phải ca WFH (xác minh server-side)
+    const approvedWfh = await leaveRequestRepo.findOne({
+      staffId: user.userId,
+      date: todayStr,
+      type: 'WFH',
+      status: 'APPROVED',
+    });
+    const isWfh = attendance.checkInType === 'WFH' || Boolean(approvedWfh);
+    if (!isWfh) {
       const config = getEnvAttendanceConfig();
       const detectedIp = extractClientIp(req, clientIp);
       const checkLat = latitude !== undefined ? latitude : attendance.latitude;
@@ -350,8 +355,8 @@ attendanceRouter.post('/attendance/check-out', async (req, res, next) => {
       verifyBranchLocationAndNetwork(checkLat, checkLng, detectedIp, config);
     }
 
-    // 1. Kiểm tra bàn giao ca cho nhân viên SALES khi bấm Check-out
-    if (attendance.department === 'SALES') {
+    // 1. Kiểm tra bàn giao ca cho nhân viên SALES khi bấm Check-out (bỏ qua nếu hôm nay làm việc từ xa WFH)
+    if (attendance.department === 'SALES' && !isWfh) {
       const handover = await shiftHandoverRepo.findOne({
         date: todayStr,
         fromStaffId: user.userId,

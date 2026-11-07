@@ -55,7 +55,7 @@ export const LEAVE_TYPE_META: Record<
   },
   WFH: {
     label: "Làm từ xa (WFH)",
-    desc: "Chỉ khối Văn phòng",
+    desc: "Làm việc online, chấm công từ xa",
     cls: "bg-purple-100 text-purple-800 border-purple-300",
     icon: <Home className="w-4 h-4" />,
   },
@@ -110,11 +110,11 @@ export function LeaveRequestModal({
 }) {
   const isFulltime = isPaidLeaveEligible(contractType);
   const contractLabel = CONTRACT_LABEL[contractType || ""] || "Chưa cập nhật";
-  // Luôn hiển thị "Nghỉ phép có lương" nhưng KHOÁ nếu chưa phải nhân viên Chính thức
+  // Luôn hiển thị đủ các loại đơn (kể cả WFH cho cả Văn phòng & Bán hàng); KHOÁ "Nghỉ phép có lương" nếu chưa phải nhân viên Chính thức
   const types: LeaveRequestType[] = [
     "PAID_LEAVE",
     "OFF",
-    ...(department === "OFFICE" ? (["WFH"] as LeaveRequestType[]) : []),
+    "WFH",
     "LATE",
     "EARLY",
   ];
@@ -142,11 +142,11 @@ export function LeaveRequestModal({
     const start = new Date(y1, m1 - 1, d1);
     const end = new Date(y2, m2 - 1, d2);
     for (let d = new Date(start); d <= end && out.length < 31; d.setDate(d.getDate() + 1)) {
-      if (d.getDay() === 0) continue; // bỏ Chủ nhật
+      if (department === "OFFICE" && d.getDay() === 0) continue; // Khối Văn phòng bỏ Chủ nhật
       out.push(toDateStr(d));
     }
     return out;
-  }, [allowRange, fromDate, toDate]);
+  }, [allowRange, fromDate, toDate, department]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -230,9 +230,6 @@ export function LeaveRequestModal({
               lợi, không cộng dồn sang tháng sau.
             </p>
           )}
-          {department !== "OFFICE" && (
-            <p className="text-[11px] text-slate-400">Khối Bán hàng không áp dụng hình thức làm từ xa (WFH).</p>
-          )}
 
           <div className={`grid gap-2 ${allowRange ? "grid-cols-2" : "grid-cols-1"}`}>
             <label className="text-xs font-semibold text-slate-600">
@@ -264,7 +261,8 @@ export function LeaveRequestModal({
           </div>
           {allowRange && dates.length > 1 && (
             <p className="text-[11px] text-emerald-700 font-semibold">
-              Sẽ tạo {dates.length} đơn cho {dates.length} ngày làm việc (đã bỏ Chủ nhật).
+              Sẽ tạo {dates.length} đơn cho {dates.length} ngày làm việc
+              {department === "OFFICE" ? " (đã bỏ Chủ nhật)" : ""}.
             </p>
           )}
 

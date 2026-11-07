@@ -1188,7 +1188,6 @@ export async function checkInApi(params: {
   latitude?: number;
   longitude?: number;
   shiftCode?: "SHIFT_1" | "SHIFT_2";
-  bypassNetwork?: boolean;
 }): Promise<{ attendance: AttendanceData; isWfh: boolean; message: string }> {
   const res = await apiRequest<{ attendance: AttendanceData; isWfh: boolean; message: string }>(
     "/attendance/check-in",
@@ -1205,7 +1204,6 @@ export async function checkOutApi(params?: {
   earlyReason?: string;
   latitude?: number;
   longitude?: number;
-  bypassNetwork?: boolean;
 }): Promise<{ attendance: AttendanceData; message: string }> {
   const res = await apiRequest<{ attendance: AttendanceData; message: string }>(
     "/attendance/check-out",

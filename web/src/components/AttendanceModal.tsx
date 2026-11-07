@@ -165,7 +165,6 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
         latitude: coords ? coords.lat : officeLat,
         longitude: coords ? coords.lng : officeLng,
         shiftCode: selectedShift,
-        bypassNetwork: isWfhToday,
       });
 
       setStatusMsg({ type: "success", text: res.message });

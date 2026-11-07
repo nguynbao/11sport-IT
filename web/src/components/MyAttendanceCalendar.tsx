@@ -721,8 +721,7 @@ function DayDetailModal({
   const paidLeaveAllowed = isPaidLeaveEligible(contractType);
   const st = cell.code === "HOLIDAY" && !cell.isPaidHoliday ? STATUS.DAY_OFF : STATUS[cell.code];
   const [yy, mm, dd] = day.date.split("-");
-  const leaveTypes: LeaveRequestType[] =
-    department === "OFFICE" ? ["PAID_LEAVE", "OFF", "LATE", "EARLY", "WFH"] : ["PAID_LEAVE", "OFF", "LATE", "EARLY"];
+  const leaveTypes: LeaveRequestType[] = ["PAID_LEAVE", "OFF", "WFH", "LATE", "EARLY"];
 
   const [showForm, setShowForm] = useState(false);
   const [type, setType] = useState<LeaveRequestType>(cell.code === "ABSENT" ? "OFF" : "EARLY");

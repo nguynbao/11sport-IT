@@ -194,7 +194,6 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
       const res = await checkInApi({
         latitude: coords ? coords.lat : officeLat,
         longitude: coords ? coords.lng : officeLng,
-        bypassNetwork: isWfhToday,
       });
       setAttendance(res.attendance);
       showNotice("ok", "Đã bắt đầu tính giờ ca làm việc!");
@@ -236,7 +235,6 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
         earlyReason: earlyReason || (isEarlyApprovedToday ? "Đã được HR duyệt về sớm" : ""),
         latitude: coords ? coords.lat : officeLat,
         longitude: coords ? coords.lng : officeLng,
-        bypassNetwork: isWfhToday,
       });
       setAttendance(res.attendance);
       showNotice("ok", `Đã kết thúc ca (${res.attendance.totalWorkHours}h)!`);

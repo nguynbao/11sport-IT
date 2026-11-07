@@ -56,15 +56,6 @@ leaveRequestsRouter.post('/leave-requests', async (req, res, next) => {
       throw new ApiError(400, 'INVALID_TYPE', 'Loại đơn không hợp lệ');
     }
 
-    // Nghiệp vụ WFH: Chỉ áp dụng cho khối Văn phòng (OFFICE)
-    if (type === 'WFH' && staff.department !== 'OFFICE') {
-      throw new ApiError(
-        400,
-        'WFH_NOT_ALLOWED',
-        'Hình thức Làm việc từ xa (WFH) chỉ áp dụng cho nhân viên Khối Văn phòng!'
-      );
-    }
-
     // Nghỉ phép có lương: chỉ hợp đồng Chính thức, tối đa 1 ngày/tháng (không dùng thì mất)
     if (type === 'PAID_LEAVE') {
       // Chỉ nhân viên có loại hợp đồng được ghi rõ là Chính thức (FULLTIME)

@@ -95,20 +95,21 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
     expect(validCheckIn.body.data.attendance.checkInType).toBe('STANDARD');
   });
 
-  it('3. Đơn WFH: Sales bị chặn nộp; Khối Office nộp được và được HR duyệt thì chấm công mọi nơi', async () => {
+  it('3. Đơn WFH: cả Khối Bán hàng (Sales) và Khối Văn phòng (Office) đều nộp được và khi được HR duyệt thì chấm công mọi nơi', async () => {
     const today = new Date().toISOString().slice(0, 10);
 
-    // Sales nộp WFH -> Bị từ chối 400
+    // Sales nộp WFH cho ngày mai -> Thành công (PENDING)
+    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
     const salesWfh = await request(app)
       .post('/api/v1/leave-requests')
       .set('Authorization', `Bearer ${salesToken}`)
       .send({
         type: 'WFH',
-        date: today,
-        reason: 'Xin làm việc tại nhà',
+        date: tomorrow,
+        reason: 'Trực tư vấn đơn hàng online tại nhà',
       });
-    expect(salesWfh.status).toBe(400);
-    expect(salesWfh.body.code).toBe('WFH_NOT_ALLOWED');
+    expect(salesWfh.status).toBe(201);
+    expect(salesWfh.body.data.status).toBe('PENDING');
 
     // Marketing (Khối Office) nộp WFH -> Thành công (PENDING)
     const mktWfh = await request(app)
@@ -400,6 +401,73 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
     } finally {
       process.env.NODE_ENV = prevNodeEnv;
       await seedDatabaseIfNeeded();
+    }
+  });
+
+  it('9. Bảo mật Địa điểm/Mạng: client gửi bypassNetwork: true không thể bỏ qua kiểm tra GPS & IP khi chưa có đơn WFH đã duyệt', async () => {
+    process.env.ATTENDANCE_REQUIRE_GPS = 'true';
+    process.env.ATTENDANCE_REQUIRE_IP = 'true';
+    process.env.ATTENDANCE_OFFICE_LAT = '16.0352';
+    process.env.ATTENDANCE_OFFICE_LNG = '108.2185';
+    process.env.ATTENDANCE_ALLOWED_IPS = '192.168.1.';
+
+    try {
+      const staffNoWfh = await request(app)
+        .post('/api/v1/staff')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          username: 'office_no_wfh_bypass',
+          password: 'password123',
+          fullName: 'Nhân viên Test Bypass',
+          role: 'MARKETING',
+          department: 'OFFICE',
+        });
+      expect(staffNoWfh.status).toBe(201);
+
+      const loginRes = await request(app)
+        .post('/api/v1/auth/login')
+        .send({ username: 'office_no_wfh_bypass', password: 'password123' });
+      const token = loginRes.body.data.token;
+
+      // Client cố tình gửi bypassNetwork: true khi đứng xa cơ sở -> vẫn bị chặn 400 LOCATION_OUT_OF_RANGE
+      const fakeBypassCheckIn = await request(app)
+        .post('/api/v1/attendance/check-in')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          latitude: 10.7626,
+          longitude: 106.6602,
+          clientIp: '10.0.0.1',
+          bypassNetwork: true,
+        });
+      expect(fakeBypassCheckIn.status).toBe(400);
+      expect(fakeBypassCheckIn.body.code).toBe('LOCATION_OUT_OF_RANGE');
+
+      // Check-in hợp lệ tại cơ sở, sau đó cố gửi bypassNetwork: true khi check-out ở vị trí/mạng ngoài -> vẫn bị chặn 400
+      const validCheckIn = await request(app)
+        .post('/api/v1/attendance/check-in')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          latitude: 16.0352,
+          longitude: 108.2185,
+          clientIp: '192.168.1.99',
+        });
+      expect(validCheckIn.status).toBe(201);
+
+      const fakeBypassCheckOut = await request(app)
+        .post('/api/v1/attendance/check-out')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          forceEarly: true,
+          earlyReason: 'Test',
+          latitude: 10.7626,
+          longitude: 106.6602,
+          clientIp: '10.0.0.1',
+          bypassNetwork: true,
+        });
+      expect(fakeBypassCheckOut.status).toBe(400);
+      expect(fakeBypassCheckOut.body.code).toBe('LOCATION_OUT_OF_RANGE');
+    } finally {
+      process.env.ATTENDANCE_REQUIRE_IP = 'false';
     }
   });
 });

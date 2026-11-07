@@ -176,7 +176,6 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
           body: JSON.stringify({
             latitude: coords ? coords.lat : officeLat,
             longitude: coords ? coords.lng : officeLng,
-            bypassNetwork: isWfhToday,
           }),
         }
       );
@@ -222,7 +221,6 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
             earlyReason: earlyReason || (isEarlyApprovedToday ? "Đã được HR duyệt về sớm" : ""),
             latitude: coords ? coords.lat : officeLat,
             longitude: coords ? coords.lng : officeLng,
-            bypassNetwork: isWfhToday,
           }),
         }
       );

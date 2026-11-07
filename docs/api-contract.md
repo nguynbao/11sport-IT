@@ -731,7 +731,7 @@
   - Headers: `Authorization: Bearer <token>`
   - Logic xác thực:
     - Tự động nhận diện ca làm việc theo giờ bấm Check-in (không hiện dropdown chọn Ca 1 / Ca 2 trên Header): Với nhân viên `SALES`, nếu không truyền `shiftCode`, hệ thống tự động gán `SHIFT_1` (`08:30 - 17:30`) nếu check-in trước `11:30`, và gán `SHIFT_2` (`12:00 - 21:00`) nếu check-in từ `11:30` trở đi. Khối `OFFICE` mặc định `SHIFT_1`.
-    - Nếu nhân viên có đơn `WFH` được `HR` duyệt trong ngày hôm nay: Bỏ qua kiểm tra GPS & IP (ghi nhận `checkInType: "WFH"`).
+    - Nếu nhân viên (cả khối `OFFICE` và `SALES`) có đơn `WFH` được `HR` duyệt trong ngày hôm nay (kiểm tra hoàn toàn phía server qua `approvedWfh`): Bỏ qua kiểm tra GPS & IP (ghi nhận `checkInType: "WFH"`). Server tuyệt đối không nhận cờ `bypassNetwork` từ client.
     - **Kiểm tra 2 Cơ sở theo cặp (`Location 1 đi với Mạng 1`, `Location 2 đi với Mạng 2`)**:
       - Nếu không có đơn WFH: Vị trí GPS và IP Wi-Fi của nhân viên phải đồng thời khớp với **Cơ sở 1 (`ATTENDANCE_OFFICE_LAT/LNG` + `ATTENDANCE_ALLOWED_IPS`)** HOẶC đồng thời khớp với **Cơ sở 2 (`ATTENDANCE_OFFICE_2_LAT/LNG` + `ATTENDANCE_ALLOWED_IPS_2`)**.
       - Nếu đứng ở Location 1 nhưng dùng Mạng 2 (hoặc ngược lại đứng ở Location 2 nhưng dùng Mạng 1) -> Trả lỗi `400 WIFI_IP_NOT_ALLOWED`. Nếu nằm ngoài bán kính của cả 2 cơ sở -> Trả lỗi `400 LOCATION_OUT_OF_RANGE`.
@@ -741,7 +741,7 @@
 - `POST /api/v1/attendance/check-out`
   - Body: `{ "forceEarly": boolean, "earlyReason": string, "latitude"?: number, "longitude"?: number, "clientIp"?: string }`
   - Logic xác thực:
-    - Kiểm tra vị trí & mạng 2 cơ sở (`Location 1 + Mạng 1` hoặc `Location 2 + Mạng 2`) tương tự lúc Check-in đối với nhân viên làm việc tại cơ sở (`checkInType !== "WFH"`).
+    - Kiểm tra vị trí & mạng 2 cơ sở (`Location 1 + Mạng 1` hoặc `Location 2 + Mạng 2`) tương tự lúc Check-in đối với nhân viên làm việc tại cơ sở (`checkInType !== "WFH"` và không có đơn `WFH` đã duyệt trong ngày; không chấp nhận cờ `bypassNetwork` từ client).
     - Chặn bấm Check-out & Bàn giao ca khi chưa đủ giờ làm việc của ca (`17:30` đối với Ca 1, `21:00` đối với Ca 2), trừ khi nhân viên có đơn xin về sớm (`type: "EARLY"`) đã được `HR` duyệt trong ngày.
     - Nếu nhân viên là `SALES` và đã đủ giờ kết ca: Khi bấm nút Pause (Check-out) trên Header mà chưa lập biên bản bàn giao Kho Tầng 1 trong ca, trả `400 HANDOVER_REQUIRED` để giao diện tự động mở popup Bàn giao ca (`ShiftHandoverModal`) mà không cần nút `Bàn giao K1` trên Header. Sau khi gửi biên bản bàn giao, tự động hoàn tất Check-out.
     - Tự động trừ giờ nghỉ trưa: Với nhân viên `OFFICE`, khoảng thời gian `12:00 - 13:30` (1.5h) được tự động loại khỏi giờ làm thực tế.
@@ -798,7 +798,7 @@
 - `POST /api/v1/leave-requests`
   - Tạo đơn (`type: "WFH" | "OFF" | "LATE" | "EARLY" | "PAID_LEAVE"`), `date`, `reason`.
   - `reason`: bắt buộc, **tối đa 100 ký tự** (sau khi bỏ khoảng trắng đầu/cuối) → vượt quá trả `400 REASON_TOO_LONG`.
-  - Ràng buộc: Chỉ nhân viên `OFFICE` mới được nộp đơn `WFH`.
+  - Cả nhân viên khối `OFFICE` và khối `SALES` đều được phép nộp đơn `WFH` (Làm việc từ xa).
   - `PAID_LEAVE` (Nghỉ phép có lương): chỉ hợp đồng `FULLTIME` (`400 PAID_LEAVE_NOT_ELIGIBLE`); tối đa 1 đơn đang chờ/đã duyệt mỗi tháng (`400 PAID_LEAVE_QUOTA_EXCEEDED`). HR duyệt cũng kiểm tra lại hạn mức.
   - `OFF` = nghỉ không lương (không tính công).
   - Lỗi `400 DUPLICATE_REQUEST` nếu đã có đơn cùng loại, cùng ngày đang chờ duyệt hoặc đã duyệt.
