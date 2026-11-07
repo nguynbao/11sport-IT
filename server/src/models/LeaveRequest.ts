@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
-export type LeaveRequestType = 'WFH' | 'OFF' | 'LATE' | 'EARLY';
+export type LeaveRequestType = 'WFH' | 'OFF' | 'LATE' | 'EARLY' | 'PAID_LEAVE';
 export type LeaveRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
 export interface ILeaveRequest extends Document {
@@ -25,7 +25,7 @@ const LeaveRequestSchema = new Schema<ILeaveRequest>(
     staffCode: { type: String, required: true },
     staffName: { type: String, required: true },
     department: { type: String, enum: ['OFFICE', 'SALES'], required: true },
-    type: { type: String, enum: ['WFH', 'OFF', 'LATE', 'EARLY'], required: true },
+    type: { type: String, enum: ['WFH', 'OFF', 'LATE', 'EARLY', 'PAID_LEAVE'], required: true },
     date: { type: String, required: true, index: true },
     reason: { type: String, required: true, trim: true },
     status: {

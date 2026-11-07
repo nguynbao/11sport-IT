@@ -364,7 +364,8 @@ export async function seedDatabaseIfNeeded(): Promise<void> {
     for (const st of allExistingStaff) {
       const nextRole = st.role === ('WAREHOUSE' as any) ? 'ACCOUNTANT' : st.role;
       const nextDept = st.department || (nextRole === 'SALES' ? 'SALES' : 'OFFICE');
-      const nextContract = st.contractType || 'FULLTIME';
+      // Không tự gán "Chính thức": tài khoản chưa có loại hợp đồng -> Thử việc (HR cập nhật lại trong CMS)
+      const nextContract = st.contractType || 'PROBATION';
       if (st.role !== nextRole || st.department !== nextDept || st.contractType !== nextContract) {
         await staffRepo.updateById(st._id, {
           role: nextRole,

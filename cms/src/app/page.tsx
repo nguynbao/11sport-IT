@@ -336,9 +336,6 @@ export default function CmsDashboardPage() {
             <h1 className="text-xl font-extrabold tracking-tight">
               ĐĂNG NHẬP QUẢN TRỊ 11SPORT (CMS)
             </h1>
-            <p className="text-xs text-slate-400 mt-1">
-              Dành riêng cho Quản lý / Admin (Quản lý Kho, Giá bán, Category & Nhân sự)
-            </p>
           </div>
 
           <form onSubmit={handleLoginSubmit} className="p-6 space-y-4">
@@ -359,7 +356,7 @@ export default function CmsDashboardPage() {
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Nhập username quản trị (VD: admin)..."
+                  placeholder="Nhập username"
                   autoComplete="username"
                   className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
                 />
@@ -528,14 +525,14 @@ export default function CmsDashboardPage() {
                         setIsDrawerOpen(false);
                       }}
                       className={`w-full text-left p-3 rounded-xl border transition flex items-start gap-3 ${isActive
-                          ? "bg-emerald-600 text-white border-emerald-500 shadow-lg"
-                          : "bg-slate-800/40 hover:bg-slate-800 text-slate-200 border-slate-800"
+                        ? "bg-emerald-600 text-white border-emerald-500 shadow-lg"
+                        : "bg-slate-800/40 hover:bg-slate-800 text-slate-200 border-slate-800"
                         }`}
                     >
                       <div
                         className={`p-2 rounded-lg shrink-0 mt-0.5 ${isActive
-                            ? "bg-white/20 text-white"
-                            : "bg-slate-800 text-emerald-400"
+                          ? "bg-white/20 text-white"
+                          : "bg-slate-800 text-emerald-400"
                           }`}
                       >
                         <Icon className="w-4 h-4" />

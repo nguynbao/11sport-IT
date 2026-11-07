@@ -2,7 +2,8 @@ import mongoose, { Schema, Document } from 'mongoose';
 
 export type StaffRole = 'SALES' | 'WAREHOUSE' | 'ADMIN' | 'HR' | 'ACCOUNTANT' | 'MARKETING';
 export type StaffDepartment = 'OFFICE' | 'SALES';
-export type ContractType = 'FULLTIME' | 'PARTTIME' | 'PROBATION';
+/** INTERN = Thực tập, PROBATION = Thử việc, FULLTIME = Chính thức (PARTTIME: giá trị cũ, chỉ đọc) */
+export type ContractType = 'INTERN' | 'PROBATION' | 'FULLTIME' | 'PARTTIME';
 export type StaffStatus = 'ACTIVE' | 'LOCKED';
 
 export interface IStaff extends Document {
@@ -50,8 +51,8 @@ const StaffSchema = new Schema<IStaff>(
     },
     contractType: {
       type: String,
-      enum: ['FULLTIME', 'PARTTIME', 'PROBATION'],
-      default: 'FULLTIME',
+      enum: ['INTERN', 'PROBATION', 'FULLTIME', 'PARTTIME'],
+      default: 'PROBATION',
     },
     contractStartDate: { type: Date },
     contractEndDate: { type: Date },

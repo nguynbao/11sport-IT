@@ -21,7 +21,8 @@ function resolveApiBaseUrl(): string {
 
 export type UserRole = "SALES" | "WAREHOUSE" | "ADMIN" | "HR" | "ACCOUNTANT" | "MARKETING";
 export type Department = "OFFICE" | "SALES";
-export type ContractType = "FULLTIME" | "PARTTIME" | "PROBATION";
+/** INTERN = Thực tập, PROBATION = Thử việc, FULLTIME = Chính thức (PARTTIME: giá trị cũ) */
+export type ContractType = "INTERN" | "PROBATION" | "FULLTIME" | "PARTTIME";
 
 export interface StaffUser {
   _id: string;
@@ -1263,4 +1264,149 @@ export async function submitShiftPreferencesApi(data: {
     body: JSON.stringify(data),
   });
   return res.data;
+}
+
+// ============================================================
+// Lịch công cá nhân (Web) & Đơn từ
+// ============================================================
+
+export type MyCalendarCellCode =
+  | "ON_TIME"
+  | "LATE"
+  | "EARLY"
+  | "LATE_EARLY"
+  | "WFH"
+  | "WORKING"
+  | "MISSING_OUT"
+  | "LEAVE"
+  | "PAID_LEAVE"
+  | "ABSENT"
+  | "HOLIDAY"
+  | "DAY_OFF"
+  | "UNSCHEDULED"
+  | "FUTURE";
+
+export type LeaveRequestType = "WFH" | "OFF" | "LATE" | "EARLY" | "PAID_LEAVE";
+export type LeaveRequestStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export interface MyCalendarLeave {
+  id: string;
+  type: LeaveRequestType;
+  status: LeaveRequestStatus;
+  reason: string;
+  reviewNote?: string;
+}
+
+export interface MyCalendarCell {
+  code: MyCalendarCellCode;
+  attendanceId?: string;
+  shiftCode?: "SHIFT_1" | "SHIFT_2" | null;
+  checkIn?: string | null;
+  checkOut?: string | null;
+  hours?: number;
+  lateMinutes?: number;
+  earlyMinutes?: number;
+  checkInType?: "STANDARD" | "WFH";
+  isHolidayWork?: boolean;
+  isPaidHoliday?: boolean;
+  overtimeMinutes?: number;
+  earlyApproved?: boolean;
+  lateApproved?: boolean;
+  leaveRequests?: MyCalendarLeave[];
+  adjusted?: boolean;
+  adjustedByName?: string;
+  adjustReason?: string;
+  note?: string;
+}
+
+export interface MyCalendarSummary {
+  standardDays: number;
+  workUnits: number;
+  paidUnits: number;
+  holidayPaidDays: number;
+  totalHours: number;
+  lateCount: number;
+  lateMinutes: number;
+  earlyCount: number;
+  earlyMinutes: number;
+  missingCheckout: number;
+  absentDays: number;
+  leaveDays: number;
+  wfhDays: number;
+  holidayWorkDays: number;
+  holidayWorkHours: number;
+  overtimeDays: number;
+  overtimeMinutes: number;
+  pendingRequests: number;
+  paidLeaveEntitled: number;
+  paidLeaveUsed: number;
+  paidLeaveForfeited: number;
+}
+
+export interface MyCalendarDay {
+  date: string;
+  day: number;
+  weekday: number;
+  isToday: boolean;
+  holiday: { name: string; isOfficialDayOff: boolean } | null;
+}
+
+export interface MyCalendarData {
+  month: number;
+  year: number;
+  days: MyCalendarDay[];
+  row: {
+    staffId: string;
+    staffCode: string;
+    staffName: string;
+    department: Department;
+    contractType?: ContractType;
+    standardHours: number;
+    cells: Record<string, MyCalendarCell>;
+    summary: MyCalendarSummary;
+  } | null;
+  rules: {
+    shifts: { SHIFT_1: string; SHIFT_2: string };
+    lateToleranceMinutes: number;
+    overtimeMinMinutes: number;
+    holidayWorkPayMultiplier: number;
+  };
+}
+
+export async function fetchMyCalendarApi(month: number, year: number): Promise<MyCalendarData> {
+  const res = await apiRequest<MyCalendarData>(`/attendance/my-calendar?month=${month}&year=${year}`);
+  return res.data;
+}
+
+export async function createLeaveRequestApi(data: {
+  type: LeaveRequestType;
+  date: string;
+  reason: string;
+}): Promise<any> {
+  const res = await apiRequest("/leave-requests", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  return res.data;
+}
+
+export interface MyLeaveRequest {
+  _id: string;
+  type: LeaveRequestType;
+  date: string;
+  reason: string;
+  status: LeaveRequestStatus;
+  reviewNote?: string;
+  reviewedAt?: string;
+  createdAt?: string;
+}
+
+export async function fetchMyLeaveRequestsApi(): Promise<MyLeaveRequest[]> {
+  const res = await apiRequest<MyLeaveRequest[]>("/leave-requests");
+  return res.data;
+}
+
+export async function cancelLeaveRequestApi(id: string): Promise<boolean> {
+  const res = await apiRequest<{ success: boolean }>(`/leave-requests/${id}`, { method: "DELETE" });
+  return res.data.success;
 }

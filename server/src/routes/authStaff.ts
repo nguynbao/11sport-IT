@@ -4,6 +4,9 @@ import { hashPassword, verifyPassword, signToken } from '../utils/auth';
 import { ApiError } from '../utils/errors';
 import { filterAndRankBySearch } from '../utils/search';
 
+/** Loại hợp đồng được phép chọn khi tạo/cập nhật: Thực tập, Thử việc, Chính thức */
+const VALID_CONTRACT_TYPES = ['INTERN', 'PROBATION', 'FULLTIME'];
+
 export const authStaffRouter = Router();
 
 // POST /api/v1/auth/login
@@ -47,7 +50,7 @@ authStaffRouter.post('/auth/login', async (req, res, next) => {
           email: staff.email || '',
           role: staff.role,
           department: staff.department || (['HR', 'ACCOUNTANT', 'MARKETING', 'ADMIN'].includes(staff.role) ? 'OFFICE' : 'SALES'),
-          contractType: staff.contractType || 'FULLTIME',
+          contractType: staff.contractType || 'PROBATION',
           citizenId: staff.citizenId || '',
           address: staff.address || '',
           contractStartDate: staff.contractStartDate,
@@ -180,7 +183,7 @@ authStaffRouter.post('/staff', async (req, res, next) => {
       email,
       role = 'SALES',
       department,
-      contractType = 'FULLTIME',
+      contractType = 'PROBATION',
       citizenId,
       address,
       contractStartDate,
@@ -203,6 +206,10 @@ authStaffRouter.post('/staff', async (req, res, next) => {
       throw new ApiError(400, 'DUPLICATE_USERNAME', 'Tên đăng nhập đã tồn tại', {
         username: 'Đã tồn tại',
       });
+    }
+
+    if (!VALID_CONTRACT_TYPES.includes(contractType)) {
+      throw new ApiError(400, 'INVALID_CONTRACT_TYPE', 'Loại hợp đồng phải là Thực tập, Thử việc hoặc Chính thức');
     }
 
     const validRoles = ['SALES', 'WAREHOUSE', 'ADMIN', 'HR', 'ACCOUNTANT', 'MARKETING'];
@@ -307,7 +314,12 @@ authStaffRouter.patch('/staff/:id', async (req, res, next) => {
       }
       updateData.department = department;
     }
-    if (contractType !== undefined) updateData.contractType = contractType;
+    if (contractType !== undefined) {
+      if (!VALID_CONTRACT_TYPES.includes(contractType) && contractType !== 'PARTTIME') {
+        throw new ApiError(400, 'INVALID_CONTRACT_TYPE', 'Loại hợp đồng phải là Thực tập, Thử việc hoặc Chính thức');
+      }
+      updateData.contractType = contractType;
+    }
     if (citizenId !== undefined) updateData.citizenId = String(citizenId).trim();
     if (address !== undefined) updateData.address = String(address).trim();
     if (contractStartDate !== undefined) updateData.contractStartDate = contractStartDate ? new Date(contractStartDate) : undefined;

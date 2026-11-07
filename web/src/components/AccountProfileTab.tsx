@@ -51,7 +51,7 @@ export default function AccountProfileTab({
       (currentUser.role === "SALES" ? "SALES" : "OFFICE")
   );
   const [contractType, setContractType] = useState(
-    currentUser.contractType || "FULLTIME"
+    currentUser.contractType || ""
   );
   const [contractStartDate, setContractStartDate] = useState(
     currentUser.contractStartDate
@@ -101,7 +101,7 @@ export default function AccountProfileTab({
           setDepartment(
             found.department || (found.role === "SALES" ? "SALES" : "OFFICE")
           );
-          setContractType(found.contractType || "FULLTIME");
+          setContractType(found.contractType || "");
           setContractStartDate(
             found.contractStartDate
               ? String(found.contractStartDate).slice(0, 10)
@@ -487,14 +487,29 @@ export default function AccountProfileTab({
                   type="text"
                   value={
                     contractType === "FULLTIME"
-                      ? "Chính thức (Full-time)"
+                      ? "Chính thức"
+                      : contractType === "PROBATION"
+                      ? "Thử việc"
+                      : contractType === "INTERN"
+                      ? "Thực tập (Intern)"
                       : contractType === "PARTTIME"
-                      ? "Bán thời gian (Part-time)"
-                      : "Thử việc (Probation)"
+                      ? "Bán thời gian (cũ)"
+                      : "Chưa cập nhật – liên hệ HR"
                   }
                   disabled
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-100 text-slate-600 text-xs font-semibold cursor-not-allowed"
+                  className={`w-full px-3 py-2.5 rounded-xl border text-xs font-bold cursor-not-allowed ${
+                    contractType === "FULLTIME"
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      : contractType === "INTERN"
+                      ? "border-sky-200 bg-sky-50 text-sky-700"
+                      : "border-amber-200 bg-amber-50 text-amber-700"
+                  }`}
                 />
+                <p className="text-[10px] text-slate-500 mt-1">
+                  {contractType === "FULLTIME"
+                    ? "Được hưởng 1 ngày nghỉ phép có lương mỗi tháng."
+                    : "Chưa có ngày nghỉ phép có lương (chỉ dành cho nhân viên Chính thức)."}
+                </p>
               </div>
               <div>
                 <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">

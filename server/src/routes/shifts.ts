@@ -110,6 +110,56 @@ shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
       }
     }
 
+    // ---- Kiểm tra quy định: Khối Bán hàng làm 6 ngày + nghỉ ĐÚNG 1 ngày/tuần ----
+    const wsStr = /^\d{4}-\d{2}-\d{2}$/.test(String(weekStart || ''))
+      ? String(weekStart)
+      : String(changes[0].date);
+    const [wy, wm, wd] = wsStr.split('-').map(Number);
+    const weekDates = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(wy, wm - 1, wd + i);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    });
+    const finalPlan = new Map<string, Map<string, string>>();
+    const allAssign = await shiftAssignmentRepo.find({});
+    for (const a of allAssign as any[]) {
+      if (!weekDates.includes(a.date)) continue;
+      const sid = String(a.staffId);
+      if (!finalPlan.has(sid)) finalPlan.set(sid, new Map());
+      finalPlan.get(sid)!.set(a.date, a.shiftCode);
+    }
+    for (const c of changes) {
+      if (!weekDates.includes(String(c.date))) continue;
+      const sid = String(c.staffId);
+      if (!finalPlan.has(sid)) finalPlan.set(sid, new Map());
+      if (c.shiftCode === null) finalPlan.get(sid)!.delete(String(c.date));
+      else finalPlan.get(sid)!.set(String(c.date), c.shiftCode);
+    }
+    const violations: Record<string, string> = {};
+    for (const [sid, plan] of finalPlan) {
+      if (plan.size === 0) continue;
+      const st: any = await staffRepo.findById(sid);
+      if (!st) continue;
+      const dept = st.department || (st.role === 'SALES' ? 'SALES' : 'OFFICE');
+      if (dept !== 'SALES') continue;
+      const offCount = Array.from(plan.values()).filter((v) => v === 'OFF').length;
+      const missing = 7 - plan.size;
+      const problems: string[] = [];
+      if (missing > 0) problems.push(`còn ${missing} ngày chưa xếp`);
+      if (offCount === 0) problems.push('chưa có ngày nghỉ');
+      if (offCount > 1) problems.push(`đang nghỉ ${offCount} ngày`);
+      if (problems.length) violations[st.fullName || sid] = `${problems.join(', ')} (quy định: 6 ngày làm + 1 ngày nghỉ)`;
+    }
+    if (Object.keys(violations).length > 0) {
+      throw new ApiError(
+        400,
+        'WEEKLY_OFF_REQUIRED',
+        `Mỗi nhân viên Bán hàng phải làm 6 ngày và nghỉ đúng 1 ngày/tuần: ${Object.entries(violations)
+          .map(([n, p]) => `${n} – ${p}`)
+          .join('; ')}`,
+        violations
+      );
+    }
+
     const staffCache = new Map<string, any>();
     let created = 0;
     let updated = 0;

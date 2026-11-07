@@ -18,7 +18,22 @@ function resolveApiBaseUrl(): string {
 
 export type UserRole = "SALES" | "WAREHOUSE" | "ADMIN" | "HR" | "ACCOUNTANT" | "MARKETING";
 export type Department = "OFFICE" | "SALES";
-export type ContractType = "FULLTIME" | "PARTTIME" | "PROBATION";
+/** INTERN = Thực tập, PROBATION = Thử việc, FULLTIME = Chính thức (PARTTIME: giá trị cũ) */
+export type ContractType = "INTERN" | "PROBATION" | "FULLTIME" | "PARTTIME";
+
+export const CONTRACT_TYPE_OPTIONS: { value: ContractType; label: string; desc: string }[] = [
+  { value: "INTERN", label: "Thực tập (Intern)", desc: "Không có ngày phép có lương" },
+  { value: "PROBATION", label: "Thử việc", desc: "Không có ngày phép có lương" },
+  { value: "FULLTIME", label: "Chính thức", desc: "1 ngày nghỉ phép có lương/tháng" },
+];
+
+export function contractTypeLabel(t?: string | null): string {
+  if (t === "FULLTIME") return "Chính thức";
+  if (t === "PROBATION") return "Thử việc";
+  if (t === "INTERN") return "Thực tập";
+  if (t === "PARTTIME") return "Bán thời gian (cũ)";
+  return "Chưa cập nhật";
+}
 
 export interface StaffUser {
   _id: string;
@@ -56,7 +71,7 @@ export interface LeaveRequest {
   staffCode: string;
   staffName: string;
   department: Department;
-  type: "WFH" | "OFF" | "LATE" | "EARLY";
+  type: "WFH" | "OFF" | "LATE" | "EARLY" | "PAID_LEAVE";
   date: string;
   reason: string;
   status: "PENDING" | "APPROVED" | "REJECTED";
@@ -1536,9 +1551,11 @@ export type TimesheetCellCode =
   | "WORKING"
   | "MISSING_OUT"
   | "LEAVE"
+  | "PAID_LEAVE"
   | "ABSENT"
   | "HOLIDAY"
   | "DAY_OFF"
+  | "UNSCHEDULED"
   | "FUTURE";
 
 export interface TimesheetCell {
@@ -1577,8 +1594,16 @@ export interface TimesheetSummary {
   holidayWorkHours: number;
   /** Số ngày lễ chính thức được nghỉ hưởng nguyên lương (tính công) */
   holidayPaidDays: number;
-  /** Tổng công tính lương = công đi làm + công lễ hưởng lương */
+  /** Tổng công tính lương = công đi làm + công lễ hưởng lương + phép có lương */
   paidUnits: number;
+  overtimeDays?: number;
+  overtimeMinutes?: number;
+  pendingRequests?: number;
+  /** HĐ Chính thức: 1 ngày nghỉ phép có lương/tháng */
+  paidLeaveEntitled?: number;
+  paidLeaveUsed?: number;
+  /** 1 = tháng đã qua mà không dùng -> mất quyền lợi */
+  paidLeaveForfeited?: number;
 }
 
 export interface TimesheetRow {
@@ -1587,6 +1612,7 @@ export interface TimesheetRow {
   staffName: string;
   department: Department;
   role: UserRole;
+  contractType?: ContractType;
   standardHours: number;
   cells: Record<string, TimesheetCell>;
   summary: TimesheetSummary;

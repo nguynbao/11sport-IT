@@ -1,3 +1,6 @@
+// Chấm công tính theo giờ Việt Nam: cố định múi giờ server (Render mặc định UTC sẽ lệch 7 tiếng)
+process.env.TZ = process.env.TZ || 'Asia/Ho_Chi_Minh';
+
 import express from 'express';
 import cors from 'cors';
 import { getDbMode } from './config/db';

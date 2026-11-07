@@ -152,6 +152,33 @@ export default function ShiftScheduleModule() {
     return list;
   }, [draft, savedMap, days]);
 
+  // Quy định: Khối Bán hàng làm 6 ngày + nghỉ ĐÚNG 1 ngày/tuần
+  const weekCheck = useMemo(() => {
+    const result = new Map<string, { assigned: number; off: number; ok: boolean; message: string }>();
+    for (const st of staffList) {
+      const codes = days.map((d) => effectiveCode(st._id, d.date));
+      const assigned = codes.filter((c) => c !== null).length;
+      const off = codes.filter((c) => c === "OFF").length;
+      let message = "";
+      if (assigned === 0) message = "Chưa xếp lịch tuần này";
+      else {
+        const problems: string[] = [];
+        if (assigned < 7) problems.push(`còn ${7 - assigned} ngày chưa xếp`);
+        if (off === 0) problems.push("chưa có ngày nghỉ");
+        if (off > 1) problems.push(`đang nghỉ ${off} ngày`);
+        message = problems.join(", ");
+      }
+      result.set(st._id, { assigned, off, ok: assigned === 7 && off === 1, message });
+    }
+    return result;
+  }, [staffList, days, effectiveCode]);
+
+  const blockingViolations = staffList.filter((st) => {
+    const c = weekCheck.get(st._id);
+    return c && c.assigned > 0 && !c.ok;
+  });
+  const unscheduled = staffList.filter((st) => weekCheck.get(st._id)?.assigned === 0);
+
   const isChanged = (staffId: string, date: string) => {
     const k = keyOf(staffId, date);
     return draft.has(k) && (draft.get(k) ?? null) !== (savedMap.get(k) ?? null);
@@ -245,9 +272,8 @@ export default function ShiftScheduleModule() {
     <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200 space-y-4">
       {toast && (
         <div
-          className={`fixed bottom-6 right-6 z-[60] px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 text-sm font-medium ${
-            toast.type === "ok" ? "bg-slate-900 text-white" : "bg-rose-600 text-white"
-          }`}
+          className={`fixed bottom-6 right-6 z-[60] px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 text-sm font-medium ${toast.type === "ok" ? "bg-slate-900 text-white" : "bg-rose-600 text-white"
+            }`}
         >
           {toast.type === "ok" ? <CheckCircle2 className="w-5 h-5 text-emerald-400" /> : <AlertTriangle className="w-5 h-5" />}
           {toast.text}
@@ -333,7 +359,12 @@ export default function ShiftScheduleModule() {
               <button
                 type="button"
                 onClick={handleSave}
-                disabled={saving}
+                disabled={saving || blockingViolations.length > 0}
+                title={
+                  blockingViolations.length > 0
+                    ? "Mỗi nhân viên phải có 6 ngày làm + đúng 1 ngày nghỉ trong tuần"
+                    : undefined
+                }
                 className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
               >
                 <Save className="w-3.5 h-3.5" />
@@ -344,13 +375,27 @@ export default function ShiftScheduleModule() {
         </div>
       </div>
 
+      {/* Quy định tuần làm việc */}
+      <div className="flex flex-wrap items-center gap-2 text-[11px]">
+        {editMode && blockingViolations.length > 0 && (
+          <span className="px-2 py-1 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 font-semibold flex items-center gap-1">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            Chưa thể lưu: {blockingViolations.map((st) => `${st.fullName} (${weekCheck.get(st._id)?.message})`).join("; ")}
+          </span>
+        )}
+        {unscheduled.length > 0 && (
+          <span className="px-2 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 font-semibold">
+            Chưa xếp lịch: {unscheduled.map((st) => st.fullName).join(", ")}
+          </span>
+        )}
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         {/* Bảng tuần */}
         <div className="lg:col-span-3 overflow-x-auto">
           <div
-            className={`min-w-[760px] rounded-xl overflow-hidden border-2 ${
-              editMode ? "border-emerald-400" : "border-slate-200"
-            }`}
+            className={`min-w-[760px] rounded-xl overflow-hidden border-2 ${editMode ? "border-emerald-400" : "border-slate-200"
+              }`}
           >
             {/* Header ngày */}
             <div className="grid grid-cols-[90px_repeat(7,1fr)] bg-slate-100 border-b border-slate-200 text-center text-xs font-bold text-slate-700">
@@ -358,9 +403,8 @@ export default function ShiftScheduleModule() {
               {days.map((d) => (
                 <div
                   key={d.date}
-                  className={`py-2 border-r last:border-r-0 border-slate-200 ${
-                    d.isToday ? "bg-blue-600 text-white" : d.index === 7 ? "text-rose-600" : ""
-                  }`}
+                  className={`py-2 border-r last:border-r-0 border-slate-200 ${d.isToday ? "bg-blue-600 text-white" : d.index === 7 ? "text-rose-600" : ""
+                    }`}
                 >
                   <div>{d.name}</div>
                   <div className={`font-mono font-normal ${d.isToday ? "text-blue-100" : "text-slate-400"}`}>{d.display}</div>
@@ -395,9 +439,8 @@ export default function ShiftScheduleModule() {
                       }}
                       onDragLeave={() => setDropTarget((t) => (t === cellKey ? null : t))}
                       onDrop={() => handleDrop(d.date, row.code)}
-                      className={`relative p-1.5 min-h-[96px] border-r last:border-r-0 border-slate-200 flex flex-col gap-1 transition ${
-                        dropTarget === cellKey ? "bg-emerald-100 ring-2 ring-inset ring-emerald-500" : editMode ? row.cellHover : ""
-                      } ${d.isToday ? "bg-blue-50/40" : ""}`}
+                      className={`relative p-1.5 min-h-[96px] border-r last:border-r-0 border-slate-200 flex flex-col gap-1 transition ${dropTarget === cellKey ? "bg-emerald-100 ring-2 ring-inset ring-emerald-500" : editMode ? row.cellHover : ""
+                        } ${d.isToday ? "bg-blue-50/40" : ""}`}
                     >
                       {staffInCell.map((s) => {
                         const changed = isChanged(s._id, d.date);
@@ -411,9 +454,8 @@ export default function ShiftScheduleModule() {
                               setDropTarget(null);
                             }}
                             title={s.fullName}
-                            className={`group/chip relative w-full rounded-md border px-1.5 py-1 text-[11px] font-semibold text-slate-800 shadow-2xs ${row.chip} ${
-                              editMode ? "cursor-grab active:cursor-grabbing" : ""
-                            } ${changed ? "ring-2 ring-emerald-500 ring-offset-1" : ""}`}
+                            className={`group/chip relative w-full rounded-md border px-1.5 py-1 text-[11px] font-semibold text-slate-800 shadow-2xs ${row.chip} ${editMode ? "cursor-grab active:cursor-grabbing" : ""
+                              } ${changed ? "ring-2 ring-emerald-500 ring-offset-1" : ""}`}
                           >
                             <div className="truncate pr-3">{s.fullName}</div>
                             {editMode && (
@@ -515,17 +557,27 @@ export default function ShiftScheduleModule() {
                     setDrag(null);
                     setDropTarget(null);
                   }}
-                  className={`p-2.5 bg-white border border-slate-200 rounded-lg transition flex items-center justify-between gap-2 ${
-                    editMode ? "cursor-grab active:cursor-grabbing hover:border-emerald-500 hover:shadow-md" : "opacity-90"
-                  }`}
+                  className={`p-2.5 bg-white border border-slate-200 rounded-lg transition flex items-center justify-between gap-2 ${editMode ? "cursor-grab active:cursor-grabbing hover:border-emerald-500 hover:shadow-md" : "opacity-90"
+                    }`}
                 >
                   <div className="min-w-0">
                     <div className="font-bold text-xs text-slate-900 truncate">{s.fullName}</div>
                     <div className="text-[10px] text-slate-400 font-mono">{s.code}</div>
                   </div>
                   <div className="text-right shrink-0">
-                    <div className="text-[11px] font-extrabold text-emerald-700">{workDays} ca</div>
-                    <div className="text-[10px] text-slate-400">{offDays} nghỉ</div>
+                    <div className="text-[11px] font-extrabold text-emerald-700">
+                      {workDays} ca • {offDays} nghỉ
+                    </div>
+                    {(() => {
+                      const c = weekCheck.get(s._id);
+                      if (!c) return null;
+                      if (c.ok) return <div className="text-[10px] font-bold text-emerald-600">✓ Đúng quy định</div>;
+                      return (
+                        <div className={`text-[10px] font-bold ${c.assigned === 0 ? "text-amber-600" : "text-rose-600"}`}>
+                          ⚠ {c.message}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               );

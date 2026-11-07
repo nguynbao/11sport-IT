@@ -1,8 +1,13 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { StaffUser, AttendanceRecord, apiRequest } from "@/lib/api";
 import { Play, Pause, CheckCircle2, AlertTriangle, Home, Clock } from "lucide-react";
+
+/** Ngày hiện tại theo giờ máy (YYYY-MM-DD) */
+function localDateStr(d = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 interface Props {
   currentUser: StaffUser | null;
@@ -69,6 +74,23 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
     }
   }, [loadData]);
 
+  // Qua 00:00 sang ngày mới: reset đồng hồ & tải lại trạng thái chấm công của ngày mới
+  // (ca hôm trước quên check-out sẽ được ghi nhận "Quên check-out" trên bảng công, không đếm tiếp)
+  const dayRef = useRef<string>(localDateStr());
+  useEffect(() => {
+    const watcher = setInterval(() => {
+      const today = localDateStr();
+      if (today !== dayRef.current) {
+        dayRef.current = today;
+        setAttendance(null);
+        setElapsedText("00:00:00");
+        setIsLunchPaused(false);
+        loadData();
+      }
+    }, 15000);
+    return () => clearInterval(watcher);
+  }, [loadData]);
+
   // Tính toán đồng hồ chạy trực tiếp mỗi giây khi đã Check-in
   useEffect(() => {
     if (!attendance?.checkInTime) {
@@ -77,7 +99,22 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
       return;
     }
 
+    // Bản ghi không phải của hôm nay (quên check-out từ hôm trước) -> không đếm tiếp, reset về 00:00:00
+    if (attendance.date && attendance.date !== localDateStr()) {
+      setElapsedText("00:00:00");
+      setIsLunchPaused(false);
+      setAttendance(null);
+      return;
+    }
+
     const computeElapsed = () => {
+      // Đồng hồ đang chạy mà vừa qua 00:00 -> dừng & reset ngay
+      if (!attendance.checkOutTime && attendance.date && attendance.date !== localDateStr()) {
+        setElapsedText("00:00:00");
+        setIsLunchPaused(false);
+        setAttendance(null);
+        return;
+      }
       const startRaw = attendance.workStartTime || attendance.checkInTime;
       const startTime = new Date(startRaw);
       const endTime = attendance.checkOutTime ? new Date(attendance.checkOutTime) : new Date();

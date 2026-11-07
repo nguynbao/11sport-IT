@@ -68,6 +68,22 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
     setTimeout(() => setToastMessage(null), 3000);
   };
 
+  // Số đơn đang chờ duyệt -> hiển thị chấm đỏ trên tab "Duyệt Đơn Từ & WFH"
+  const [pendingCount, setPendingCount] = useState<number>(0);
+  const refreshPendingCount = async () => {
+    try {
+      const list = await fetchLeaveRequests({ status: "PENDING" });
+      setPendingCount(Array.isArray(list) ? list.length : 0);
+    } catch {
+      // bỏ qua lỗi mạng tạm thời
+    }
+  };
+  useEffect(() => {
+    refreshPendingCount();
+    const timer = setInterval(refreshPendingCount, 60000);
+    return () => clearInterval(timer);
+  }, []);
+
   // Load data based on tab
   useEffect(() => {
     if (activeTab === "CALENDAR") {
@@ -170,6 +186,7 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
       if (reqFilterType !== "ALL") params.type = reqFilterType;
       const data = await fetchLeaveRequests(params);
       setRequests(data);
+      refreshPendingCount();
     } catch (e) {
       showToast("Lỗi tải danh sách đơn từ");
     } finally {
@@ -296,6 +313,15 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
         >
           <FileText className="w-4 h-4" />
           Duyệt Đơn Từ & WFH
+          {pendingCount > 0 && (
+            <span
+              title={`${pendingCount} đơn đang chờ duyệt`}
+              className="relative inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-black leading-none shadow"
+            >
+              <span className="absolute inline-flex w-full h-full rounded-full bg-red-500 opacity-60 animate-ping" />
+              <span className="relative">{pendingCount > 99 ? "99+" : pendingCount}</span>
+            </span>
+          )}
         </button>
 
         <button
@@ -789,6 +815,7 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
                 <option value="OFF">Xin nghỉ (OFF)</option>
                 <option value="LATE">Xin đi trễ</option>
                 <option value="EARLY">Xin về sớm</option>
+                <option value="PAID_LEAVE">Nghỉ phép có lương</option>
               </select>
 
               <select
@@ -844,21 +871,29 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
                         <span
                           className={`px-2.5 py-1 rounded-lg text-xs font-bold ${r.type === "WFH"
                             ? "bg-purple-100 text-purple-800"
-                            : r.type === "OFF"
-                              ? "bg-rose-100 text-rose-800"
-                              : "bg-amber-100 text-amber-800"
+                            : r.type === "PAID_LEAVE"
+                              ? "bg-teal-100 text-teal-800"
+                              : r.type === "OFF"
+                                ? "bg-rose-100 text-rose-800"
+                                : "bg-amber-100 text-amber-800"
                             }`}
                         >
                           {r.type === "WFH"
                             ? "🏠 Làm việc từ xa (WFH)"
-                            : r.type === "OFF"
-                              ? "Xin nghỉ (OFF)"
-                              : r.type === "LATE"
-                                ? "Đi trễ"
-                                : "Về sớm"}
+                            : r.type === "PAID_LEAVE"
+                              ? "Nghỉ phép có lương"
+                              : r.type === "OFF"
+                                ? "Xin nghỉ không lương"
+                                : r.type === "LATE"
+                                  ? "Đi trễ"
+                                  : "Về sớm"}
                         </span>
                       </td>
-                      <td className="py-3.5 px-4 max-w-xs">{r.reason}</td>
+                      <td className="py-3.5 px-4 w-[260px] max-w-[260px]">
+                        <p className="line-clamp-2 break-all text-slate-700" title={r.reason}>
+                          {r.reason}
+                        </p>
+                      </td>
                       <td className="py-3.5 px-4">
                         <span
                           className={`px-2.5 py-1 rounded-full text-xs font-semibold ${r.status === "APPROVED"

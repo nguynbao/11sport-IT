@@ -47,10 +47,12 @@ const CELL_STYLE: Record<
   WFH: { symbol: "W", label: "Làm từ xa (WFH)", className: "bg-purple-500 text-white", excel: "W" },
   WORKING: { symbol: "●", label: "Đang làm", className: "bg-blue-500 text-white animate-pulse", excel: "●" },
   MISSING_OUT: { symbol: "!", label: "Quên check-out", className: "bg-red-600 text-white", excel: "!" },
-  LEAVE: { symbol: "P", label: "Nghỉ phép (đã duyệt)", className: "bg-sky-100 text-sky-700 border border-sky-300", excel: "P" },
+  LEAVE: { symbol: "P", label: "Nghỉ không lương (đã duyệt)", className: "bg-sky-100 text-sky-700 border border-sky-300", excel: "P" },
+  PAID_LEAVE: { symbol: "PL", label: "Nghỉ phép có lương (+1 công)", className: "bg-teal-500 text-white", excel: "PL" },
   ABSENT: { symbol: "V", label: "Vắng không phép", className: "bg-rose-100 text-rose-700 border border-rose-400", excel: "V" },
   HOLIDAY: { symbol: "L", label: "Nghỉ lễ chính thức (hưởng lương, tính công)", className: "bg-rose-500 text-white", excel: "L" },
   DAY_OFF: { symbol: "", label: "Ngày nghỉ / không có ca", className: "bg-slate-50 text-slate-300", excel: "" },
+  UNSCHEDULED: { symbol: "?", label: "Sales chưa được xếp ca", className: "bg-white text-slate-400 border border-dashed border-slate-400", excel: "?" },
   FUTURE: { symbol: "", label: "Chưa tới", className: "bg-white text-slate-300 border border-dashed border-slate-200", excel: "" },
 };
 
@@ -63,6 +65,7 @@ const LEGEND_ORDER: TimesheetCellCode[] = [
   "WORKING",
   "MISSING_OUT",
   "LEAVE",
+  "PAID_LEAVE",
   "ABSENT",
   "HOLIDAY",
 ];
@@ -193,7 +196,15 @@ export default function AttendanceTimesheetModule() {
       { header: "Phút về sớm", value: (r) => r.summary.earlyMinutes, format: "int", total: true },
       { header: "Quên check-out", value: (r) => r.summary.missingCheckout, format: "int", total: true },
       { header: "Vắng không phép", value: (r) => r.summary.absentDays, format: "int", total: true },
-      { header: "Nghỉ phép", value: (r) => r.summary.leaveDays, format: "int", total: true },
+      { header: "Nghỉ không lương", value: (r) => r.summary.leaveDays, format: "int", total: true },
+      {
+        header: "Phép có lương (đã dùng/được hưởng)",
+        value: (r) =>
+          r.summary.paidLeaveEntitled
+            ? `${r.summary.paidLeaveUsed || 0}/${r.summary.paidLeaveEntitled}${r.summary.paidLeaveForfeited ? " - Mất quyền lợi" : ""}`
+            : "Không áp dụng",
+        width: 26,
+      },
       { header: "WFH", value: (r) => r.summary.wfhDays, format: "int", total: true },
       { header: "Đi làm ngày lễ", value: (r) => r.summary.holidayWorkDays, format: "int", total: true },
       { header: "Giờ làm ngày lễ", value: (r) => r.summary.holidayWorkHours, total: true },
@@ -217,7 +228,7 @@ export default function AttendanceTimesheetModule() {
     ];
 
     const subtitle =
-      "Ký hiệu: X đúng giờ, T trễ, S về sớm, TS trễ & về sớm, W WFH, ! quên check-out, P nghỉ phép, V vắng, L nghỉ lễ chính thức (hưởng lương, tính 1 công), * đi làm ngày lễ";
+      "Ký hiệu: X đúng giờ, T trễ, S về sớm, TS trễ & về sớm, W WFH, ! quên check-out, P nghỉ không lương, PL nghỉ phép có lương, V vắng, L nghỉ lễ chính thức (hưởng lương, tính 1 công), * đi làm ngày lễ";
 
     downloadExcel(excelFileName(`BangCong_T${month}_${year}`), [
       buildSheet("Tổng hợp công", summaryCols, filteredRows, {
@@ -351,9 +362,8 @@ export default function AttendanceTimesheetModule() {
                 key={val}
                 type="button"
                 onClick={() => setDepartment(val)}
-                className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${
-                  department === val ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"
-                }`}
+                className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${department === val ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"
+                  }`}
               >
                 {label}
               </button>
@@ -364,11 +374,10 @@ export default function AttendanceTimesheetModule() {
           <button
             type="button"
             onClick={() => setIssueFilter((f) => (f === "ALL" ? "ISSUES" : "ALL"))}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer ${
-              issueFilter === "ISSUES"
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer ${issueFilter === "ISSUES"
                 ? "bg-rose-50 border-rose-300 text-rose-700"
                 : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-            }`}
+              }`}
           >
             <AlertTriangle className="w-3.5 h-3.5 inline mr-1 -mt-0.5" />
             Chỉ NV có vi phạm
@@ -399,9 +408,8 @@ export default function AttendanceTimesheetModule() {
           <button
             type="button"
             onClick={() => setView("MATRIX")}
-            className={`px-2.5 py-1.5 rounded-md flex items-center gap-1.5 cursor-pointer ${
-              view === "MATRIX" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500"
-            }`}
+            className={`px-2.5 py-1.5 rounded-md flex items-center gap-1.5 cursor-pointer ${view === "MATRIX" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500"
+              }`}
           >
             <LayoutGrid className="w-3.5 h-3.5" />
             Bảng công tháng
@@ -409,9 +417,8 @@ export default function AttendanceTimesheetModule() {
           <button
             type="button"
             onClick={() => setView("SUMMARY")}
-            className={`px-2.5 py-1.5 rounded-md flex items-center gap-1.5 cursor-pointer ${
-              view === "SUMMARY" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500"
-            }`}
+            className={`px-2.5 py-1.5 rounded-md flex items-center gap-1.5 cursor-pointer ${view === "SUMMARY" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500"
+              }`}
           >
             <ListChecks className="w-3.5 h-3.5" />
             Tổng hợp công
@@ -453,7 +460,7 @@ export default function AttendanceTimesheetModule() {
             ))}
             <span className="inline-flex items-center gap-1">
               <span className="w-4 h-4 rounded bg-emerald-500 ring-2 ring-rose-500 ring-offset-1 inline-block" />
-              Đi làm ngày lễ (tính lương lễ)
+              Đi làm ngày lễ (lương x4)
             </span>
           </div>
           <div className="text-xs text-slate-600 flex flex-wrap gap-3 font-semibold">
@@ -568,15 +575,14 @@ function MatrixView({
                 <th
                   key={d.date}
                   title={d.holiday ? d.holiday.name : undefined}
-                  className={`sticky top-0 z-20 border-b border-slate-200 px-0 py-1.5 w-8 min-w-[32px] text-center font-semibold ${
-                    d.isToday
+                  className={`sticky top-0 z-20 border-b border-slate-200 px-0 py-1.5 w-8 min-w-[32px] text-center font-semibold ${d.isToday
                       ? "bg-blue-600 text-white"
                       : officialHoliday
-                      ? "bg-rose-100 text-rose-700"
-                      : isSun
-                      ? "bg-slate-200/70 text-rose-600"
-                      : "bg-slate-100 text-slate-600"
-                  }`}
+                        ? "bg-rose-100 text-rose-700"
+                        : isSun
+                          ? "bg-slate-200/70 text-rose-600"
+                          : "bg-slate-100 text-slate-600"
+                    }`}
                 >
                   <div className="text-[12px] font-extrabold leading-none">{d.day}</div>
                   <div className="text-[9px] leading-none mt-0.5 opacity-80">{WEEKDAY_SHORT[d.weekday]}</div>
@@ -601,9 +607,8 @@ function MatrixView({
                   <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
                     <span className="font-mono">{row.staffCode}</span>
                     <span
-                      className={`px-1.5 rounded font-semibold ${
-                        row.department === "OFFICE" ? "bg-indigo-50 text-indigo-600" : "bg-amber-50 text-amber-700"
-                      }`}
+                      className={`px-1.5 rounded font-semibold ${row.department === "OFFICE" ? "bg-indigo-50 text-indigo-600" : "bg-amber-50 text-amber-700"
+                        }`}
                     >
                       {row.department === "OFFICE" ? "VP" : "BH"}
                     </span>
@@ -614,10 +619,17 @@ function MatrixView({
                   const cell = row.cells[d.date];
                   if (!cell) return <td key={d.date} className="border-b border-slate-100" />;
                   const baseStyle = CELL_STYLE[cell.code];
-                  // Lễ chính thức rơi vào Chủ nhật (ngày nghỉ tuần) -> không tính công thêm, hiển thị nhạt
+                  // Lễ không được cộng công (Khối Bán hàng, hoặc lễ trùng Chủ nhật) -> hiển thị nhạt
                   const style =
                     cell.code === "HOLIDAY" && !cell.isPaidHoliday
-                      ? { ...baseStyle, className: "bg-rose-50 text-rose-400", label: "Ngày lễ (trùng ngày nghỉ tuần)" }
+                      ? {
+                        ...baseStyle,
+                        className: "bg-rose-50 text-rose-400",
+                        label:
+                          row.department === "SALES"
+                            ? "Ngày lễ – Khối Bán hàng không cộng công (đi làm hưởng x4)"
+                            : "Ngày lễ trùng ngày nghỉ tuần",
+                      }
                       : baseStyle;
                   const clickable = cell.code !== "FUTURE" && cell.code !== "HOLIDAY";
                   const title = [
@@ -628,7 +640,7 @@ function MatrixView({
                     cell.lateMinutes ? `Trễ ${cell.lateMinutes}p` : "",
                     cell.earlyMinutes ? `Về sớm ${cell.earlyMinutes}p` : "",
                     cell.isPaidHoliday ? "Nghỉ lễ hưởng nguyên lương: +1 công" : "",
-                    cell.isHolidayWork ? "Đi làm ngày lễ chính thức (trả lương làm thêm ngày lễ)" : "",
+                    cell.isHolidayWork ? "Đi làm ngày lễ chính thức – lương x4" : "",
                     cell.adjusted ? `Đã điều chỉnh bởi ${cell.adjustedByName}: ${cell.adjustReason}` : "",
                   ]
                     .filter(Boolean)
@@ -643,11 +655,9 @@ function MatrixView({
                         title={title}
                         disabled={!clickable}
                         onClick={() => onCellClick(row, d, cell)}
-                        className={`relative w-[26px] h-[26px] rounded-md text-[10px] font-black inline-flex items-center justify-center transition ${
-                          style.className
-                        } ${cell.isHolidayWork ? "ring-2 ring-rose-500 ring-offset-1" : ""} ${
-                          clickable ? "hover:scale-110 hover:shadow-md cursor-pointer" : "cursor-default"
-                        }`}
+                        className={`relative w-[26px] h-[26px] rounded-md text-[10px] font-black inline-flex items-center justify-center transition ${style.className
+                          } ${cell.isHolidayWork ? "ring-2 ring-rose-500 ring-offset-1" : ""} ${clickable ? "hover:scale-110 hover:shadow-md cursor-pointer" : "cursor-default"
+                          }`}
                       >
                         {style.symbol}
                         {cell.adjusted && (
@@ -700,7 +710,8 @@ function SummaryView({ rows }: { rows: TimesheetRow[] }) {
             <th className="px-2 py-2 text-center">Về sớm</th>
             <th className="px-2 py-2 text-center">Quên ra ca</th>
             <th className="px-2 py-2 text-center">Vắng KP</th>
-            <th className="px-2 py-2 text-center">Nghỉ phép</th>
+            <th className="px-2 py-2 text-center">Nghỉ không lương</th>
+            <th className="px-2 py-2 text-center">Phép có lương</th>
             <th className="px-2 py-2 text-center">WFH</th>
             <th className="px-2 py-2 text-center">Làm ngày lễ</th>
           </tr>
@@ -769,6 +780,17 @@ function SummaryView({ rows }: { rows: TimesheetRow[] }) {
                   )}
                 </td>
                 <td className="px-2 py-2 text-center">{s.leaveDays || <span className="text-slate-300">—</span>}</td>
+                <td className="px-2 py-2 text-center">
+                  {!s.paidLeaveEntitled ? (
+                    <span className="text-[10px] text-slate-300" title="Chỉ áp dụng HĐ Chính thức">Không áp dụng</span>
+                  ) : s.paidLeaveUsed ? (
+                    <span className="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-bold">Đã dùng 1/1</span>
+                  ) : s.paidLeaveForfeited ? (
+                    <span className="px-2 py-0.5 rounded bg-slate-200 text-slate-600 font-bold">Mất quyền lợi</span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-bold">Còn 1 ngày</span>
+                  )}
+                </td>
                 <td className="px-2 py-2 text-center">{s.wfhDays || <span className="text-slate-300">—</span>}</td>
                 <td className="px-2 py-2 text-center">
                   {s.holidayWorkDays > 0 ? (
@@ -859,9 +881,8 @@ function CellDetailModal({
               {WEEKDAY_SHORT[day.weekday]}, {dd}/{mm}/{yy}
               {day.holiday && (
                 <span
-                  className={`ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                    day.holiday.isOfficialDayOff ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-800"
-                  }`}
+                  className={`ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold ${day.holiday.isOfficialDayOff ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-800"
+                    }`}
                 >
                   {day.holiday.name}
                 </span>
@@ -929,11 +950,10 @@ function CellDetailModal({
                   key={sc}
                   type="button"
                   onClick={() => setShiftCode(sc)}
-                  className={`px-2 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer ${
-                    shiftCode === sc
+                  className={`px-2 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer ${shiftCode === sc
                       ? "bg-emerald-50 border-emerald-500 text-emerald-800"
                       : "bg-white border-slate-200 text-slate-600"
-                  }`}
+                    }`}
                 >
                   {sc === "SHIFT_1" ? "Ca 1 (08:30–17:30)" : "Ca 2 (12:00–21:00)"}
                 </button>
@@ -969,7 +989,6 @@ function CellDetailModal({
               rows={2}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="VD: Quên check-out, xác nhận qua camera..."
               className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
             />
           </label>
@@ -1098,11 +1117,10 @@ function ManualAttendanceModal({
                     setCheckIn(sc === "SHIFT_1" ? "08:30" : "12:00");
                     setCheckOut(sc === "SHIFT_1" ? "17:30" : "21:00");
                   }}
-                  className={`px-2 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer ${
-                    shiftCode === sc
+                  className={`px-2 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer ${shiftCode === sc
                       ? "bg-emerald-50 border-emerald-500 text-emerald-800"
                       : "bg-white border-slate-200 text-slate-600"
-                  }`}
+                    }`}
                 >
                   {sc === "SHIFT_1" ? "Ca 1 (08:30–17:30)" : "Ca 2 (12:00–21:00)"}
                 </button>

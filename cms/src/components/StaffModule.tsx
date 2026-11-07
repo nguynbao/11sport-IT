@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { StaffUser, UserRole, apiRequest } from "@/lib/api";
+import { StaffUser, UserRole, apiRequest, ContractType, CONTRACT_TYPE_OPTIONS, contractTypeLabel } from "@/lib/api";
 import ExportExcelButton from "./ExportExcelButton";
 import { exportStaff } from "@/lib/exports";
 import {
@@ -36,7 +36,8 @@ export default function StaffModule({
   const [citizenId, setCitizenId] = useState("");
   const [role, setRole] = useState<UserRole>("SALES");
   const [department, setDepartment] = useState<"OFFICE" | "SALES">("SALES");
-  const [contractType, setContractType] = useState<"FULLTIME" | "PARTTIME" | "PROBATION">("FULLTIME");
+  // Bắt buộc HR chọn loại hợp đồng khi tạo tài khoản (không có mặc định)
+  const [contractType, setContractType] = useState<ContractType | "">("");
   const [contractFileUrl, setContractFileUrl] = useState("");
   const [contractFileName, setContractFileName] = useState("");
 
@@ -54,7 +55,7 @@ export default function StaffModule({
   const [editCitizenId, setEditCitizenId] = useState("");
   const [editAddress, setEditAddress] = useState("");
   const [editDepartment, setEditDepartment] = useState<"OFFICE" | "SALES">("SALES");
-  const [editContractType, setEditContractType] = useState<"FULLTIME" | "PARTTIME" | "PROBATION">("FULLTIME");
+  const [editContractType, setEditContractType] = useState<ContractType>("PROBATION");
   const [editContractStart, setEditContractStart] = useState("");
   const [editContractEnd, setEditContractEnd] = useState("");
   const [editContractFileUrl, setEditContractFileUrl] = useState("");
@@ -155,7 +156,7 @@ export default function StaffModule({
     setEditCitizenId(st.citizenId || "");
     setEditAddress(st.address || "");
     setEditDepartment(st.department === "OFFICE" ? "OFFICE" : "SALES");
-    setEditContractType(st.contractType || "FULLTIME");
+    setEditContractType(st.contractType || "PROBATION");
     setEditContractStart(
       st.contractStartDate ? String(st.contractStartDate).slice(0, 10) : ""
     );
@@ -209,6 +210,10 @@ export default function StaffModule({
     setStatusMsg(null);
     if (!username.trim()) return;
     if (!isAdminView && !fullName.trim()) return;
+    if (!isAdminView && !contractType) {
+      setStatusMsg({ type: "error", text: "Vui lòng chọn Loại hợp đồng (Thực tập / Thử việc / Chính thức)." });
+      return;
+    }
     try {
       const targetFullName = fullName.trim() || username.trim();
       await apiRequest("/staff", {
@@ -222,12 +227,13 @@ export default function StaffModule({
           citizenId: citizenId.trim(),
           role,
           department: role === "SALES" ? "SALES" : department || "OFFICE",
-          contractType,
+          contractType: contractType || undefined,
           contractFileUrl,
           contractFileName,
         }),
       });
       setUsername("");
+      setContractType("");
       setFullName("");
       setPhone("");
       setEmail("");
@@ -330,11 +336,10 @@ export default function StaffModule({
     <div className="space-y-6">
       {statusMsg && (
         <div
-          className={`p-3.5 rounded-xl border text-xs font-bold flex items-center gap-2 ${
-            statusMsg.type === "success"
-              ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-              : "bg-red-50 border-red-200 text-red-700"
-          }`}
+          className={`p-3.5 rounded-xl border text-xs font-bold flex items-center gap-2 ${statusMsg.type === "success"
+            ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+            : "bg-red-50 border-red-200 text-red-700"
+            }`}
         >
           {statusMsg.type === "success" ? (
             <CheckCircle2 className="w-4 h-4 shrink-0" />
@@ -510,19 +515,29 @@ export default function StaffModule({
 
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1">
-                Loại hợp đồng
+                Loại hợp đồng *
               </label>
               <select
+                required={!isAdminView}
                 value={contractType}
-                onChange={(e) =>
-                  setContractType(e.target.value as "FULLTIME" | "PARTTIME" | "PROBATION")
-                }
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white"
+                onChange={(e) => setContractType(e.target.value as ContractType | "")}
+                className={`w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white font-bold ${contractType ? "border-slate-300" : "border-amber-400 text-slate-400"
+                  }`}
               >
-                <option value="FULLTIME">Chính thức (Full-time)</option>
-                <option value="PARTTIME">Bán thời gian (Part-time)</option>
-                <option value="PROBATION">Thử việc</option>
+                <option value="" disabled>
+                  -- Chọn loại hợp đồng --
+                </option>
+                {CONTRACT_TYPE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
               </select>
+              {contractType && (
+                <p className="text-[10px] text-slate-500 mt-1">
+                  {CONTRACT_TYPE_OPTIONS.find((o) => o.value === contractType)?.desc}
+                </p>
+              )}
             </div>
 
             <div className="md:col-span-2">
@@ -666,11 +681,10 @@ export default function StaffModule({
                     </td>
                     <td className="py-3 px-4">
                       <span
-                        className={`px-2 py-0.5 rounded text-[11px] font-bold ${
-                          st.department === "OFFICE"
-                            ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
-                            : "bg-amber-50 text-amber-700 border border-amber-200"
-                        }`}
+                        className={`px-2 py-0.5 rounded text-[11px] font-bold ${st.department === "OFFICE"
+                          ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                          : "bg-amber-50 text-amber-700 border border-amber-200"
+                          }`}
                       >
                         {st.department === "OFFICE" ? "Văn phòng" : "Bán hàng"}
                       </span>
@@ -703,11 +717,16 @@ export default function StaffModule({
                     </td>
                     <td className="py-3 px-4">
                       <div className="text-slate-800 font-bold">
-                        {st.contractType === "FULLTIME"
-                          ? "Chính thức"
-                          : st.contractType === "PARTTIME"
-                          ? "Part-time"
-                          : "Thử việc"}
+                        <span
+                          className={`px-2 py-0.5 rounded-md text-[11px] ${st.contractType === "FULLTIME"
+                            ? "bg-emerald-50 text-emerald-700"
+                            : st.contractType === "INTERN"
+                              ? "bg-sky-50 text-sky-700"
+                              : "bg-amber-50 text-amber-700"
+                            }`}
+                        >
+                          {contractTypeLabel(st.contractType)}
+                        </span>
                       </div>
                       {(startStr || endStr) && (
                         <div className="text-[10px] text-slate-400 font-mono mt-0.5">
@@ -728,11 +747,10 @@ export default function StaffModule({
                     </td>
                     <td className="py-3 px-4 text-center">
                       <span
-                        className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                          st.status === "ACTIVE"
-                            ? "bg-emerald-100 text-emerald-800"
-                            : "bg-red-100 text-red-700"
-                        }`}
+                        className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${st.status === "ACTIVE"
+                          ? "bg-emerald-100 text-emerald-800"
+                          : "bg-red-100 text-red-700"
+                          }`}
                       >
                         {st.status === "ACTIVE" ? "Đang hoạt động" : "Đã khóa"}
                       </span>
@@ -768,11 +786,10 @@ export default function StaffModule({
                                 status: st.status === "ACTIVE" ? "LOCKED" : "ACTIVE",
                               })
                             }
-                            className={`px-3 py-1.5 rounded-lg font-bold inline-flex items-center gap-1 ${
-                              st.status === "ACTIVE"
-                                ? "bg-red-50 hover:bg-red-100 text-red-600"
-                                : "bg-emerald-50 hover:bg-emerald-100 text-emerald-700"
-                            }`}
+                            className={`px-3 py-1.5 rounded-lg font-bold inline-flex items-center gap-1 ${st.status === "ACTIVE"
+                              ? "bg-red-50 hover:bg-red-100 text-red-600"
+                              : "bg-emerald-50 hover:bg-emerald-100 text-emerald-700"
+                              }`}
                           >
                             {st.status === "ACTIVE" ? (
                               <>
@@ -969,16 +986,17 @@ export default function StaffModule({
                   </label>
                   <select
                     value={editContractType}
-                    onChange={(e) =>
-                      setEditContractType(
-                        e.target.value as "FULLTIME" | "PARTTIME" | "PROBATION"
-                      )
-                    }
+                    onChange={(e) => setEditContractType(e.target.value as ContractType)}
                     className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white font-bold text-xs"
                   >
-                    <option value="FULLTIME">Chính thức (Full-time)</option>
-                    <option value="PARTTIME">Bán thời gian (Part-time)</option>
-                    <option value="PROBATION">Thử việc</option>
+                    {CONTRACT_TYPE_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                    {editContractType === "PARTTIME" && (
+                      <option value="PARTTIME">Bán thời gian (cũ – vui lòng chọn lại)</option>
+                    )}
                   </select>
                 </div>
 
