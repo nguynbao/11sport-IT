@@ -57,6 +57,7 @@ authStaffRouter.post('/auth/login', async (req, res, next) => {
           contractEndDate: staff.contractEndDate,
           contractFileUrl: staff.contractFileUrl || '',
           contractFileName: staff.contractFileName || '',
+          mustChangePassword: Boolean(staff.mustChangePassword),
           status: staff.status,
         },
       },
@@ -123,6 +124,7 @@ authStaffRouter.post('/auth/change-password', async (req, res, next) => {
 
     await staffRepo.updateById(staff._id, {
       passwordHash: hashPassword(cleanNewPassword),
+      mustChangePassword: false,
     });
 
     res.json({
@@ -346,6 +348,7 @@ authStaffRouter.patch('/staff/:id', async (req, res, next) => {
     }
     if (password) {
       updateData.passwordHash = hashPassword(String(password));
+      updateData.mustChangePassword = false;
     }
 
     const updated = await staffRepo.updateById(id, updateData);

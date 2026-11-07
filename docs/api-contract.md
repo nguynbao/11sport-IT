@@ -34,9 +34,10 @@
 ### 2.1 Xác thực & Nhân viên (`/auth`, `/staff`)
 - `POST /api/v1/auth/login`
   - Body: `{ "username": "string", "password": "string" }`
-  - Response: `{ "data": { "token": "string", "user": { "_id": "...", "code": "NV001", "username": "sales1", "fullName": "Nguyễn Văn Bán", "role": "ADMIN | HR | ACCOUNTANT | MARKETING | SALES", "department": "OFFICE | SALES", "status": "ACTIVE | LOCKED" } } }`
+  - Response: `{ "data": { "token": "string", "user": { "_id": "...", "code": "NV001", "username": "sales1", "fullName": "Nguyễn Văn Bán", "role": "ADMIN | HR | ACCOUNTANT | MARKETING | SALES", "department": "OFFICE | SALES", "status": "ACTIVE | LOCKED", "mustChangePassword": false } } }`
+  - **Bảo mật Seed**: Không bao giờ tự động seed tài khoản đặc quyền mẫu (`hr`, `hr1`, `accountant1`, `marketing1`, `warehouse1`, `sales1`) bằng mật khẩu công khai (`123456`) trên DB thật hoặc môi trường `production`. Tài khoản mẫu chỉ được tạo trong môi trường memory/test (`FORCE_MEMORY_DB=true` / `dbMode === "memory"`) ngoài production; nếu khởi tạo `admin` lần đầu trên DB thật mà không cấu hình `INITIAL_ADMIN_PASSWORD`, hệ thống sinh mật khẩu ngẫu nhiên và bật `mustChangePassword: true`.
 - `POST /api/v1/auth/change-password` *(v2.3)*
-  - Đổi mật khẩu của tài khoản đang đăng nhập.
+  - Đổi mật khẩu của tài khoản đang đăng nhập (đồng thời xóa cờ `mustChangePassword: false`).
   - Body: `{ "currentPassword": "string", "newPassword": "string" }`
   - Quy tắc: Kiểm tra `currentPassword` khớp mật khẩu hiện tại (sai → `400 INVALID_CURRENT_PASSWORD`), `newPassword` tối thiểu 4 ký tự (`400 VALIDATION_ERROR`).
   - Response: `{ "data": { "changed": true, "username": "admin", "fullName": "Quản Trị Viên 11Sport" }, "meta": {} }`

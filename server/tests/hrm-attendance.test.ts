@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app';
-import { connectDatabase, clearDatabase } from '../src/config/db';
+import { connectDatabase, clearDatabase, staffRepo } from '../src/config/db';
 import { seedDatabaseIfNeeded } from '../src/config/seed';
 
 describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
@@ -381,5 +381,25 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
     expect(checkoutMatchBranch1.body.data.attendance.checkOutTime).toBeDefined();
 
     process.env.ATTENDANCE_REQUIRE_IP = 'false';
+  });
+
+  it('8. Bảo mật Seed: không tự động tạo tài khoản mẫu đặc quyền (hr, hr1, accountant1) trên môi trường production', async () => {
+    const prevNodeEnv = process.env.NODE_ENV;
+    try {
+      // Xóa tài khoản mẫu hr1 và accountant1 rồi chạy lại seed ở chế độ production
+      const hr1 = await staffRepo.findOne({ username: 'hr1' });
+      const acc1 = await staffRepo.findOne({ username: 'accountant1' });
+      if (hr1) await staffRepo.deleteById(hr1._id);
+      if (acc1) await staffRepo.deleteById(acc1._id);
+
+      process.env.NODE_ENV = 'production';
+      await seedDatabaseIfNeeded();
+
+      expect(await staffRepo.findOne({ username: 'hr1' })).toBeNull();
+      expect(await staffRepo.findOne({ username: 'accountant1' })).toBeNull();
+    } finally {
+      process.env.NODE_ENV = prevNodeEnv;
+      await seedDatabaseIfNeeded();
+    }
   });
 });

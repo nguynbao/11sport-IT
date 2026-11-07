@@ -22,6 +22,7 @@ export interface IStaff extends Document {
   contractEndDate?: Date;
   contractFileUrl?: string;
   contractFileName?: string;
+  mustChangePassword?: boolean;
   status: StaffStatus;
   createdAt: Date;
   updatedAt: Date;
@@ -58,6 +59,7 @@ const StaffSchema = new Schema<IStaff>(
     contractEndDate: { type: Date },
     contractFileUrl: { type: String, default: '' },
     contractFileName: { type: String, default: '', trim: true },
+    mustChangePassword: { type: Boolean, default: false },
     status: { type: String, enum: ['ACTIVE', 'LOCKED'], required: true, default: 'ACTIVE' },
   },
   { timestamps: true }
