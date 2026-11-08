@@ -73,25 +73,31 @@ export function createApp() {
 
   // Root & Health check (hỗ trợ Render default health check tại / và /api/v1/health)
   app.get('/', (_req, res) => {
+    const now = new Date();
     res.json({
       data: {
         status: 'ok',
         service: '11sport-server',
         dbMode: getDbMode(),
         apiBase: '/api/v1',
-        timestamp: new Date().toISOString(),
+        timezone: process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone,
+        localTime: now.toLocaleString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }),
+        timestamp: now.toISOString(),
       },
       meta: {},
     });
   });
 
   app.get('/api/v1/health', (_req, res) => {
+    const now = new Date();
     res.json({
       data: {
         status: 'ok',
         service: '11sport-server',
         dbMode: getDbMode(),
-        timestamp: new Date().toISOString(),
+        timezone: process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone,
+        localTime: now.toLocaleString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }),
+        timestamp: now.toISOString(),
       },
       meta: {},
     });

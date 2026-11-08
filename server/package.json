@@ -4,9 +4,9 @@
   "description": "11Sport POS & Inventory Management Backend API",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "dev": "TZ=Asia/Ho_Chi_Minh ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js",
+    "start": "TZ=Asia/Ho_Chi_Minh node dist/index.js",
     "seed:dev": "ts-node-dev --transpile-only --no-notify --exit-child src/scripts/importPdfInventory.ts && ts-node-dev --transpile-only --no-notify --exit-child src/scripts/seedDevData.ts",
     "test": "vitest run",
     "lint": "tsc --noEmit"

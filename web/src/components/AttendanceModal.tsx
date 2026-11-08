@@ -83,6 +83,9 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
       ]);
       setAttendance(data.attendance);
       setIsWfhToday(data.isWfhToday);
+      if (data.assignedShift === "SHIFT_1" || data.assignedShift === "SHIFT_2") {
+        setSelectedShift(data.assignedShift);
+      }
 
       let targetLat = officeLat;
       let targetLng = officeLng;

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app';
-import { connectDatabase, clearDatabase, staffRepo } from '../src/config/db';
+import { connectDatabase, clearDatabase, staffRepo, shiftAssignmentRepo } from '../src/config/db';
 import { seedDatabaseIfNeeded } from '../src/config/seed';
 
 describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
@@ -469,5 +469,75 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
     } finally {
       process.env.ATTENDANCE_REQUIRE_IP = 'false';
     }
+  });
+
+  it('10. Đối chiếu lịch phân ca khi check-in: chặn ngày OFF, chặn sai ca, và tự động lấy đúng ca HR đã xếp', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+
+    // Tạo nhân viên Sales mới để kiểm tra đối chiếu lịch phân ca
+    const salesCreate = await request(app)
+      .post('/api/v1/staff')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        username: 'sales_shift_check',
+        password: 'password123',
+        fullName: 'Sales Kiểm Tra Ca',
+        role: 'SALES',
+        department: 'SALES',
+      });
+    expect(salesCreate.status).toBe(201);
+    const staffId = salesCreate.body.data._id;
+
+    const loginRes = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ username: 'sales_shift_check', password: 'password123' });
+    const token = loginRes.body.data.token;
+
+    // 10.1 HR xếp lịch OFF cho hôm nay -> Check-in bị chặn 400 SCHEDULED_DAY_OFF
+    const assignRecord = await shiftAssignmentRepo.create({
+      weekStart: today,
+      date: today,
+      dayOfWeek: 1,
+      staffId: String(staffId),
+      staffCode: salesCreate.body.data.code,
+      staffName: 'Sales Kiểm Tra Ca',
+      shiftCode: 'OFF',
+      assignedBy: 'HR',
+    });
+
+    const offCheckIn = await request(app)
+      .post('/api/v1/attendance/check-in')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        latitude: 16.0352,
+        longitude: 108.2185,
+      });
+    expect(offCheckIn.status).toBe(400);
+    expect(offCheckIn.body.code).toBe('SCHEDULED_DAY_OFF');
+
+    // 10.2 HR đổi phân ca sang SHIFT_2 -> Cố gửi shiftCode: SHIFT_1 bị chặn 400 SHIFT_MISMATCH
+    await shiftAssignmentRepo.updateById(assignRecord._id, { shiftCode: 'SHIFT_2' });
+
+    const mismatchCheckIn = await request(app)
+      .post('/api/v1/attendance/check-in')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        latitude: 16.0352,
+        longitude: 108.2185,
+        shiftCode: 'SHIFT_1',
+      });
+    expect(mismatchCheckIn.status).toBe(400);
+    expect(mismatchCheckIn.body.code).toBe('SHIFT_MISMATCH');
+
+    // 10.3 Check-in không truyền shiftCode -> tự động áp dụng SHIFT_2 theo lịch phân ca của HR
+    const validShiftCheckIn = await request(app)
+      .post('/api/v1/attendance/check-in')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        latitude: 16.0352,
+        longitude: 108.2185,
+      });
+    expect(validShiftCheckIn.status).toBe(201);
+    expect(validShiftCheckIn.body.data.attendance.shiftCode).toBe('SHIFT_2');
   });
 });

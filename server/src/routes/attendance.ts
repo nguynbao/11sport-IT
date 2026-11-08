@@ -253,18 +253,49 @@ attendanceRouter.post('/attendance/check-in', async (req, res, next) => {
     const currentMinutes = now.getMinutes();
     const totalMinutesNow = currentHours * 60 + currentMinutes;
 
+    // 3. Đối chiếu lịch phân ca (ShiftAssignment) trong ngày (nếu HR đã xếp lịch)
+    const assignedShift =
+      (await shiftAssignmentRepo.findOne({ staffId: String(staff._id), date: todayStr })) ||
+      (await shiftAssignmentRepo.findOne({ staffId: staff._id, date: todayStr }));
+
+    if (assignedShift?.shiftCode === 'OFF') {
+      throw new ApiError(
+        400,
+        'SCHEDULED_DAY_OFF',
+        'Hôm nay là ngày nghỉ (OFF) theo lịch phân ca của bạn, không thể chấm công vào ca!'
+      );
+    }
+
+    if (
+      assignedShift &&
+      (assignedShift.shiftCode === 'SHIFT_1' || assignedShift.shiftCode === 'SHIFT_2') &&
+      shiftCode &&
+      (shiftCode === 'SHIFT_1' || shiftCode === 'SHIFT_2') &&
+      shiftCode !== assignedShift.shiftCode
+    ) {
+      const assignedLabel = assignedShift.shiftCode === 'SHIFT_2' ? 'Ca 2 (12:00 - 21:00)' : 'Ca 1 (08:30 - 17:30)';
+      throw new ApiError(
+        400,
+        'SHIFT_MISMATCH',
+        `Hôm nay bạn được phân công ${assignedLabel}, không thể chấm công vào ca khác!`
+      );
+    }
+
     // Quy định giờ 2 ca:
     // Ca 1 (SHIFT_1): 08:30 (510 phút) -> 17:30 (1050 phút)
     // Ca 2 (SHIFT_2): 12:00 (720 phút) -> 21:00 (1260 phút)
-    // Tự động nhận diện ca theo khung giờ Check-in nếu không truyền shiftCode (Sales check-in từ 11:30 trở đi tính là Ca 2)
+    // Ưu tiên lấy theo lịch phân ca đã lưu; chỉ khi chưa xếp ca mới tự nhận diện theo shiftCode hoặc giờ hiện tại
     const isSalesStaff = staff.department === 'SALES' || staff.role === 'SALES';
-    const selectedShift: ShiftCode = !isSalesStaff
-      ? 'SHIFT_1'
-      : shiftCode === 'SHIFT_1' || shiftCode === 'SHIFT_2'
-        ? shiftCode
-        : totalMinutesNow >= 11 * 60 + 30
-          ? 'SHIFT_2'
-          : 'SHIFT_1';
+    const selectedShift: ShiftCode =
+      assignedShift && (assignedShift.shiftCode === 'SHIFT_1' || assignedShift.shiftCode === 'SHIFT_2')
+        ? assignedShift.shiftCode
+        : !isSalesStaff
+          ? 'SHIFT_1'
+          : shiftCode === 'SHIFT_1' || shiftCode === 'SHIFT_2'
+            ? shiftCode
+            : totalMinutesNow >= 11 * 60 + 30
+              ? 'SHIFT_2'
+              : 'SHIFT_1';
     const shiftStartMinutes = selectedShift === 'SHIFT_1' ? 8 * 60 + 30 : 12 * 60;
 
     let lateMinutes = 0;
@@ -460,16 +491,25 @@ attendanceRouter.get('/attendance/today', async (req, res, next) => {
       status: 'APPROVED',
     });
 
+    const assignedShift =
+      (await shiftAssignmentRepo.findOne({ staffId: String(user.userId), date: todayStr })) ||
+      (await shiftAssignmentRepo.findOne({ staffId: user.userId, date: todayStr }));
+
     const handover = await shiftHandoverRepo.findOne({
       date: todayStr,
       fromStaffId: user.userId,
-      shiftCode: attendance ? attendance.shiftCode : 'SHIFT_1',
+      shiftCode: attendance
+        ? attendance.shiftCode
+        : assignedShift && assignedShift.shiftCode !== 'OFF'
+          ? assignedShift.shiftCode
+          : 'SHIFT_1',
     });
 
     res.json({
       data: {
         date: todayStr,
         attendance: attendance || null,
+        assignedShift: assignedShift ? assignedShift.shiftCode : null,
         isWfhToday: Boolean(approvedWfh),
         isEarlyApprovedToday: Boolean(approvedEarly),
         handoverStatus: handover ? handover.status : null,

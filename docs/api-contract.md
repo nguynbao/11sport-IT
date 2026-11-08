@@ -730,7 +730,11 @@
   - Body: `{ "latitude": number, "longitude": number, "clientIp"?: string, "shiftCode"?: "SHIFT_1 | SHIFT_2" }`
   - Headers: `Authorization: Bearer <token>`
   - Logic xác thực:
-    - Tự động nhận diện ca làm việc theo giờ bấm Check-in (không hiện dropdown chọn Ca 1 / Ca 2 trên Header): Với nhân viên `SALES`, nếu không truyền `shiftCode`, hệ thống tự động gán `SHIFT_1` (`08:30 - 17:30`) nếu check-in trước `11:30`, và gán `SHIFT_2` (`12:00 - 21:00`) nếu check-in từ `11:30` trở đi. Khối `OFFICE` mặc định `SHIFT_1`.
+    - **Đối chiếu lịch phân ca (`ShiftAssignment`) theo ngày**:
+      - Nếu nhân viên đã có bản ghi phân ca trong ngày (`shiftAssignmentRepo`):
+        - Nếu `shiftCode === "OFF"` (ngày nghỉ theo lịch xếp ca) -> Chặn check-in với lỗi `400 SCHEDULED_DAY_OFF`.
+        - Nếu `shiftCode` là `"SHIFT_1"` hoặc `"SHIFT_2"`: Bắt buộc áp dụng ca đã được phân công; nếu client truyền `shiftCode` khác với ca đã xếp -> Trả lỗi `400 SHIFT_MISMATCH`.
+      - Chỉ khi chưa có lịch phân ca cho ngày đó: Tự động nhận diện ca làm việc theo giờ bấm Check-in (với `SALES`, nếu không truyền `shiftCode`, gán `SHIFT_1` nếu trước `11:30`, `SHIFT_2` nếu từ `11:30` trở đi; khối `OFFICE` mặc định `SHIFT_1`).
     - Nếu nhân viên (cả khối `OFFICE` và `SALES`) có đơn `WFH` được `HR` duyệt trong ngày hôm nay (kiểm tra hoàn toàn phía server qua `approvedWfh`): Bỏ qua kiểm tra GPS & IP (ghi nhận `checkInType: "WFH"`). Server tuyệt đối không nhận cờ `bypassNetwork` từ client.
     - **Kiểm tra 2 Cơ sở theo cặp (`Location 1 đi với Mạng 1`, `Location 2 đi với Mạng 2`)**:
       - Nếu không có đơn WFH: Vị trí GPS và IP Wi-Fi của nhân viên phải đồng thời khớp với **Cơ sở 1 (`ATTENDANCE_OFFICE_LAT/LNG` + `ATTENDANCE_ALLOWED_IPS`)** HOẶC đồng thời khớp với **Cơ sở 2 (`ATTENDANCE_OFFICE_2_LAT/LNG` + `ATTENDANCE_ALLOWED_IPS_2`)**.

@@ -1,3 +1,5 @@
+process.env.TZ = process.env.TZ || 'Asia/Ho_Chi_Minh';
+
 import dotenv from 'dotenv';
 dotenv.config();
 

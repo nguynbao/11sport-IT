@@ -1218,6 +1218,7 @@ export async function checkOutApi(params?: {
 export async function getTodayAttendanceApi(): Promise<{
   date: string;
   attendance: AttendanceData | null;
+  assignedShift?: "SHIFT_1" | "SHIFT_2" | "OFF" | null;
   isWfhToday: boolean;
   isEarlyApprovedToday?: boolean;
   handoverStatus: "PENDING" | "ACCEPTED" | null;
@@ -1225,6 +1226,7 @@ export async function getTodayAttendanceApi(): Promise<{
   const res = await apiRequest<{
     date: string;
     attendance: AttendanceData | null;
+    assignedShift?: "SHIFT_1" | "SHIFT_2" | "OFF" | null;
     isWfhToday: boolean;
     isEarlyApprovedToday?: boolean;
     handoverStatus: "PENDING" | "ACCEPTED" | null;
