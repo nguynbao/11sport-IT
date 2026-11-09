@@ -79,18 +79,40 @@
   - *(v1.7 & v1.9)* Khi `ADMIN` truyền `quantity > 0`: tạo sản phẩm với `stock = quantity` (phân bổ vào `stockFloor1` hoặc `stockFloor2` theo `targetWarehouse`) và tự động ghi `StockMovement` loại `IMPORT` (`referenceCode: "CMS-NHAP-THANG"`). Nếu `upsertIfExists = true` và mã sản phẩm đã tồn tại, hệ thống cộng dồn `quantity` vào kho tầng đã chọn (đồng thời cập nhật `costPrice`/`sellingPrice` nếu > 0) và ghi `StockMovement` loại `IMPORT`.
   - `sellingPrice` > 0, `costPrice` > 0 hoặc `quantity` > 0 chỉ được phép khi người gọi có role `ADMIN` (Quản lý/Admin); role khác gửi `sellingPrice > 0` → `403 SELLING_PRICE_FORBIDDEN`, gửi `costPrice > 0` → `403 COST_PRICE_FORBIDDEN`, gửi `quantity > 0` → `403 DIRECT_STOCK_FORBIDDEN`.
 - `PATCH /api/v1/products/:id`
-  - Body: `{ "name": "string", "categoryId": "string", "unit": "string", "sellingPrice": 250000, "costPrice": 180000, "stock"?: 20, "stockFloor1"?: 12, "stockFloor2"?: 8, "allowDirectStock"?: boolean }`
+  - Body: `{ "name": "string", "categoryId": "string", "unit": "string", "sellingPrice": 250000, "costPrice": 180000, "stock"?: 20, "stockFloor1"?: 12, "stockFloor2"?: 8, "allowDirectStock"?: boolean, "parentSetProductId"?: "string", "packSize"?: 12 }`
   - Lưu ý: Không cho phép sửa `code`. Sửa `stock` / `stockFloor1` / `stockFloor2` trực tiếp mặc định bị chặn (`400 STOCK_DIRECT_EDIT_FORBIDDEN`), trừ khi `ADMIN` gửi kèm `allowDirectStock: true` từ CMS (hệ thống sẽ cập nhật tồn kho tầng + tổng tồn kho và tự động ghi `StockMovement` loại `IMPORT` nếu tăng hoặc `ADJUSTMENT` nếu giảm cho từng kho tầng `FLOOR_1` / `FLOOR_2` tương ứng, kèm `performedBy`, `performedByName`, `performedByRole` để cân bằng Sổ kho).
-  - *(v1.1 & v2.4)* Role `ADMIN` và `WAREHOUSE` được phép cập nhật `sellingPrice`; chỉ role `ADMIN` được đổi `costPrice` / `stock` (`allowDirectStock: true`); role khác → `403 SELLING_PRICE_FORBIDDEN` / `403 COST_PRICE_FORBIDDEN` / `403 DIRECT_STOCK_FORBIDDEN`.
+  - *(v1.1 & v2.4)* Role `ADMIN` và `WAREHOUSE` được phép cập nhật `sellingPrice` và cấu hình liên kết Bộ ↔ Lẻ (`parentSetProductId`, `packSize`); chỉ role `ADMIN` được đổi `costPrice` / `stock` (`allowDirectStock: true`); role khác → `403 SELLING_PRICE_FORBIDDEN` / `403 COST_PRICE_FORBIDDEN` / `403 DIRECT_STOCK_FORBIDDEN`.
 - `DELETE /api/v1/products/:id` *(v1.8)*
   - Chỉ role `ADMIN` được xóa sản phẩm (`403 PRODUCT_DELETE_FORBIDDEN` nếu role khác).
   - Xóa sản phẩm theo `id` và dọn các bút toán `StockMovement` liên quan để Báo cáo tồn kho luôn đồng nhất.
   - Response: `{ "data": { "deleted": true, "_id": "...", "code": "...", "name": "..." }, "meta": {} }`
-- *(v1.1, v1.6 & v1.9)* Trường của `Product`:
+- *(v1.1, v1.6, v1.9 & v3.0)* Trường của `Product`:
   - `costPrice`: giá gốc / giá nhập gần nhất, VND, số nguyên ≥ 0, mặc định `0`. Response `GET /products`, `GET /inventory/report`, `GET /inventory/movements` **ẩn hoàn toàn** `costPrice` với role `SALES`.
   - `stockFloor1`: số lượng tồn tại **Kho Tầng 1** (mặc định bằng `stock` đối với dữ liệu cũ).
   - `stockFloor2`: số lượng tồn tại **Kho Tầng 2** (mặc định `0`).
   - `stock`: tổng tồn kho toàn cửa hàng (`stock = stockFloor1 + stockFloor2`).
+  - `parentSetProductId` *(v3.0)*: ID của **Sản phẩm Bộ/Hộp/Ống gốc** liên kết với sản phẩm lẻ này (mặc định `""`).
+  - `packSize` *(v3.0)*: Số lượng đơn vị lẻ có trong 1 Bộ/Hộp gốc (VD: `12` quả/ống, `60` cái/hộp; số nguyên ≥ 0, mặc định `0`).
+  - Khi gọi `GET /api/v1/products`:
+    - Sản phẩm Lẻ có gắn `parentSetProductId` & `packSize > 0` được trả kèm thông tin đối chiếu trực tiếp: `parentSetProductCode`, `parentSetProductName`, `parentSetUnit`, `parentSetStockFloor1`, `parentSetStockFloor2`, `maxUnpackableFloor1` (`= parentSetStockFloor1 * packSize`). Dù `stockFloor1` của Sản phẩm Lẻ đang bằng `0` nhưng `parentSetStockFloor1 > 0`, sản phẩm lẻ vẫn hiển thị trên màn hình POS (`SALES` / `onlySellable=true`) để bán và tự động tách bộ.
+    - Sản phẩm Bộ có gắn sản phẩm lẻ con được trả kèm mảng `linkedRetailProducts`: `[{ "_id", "code", "name", "unit", "packSize", "stockFloor1", "stockFloor2", "sellingPrice" }]`.
+- `POST /api/v1/inventory/unpack-set` *(v3.0 — Tách Sản phẩm Bộ sang Sản phẩm Lẻ 1 chạm)*
+  - Body:
+    ```json
+    {
+      "retailProductId": "string",
+      "setsToUnpack": 1,
+      "warehouse": "FLOOR_1 | FLOOR_2",
+      "color": "",
+      "size": "",
+      "reason": "Tách bộ ra bán lẻ"
+    }
+    ```
+  - Nghiệp vụ:
+    - Kiểm tra sản phẩm lẻ `retailProductId` đã liên kết với `parentSetProductId` và có `packSize >= 1`.
+    - Kiểm tra tồn kho của Sản phẩm Bộ tại tầng `warehouse` (mặc định `FLOOR_1`, có xét biến thể `color`/`size` nếu có) ≥ `setsToUnpack`. Nếu tách tại `FLOOR_1` mà Sản phẩm Bộ hết hàng ở Tầng 1 nhưng còn ở Tầng 2 → trả lỗi `400 INSUFFICIENT_SET_FLOOR1_NEED_TRANSFER` nhắc chuyển tầng trước.
+    - Trừ `setsToUnpack` vào tồn kho tầng của Sản phẩm Bộ (`-setsToUnpack`), cộng `setsToUnpack * packSize` vào tồn kho tầng của Sản phẩm Lẻ (`+setsToUnpack * packSize`).
+    - Ghi 2 bút toán `StockMovement` loại `ADJUSTMENT` (`referenceCode: "TB-xxxx"`) cho cả Sản phẩm Bộ và Sản phẩm Lẻ để cân bằng Sổ kho và Báo cáo xuất nhập tồn.
 - `GET /api/v1/inventory/movements`
   - Query: `?productId=...&type=IMPORT|SALE|RETURN|EXCHANGE_IN|EXCHANGE_OUT|ADJUSTMENT|TRANSFER&from=...&to=...`
   - Response: Lịch sử sổ kho (`StockMovement`) kèm `sellingPrice`, `stock` hiện tại, `costPrice` (ẩn `costPrice` nếu role `SALES`) và thông tin người thực hiện (`performedBy`, `performedByName`, `performedByRole`: `"ADMIN" | "WAREHOUSE" | "SALES"`).
@@ -242,7 +264,10 @@
     }
     ```
   - Nghiệp vụ:
-    - **Chỉ bán/xuất tặng từ Kho Tầng 1 (`stockFloor1`)**: Kiểm tra sản phẩm có `sellingPrice > 0` và `stockFloor1 >= quantity` (tính lũy kế nếu trùng sản phẩm trong đơn). Nếu vượt quá `stockFloor1` → trả lỗi `400 INSUFFICIENT_STOCK` (không tự động lấy sang Kho Tầng 2 khi chưa làm phiếu xuất kho chuyển tầng).
+    - **Chỉ bán/xuất tặng từ Kho Tầng 1 (`stockFloor1`) & Tự động tách Bộ sang Lẻ *(v3.0)***:
+      - Kiểm tra sản phẩm có `sellingPrice > 0`.
+      - Nếu sản phẩm là **Sản phẩm Lẻ** có cấu hình `parentSetProductId` & `packSize > 0` mà `stockFloor1 < quantity`: hệ thống tự động kiểm tra tồn Kho Tầng 1 của **Sản phẩm Bộ gốc** (trừ đi số lượng Bộ cũng đang mua trong cùng đơn nếu có). Nếu Kho Tầng 1 của Sản phẩm Bộ đủ số bộ cần tách (`neededSets = ceil((quantity - stockFloor1) / packSize)`), hệ thống **tự động trừ `neededSets` ở Sản phẩm Bộ (`-neededSets` Tầng 1)**, **cộng `neededSets * packSize` vào Sản phẩm Lẻ (`+neededSets * packSize` Tầng 1)**, ghi 2 bút toán `StockMovement` (`ADJUSTMENT`), rồi trừ số lượng bán như bình thường.
+      - Nếu Sản phẩm Bộ hết hàng ở Kho Tầng 1 nhưng còn ở Kho Tầng 2 → trả lỗi `400 INSUFFICIENT_SET_FLOOR1_NEED_TRANSFER` nhắc chuyển tầng Sản phẩm Bộ xuống Kho Tầng 1 trước. Nếu cả Lẻ và Bộ đều không đủ → trả lỗi `400 INSUFFICIENT_STOCK`.
     - **Giảm giá từng sản phẩm & Tặng hàng (`discountType`, `discountValue`, `isGift`)**:
       - `originalUnitPrice = product.sellingPrice`.
       - Nếu `discountType === "GIFT"` (hoặc `isGift === true`):

@@ -513,7 +513,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     );
   }, [products]);
 
-  const getFloor1Stock = (p: Product): number => {
+  const getDirectFloor1Stock = (p: Product): number => {
     const f1 = Number(p.stockFloor1);
     const f2 = Number(p.stockFloor2);
     const total = Math.max(0, Number(p.stock) || 0);
@@ -527,11 +527,18 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     return Math.max(0, f1 || 0);
   };
 
+  const getFloor1Stock = (p: Product): number => {
+    const direct = getDirectFloor1Stock(p);
+    const unpackable = Math.max(0, Number(p.maxUnpackableFloor1) || 0);
+    return direct + unpackable;
+  };
+
   const getVariantFloor1Stock = (
     p: Product,
     color?: string,
     size?: string
   ): number => {
+    const unpackable = Math.max(0, Number(p.maxUnpackableFloor1) || 0);
     if (Array.isArray(p.variants) && p.variants.length > 0 && (color || size)) {
       const cNorm = String(color || "").trim().toLowerCase();
       const sNorm = String(size || "").trim().toUpperCase();
@@ -541,7 +548,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
           String(v.size || "").trim().toUpperCase() === sNorm
       );
       if (matched) {
-        return Math.max(0, Number(matched.stockFloor1 ?? matched.stock) || 0);
+        return Math.max(0, Number(matched.stockFloor1 ?? matched.stock) || 0) + unpackable;
       }
     }
     return getFloor1Stock(p);
@@ -2076,6 +2083,8 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
   };
 
   const renderProductCard = (p: Product) => {
+    const directFloor1 = getDirectFloor1Stock(p);
+    const unpackableFloor1 = Math.max(0, Number(p.maxUnpackableFloor1) || 0);
     const floor1Stock = getFloor1Stock(p);
     const canSell = p.sellingPrice > 0 && floor1Stock > 0;
     const catName = getCategoryName(p);
@@ -2096,15 +2105,27 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
             <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 truncate">
               {catName}
             </span>
-            <div className="text-right shrink-0">
+            <div className="text-right shrink-0 flex flex-col items-end gap-1">
               <span
-                className={`text-xs font-extrabold px-2 py-0.5 rounded whitespace-nowrap ${floor1Stock > 0
+                className={`text-xs font-extrabold px-2 py-0.5 rounded whitespace-nowrap ${directFloor1 > 0
                   ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                  : "bg-red-50 text-red-600 border border-red-200"
+                  : unpackableFloor1 > 0
+                    ? "bg-amber-50 text-amber-800 border border-amber-300"
+                    : "bg-red-50 text-red-600 border border-red-200"
                   }`}
               >
-                🏢 Kho Tầng 1: {floor1Stock} {p.unit}
+                {directFloor1 > 0
+                  ? `🏢 Kho Tầng 1: ${directFloor1} ${p.unit}`
+                  : unpackableFloor1 > 0
+                    ? `⚡ Tồn lẻ: 0 • Tự tách từ ${p.parentSetStockFloor1} ${p.parentSetUnit || "Bộ"}`
+                    : `🏢 Kho Tầng 1: 0 ${p.unit}`}
               </span>
+              {unpackableFloor1 > 0 && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100/90 text-amber-950 border border-amber-300 whitespace-nowrap">
+                  📦 +{p.parentSetStockFloor1} {p.parentSetUnit || "Bộ"} (= +{unpackableFloor1}{" "}
+                  {p.unit})
+                </span>
+              )}
             </div>
           </div>
           <h3 className="font-semibold text-slate-900 text-sm mt-2 break-words">
@@ -3066,8 +3087,22 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                               × {item.quantity} {item.product.unit}
                             </span>
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-bold">
-                              Tồn T1: {floor1Max}
+                              Tồn T1: {getDirectFloor1Stock(item.product)}
+                              {(item.product.maxUnpackableFloor1 || 0) > 0
+                                ? ` (+${item.product.maxUnpackableFloor1} từ ${item.product.parentSetUnit || "Bộ"})`
+                                : ""}
                             </span>
+                            {item.quantity > getDirectFloor1Stock(item.product) &&
+                              (item.product.packSize || 0) > 0 && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 font-extrabold">
+                                  ⚡ Tự tách{" "}
+                                  {Math.ceil(
+                                    (item.quantity - getDirectFloor1Stock(item.product)) /
+                                      (item.product.packSize || 1)
+                                  )}{" "}
+                                  {item.product.parentSetUnit || "Bộ"} khi TT
+                                </span>
+                              )}
                           </div>
                         </div>
 

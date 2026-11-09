@@ -67,6 +67,18 @@ export interface ProductVariant {
   stock: number;
 }
 
+export interface LinkedRetailProductSummary {
+  _id: string;
+  code: string;
+  name: string;
+  unit: string;
+  packSize: number;
+  sellingPrice: number;
+  stockFloor1: number;
+  stockFloor2: number;
+  stock: number;
+}
+
 export interface Product {
   _id: string;
   code: string;
@@ -88,6 +100,17 @@ export interface Product {
   stockFloor1?: number;
   stockFloor2?: number;
   stock: number;
+  /** ID của Sản phẩm Bộ/Hộp/Ống gốc liên kết với sản phẩm lẻ này */
+  parentSetProductId?: string;
+  /** Số lượng đơn vị lẻ có trong 1 Bộ/Hộp gốc (VD: 12 quả/ống) */
+  packSize?: number;
+  parentSetProductCode?: string;
+  parentSetProductName?: string;
+  parentSetUnit?: string;
+  parentSetStockFloor1?: number;
+  parentSetStockFloor2?: number;
+  maxUnpackableFloor1?: number;
+  linkedRetailProducts?: LinkedRetailProductSummary[];
 }
 
 export interface ImportScanCount {

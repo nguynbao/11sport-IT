@@ -39,6 +39,10 @@ export interface IProduct extends Document {
   stockFloor2?: number;
   /** Tổng tồn kho (= stockFloor1 + stockFloor2) */
   stock: number;
+  /** ID của Sản phẩm Bộ/Hộp/Ống gốc liên kết với sản phẩm lẻ này (nếu có) */
+  parentSetProductId?: string;
+  /** Số lượng đơn vị lẻ có trong 1 Bộ/Hộp gốc (VD: 12 quả/ống, 60 cái/hộp) */
+  packSize?: number;
   status: 'ACTIVE' | 'INACTIVE';
   createdAt: Date;
   updatedAt: Date;
@@ -76,6 +80,8 @@ const ProductSchema = new Schema<IProduct>(
     stockFloor1: { type: Number, default: 0 },
     stockFloor2: { type: Number, default: 0 },
     stock: { type: Number, required: true, default: 0 },
+    parentSetProductId: { type: String, default: '', trim: true },
+    packSize: { type: Number, default: 0, min: 0 },
     status: { type: String, enum: ['ACTIVE', 'INACTIVE'], default: 'ACTIVE' },
   },
   { timestamps: true }

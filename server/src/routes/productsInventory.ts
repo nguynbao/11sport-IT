@@ -19,6 +19,7 @@ import {
   formatProductWithVariant,
   sanitizeColorHexes,
 } from '../utils/warehouseFloor';
+import { enrichProductsWithSetLinks, executeUnpackSetToRetail } from '../utils/unpackSet';
 import { filterAndRankBySearch } from '../utils/search';
 
 export const productsInventoryRouter = Router();
@@ -124,6 +125,7 @@ productsInventoryRouter.get('/products', async (req, res, next) => {
     // Ẩn giá gốc và chỉ hiển thị sản phẩm Kho Tầng 1 đối với nhân viên bán hàng (SALES)
     const isSalesRole = req.user?.role === 'SALES';
     const hideCost = isSalesRole;
+    const setLinksMap = enrichProductsWithSetLinks(allProducts);
     const baseFiltered = allProducts
       .map((p) => {
         const cat =
@@ -132,6 +134,7 @@ productsInventoryRouter.get('/products', async (req, res, next) => {
           (p.categoryName ? catByName.get(String(p.categoryName).trim().toLowerCase()) : undefined);
         const { costPrice, ...rest } = p as any;
         const floors = getFloorStocks(p);
+        const setLinkInfo = setLinksMap.get(String(p._id)) || {};
         const visibleVariants = floors.variants.map((v) => {
           const hasAttr = Boolean(
             (v.color && String(v.color).trim()) || (v.size && String(v.size).trim())
@@ -158,16 +161,19 @@ productsInventoryRouter.get('/products', async (req, res, next) => {
           stockFloor1: floors.stockFloor1,
           stockFloor2: isSalesRole ? 0 : floors.stockFloor2,
           stock: isSalesRole ? floors.stockFloor1 : floors.stock,
+          ...setLinkInfo,
           ...(hideCost ? {} : { costPrice: Number(costPrice) || 0 }),
           categoryCode: cat?.code || p.categoryCode || '',
           categoryName: cat?.name || p.categoryName || '',
         };
       })
       .filter((p) => {
-        if (isSalesRole && (Number(p.stockFloor1) || 0) <= 0) return false;
+        const effectiveFloor1 =
+          (Number(p.stockFloor1) || 0) + (Number(p.maxUnpackableFloor1) || 0);
+        if (isSalesRole && effectiveFloor1 <= 0) return false;
         if (categoryId && String(p.categoryId) !== String(categoryId)) return false;
         if (onlySellable === 'true') {
-          if (!(p.sellingPrice > 0 && p.stockFloor1 > 0)) return false;
+          if (!(p.sellingPrice > 0 && effectiveFloor1 > 0)) return false;
         }
         return true;
       });
@@ -226,6 +232,8 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
       quantity,
       targetWarehouse,
       upsertIfExists,
+      parentSetProductId,
+      packSize,
     } = req.body || {};
     const targetFloor = normalizeFloor(targetWarehouse);
     if (!name || !String(name).trim()) {
@@ -486,6 +494,11 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
             stock: qty,
           };
 
+    const cleanParentSetId = parentSetProductId ? String(parentSetProductId).trim() : '';
+    const cleanPackSize = cleanParentSetId
+      ? Math.max(0, Math.round(Number(packSize) || 0))
+      : 0;
+
     const created = await productRepo.create({
       code,
       barcode: code, // Mã gốc sản phẩm; từng biến thể con lưu mã tem riêng tại variants[].variantCode
@@ -502,6 +515,8 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
       stockFloor1: initialSummary.stockFloor1,
       stockFloor2: initialSummary.stockFloor2,
       stock: initialSummary.stock,
+      parentSetProductId: cleanParentSetId,
+      packSize: cleanPackSize,
       status: 'ACTIVE',
     });
 
@@ -565,6 +580,8 @@ productsInventoryRouter.patch('/products/:id', async (req, res, next) => {
       sellingPrice,
       costPrice,
       status,
+      parentSetProductId,
+      packSize,
     } = req.body || {};
 
     // BR-03: Mã sản phẩm không được sửa sau khi tạo
@@ -732,6 +749,34 @@ productsInventoryRouter.patch('/products/:id', async (req, res, next) => {
     }
     if (status !== undefined && ['ACTIVE', 'INACTIVE'].includes(status)) {
       updateData.status = status;
+    }
+    if (parentSetProductId !== undefined) {
+      const cleanParentId = String(parentSetProductId || '').trim();
+      if (cleanParentId && cleanParentId === String(product._id)) {
+        throw new ApiError(
+          400,
+          'INVALID_SET_LINK',
+          'Sản phẩm lẻ không thể tự liên kết làm Sản phẩm Bộ của chính nó'
+        );
+      }
+      if (cleanParentId) {
+        const parentProd = await productRepo.findById(cleanParentId);
+        if (!parentProd) {
+          throw new ApiError(404, 'SET_PRODUCT_NOT_FOUND', 'Không tìm thấy Sản phẩm Bộ/Hộp gốc cần liên kết');
+        }
+      }
+      updateData.parentSetProductId = cleanParentId;
+      if (!cleanParentId) {
+        updateData.packSize = 0;
+      }
+    }
+    if (packSize !== undefined) {
+      const parsedPack = Math.max(0, Math.round(Number(packSize) || 0));
+      const effectiveParentId =
+        updateData.parentSetProductId !== undefined
+          ? updateData.parentSetProductId
+          : String(product.parentSetProductId || '').trim();
+      updateData.packSize = effectiveParentId ? parsedPack : 0;
     }
 
     const updated = await productRepo.updateById(id, updateData);
@@ -1126,6 +1171,41 @@ productsInventoryRouter.post('/inventory/adjustments', async (req, res, next) =>
         movement,
         product: updatedProduct,
       },
+      meta: {},
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/v1/inventory/unpack-set
+productsInventoryRouter.post('/inventory/unpack-set', async (req, res, next) => {
+  try {
+    const { retailProductId, setsToUnpack = 1, warehouse = 'FLOOR_1', color, size, reason } = req.body || {};
+    if (!retailProductId) {
+      throw new ApiError(400, 'VALIDATION_ERROR', 'Vui lòng chọn sản phẩm lẻ cần tách bộ', {
+        retailProductId: 'Bắt buộc',
+      });
+    }
+
+    const actorId = req.user?.userId || 'ADMIN';
+    const actorName = req.user?.fullName || 'Quản lý kho';
+    const actorRole = inferActorRole(req.user?.role, actorId, actorName);
+
+    const result = await executeUnpackSetToRetail({
+      retailProductId: String(retailProductId),
+      setsToUnpack: Number(setsToUnpack) || 1,
+      warehouse: normalizeFloor(warehouse),
+      color: color ? String(color).trim() : '',
+      size: size ? String(size).trim().toUpperCase() : '',
+      reason: reason ? String(reason).trim() : 'Tách sản phẩm bộ sang lẻ 1 chạm',
+      actorId,
+      actorName,
+      actorRole,
+    });
+
+    res.status(201).json({
+      data: result,
       meta: {},
     });
   } catch (err) {
