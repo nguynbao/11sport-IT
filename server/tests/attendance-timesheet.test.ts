@@ -95,17 +95,17 @@ describe('Bảng công tháng (Timesheet), Điều chỉnh giờ công & Chấm 
       .send({ checkOut: '08:00', reason: 'test' });
     expect(badTime.status).toBe(400);
 
-    // Điều chỉnh giờ ra 17:30 -> 08:45..17:30 = 8.75h - 1.5h nghỉ trưa = 7.25h
+    // Điều chỉnh giờ ra 17:30 -> 08:45..17:30 = 8.75h - 1h nghỉ trưa = 7.75h
     const patch = await request(app)
       .patch(`/api/v1/attendance/${attId}`)
       .set('Authorization', `Bearer ${hrToken}`)
       .send({ checkOut: '17:30', reason: 'Bổ sung giờ ra theo camera' });
     expect(patch.status).toBe(200);
-    expect(patch.body.data.totalWorkHours).toBe(7.25);
+    expect(patch.body.data.totalWorkHours).toBe(7.75);
     expect(patch.body.data.earlyMinutes).toBe(0);
     expect(patch.body.data.status).toBe('COMPLETED');
 
-    // Bảng công sau điều chỉnh -> LATE, công = 7.25 / 7.5
+    // Bảng công sau điều chỉnh -> LATE, công = 7.75 / 8
     const ts2 = await request(app)
       .get(`/api/v1/attendance/timesheet?month=${pastMonth}&year=${pastYear}&department=OFFICE`)
       .set('Authorization', `Bearer ${hrToken}`);
@@ -114,7 +114,7 @@ describe('Bảng công tháng (Timesheet), Điều chỉnh giờ công & Chấm 
     expect(row2.cells[pastDate].adjusted).toBe(true);
     expect(row2.summary.missingCheckout).toBe(0);
     expect(row2.summary.lateCount).toBe(1);
-    expect(row2.summary.workUnits).toBeCloseTo(7.25 / 7.5, 2);
+    expect(row2.summary.workUnits).toBeCloseTo(7.75 / 8, 2);
     expect(ts2.body.data.rows.every((r: any) => r.department === 'OFFICE')).toBe(true);
   });
 

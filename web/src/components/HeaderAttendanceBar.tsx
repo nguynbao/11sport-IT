@@ -143,11 +143,11 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
         currentUser?.department === "OFFICE" ||
         (currentUser?.role && currentUser.role !== "SALES");
 
-      // Kiểm tra giờ nghỉ trưa 12:00 - 13:30 đối với khối Văn phòng
+      // Kiểm tra giờ nghỉ trưa 12:00 - 13:00 (1 tiếng: sáng 08:30-12:00, chiều 13:00-17:30) đối với khối Văn phòng
       const lunchStart = new Date(endTime);
       lunchStart.setHours(12, 0, 0, 0);
       const lunchEnd = new Date(endTime);
-      lunchEnd.setHours(13, 30, 0, 0);
+      lunchEnd.setHours(13, 0, 0, 0);
 
       let pausedNow = false;
       let effectiveEnd = endTime;

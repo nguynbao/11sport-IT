@@ -648,9 +648,9 @@
     "semantic_hash": ""
   },
   "docs/api-contract.md": {
-    "mtime": 1794048341.7433324,
-    "seen": 1794116304.824425,
-    "ast_hash": "76fcbe6cac0bbbd1362ca8c08d195c56",
+    "mtime": 1794190644.341719,
+    "seen": 1794191102.230565,
+    "ast_hash": "4318fb0d946fa218f97c17b89e78980c",
     "semantic_hash": ""
   },
   "docs/design/design-system.md": {
@@ -810,9 +810,9 @@
     "semantic_hash": ""
   },
   "server/src/routes/attendance.ts": {
-    "mtime": 1794048378.7450676,
-    "seen": 1794116304.8242931,
-    "ast_hash": "6645e2a07554a33eb03120cb2e26a93b",
+    "mtime": 1794190685.6921103,
+    "seen": 1794191102.230434,
+    "ast_hash": "0c8ff00b13f960accb9e63f622452b04",
     "semantic_hash": ""
   },
   "server/src/routes/holidays.ts": {
@@ -876,9 +876,9 @@
     "semantic_hash": ""
   },
   "cms/src/components/HeaderAttendanceBar.tsx": {
-    "mtime": 1794047323.720122,
-    "seen": 1794047941.25101,
-    "ast_hash": "47dbb6c38cdcf6e205cc3dc1f18aad00",
+    "mtime": 1794190684.1651552,
+    "seen": 1794191102.23036,
+    "ast_hash": "a1e09a3508051fba3ec3b8847caca172",
     "semantic_hash": ""
   },
   "server/src/models/AttendanceConfig.ts": {
@@ -894,9 +894,9 @@
     "semantic_hash": ""
   },
   "web/src/components/HeaderAttendanceBar.tsx": {
-    "mtime": 1794047318.1718938,
-    "seen": 1794047941.2511811,
-    "ast_hash": "3a4f1f5f962bb878c4c9ae3506969f12",
+    "mtime": 1794190682.7252634,
+    "seen": 1794191102.2305338,
+    "ast_hash": "615ecafa4c6651fab7d19a572f11e3b9",
     "semantic_hash": ""
   },
   "cms/src/components/AttendanceTimesheetModule.tsx": {
@@ -912,15 +912,15 @@
     "semantic_hash": ""
   },
   "server/src/routes/attendanceTimesheet.ts": {
-    "mtime": 1794040995.0951264,
-    "seen": 1794046380.5304372,
-    "ast_hash": "f091e60c337f7f93637f676bbd0df4d0",
+    "mtime": 1794190687.5303276,
+    "seen": 1794191102.230436,
+    "ast_hash": "0679554fb20d8d65a39f15075cc7dca5",
     "semantic_hash": ""
   },
   "server/tests/attendance-timesheet.test.ts": {
-    "mtime": 1794042761.9548142,
-    "seen": 1794046380.5304809,
-    "ast_hash": "de654ce8e5989f543b7981680bbdd16c",
+    "mtime": 1794190690.4821284,
+    "seen": 1794191102.230481,
+    "ast_hash": "8bcf15984f5bc32c1f08f8f607591d4a",
     "semantic_hash": ""
   },
   "server/tests/shifts-bulk.test.ts": {

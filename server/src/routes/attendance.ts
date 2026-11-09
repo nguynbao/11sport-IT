@@ -438,11 +438,11 @@ attendanceRouter.post('/attendance/check-out', async (req, res, next) => {
     const endMs = now.getTime();
     let rawHours = Math.max(0, (endMs - startMs) / (1000 * 60 * 60));
 
-    // 3. Tự động trừ giờ nghỉ trưa (12:00 - 13:30 = 1.5 giờ) cho khối OFFICE
+    // 3. Tự động trừ giờ nghỉ trưa (12:00 - 13:00 = 1 giờ; sáng 08:30-12:00, chiều 13:00-17:30) cho khối OFFICE
     let lunchPauseMinutes = 0;
     if (attendance.department === 'OFFICE' && attendance.shiftCode === 'SHIFT_1') {
-      lunchPauseMinutes = 90; // 1.5 tiếng
-      rawHours = Math.max(0, rawHours - 1.5);
+      lunchPauseMinutes = 60; // 1 tiếng
+      rawHours = Math.max(0, rawHours - 1);
     }
 
     const finalStatus = earlyMinutes > 0 ? 'EARLY_LEAVE' : 'COMPLETED';

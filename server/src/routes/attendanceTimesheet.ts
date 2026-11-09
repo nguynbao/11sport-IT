@@ -22,11 +22,11 @@ const SHIFT_RULES: Record<ShiftCode, { start: number; end: number; label: string
 };
 
 const LATE_TOLERANCE_MINUTES = 5;
-const OFFICE_LUNCH_HOURS = 1.5;
+const OFFICE_LUNCH_HOURS = 1;
 
 export function getStandardHours(department: string): number {
-  // OFFICE: 08:30-17:30 trừ nghỉ trưa 1.5h = 7.5h ; SALES: ca 9h
-  return department === 'OFFICE' ? 7.5 : 9;
+  // OFFICE: 08:30-12:00 & 13:00-17:30 (nghỉ trưa 1h = 8h) ; SALES: ca 9h
+  return department === 'OFFICE' ? 8 : 9;
 }
 
 function getOfficeWorkdays(): number[] {
