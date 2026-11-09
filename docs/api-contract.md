@@ -337,7 +337,13 @@
     - `dailyTrend`: Chuỗi doanh thu & lợi nhuận theo từng ngày trong kỳ (tự động điền đầy đủ các ngày trong khoảng `from` – `to` để vẽ biểu đồ xu hướng).
     - `hourlyTrend`: Chuỗi doanh thu & lợi nhuận theo từng khung giờ (`00:00` – `23:00`) của các giao dịch trong kỳ.
     - `topSellingProducts`: Danh sách sản phẩm bán chạy nhất trong kỳ kèm tồn kho hiện tại (`stockFloor1`, `stockFloor2`, `stock`) và cảnh báo cần nhập thêm / dời từ Tầng 2 xuống Tầng 1 (`restockAlert`).
-    - `needsPushProducts`: Danh sách sản phẩm đang cần đẩy mạnh (tồn kho cao nhưng bán chậm/chưa bán được, vốn tồn đọng lớn, hàng nằm ở Kho Tầng 2 nhưng Kho Tầng 1 hết hàng trưng bày, hoặc chưa đặt giá bán), kèm lý do (`pushReasons`) và gợi ý hành động (`suggestedAction`).
+    - `needsPushProducts`: Danh sách sản phẩm đang cần đẩy mạnh (được tách sang phân hệ riêng của `MARKETING`, đã gỡ bỏ khỏi giao diện CMS `ADMIN`).
+- `GET /api/v1/reports/push-products?from=YYYY-MM-DD&to=YYYY-MM-DD&categoryId=...`
+  - Cho phép role `MARKETING`, `ADMIN`, `ACCOUNTANT` truy cập để bộ phận Marketing quan sát danh sách **Các Sản Phẩm Đang Cần Đẩy Mạnh**.
+  - Trả về:
+    - `summary`: `{ totalPushProducts, zeroSalesCount, highCapitalCount, floor2OnlyCount, noPriceCount, totalPushStock, totalPushCapitalValue }`
+    - `needsPushProducts`: Danh sách sản phẩm đang cần đẩy mạnh (`ProductSalesAnalysisRow[]`) kèm tồn kho Tầng 1 / Tầng 2, số lượng đã bán trong kỳ, giá gốc / giá bán, vốn tồn đọng (`inventoryCostValue`), lý do cần đẩy mạnh (`pushReasons`) và đề xuất hành động (`suggestedAction`).
+    - `categories`: Danh sách Category để lọc.
 
 
 ### 2.9 Tích hợp Wise API — Máy tính Quy đổi Ngoại tệ & Chuyển tiền nhanh (`/wise`) *(v2.6)*
