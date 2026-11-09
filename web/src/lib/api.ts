@@ -1267,6 +1267,51 @@ export async function submitShiftPreferencesApi(data: {
   return res.data;
 }
 
+export interface MyShiftAssignmentItem {
+  _id: string;
+  weekStart: string;
+  date: string;
+  dayOfWeek: number;
+  staffId: string;
+  staffCode: string;
+  staffName: string;
+  shiftCode: "SHIFT_1" | "SHIFT_2" | "BOTH" | "OFF";
+  preferenceShift?: "SHIFT_1" | "SHIFT_2" | "BOTH" | "OFF";
+  isOffRequested?: boolean;
+  assignedBy: "AUTO" | "HR";
+  confirmedAt?: string | null;
+  seenByStaff?: boolean;
+}
+
+export interface MyShiftScheduleData {
+  weekStart: string;
+  weekEnd?: string;
+  nextMonday?: string;
+  currentMonday?: string;
+  nextWeekStart: string;
+  currentWeekStart: string;
+  assignments: MyShiftAssignmentItem[];
+  currentWeekAssignments: MyShiftAssignmentItem[];
+  isRegistered: boolean;
+  isConfirmedByHr: boolean;
+  unseenConfirmedCount: number;
+  hasUnseenConfirmedSchedule: boolean;
+}
+
+export async function fetchMyShiftScheduleApi(weekStart?: string): Promise<MyShiftScheduleData> {
+  const q = weekStart ? `?weekStart=${encodeURIComponent(weekStart)}` : "";
+  const res = await apiRequest<MyShiftScheduleData>(`/shifts/my-schedule${q}`);
+  return res.data;
+}
+
+export async function markMyShiftScheduleSeenApi(weekStart?: string): Promise<{ markedCount: number }> {
+  const res = await apiRequest<{ markedCount: number }>("/shifts/my-schedule/seen", {
+    method: "POST",
+    body: JSON.stringify(weekStart ? { weekStart } : {}),
+  });
+  return res.data;
+}
+
 // ============================================================
 // Lịch công cá nhân (Web) & Đơn từ
 // ============================================================

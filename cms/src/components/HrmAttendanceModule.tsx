@@ -11,6 +11,7 @@ import {
   deleteHolidayApi,
   fetchLeaveRequests,
   reviewLeaveRequestApi,
+  fetchShiftSchedule,
 } from "@/lib/api";
 import StaffModule from "./StaffModule";
 import AttendanceTimesheetModule from "./AttendanceTimesheetModule";
@@ -70,10 +71,32 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
 
   // Số đơn đang chờ duyệt -> hiển thị chấm đỏ trên tab "Duyệt Đơn Từ & WFH"
   const [pendingCount, setPendingCount] = useState<number>(0);
+  // Số nhân viên đã đăng ký ca tuần sau chờ HR xác nhận -> hiển thị chấm đỏ trên tab "Xếp Ca Tuần"
+  const [pendingShiftStaffCount, setPendingShiftStaffCount] = useState<number>(0);
+
+  const getNextMondayStr = () => {
+    const now = new Date();
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const day = d.getDay();
+    d.setDate(d.getDate() - (day === 0 ? 6 : day - 1) + 7);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  };
+
   const refreshPendingCount = async () => {
     try {
       const list = await fetchLeaveRequests({ status: "PENDING" });
       setPendingCount(Array.isArray(list) ? list.length : 0);
+    } catch {
+      // bỏ qua lỗi mạng tạm thời
+    }
+    try {
+      const nextMonday = getNextMondayStr();
+      const sched = await fetchShiftSchedule(nextMonday);
+      const staffIds = new Set(
+        (sched.assignments || []).filter((a) => a.assignedBy === "AUTO").map((a) => String(a.staffId))
+      );
+      setPendingShiftStaffCount(staffIds.size);
     } catch {
       // bỏ qua lỗi mạng tạm thời
     }
@@ -333,6 +356,15 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
         >
           <Users className="w-4 h-4" />
           Xếp Ca Tuần
+          {pendingShiftStaffCount > 0 && (
+            <span
+              title={`${pendingShiftStaffCount} nhân viên đã đăng ký ca tuần sau chờ HR xác nhận`}
+              className="relative inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-black leading-none shadow"
+            >
+              <span className="absolute inline-flex w-full h-full rounded-full bg-red-500 opacity-60 animate-ping" />
+              <span className="relative">{pendingShiftStaffCount > 99 ? "99+" : pendingShiftStaffCount}</span>
+            </span>
+          )}
         </button>
 
         <button
@@ -942,7 +974,7 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
       )}
 
       {/* ================= TAB 3: XẾP CA TUẦN (Sửa / Lưu) ================= */}
-      {activeTab === "SHIFTS" && <ShiftScheduleModule />}
+      {activeTab === "SHIFTS" && <ShiftScheduleModule onScheduleUpdated={refreshPendingCount} />}
 
       {/* ================= TAB 4: BẢNG CHẤM CÔNG THÁNG TOÀN CÔNG TY ================= */}
       {activeTab === "ATTENDANCE_LOG" && <AttendanceTimesheetModule />}

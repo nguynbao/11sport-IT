@@ -815,14 +815,25 @@
 
 #### C. Xếp ca & Bàn giao Kho Tầng 1 (`/shifts`)
 - `POST /api/v1/shifts/preferences`
-  - Sales nộp đăng ký ca tuần tới vào Thứ 6: `{ "weekStart": "2026-11-09", "preferences": [{ "date": "2026-11-09", "isOff": false, "preferredShift": "SHIFT_1 | SHIFT_2" }] }`.
+  - Nhân viên Bán hàng (`SALES`) nộp đăng ký ca tuần tới: `{ "weekStart": "2026-11-09", "preferences": [{ "date": "2026-11-09", "dayOfWeek": 1, "isOffRequested": false, "preferenceShift": "SHIFT_1 | SHIFT_2 | BOTH | OFF" }] }`.
+  - **Ràng buộc**: Bắt buộc gửi đủ 7 ngày của tuần (`weekStart`..`weekStart + 6 ngày`) gồm **6 ngày làm (`SHIFT_1`, `SHIFT_2`, hoặc cả 2 ca `BOTH`) + đúng 1 ngày nghỉ (`isOffRequested: true` / `OFF`)**. Nếu sai trả `400 WEEKLY_OFF_REQUIRED`.
+  - **Logic xử lý đăng ký 2 ca/ngày (`preferenceShift = "BOTH"`)**:
+    - Nếu trong ngày đó cả `Ca 1` và `Ca 2` đều đã có nhân viên khác đăng ký/trực (ca không trống): Hệ thống tự động **random 1 trong 2 ca (`SHIFT_1` hoặc `SHIFT_2`)** cho nhân viên đó.
+    - Nếu trong ngày đó có ca bị trống (`Ca 1` hoặc `Ca 2` chưa có ai khác đăng ký): Nhân viên đăng ký 2 ca sẽ được xếp **làm cả 2 ca (`shiftCode = "BOTH"`)**, hiển thị ở cả hàng `Ca 1` và `Ca 2` trên bảng phân ca của HR.
+  - Lưu bản ghi `ShiftAssignment` với `assignedBy: "AUTO"`, `preferenceShift`, `isOffRequested`, `seenByStaff: true` để hiển thị ngay trên bảng phân ca tuần của HR. Nếu tuần đó đã được HR chốt (`assignedBy: "HR"`), trả lỗi `400 SCHEDULE_ALREADY_CONFIRMED`.
 - `GET /api/v1/shifts/schedule`
   - Xem bảng lịch ca của tuần: `?weekStart=2026-11-09` (lấy toàn bộ phân ca có `date` từ `weekStart` đến `weekStart + 6 ngày`).
-- `PUT /api/v1/shifts/assign/bulk` (Role `HR` hoặc `ADMIN`) — **Lưu toàn bộ thay đổi lịch ca tuần một lần** (chế độ Sửa → Lưu trên CMS)
-  - Body: `{ "weekStart": "2026-11-09", "changes": [{ "staffId": "...", "date": "2026-11-10", "dayOfWeek": 2, "shiftCode": "SHIFT_1 | SHIFT_2 | OFF | null" }] }`
+- `GET /api/v1/shifts/my-schedule`
+  - Query: `?weekStart=2026-11-16` (mặc định Thứ Hai tuần kế tiếp).
+  - Trả về lịch ca của chính nhân viên đang đăng nhập cho tuần `weekStart`, kèm `unseenConfirmedCount` (số ca đã được HR xác nhận `assignedBy === "HR"` mà nhân viên chưa xem `seenByStaff === false`) và `confirmedWeeks` (danh sách tuần đã được HR chốt).
+- `POST /api/v1/shifts/my-schedule/seen`
+  - Đánh dấu toàn bộ lịch ca đã được HR xác nhận (`assignedBy === "HR"`) của nhân viên đang đăng nhập thành `seenByStaff: true` (tắt chấm đỏ thông báo trên Menu & tab Chấm công).
+- `PUT /api/v1/shifts/assign/bulk` (Role `HR` hoặc `ADMIN`) — **Lưu thay đổi & Xác nhận hoàn thành lịch ca tuần** (trên CMS)
+  - Body: `{ "weekStart": "2026-11-09", "changes": [{ "staffId": "...", "date": "2026-11-10", "dayOfWeek": 2, "shiftCode": "SHIFT_1 | SHIFT_2 | BOTH | OFF | null" }], "confirmWeek"?: boolean }`
   - `shiftCode = null` → xoá phân ca của nhân viên ngày đó. Mỗi nhân viên chỉ có 1 ca/ngày (ghi đè nếu đã có).
+  - Khi `confirmWeek = true` (hoặc khi HR bấm Lưu / Xác nhận lịch ca tuần): toàn bộ các bản ghi phân ca trong tuần của nhân viên được chuyển sang `assignedBy: "HR"`, gắn `confirmedAt: new Date()`, và đặt `seenByStaff: false` để bật **chấm đỏ thông báo** bên giao diện Web của nhân viên Bán hàng.
   - **Bắt buộc 6 ngày làm + 1 ngày nghỉ/tuần**: sau khi áp dụng thay đổi, mỗi nhân viên `SALES` có phân ca trong tuần phải được xếp đủ 7 ngày gồm **đúng 1 ngày `OFF`**. Sai → `400 WEEKLY_OFF_REQUIRED`, `fields: { "<tên NV>": "mô tả lỗi" }`, không lưu gì.
-  - Response: `{ "data": { "updated": 3, "created": 2, "deleted": 1 } }`
+  - Response: `{ "data": { "updated": 3, "created": 2, "deleted": 1, "confirmed": 7 } }`
 - `POST /api/v1/shifts/auto-assign`
   - HR kích hoạt tự động xếp ca dựa trên preferences Thứ 6: `{ "weekStart": "2026-11-09" }`.
 - `PUT /api/v1/shifts/assign`

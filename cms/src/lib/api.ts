@@ -89,10 +89,12 @@ export interface ShiftAssignment {
   staffId: string;
   staffCode: string;
   staffName: string;
-  shiftCode: "SHIFT_1" | "SHIFT_2" | "OFF";
-  preferenceShift?: "SHIFT_1" | "SHIFT_2" | "OFF";
+  shiftCode: "SHIFT_1" | "SHIFT_2" | "BOTH" | "OFF";
+  preferenceShift?: "SHIFT_1" | "SHIFT_2" | "BOTH" | "OFF";
   isOffRequested?: boolean;
   assignedBy: "AUTO" | "HR";
+  confirmedAt?: string | null;
+  seenByStaff?: boolean;
   notes?: string;
 }
 
@@ -1685,16 +1687,17 @@ export interface ShiftChange {
   date: string;
   dayOfWeek?: number;
   /** null = xoá phân ca của nhân viên ngày đó */
-  shiftCode: "SHIFT_1" | "SHIFT_2" | "OFF" | null;
+  shiftCode: "SHIFT_1" | "SHIFT_2" | "BOTH" | "OFF" | null;
 }
 
 export async function saveShiftChangesApi(
   weekStart: string,
-  changes: ShiftChange[]
-): Promise<{ created: number; updated: number; deleted: number }> {
-  const res = await apiRequest<{ created: number; updated: number; deleted: number }>("/shifts/assign/bulk", {
+  changes: ShiftChange[],
+  confirmWeek?: boolean
+): Promise<{ created: number; updated: number; deleted: number; confirmed?: number }> {
+  const res = await apiRequest<{ created: number; updated: number; deleted: number; confirmed?: number }>("/shifts/assign/bulk", {
     method: "PUT",
-    body: JSON.stringify({ weekStart, changes }),
+    body: JSON.stringify({ weekStart, changes, confirmWeek }),
   });
   return res.data;
 }

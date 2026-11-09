@@ -8,8 +8,11 @@ import {
   MyCalendarCellCode,
   MyCalendarDay,
   LeaveRequestType,
+  MyShiftScheduleData,
   fetchMyCalendarApi,
   createLeaveRequestApi,
+  fetchMyShiftScheduleApi,
+  markMyShiftScheduleSeenApi,
 } from "@/lib/api";
 import {
   ArrowLeft,
@@ -26,6 +29,7 @@ import {
   Hourglass,
   FileText,
   Info,
+  CalendarPlus,
 } from "lucide-react";
 import {
   LeaveRequestModal,
@@ -34,6 +38,7 @@ import {
   isPaidLeaveEligible,
   LEAVE_REASON_MAX,
 } from "./LeaveRequests";
+import FridayShiftRegistrationModal from "./FridayShiftRegistrationModal";
 
 // ---------------------------------------------------------------------------
 // Màu & nhãn cho từng trạng thái ngày công
@@ -182,9 +187,30 @@ function fmtMinutes(min?: number): string {
 interface Props {
   currentUser: StaffUser;
   onBack?: () => void;
+  onScheduleSeen?: () => void;
 }
 
-export default function MyAttendanceCalendar({ currentUser, onBack }: Props) {
+const SHIFT_WEEK_DAY_NAMES = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"];
+
+function getNextMondayFallbackStr(): string {
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const day = d.getDay();
+  const offsetToCurrentMonday = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + offsetToCurrentMonday + 7);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function addLocalDaysStr(dateStr: string | undefined, days: number): string {
+  const safeStr = dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? dateStr : getNextMondayFallbackStr();
+  const [y, m, d] = safeStr.split("-").map(Number);
+  const dt = new Date(y, m - 1, d + days);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+}
+
+export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSeen }: Props) {
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
@@ -195,6 +221,11 @@ export default function MyAttendanceCalendar({ currentUser, onBack }: Props) {
   const [toast, setToast] = useState<string | null>(null);
   const [leaveModal, setLeaveModal] = useState<{ date?: string; type?: LeaveRequestType } | null>(null);
   const [leaveReloadKey, setLeaveReloadKey] = useState(0);
+  const [showShiftRegModal, setShowShiftRegModal] = useState(false);
+  const [myShiftSchedule, setMyShiftSchedule] = useState<MyShiftScheduleData | null>(null);
+  const [justSawConfirmedSchedule, setJustSawConfirmedSchedule] = useState(false);
+
+  const isSalesStaff = currentUser.role === "SALES" || data?.row?.department === "SALES";
 
   const notify = (msg: string) => {
     setToast(msg);
@@ -205,6 +236,21 @@ export default function MyAttendanceCalendar({ currentUser, onBack }: Props) {
     setLeaveReloadKey((k) => k + 1);
     load();
   };
+
+  const loadShiftSchedule = useCallback(async () => {
+    if (currentUser.role !== "SALES") return;
+    try {
+      const sched = await fetchMyShiftScheduleApi();
+      setMyShiftSchedule(sched);
+      if (sched.hasUnseenConfirmedSchedule) {
+        setJustSawConfirmedSchedule(true);
+        await markMyShiftScheduleSeenApi();
+        onScheduleSeen?.();
+      }
+    } catch {
+      // ignore
+    }
+  }, [currentUser.role, onScheduleSeen]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -219,8 +265,11 @@ export default function MyAttendanceCalendar({ currentUser, onBack }: Props) {
   }, [month, year]);
 
   useEffect(() => {
-    if (currentUser.role !== "ADMIN") load();
-  }, [load, currentUser.role]);
+    if (currentUser.role !== "ADMIN") {
+      load();
+      loadShiftSchedule();
+    }
+  }, [load, loadShiftSchedule, currentUser.role]);
 
   const goPrev = () => {
     if (month === 1) {
@@ -315,6 +364,16 @@ export default function MyAttendanceCalendar({ currentUser, onBack }: Props) {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              {isSalesStaff && (
+                <button
+                  type="button"
+                  onClick={() => setShowShiftRegModal(true)}
+                  className="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-extrabold inline-flex items-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                  <CalendarPlus className="w-3.5 h-3.5" />
+                  Đăng ký ca tuần sau
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setLeaveModal({})}
@@ -444,6 +503,137 @@ export default function MyAttendanceCalendar({ currentUser, onBack }: Props) {
 
           {error && <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm">{error}</div>}
 
+          {/* Lịch làm việc tuần sau cho nhân viên khối Bán hàng (SALES) */}
+          {isSalesStaff && myShiftSchedule && (() => {
+            const ws =
+              myShiftSchedule.nextWeekStart ||
+              myShiftSchedule.nextMonday ||
+              myShiftSchedule.weekStart ||
+              getNextMondayFallbackStr();
+            const we = addLocalDaysStr(ws, 6);
+            const [, wsM, wsD] = ws.split("-");
+            const [weY, weM, weD] = we.split("-");
+            const byDate = new Map((myShiftSchedule.assignments || []).map((a) => [a.date, a]));
+
+            return (
+              <div
+                className={`bg-white rounded-2xl border p-3.5 sm:p-4 shadow-sm space-y-3 ${
+                  myShiftSchedule.isConfirmedByHr
+                    ? "border-emerald-300 ring-1 ring-emerald-200"
+                    : myShiftSchedule.isRegistered
+                    ? "border-indigo-200"
+                    : "border-amber-200"
+                }`}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-xs sm:text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-emerald-600" />
+                      Lịch làm việc tuần sau ({wsD}/{wsM} – {weD}/{weM}/{weY})
+                    </h3>
+                    {myShiftSchedule.isConfirmedByHr ? (
+                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-extrabold inline-flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        HR đã xác nhận lịch làm việc
+                        {justSawConfirmedSchedule && (
+                          <span className="ml-1 px-1.5 py-0.2 rounded-full bg-rose-600 text-white text-[9px] font-black uppercase">
+                            Mới
+                          </span>
+                        )}
+                      </span>
+                    ) : myShiftSchedule.isRegistered ? (
+                      <span className="px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800 text-[11px] font-bold">
+                        ⏳ Đã gửi đăng ký – Chờ HR xác nhận
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-bold">
+                        Chưa đăng ký ca tuần sau
+                      </span>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowShiftRegModal(true)}
+                    className="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-bold text-slate-700 cursor-pointer"
+                  >
+                    {myShiftSchedule.isConfirmedByHr
+                      ? "Xem đăng ký"
+                      : myShiftSchedule.isRegistered
+                      ? "Sửa đăng ký ca"
+                      : "Đăng ký ngay"}
+                  </button>
+                </div>
+
+                {myShiftSchedule.isRegistered ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-7 gap-2">
+                    {Array.from({ length: 7 }, (_, i) => {
+                      const dStr = addLocalDaysStr(ws, i);
+                      const [, m, d] = dStr.split("-");
+                      const item = byDate.get(dStr);
+                      const code = item?.shiftCode;
+                      const prefDiffers =
+                        item?.preferenceShift &&
+                        item.preferenceShift !== item.shiftCode &&
+                        item.assignedBy === "HR";
+                      return (
+                        <div
+                          key={dStr}
+                          className={`rounded-xl border p-2 text-center space-y-1 ${
+                            code === "SHIFT_1" || code === "SHIFT_2" || code === "BOTH"
+                              ? "bg-indigo-50/70 border-indigo-300 text-indigo-900"
+                              : "bg-rose-50/60 border-rose-200 text-rose-700"
+                          }`}
+                        >
+                          <div className="text-[11px] font-extrabold">{SHIFT_WEEK_DAY_NAMES[i]}</div>
+                          <div className="text-[10px] font-mono opacity-75">
+                            {d}/{m}
+                          </div>
+                          <div className="text-xs font-black">
+                            {code === "BOTH"
+                              ? "Ca 1 + Ca 2"
+                              : code === "SHIFT_1"
+                              ? "Ca 1"
+                              : code === "SHIFT_2"
+                              ? "Ca 2"
+                              : code === "OFF"
+                              ? "Nghỉ OFF"
+                              : "Chưa xếp"}
+                          </div>
+                          <div className="text-[9px] font-mono opacity-80">
+                            {code === "BOTH"
+                              ? "08:30–21:00"
+                              : code === "SHIFT_1"
+                              ? "08:30–17:30"
+                              : code === "SHIFT_2"
+                              ? "12:00–21:00"
+                              : "Ngày nghỉ"}
+                          </div>
+                          {item?.preferenceShift === "BOTH" &&
+                            (code === "SHIFT_1" || code === "SHIFT_2") &&
+                            item.assignedBy === "AUTO" && (
+                              <div className="text-[9px] font-semibold text-indigo-600">
+                                (ĐK 2 ca • Random 1 ca)
+                              </div>
+                            )}
+                          {prefDiffers && (
+                            <div className="text-[9px] font-semibold text-rose-600">
+                              (HR đã điều chỉnh)
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-xs text-slate-500">
+                    Bạn chưa đăng ký ca cho tuần sau. Hãy bấm <b>&ldquo;Đăng ký ca tuần sau&rdquo;</b> để chọn 6 ca làm việc và 1 ngày OFF gửi cho HR.
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {/* Lịch tháng */}
           <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-4 shadow-sm space-y-2">
             <div className="grid grid-cols-7 gap-1.5 sm:gap-2 text-center">
@@ -541,6 +731,18 @@ export default function MyAttendanceCalendar({ currentUser, onBack }: Props) {
           </div>
         </aside>
       </div>
+
+      {showShiftRegModal && (
+        <FridayShiftRegistrationModal
+          onClose={() => setShowShiftRegModal(false)}
+          onSuccess={() => {
+            setShowShiftRegModal(false);
+            notify("Đã gửi đăng ký ca tuần sau cho HR!");
+            loadShiftSchedule();
+            load();
+          }}
+        />
+      )}
 
       {leaveModal && (
         <LeaveRequestModal

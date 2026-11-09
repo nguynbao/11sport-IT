@@ -5,36 +5,147 @@ import { ShiftType } from '../models/ShiftAssignment';
 
 export const shiftsRouter = Router();
 
-// POST /api/v1/shifts/preferences (Nhân viên nộp đăng ký ca Thứ 6)
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+function addDaysStr(dateStr: string, daysToAdd: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(y, m - 1, d + daysToAdd);
+  return `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}`;
+}
+
+function getNextMondayStr(now = new Date()): string {
+  const day = now.getDay();
+  const daysUntilNextMonday = day === 0 ? 1 : 8 - day;
+  const dt = new Date(now.getFullYear(), now.getMonth(), now.getDate() + daysUntilNextMonday);
+  return `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}`;
+}
+
+function getCurrentMondayStr(now = new Date()): string {
+  const day = now.getDay();
+  const offset = day === 0 ? 6 : day - 1;
+  const dt = new Date(now.getFullYear(), now.getMonth(), now.getDate() - offset);
+  return `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}`;
+}
+
+/**
+ * Tự động phân bổ các bản ghi đăng ký 2 ca/ngày (preferenceShift === 'BOTH' & assignedBy === 'AUTO'):
+ * - Nếu trong ngày đó có ca bị trống (Ca 1 hoặc Ca 2 chưa có người khác trực): nhân viên được xếp làm cả 2 ca ('BOTH').
+ * - Nếu cả Ca 1 và Ca 2 đều đã có người trực (ca không trống): hệ thống random 1 trong 2 ca ('SHIFT_1' hoặc 'SHIFT_2').
+ */
+async function reconcileAutoShiftPreferencesForWeek(weekStart: string): Promise<void> {
+  const allAssign = await shiftAssignmentRepo.find({});
+  for (let i = 0; i < 7; i++) {
+    const date = addDaysStr(weekStart, i);
+    const dayAssigns = (allAssign as any[]).filter((a) => a.date === date);
+    const bothAutoAssigns = dayAssigns.filter(
+      (a) => a.assignedBy === 'AUTO' && a.preferenceShift === 'BOTH'
+    );
+    if (bothAutoAssigns.length === 0) continue;
+
+    const fixedAssigns = dayAssigns.filter(
+      (a) => !(a.assignedBy === 'AUTO' && a.preferenceShift === 'BOTH')
+    );
+    let hasShift1 = fixedAssigns.some((a) => a.shiftCode === 'SHIFT_1' || a.shiftCode === 'BOTH');
+    let hasShift2 = fixedAssigns.some((a) => a.shiftCode === 'SHIFT_2' || a.shiftCode === 'BOTH');
+
+    for (const rec of bothAutoAssigns) {
+      let targetShift: ShiftType;
+      if (!hasShift1 || !hasShift2) {
+        // Có ca đang trống -> cho phép 1 nhân viên làm cả 2 ca
+        targetShift = 'BOTH';
+        hasShift1 = true;
+        hasShift2 = true;
+      } else {
+        // Cả 2 ca đều không trống -> random 1 trong 2 ca
+        targetShift =
+          rec.shiftCode === 'SHIFT_1' || rec.shiftCode === 'SHIFT_2'
+            ? rec.shiftCode
+            : Math.random() < 0.5
+            ? 'SHIFT_1'
+            : 'SHIFT_2';
+      }
+      if (rec.shiftCode !== targetShift) {
+        await shiftAssignmentRepo.updateById(rec._id, { shiftCode: targetShift });
+        rec.shiftCode = targetShift;
+      }
+    }
+  }
+}
+
+// POST /api/v1/shifts/preferences (Nhân viên Bán hàng nộp đăng ký ca tuần tới)
 shiftsRouter.post('/shifts/preferences', async (req, res, next) => {
   try {
     const user = req.user;
     if (!user) throw new ApiError(401, 'UNAUTHORIZED', 'Vui lòng đăng nhập');
 
     const { weekStart, preferences } = req.body || {};
-    if (!weekStart || !Array.isArray(preferences)) {
+    if (!weekStart || !/^\d{4}-\d{2}-\d{2}$/.test(String(weekStart)) || !Array.isArray(preferences)) {
       throw new ApiError(400, 'VALIDATION_ERROR', 'Dữ liệu đăng ký ca không hợp lệ');
     }
 
     const staff = await staffRepo.findById(user.userId);
     if (!staff) throw new ApiError(404, 'STAFF_NOT_FOUND', 'Không tìm thấy nhân viên');
 
+    if (preferences.length !== 7) {
+      throw new ApiError(
+        400,
+        'WEEKLY_OFF_REQUIRED',
+        'Vui lòng đăng ký đủ 7 ngày trong tuần (6 ngày làm việc + đúng 1 ngày nghỉ OFF)'
+      );
+    }
+
+    const offCount = preferences.filter(
+      (item: any) => Boolean(item?.isOffRequested) || item?.preferenceShift === 'OFF'
+    ).length;
+    if (offCount !== 1) {
+      throw new ApiError(
+        400,
+        'WEEKLY_OFF_REQUIRED',
+        `Quy định khối Bán hàng: bắt buộc đăng ký 6 ngày làm việc và đúng 1 ngày nghỉ (OFF) trong tuần (hiện chọn ${offCount} ngày OFF)`
+      );
+    }
+
+    // Kiểm tra nếu tuần này đã được HR chốt lịch thì không cho tự ghi đè
+    const weekEnd = addDaysStr(String(weekStart), 6);
+    const allStaffAssign = await shiftAssignmentRepo.find({ staffId: staff._id });
+    const weekAssign = allStaffAssign.filter((a: any) => a.date >= String(weekStart) && a.date <= weekEnd);
+    if (weekAssign.length === 7 && weekAssign.every((a: any) => a.assignedBy === 'HR')) {
+      throw new ApiError(
+        400,
+        'SCHEDULE_ALREADY_CONFIRMED',
+        'Lịch ca tuần này đã được HR xác nhận. Vui lòng liên hệ HR nếu cần điều chỉnh!'
+      );
+    }
+
     const createdRecords = [];
     for (const item of preferences) {
       const { date, dayOfWeek, isOffRequested = false, preferenceShift = 'SHIFT_1' } = item;
-      const existing = await shiftAssignmentRepo.findOne({ date, staffId: staff._id });
+      const existing =
+        (await shiftAssignmentRepo.findOne({ date, staffId: String(staff._id) })) ||
+        (await shiftAssignmentRepo.findOne({ date, staffId: staff._id }));
+
+      const prefShift: ShiftType = isOffRequested || preferenceShift === 'OFF'
+        ? 'OFF'
+        : preferenceShift === 'BOTH'
+          ? 'BOTH'
+          : preferenceShift === 'SHIFT_2'
+            ? 'SHIFT_2'
+            : 'SHIFT_1';
 
       const payload = {
-        weekStart,
-        date,
+        weekStart: String(weekStart),
+        date: String(date),
         dayOfWeek: Number(dayOfWeek) || 1,
         staffId: staff._id,
         staffCode: staff.code,
         staffName: staff.fullName,
-        shiftCode: (isOffRequested ? 'OFF' : preferenceShift) as ShiftType,
-        preferenceShift: (isOffRequested ? 'OFF' : preferenceShift) as ShiftType,
-        isOffRequested: Boolean(isOffRequested),
+        shiftCode: prefShift === 'BOTH' ? (Math.random() < 0.5 ? 'SHIFT_1' : 'SHIFT_2') : prefShift,
+        preferenceShift: prefShift,
+        isOffRequested: prefShift === 'OFF',
         assignedBy: 'AUTO' as const,
+        seenByStaff: true,
       };
 
       if (existing) {
@@ -46,9 +157,96 @@ shiftsRouter.post('/shifts/preferences', async (req, res, next) => {
       }
     }
 
+    await reconcileAutoShiftPreferencesForWeek(String(weekStart));
+
+    const refreshedAll = await shiftAssignmentRepo.find({ staffId: staff._id });
+    const finalCreated = refreshedAll
+      .filter((a: any) => a.date >= String(weekStart) && a.date <= weekEnd)
+      .sort((a: any, b: any) => String(a.date).localeCompare(String(b.date)));
+
     res.json({
-      data: createdRecords,
-      meta: { message: 'Đăng ký ca làm việc tuần tới thành công' },
+      data: finalCreated.length ? finalCreated : createdRecords,
+      meta: { message: 'Đăng ký ca làm việc tuần tới thành công! Đang chờ HR xác nhận.' },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/v1/shifts/my-schedule (Lịch ca của chính nhân viên + thông báo chấm đỏ khi HR hoàn tất xếp ca)
+shiftsRouter.get('/shifts/my-schedule', async (req, res, next) => {
+  try {
+    const user = req.user;
+    if (!user) throw new ApiError(401, 'UNAUTHORIZED', 'Vui lòng đăng nhập');
+
+    const nextMonday = getNextMondayStr();
+    const currentMonday = getCurrentMondayStr();
+    const targetWeekStart =
+      typeof req.query.weekStart === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.weekStart)
+        ? req.query.weekStart
+        : nextMonday;
+    const targetWeekEnd = addDaysStr(targetWeekStart, 6);
+
+    const allAssign = await shiftAssignmentRepo.find({});
+    const myAssign = allAssign.filter((a: any) => String(a.staffId) === String(user.userId));
+
+    const weekAssignments = myAssign
+      .filter((a: any) => a.date >= targetWeekStart && a.date <= targetWeekEnd)
+      .sort((a: any, b: any) => String(a.date).localeCompare(String(b.date)));
+
+    const currentWeekEnd = addDaysStr(currentMonday, 6);
+    const currentWeekAssignments = myAssign
+      .filter((a: any) => a.date >= currentMonday && a.date <= currentWeekEnd)
+      .sort((a: any, b: any) => String(a.date).localeCompare(String(b.date)));
+
+    // Đếm các phân ca từ tuần hiện tại trở đi đã được HR xác nhận (assignedBy === 'HR') nhưng nhân viên chưa xem
+    const unseenConfirmed = myAssign.filter(
+      (a: any) => a.date >= currentMonday && a.assignedBy === 'HR' && !a.seenByStaff
+    );
+
+    const isConfirmedByHr =
+      weekAssignments.length === 7 && weekAssignments.every((a: any) => a.assignedBy === 'HR');
+    const isRegistered = weekAssignments.length > 0;
+
+    res.json({
+      data: {
+        weekStart: targetWeekStart,
+        weekEnd: targetWeekEnd,
+        nextMonday,
+        currentMonday,
+        nextWeekStart: nextMonday,
+        currentWeekStart: currentMonday,
+        assignments: weekAssignments,
+        currentWeekAssignments,
+        isRegistered,
+        isConfirmedByHr,
+        unseenConfirmedCount: unseenConfirmed.length,
+        hasUnseenConfirmedSchedule: unseenConfirmed.length > 0,
+      },
+      meta: {},
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/v1/shifts/my-schedule/seen (Nhân viên mở tab Chấm công -> đánh dấu đã xem lịch ca HR vừa chốt)
+shiftsRouter.post('/shifts/my-schedule/seen', async (req, res, next) => {
+  try {
+    const user = req.user;
+    if (!user) throw new ApiError(401, 'UNAUTHORIZED', 'Vui lòng đăng nhập');
+
+    const allAssign = await shiftAssignmentRepo.find({});
+    const unseen = allAssign.filter(
+      (a: any) => String(a.staffId) === String(user.userId) && a.assignedBy === 'HR' && !a.seenByStaff
+    );
+    for (const a of unseen) {
+      await shiftAssignmentRepo.updateById(a._id, { seenByStaff: true });
+    }
+
+    res.json({
+      data: { markedSeen: unseen.length, markedCount: unseen.length },
+      meta: {},
     });
   } catch (err) {
     next(err);
@@ -88,7 +286,7 @@ shiftsRouter.get('/shifts/schedule', async (req, res, next) => {
   }
 });
 
-// PUT /api/v1/shifts/assign/bulk (HR lưu toàn bộ thay đổi lịch ca tuần một lần)
+// PUT /api/v1/shifts/assign/bulk (HR lưu toàn bộ thay đổi & xác nhận lịch ca tuần một lần)
 shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
   try {
     const user = req.user;
@@ -96,11 +294,11 @@ shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
       throw new ApiError(403, 'FORBIDDEN', 'Chỉ HR hoặc ADMIN mới có quyền xếp ca');
     }
 
-    const { weekStart, changes } = req.body || {};
-    if (!Array.isArray(changes) || changes.length === 0) {
+    const { weekStart, changes = [], confirmWeek = false } = req.body || {};
+    if (!Array.isArray(changes) || (changes.length === 0 && !confirmWeek)) {
       throw new ApiError(400, 'VALIDATION_ERROR', 'Không có thay đổi nào để lưu');
     }
-    const validCodes = ['SHIFT_1', 'SHIFT_2', 'OFF'];
+    const validCodes = ['SHIFT_1', 'SHIFT_2', 'BOTH', 'OFF'];
     for (const c of changes) {
       if (!c || !c.staffId || !/^\d{4}-\d{2}-\d{2}$/.test(String(c.date || ''))) {
         throw new ApiError(400, 'VALIDATION_ERROR', 'Dữ liệu phân ca không hợp lệ');
@@ -113,7 +311,7 @@ shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
     // ---- Kiểm tra quy định: Khối Bán hàng làm 6 ngày + nghỉ ĐÚNG 1 ngày/tuần ----
     const wsStr = /^\d{4}-\d{2}-\d{2}$/.test(String(weekStart || ''))
       ? String(weekStart)
-      : String(changes[0].date);
+      : String(changes[0]?.date || getNextMondayStr());
     const [wy, wm, wd] = wsStr.split('-').map(Number);
     const weekDates = Array.from({ length: 7 }, (_, i) => {
       const d = new Date(wy, wm - 1, wd + i);
@@ -164,11 +362,16 @@ shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
     let created = 0;
     let updated = 0;
     let deleted = 0;
+    const now = new Date();
+    const touchedStaffIds = new Set<string>();
 
     for (const c of changes) {
       const staffId = String(c.staffId);
       const date = String(c.date);
-      const existing = await shiftAssignmentRepo.findOne({ staffId, date });
+      touchedStaffIds.add(staffId);
+      const existing =
+        (await shiftAssignmentRepo.findOne({ staffId, date })) ||
+        (await shiftAssignmentRepo.findOne({ staffId: c.staffId, date }));
 
       if (c.shiftCode === null) {
         if (existing) {
@@ -182,6 +385,8 @@ shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
         await shiftAssignmentRepo.updateById(existing._id, {
           shiftCode: c.shiftCode,
           assignedBy: 'HR',
+          confirmedAt: now,
+          seenByStaff: false,
         });
         updated++;
         continue;
@@ -202,13 +407,30 @@ shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
         staffName: staff.fullName,
         shiftCode: c.shiftCode,
         assignedBy: 'HR',
+        confirmedAt: now,
+        seenByStaff: false,
       });
       created++;
     }
 
+    // Khi HR lưu hoặc bấm Xác nhận lịch ca tuần: chuyển toàn bộ bản ghi trong tuần của các nhân sự có lịch sang assignedBy='HR' & bật thông báo seenByStaff=false
+    let confirmed = 0;
+    const remainingAssign = await shiftAssignmentRepo.find({});
+    for (const a of remainingAssign as any[]) {
+      if (!weekDates.includes(a.date)) continue;
+      if (confirmWeek || touchedStaffIds.has(String(a.staffId)) || a.assignedBy === 'AUTO') {
+        await shiftAssignmentRepo.updateById(a._id, {
+          assignedBy: 'HR',
+          confirmedAt: now,
+          seenByStaff: false,
+        });
+        confirmed++;
+      }
+    }
+
     res.json({
-      data: { created, updated, deleted },
-      meta: { message: 'Đã lưu lịch ca' },
+      data: { created, updated, deleted, confirmed },
+      meta: { message: 'Đã lưu và xác nhận lịch phân ca tuần! Nhân viên sẽ nhận được thông báo lịch mới.' },
     });
   } catch (err) {
     next(err);
