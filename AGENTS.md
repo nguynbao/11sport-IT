@@ -42,8 +42,9 @@ This project has a knowledge graph at `graphify-out/` with god nodes, community 
 When the user types `/graphify`, use the installed graphify skill or instructions before doing anything else.
 
 Rules:
-- When `graphify-out/graph.json` exists, run `graphify query "<question>"` before your first grep, search or source-file read for a codebase question, and put this rule in every subagent prompt that explores code. Read raw files only for lines the graph or an earlier read already located. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than `GRAPH_REPORT.md` or raw grep output.
+- CLI binary location: `~/.local/bin/graphify` (always prefix shell commands with `export PATH="$HOME/.local/bin:$PATH"` or run `sh scripts/pre-commit-graphify.sh` in non-interactive subshells).
+- When `graphify-out/graph.json` exists, run `PATH="$HOME/.local/bin:$PATH" graphify query "<question>"` before your first grep, search or source-file read for a codebase question, and put this rule in every subagent prompt that explores code. Read raw files only for lines the graph or an earlier read already located. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than `GRAPH_REPORT.md` or raw grep output.
 - Dirty `graphify-out/` files are expected after hooks or incremental updates; dirty graph files are not a reason to skip graphify. Only skip graphify if the task is about stale or incorrect graph output, or the user explicitly says not to use it.
 - Read `graphify-out/GRAPH_REPORT.md` only for broad architecture review or when query/path/explain do not surface enough context.
-- After modifying code, run `graphify update . --force` (or rely on the Git `pre-commit` hook at `scripts/pre-commit-graphify.sh`) to keep the graph current (AST-only, no API cost).
+- After modifying code, run `sh scripts/pre-commit-graphify.sh` (or `PATH="$HOME/.local/bin:$PATH" graphify update . --force`) to keep the graph current (AST-only, no API cost).
 - A committed `graphify-out/graph.json` is rewritten whole on every build, so a large diff to it in a pull request is expected. Do not flag it as churn or suggest skipping the graph rebuild or its hooks.
