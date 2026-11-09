@@ -840,9 +840,9 @@
     "semantic_hash": ""
   },
   "web/src/components/AttendanceModal.tsx": {
-    "mtime": 1794199347.3674269,
-    "seen": 1794199912.682144,
-    "ast_hash": "823ea0ffbae96bba147cb663735e7ced",
+    "mtime": 1794217442.2341135,
+    "seen": 1794217494.724176,
+    "ast_hash": "b951a7b03051975cea4a0af93152e2cc",
     "semantic_hash": ""
   },
   "web/src/components/FridayShiftRegistrationModal.tsx": {
@@ -876,9 +876,9 @@
     "semantic_hash": ""
   },
   "cms/src/components/HeaderAttendanceBar.tsx": {
-    "mtime": 1794198357.3915017,
-    "seen": 1794199912.681986,
-    "ast_hash": "63e38ceca111251c0472f28befed3ba4",
+    "mtime": 1794217392.9426782,
+    "seen": 1794217494.72399,
+    "ast_hash": "7f99e0ddbe22d6427db3e618bf26defc",
     "semantic_hash": ""
   },
   "server/src/models/AttendanceConfig.ts": {
@@ -894,9 +894,9 @@
     "semantic_hash": ""
   },
   "web/src/components/HeaderAttendanceBar.tsx": {
-    "mtime": 1794199345.4020839,
-    "seen": 1794199912.682157,
-    "ast_hash": "256f5841ffe57fd73dcce224d4f32783",
+    "mtime": 1794217359.9313967,
+    "seen": 1794217494.724193,
+    "ast_hash": "08cdbe52adbf0e7771732a7b65ac2f6b",
     "semantic_hash": ""
   },
   "cms/src/components/AttendanceTimesheetModule.tsx": {
@@ -957,6 +957,30 @@
     "mtime": 1794211121.2178245,
     "seen": 1794212037.165736,
     "ast_hash": "cc936aa5af7c3598efea84bddc8b4274",
+    "semantic_hash": ""
+  },
+  "cms/src/components/GpsPermissionModal.tsx": {
+    "mtime": 1794217319.3166256,
+    "seen": 1794217494.723988,
+    "ast_hash": "db115cbcf58dc5f043667ce6861575d0",
+    "semantic_hash": ""
+  },
+  "cms/src/lib/geolocation.ts": {
+    "mtime": 1794217319.3113294,
+    "seen": 1794217494.72402,
+    "ast_hash": "f8ef60e6375862545e597d0c6370104f",
+    "semantic_hash": ""
+  },
+  "web/src/components/GpsPermissionModal.tsx": {
+    "mtime": 1794217315.7228854,
+    "seen": 1794217494.724191,
+    "ast_hash": "db115cbcf58dc5f043667ce6861575d0",
+    "semantic_hash": ""
+  },
+  "web/src/lib/geolocation.ts": {
+    "mtime": 1794217295.8901556,
+    "seen": 1794217494.7242198,
+    "ast_hash": "f8ef60e6375862545e597d0c6370104f",
     "semantic_hash": ""
   },
   "cms/package-lock.json": {
