@@ -1,17 +1,17 @@
 # Graph Report - 11sport-IT  (2026-11-09)
 
 ## Corpus Check
-- 150 files · ~315,486 words
+- 150 files · ~315,743 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 11 file(s) not represented in the graph (top: (none) 3, .example 3, .css 2)
 
 ## Summary
-- 1475 nodes · 3525 edges · 81 communities (71 shown, 10 thin omitted)
+- 1475 nodes · 3526 edges · 82 communities (72 shown, 10 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 37 edges (avg confidence: 0.93)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `981a7017`
+- Built from commit: `859f5409`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -91,6 +91,7 @@
 - Customer.ts
 - 2. Cấu hình Biến môi trường (Environment Variables)
 - 4. Kiểm tra Sức khỏe Hệ thống (Healthcheck & Giám sát)
+- MarketingPushProductsTab.tsx
 
 ## God Nodes (most connected - your core abstractions)
 1. `ApiError` - 38 edges
@@ -119,7 +120,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (81 total, 10 thin omitted)
+## Communities (82 total, 10 thin omitted)
 
 ### Community 0 - "ApiError"
 Cohesion: 0.06
@@ -163,7 +164,7 @@ Nodes (21): cors, mongodb-memory-server, tesseract.js, @types/cors, @types/expre
 
 ### Community 10 - "web/src/lib/api.ts"
 Cohesion: 0.07
-Nodes (42): buildCompactColorTokenFE(), compactColorTokenForBarcode(), ContractType, DebtPaymentRecord, DebtStatus, Department, EffectivePromotionStatus, estimateCode128Dots() (+34 more)
+Nodes (41): buildCompactColorTokenFE(), compactColorTokenForBarcode(), ContractType, DebtPaymentRecord, DebtStatus, Department, EffectivePromotionStatus, estimateCode128Dots() (+33 more)
 
 ### Community 11 - "cms/package.json"
 Cohesion: 0.07
@@ -190,8 +191,8 @@ Cohesion: 0.23
 Nodes (11): BarcodeLabelModalProps, CODE128_PATTERNS, encodeCode128Bars(), encodeCode128RawPattern(), escapeHtml(), FIXED_LABEL_CONFIG, NormalizedLabelItem, renderCode128PrintSvgFor203Dpi() (+3 more)
 
 ### Community 17 - "web/src/app/page.tsx"
-Cohesion: 0.13
-Nodes (37): getDefaultTabForRole(), getRoleDisplayName(), isAttendanceOnlyRole(), TABS_CONFIG, WebPosHomePage(), AccountProfileTab(), AccountProfileTabProps, ContractFilePreviewModal() (+29 more)
+Cohesion: 0.21
+Nodes (20): getDefaultTabForRole(), getRoleDisplayName(), isAttendanceOnlyRole(), TABS_CONFIG, WebPosHomePage(), AccountProfileTab(), AccountProfileTabProps, ContractFilePreviewModal() (+12 more)
 
 ### Community 18 - "Đặc tả yêu cầu: Hệ thống Chấm công & Quản trị Nhân sự (HRM & Shift Handover)"
 Cohesion: 0.09
@@ -278,8 +279,8 @@ Cohesion: 0.17
 Nodes (11): 1. Kiến trúc Thông tin & Luồng người dùng (User Flows), 2. Đặc tả Chi tiết Các Màn hình & Wireframe, 3. Design Tokens Áp dụng (TailwindCSS), 4. Phiếu Bàn giao Thiết kế (Designer -> Backend & Frontend Dev), Màn hình 1: Mobile / Web Check-in & Chấm công (Dùng chung Showroom & Văn phòng), Màn hình 2: Pop-up Thứ 6 Đăng ký Ca & Lịch bận (Khối Sales), Màn hình 3: Giao diện Kéo - Thả Xếp Ca cho HR (`Drag & Drop Scheduler` trên CMS), Màn hình 4: Màn hình Bàn giao Kho Tầng 1 & Chốt Két (Showroom Sales) (+3 more)
 
 ### Community 39 - "PosTab.tsx"
-Cohesion: 0.11
-Nodes (25): 2.14 Mã Con Theo Thuộc Tính Biến Thể (`variantCode`) — In Tem & Quét Kiểm Kho / Bán Hàng POS *(v3.2)*, 2. Bảng Ma trận Test Cases chi tiết (AC-01 đến AC-07 & Biên/Lỗi), PushProductsReportResponse, CartItem, createDraft(), createEmptyDraftData(), DraftOrder, DraftOrderData (+17 more)
+Cohesion: 0.13
+Nodes (23): 2.14 Mã Con Theo Thuộc Tính Biến Thể (`variantCode`) — In Tem & Quét Kiểm Kho / Bán Hàng POS *(v3.2)*, 2. Bảng Ma trận Test Cases chi tiết (AC-01 đến AC-07 & Biên/Lỗi), CartItem, createDraft(), createEmptyDraftData(), DraftOrder, DraftOrderData, generateDraftId() (+15 more)
 
 ### Community 40 - "cms"
 Cohesion: 0.22
@@ -404,6 +405,10 @@ Nodes (4): 2.1 `server/.env.example`, 2.2 `web/.env.example` (POS & Kho - Port 3
 ### Community 80 - "4. Kiểm tra Sức khỏe Hệ thống (Healthcheck & Giám sát)"
 Cohesion: 0.67
 Nodes (3): 4.1 Điểm kiểm tra (Endpoints), 4.2 Cảnh báo & Giám sát khuyến nghị (Production/Staging), 4. Kiểm tra Sức khỏe Hệ thống (Healthcheck & Giám sát)
+
+### Community 81 - "MarketingPushProductsTab.tsx"
+Cohesion: 0.20
+Nodes (20): CustomerTab(), CustomerTabProps, InvoicePdfModal(), InvoicePdfModalProps, buildFallbackPushProducts(), parseLocalDateBound(), PushProductRow, PushProductsReportResponse (+12 more)
 
 ## Knowledge Gaps
 - **1 isolated node(s):** `PATH`

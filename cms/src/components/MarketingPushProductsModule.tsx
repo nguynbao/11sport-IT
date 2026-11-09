@@ -109,6 +109,7 @@ function buildFallbackPushProducts(
   });
 
   for (const o of orders) {
+    if (o.status === "DRAFT") continue;
     if (!inRange(o.createdAt)) continue;
     for (const it of o.items || []) {
       const p = prodById.get(String(it.productId)) || prodByCode.get(String(it.productCode));
@@ -137,13 +138,27 @@ function buildFallbackPushProducts(
       const p = prodById.get(String(it.productId)) || prodByCode.get(String(it.productCode));
       if (!p) continue;
       const st = soldMap.get(String(p._id));
-      if (st) st.returnedQty += Number(it.quantity) || 0;
+      if (!st) continue;
+      const qty = Number(it.quantity) || 0;
+      const line = Number(it.lineTotal) || 0;
+      const unitCost = Number(p.costPrice) || 0;
+      st.returnedQty += qty;
+      st.revenue = Math.max(0, st.revenue - line);
+      if (it.condition === "GOOD" || (it as { restocked?: boolean }).restocked) {
+        st.cogs = Math.max(0, st.cogs - qty * unitCost);
+      }
     }
     for (const it of r.exchangeItems || []) {
       const p = prodById.get(String(it.productId)) || prodByCode.get(String(it.productCode));
       if (!p) continue;
       const st = soldMap.get(String(p._id));
-      if (st) st.exchangeOutQty += Number(it.quantity) || 0;
+      if (!st) continue;
+      const qty = Number(it.quantity) || 0;
+      const line = Number(it.lineTotal) || 0;
+      const unitCost = Number(p.costPrice) || 0;
+      st.exchangeOutQty += qty;
+      st.revenue += line;
+      st.cogs += qty * unitCost;
     }
   }
 

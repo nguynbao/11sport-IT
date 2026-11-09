@@ -5,6 +5,7 @@ import {
   Category,
   Product,
   Order,
+  ReturnReceipt,
   apiRequest,
   formatVND,
   useDebounce,
@@ -89,6 +90,7 @@ function buildFallbackPushProducts(
   products: Product[],
   categories: Category[],
   orders: Order[],
+  returns: ReturnReceipt[],
   filters: { from: string; to: string; categoryId: string }
 ): PushProductRow[] {
   const fromDate = parseLocalDateBound(filters.from, false);
@@ -117,13 +119,27 @@ function buildFallbackPushProducts(
     prodByCode.set(String(p.code), p);
   });
 
-  const soldMap = new Map<string, { soldQty: number; giftQty: number; revenue: number; cogs: number; orderIds: Set<string>; lastSoldAt: string | null }>();
+  const soldMap = new Map<
+    string,
+    {
+      soldQty: number;
+      giftQty: number;
+      returnedQty: number;
+      exchangeOutQty: number;
+      revenue: number;
+      cogs: number;
+      orderIds: Set<string>;
+      lastSoldAt: string | null;
+    }
+  >();
 
   products.forEach((p) => {
     if (filters.categoryId && getProdCatId(p) !== filters.categoryId) return;
     soldMap.set(String(p._id), {
       soldQty: 0,
       giftQty: 0,
+      returnedQty: 0,
+      exchangeOutQty: 0,
       revenue: 0,
       cogs: 0,
       orderIds: new Set(),
@@ -132,6 +148,7 @@ function buildFallbackPushProducts(
   });
 
   for (const o of orders) {
+    if (o.status === "DRAFT") continue;
     if (!inRange(o.createdAt)) continue;
     for (const it of o.items || []) {
       const p = prodById.get(String(it.productId)) || prodByCode.get(String(it.productCode));
@@ -154,6 +171,36 @@ function buildFallbackPushProducts(
     }
   }
 
+  for (const r of returns) {
+    if (!inRange(r.createdAt)) continue;
+    for (const it of r.returnItems || []) {
+      const p = prodById.get(String(it.productId)) || prodByCode.get(String(it.productCode));
+      if (!p) continue;
+      const st = soldMap.get(String(p._id));
+      if (!st) continue;
+      const qty = Number(it.quantity) || 0;
+      const line = Number(it.lineTotal) || 0;
+      const unitCost = Number(p.costPrice) || 0;
+      st.returnedQty += qty;
+      st.revenue = Math.max(0, st.revenue - line);
+      if (it.condition === "GOOD" || (it as { restocked?: boolean }).restocked) {
+        st.cogs = Math.max(0, st.cogs - qty * unitCost);
+      }
+    }
+    for (const it of r.exchangeItems || []) {
+      const p = prodById.get(String(it.productId)) || prodByCode.get(String(it.productCode));
+      if (!p) continue;
+      const st = soldMap.get(String(p._id));
+      if (!st) continue;
+      const qty = Number(it.quantity) || 0;
+      const line = Number(it.lineTotal) || 0;
+      const unitCost = Number(p.costPrice) || 0;
+      st.exchangeOutQty += qty;
+      st.revenue += line;
+      st.cogs += qty * unitCost;
+    }
+  }
+
   const rows: PushProductRow[] = [];
   products.forEach((p) => {
     const cId = getProdCatId(p);
@@ -166,7 +213,7 @@ function buildFallbackPushProducts(
 
     const sellingPrice = Number(p.sellingPrice ?? 0);
     const costPrice = Number(p.costPrice ?? 0);
-    const netSoldQty = Math.max(0, st?.soldQty || 0);
+    const netSoldQty = Math.max(0, (st?.soldQty || 0) + (st?.exchangeOutQty || 0) - (st?.returnedQty || 0));
     const inventoryCostValue = stock * costPrice;
     const inventorySellValue = stock * sellingPrice;
 
@@ -223,7 +270,7 @@ function buildFallbackPushProducts(
       unit: p.unit || "Cái",
       soldQty: st?.soldQty || 0,
       giftQty: st?.giftQty || 0,
-      returnedQty: 0,
+      returnedQty: st?.returnedQty || 0,
       netSoldQty,
       revenue: rev,
       cogs,
@@ -332,10 +379,11 @@ export default function MarketingPushProductsTab() {
         // Fallback nếu server chưa cập nhật route mới
       }
 
-      const [catRes, prodRes, ordRes] = await Promise.all([
+      const [catRes, prodRes, ordRes, retRes] = await Promise.all([
         apiRequest<Category[]>("/categories").catch(() => ({ data: [] })),
         apiRequest<Product[]>("/products").catch(() => ({ data: [] })),
         apiRequest<Order[]>("/orders").catch(() => ({ data: [] })),
+        apiRequest<ReturnReceipt[]>("/returns").catch(() => ({ data: [] })),
       ]);
       const catList = Array.isArray(catRes.data) ? catRes.data : [];
       setCategories(catList);
@@ -343,6 +391,7 @@ export default function MarketingPushProductsTab() {
         Array.isArray(prodRes.data) ? prodRes.data : [],
         catList,
         Array.isArray(ordRes.data) ? ordRes.data : [],
+        Array.isArray(retRes.data) ? retRes.data : [],
         { from: fromDate, to: toDate, categoryId }
       );
       setRows(fallback);

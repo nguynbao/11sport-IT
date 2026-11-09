@@ -111,6 +111,7 @@ function buildClientFallbackDashboard(
   };
 
   const filteredOrders = orders.filter((o) => {
+    if (o.status === "DRAFT") return false;
     if (!inRange(o.createdAt)) return false;
     if (filterPayMethod) {
       if (filterPayMethod === "DEBT") {
