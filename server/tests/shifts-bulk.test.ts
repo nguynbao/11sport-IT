@@ -144,7 +144,32 @@ describe('Xếp ca tuần: Sửa & Lưu hàng loạt (PUT /shifts/assign/bulk) +
     expect(salesBeforeConfirm.body.data.isConfirmedByHr).toBe(false);
     expect(salesBeforeConfirm.body.data.hasUnseenConfirmedSchedule).toBe(false);
 
-    // 4. HR chỉnh tay ngày OFF từ Thứ 4 sang Chủ Nhật (nếu bị trùng) và bấm Xác nhận hoàn tất (confirmWeek = true)
+    // 4. HR bấm "Lưu nháp" (confirmWeek = false): chỉ đổi ca nháp, giữ nguyên assignedBy = 'AUTO', chưa chốt lịch & chưa gửi thông báo
+    const hrDraft = await request(app)
+      .put('/api/v1/shifts/assign/bulk')
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({
+        weekStart,
+        confirmWeek: false,
+        changes: [
+          { staffId: salesId, date: '2026-11-11', dayOfWeek: 3, shiftCode: 'SHIFT_2' },
+          { staffId: salesId, date: '2026-11-14', dayOfWeek: 6, shiftCode: 'OFF' },
+        ],
+      });
+    expect(hrDraft.status).toBe(200);
+    expect(hrDraft.body.data.confirmed).toBe(0);
+
+    const hrViewAfterDraft = await getWeek();
+    expect(hrViewAfterDraft.every((a) => a.assignedBy === 'AUTO')).toBe(true);
+
+    const salesAfterDraft = await request(app)
+      .get(`/api/v1/shifts/my-schedule?weekStart=${weekStart}`)
+      .set('Authorization', `Bearer ${salesToken}`);
+    expect(salesAfterDraft.status).toBe(200);
+    expect(salesAfterDraft.body.data.isConfirmedByHr).toBe(false);
+    expect(salesAfterDraft.body.data.hasUnseenConfirmedSchedule).toBe(false);
+
+    // 5. HR chỉnh tay ngày OFF sang Chủ Nhật và bấm Xác nhận hoàn tất (confirmWeek = true)
     const hrConfirm = await request(app)
       .put('/api/v1/shifts/assign/bulk')
       .set('Authorization', `Bearer ${hrToken}`)
@@ -152,14 +177,14 @@ describe('Xếp ca tuần: Sửa & Lưu hàng loạt (PUT /shifts/assign/bulk) +
         weekStart,
         confirmWeek: true,
         changes: [
-          { staffId: salesId, date: '2026-11-11', dayOfWeek: 3, shiftCode: 'SHIFT_1' },
+          { staffId: salesId, date: '2026-11-14', dayOfWeek: 6, shiftCode: 'SHIFT_1' },
           { staffId: salesId, date: '2026-11-15', dayOfWeek: 7, shiftCode: 'OFF' },
         ],
       });
     expect(hrConfirm.status).toBe(200);
     expect(hrConfirm.body.data.confirmed).toBe(7);
 
-    // 5. Phía Sales nhận được thông báo chấm đỏ (hasUnseenConfirmedSchedule = true, isConfirmedByHr = true)
+    // 6. Phía Sales nhận được thông báo chấm đỏ (hasUnseenConfirmedSchedule = true, isConfirmedByHr = true)
     const salesAfterConfirm = await request(app)
       .get(`/api/v1/shifts/my-schedule?weekStart=${weekStart}`)
       .set('Authorization', `Bearer ${salesToken}`);

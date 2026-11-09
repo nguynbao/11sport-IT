@@ -40,7 +40,7 @@ async function reconcileAutoShiftPreferencesForWeek(weekStart: string): Promise<
     const date = addDaysStr(weekStart, i);
     const dayAssigns = (allAssign as any[]).filter((a) => a.date === date);
     const bothAutoAssigns = dayAssigns.filter(
-      (a) => a.assignedBy === 'AUTO' && a.preferenceShift === 'BOTH'
+      (a) => a.assignedBy === 'AUTO' && a.preferenceShift === 'BOTH' && a.shiftCode !== 'OFF'
     );
     if (bothAutoAssigns.length === 0) continue;
 
@@ -363,12 +363,10 @@ shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
     let updated = 0;
     let deleted = 0;
     const now = new Date();
-    const touchedStaffIds = new Set<string>();
 
     for (const c of changes) {
       const staffId = String(c.staffId);
       const date = String(c.date);
-      touchedStaffIds.add(staffId);
       const existing =
         (await shiftAssignmentRepo.findOne({ staffId, date })) ||
         (await shiftAssignmentRepo.findOne({ staffId: c.staffId, date }));
@@ -384,9 +382,13 @@ shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
       if (existing) {
         await shiftAssignmentRepo.updateById(existing._id, {
           shiftCode: c.shiftCode,
-          assignedBy: 'HR',
-          confirmedAt: now,
-          seenByStaff: false,
+          ...(confirmWeek
+            ? {
+                assignedBy: 'HR',
+                confirmedAt: now,
+                seenByStaff: false,
+              }
+            : {}),
         });
         updated++;
         continue;
@@ -406,19 +408,25 @@ shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
         staffCode: staff.code,
         staffName: staff.fullName,
         shiftCode: c.shiftCode,
-        assignedBy: 'HR',
-        confirmedAt: now,
-        seenByStaff: false,
+        assignedBy: confirmWeek ? 'HR' : 'AUTO',
+        ...(confirmWeek
+          ? {
+              confirmedAt: now,
+              seenByStaff: false,
+            }
+          : {
+              seenByStaff: true,
+            }),
       });
       created++;
     }
 
-    // Khi HR lưu hoặc bấm Xác nhận lịch ca tuần: chuyển toàn bộ bản ghi trong tuần của các nhân sự có lịch sang assignedBy='HR' & bật thông báo seenByStaff=false
+    // Chỉ khi HR bấm Xác nhận lịch ca tuần (confirmWeek === true): chuyển toàn bộ bản ghi trong tuần sang assignedBy='HR' & bật thông báo seenByStaff=false
     let confirmed = 0;
-    const remainingAssign = await shiftAssignmentRepo.find({});
-    for (const a of remainingAssign as any[]) {
-      if (!weekDates.includes(a.date)) continue;
-      if (confirmWeek || touchedStaffIds.has(String(a.staffId)) || a.assignedBy === 'AUTO') {
+    if (confirmWeek) {
+      const remainingAssign = await shiftAssignmentRepo.find({});
+      for (const a of remainingAssign as any[]) {
+        if (!weekDates.includes(a.date)) continue;
         await shiftAssignmentRepo.updateById(a._id, {
           assignedBy: 'HR',
           confirmedAt: now,
@@ -430,7 +438,11 @@ shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
 
     res.json({
       data: { created, updated, deleted, confirmed },
-      meta: { message: 'Đã lưu và xác nhận lịch phân ca tuần! Nhân viên sẽ nhận được thông báo lịch mới.' },
+      meta: {
+        message: confirmWeek
+          ? 'Đã lưu và xác nhận lịch phân ca tuần! Nhân viên sẽ nhận được thông báo lịch mới.'
+          : 'Đã lưu nháp lịch phân ca tuần.',
+      },
     });
   } catch (err) {
     next(err);

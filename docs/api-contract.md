@@ -838,7 +838,8 @@
 - `PUT /api/v1/shifts/assign/bulk` (Role `HR` hoặc `ADMIN`) — **Lưu thay đổi & Xác nhận hoàn thành lịch ca tuần** (trên CMS)
   - Body: `{ "weekStart": "2026-11-09", "changes": [{ "staffId": "...", "date": "2026-11-10", "dayOfWeek": 2, "shiftCode": "SHIFT_1 | SHIFT_2 | BOTH | OFF | null" }], "confirmWeek"?: boolean }`
   - `shiftCode = null` → xoá phân ca của nhân viên ngày đó. Mỗi nhân viên chỉ có 1 ca/ngày (ghi đè nếu đã có).
-  - Khi `confirmWeek = true` (hoặc khi HR bấm Lưu / Xác nhận lịch ca tuần): toàn bộ các bản ghi phân ca trong tuần của nhân viên được chuyển sang `assignedBy: "HR"`, gắn `confirmedAt: new Date()`, và đặt `seenByStaff: false` để bật **chấm đỏ thông báo** bên giao diện Web của nhân viên Bán hàng.
+  - Khi `confirmWeek = false` (HR bấm **Lưu nháp**): chỉ lưu thay đổi `shiftCode`, giữ nguyên trạng thái chờ xác nhận (`assignedBy: "AUTO"`, `seenByStaff: true`) của cả nhân viên được chỉnh lẫn các nhân viên khác trong tuần; không khóa sửa đăng ký và chưa bật thông báo cho nhân viên (`confirmed: 0`).
+  - Chỉ khi `confirmWeek = true` (HR bấm **Xác nhận & Hoàn tất**): toàn bộ các bản ghi phân ca trong tuần của nhân viên mới được chuyển sang `assignedBy: "HR"`, gắn `confirmedAt: new Date()`, và đặt `seenByStaff: false` để bật **chấm đỏ thông báo** bên giao diện Web của nhân viên Bán hàng.
   - **Bắt buộc 6 ngày làm + 1 ngày nghỉ/tuần**: sau khi áp dụng thay đổi, mỗi nhân viên `SALES` có phân ca trong tuần phải được xếp đủ 7 ngày gồm **đúng 1 ngày `OFF`**. Sai → `400 WEEKLY_OFF_REQUIRED`, `fields: { "<tên NV>": "mô tả lỗi" }`, không lưu gì.
   - Response: `{ "data": { "updated": 3, "created": 2, "deleted": 1, "confirmed": 7 } }`
 - `POST /api/v1/shifts/auto-assign`
