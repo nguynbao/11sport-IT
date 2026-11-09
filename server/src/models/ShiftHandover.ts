@@ -11,7 +11,7 @@ export type HandoverStatus = 'PENDING' | 'ACCEPTED' | 'STORE_CLOSED';
 
 export interface IShiftHandover extends Document {
   date: string; // YYYY-MM-DD
-  shiftCode: 'SHIFT_1' | 'SHIFT_2';
+  shiftCode: 'SHIFT_1' | 'SHIFT_2' | 'BOTH';
   fromStaffId: string;
   fromStaffName: string;
   toStaffId?: string;
@@ -29,7 +29,7 @@ export interface IShiftHandover extends Document {
 const ShiftHandoverSchema = new Schema<IShiftHandover>(
   {
     date: { type: String, required: true, index: true },
-    shiftCode: { type: String, enum: ['SHIFT_1', 'SHIFT_2'], required: true },
+    shiftCode: { type: String, enum: ['SHIFT_1', 'SHIFT_2', 'BOTH'], required: true },
     fromStaffId: { type: String, required: true },
     fromStaffName: { type: String, required: true },
     toStaffId: { type: String },

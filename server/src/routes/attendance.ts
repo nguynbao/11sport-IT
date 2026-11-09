@@ -268,12 +268,19 @@ attendanceRouter.post('/attendance/check-in', async (req, res, next) => {
 
     if (
       assignedShift &&
-      (assignedShift.shiftCode === 'SHIFT_1' || assignedShift.shiftCode === 'SHIFT_2') &&
+      (assignedShift.shiftCode === 'SHIFT_1' ||
+        assignedShift.shiftCode === 'SHIFT_2' ||
+        assignedShift.shiftCode === 'BOTH') &&
       shiftCode &&
-      (shiftCode === 'SHIFT_1' || shiftCode === 'SHIFT_2') &&
+      (shiftCode === 'SHIFT_1' || shiftCode === 'SHIFT_2' || shiftCode === 'BOTH') &&
       shiftCode !== assignedShift.shiftCode
     ) {
-      const assignedLabel = assignedShift.shiftCode === 'SHIFT_2' ? 'Ca 2 (12:00 - 21:00)' : 'Ca 1 (08:30 - 17:30)';
+      const assignedLabel =
+        assignedShift.shiftCode === 'BOTH'
+          ? 'Ca 1 + Ca 2 (08:30 - 21:00)'
+          : assignedShift.shiftCode === 'SHIFT_2'
+            ? 'Ca 2 (12:00 - 21:00)'
+            : 'Ca 1 (08:30 - 17:30)';
       throw new ApiError(
         400,
         'SHIFT_MISMATCH',
@@ -281,22 +288,26 @@ attendanceRouter.post('/attendance/check-in', async (req, res, next) => {
       );
     }
 
-    // Quy định giờ 2 ca:
+    // Quy định giờ các ca:
     // Ca 1 (SHIFT_1): 08:30 (510 phút) -> 17:30 (1050 phút)
     // Ca 2 (SHIFT_2): 12:00 (720 phút) -> 21:00 (1260 phút)
+    // Ca 1 + Ca 2 (BOTH): 08:30 (510 phút) -> 21:00 (1260 phút)
     // Ưu tiên lấy theo lịch phân ca đã lưu; chỉ khi chưa xếp ca mới tự nhận diện theo shiftCode hoặc giờ hiện tại
     const isSalesStaff = staff.department === 'SALES' || staff.role === 'SALES';
     const selectedShift: ShiftCode =
-      assignedShift && (assignedShift.shiftCode === 'SHIFT_1' || assignedShift.shiftCode === 'SHIFT_2')
+      assignedShift &&
+      (assignedShift.shiftCode === 'SHIFT_1' ||
+        assignedShift.shiftCode === 'SHIFT_2' ||
+        assignedShift.shiftCode === 'BOTH')
         ? assignedShift.shiftCode
         : !isSalesStaff
           ? 'SHIFT_1'
-          : shiftCode === 'SHIFT_1' || shiftCode === 'SHIFT_2'
+          : shiftCode === 'SHIFT_1' || shiftCode === 'SHIFT_2' || shiftCode === 'BOTH'
             ? shiftCode
             : totalMinutesNow >= 11 * 60 + 30
               ? 'SHIFT_2'
               : 'SHIFT_1';
-    const shiftStartMinutes = selectedShift === 'SHIFT_1' ? 8 * 60 + 30 : 12 * 60;
+    const shiftStartMinutes = selectedShift === 'SHIFT_2' ? 12 * 60 : 8 * 60 + 30;
 
     let lateMinutes = 0;
     let status: 'ON_TIME' | 'LATE' = 'ON_TIME';
@@ -304,7 +315,7 @@ attendanceRouter.post('/attendance/check-in', async (req, res, next) => {
 
     if (totalMinutesNow < shiftStartMinutes) {
       // Check-in sớm: Quy mốc tính công về đúng giờ bắt đầu ca
-      const [targetH, targetM] = selectedShift === 'SHIFT_1' ? [8, 30] : [12, 0];
+      const [targetH, targetM] = selectedShift === 'SHIFT_2' ? [12, 0] : [8, 30];
       workStartTime.setHours(targetH, targetM, 0, 0);
     } else {
       // Đi trễ
@@ -365,6 +376,7 @@ attendanceRouter.post('/attendance/check-out', async (req, res, next) => {
     const {
       forceEarly = false,
       earlyReason = '',
+      lateCheckoutReason = '',
       latitude,
       longitude,
       clientIp,
@@ -386,13 +398,31 @@ attendanceRouter.post('/attendance/check-out', async (req, res, next) => {
       verifyBranchLocationAndNetwork(checkLat, checkLng, detectedIp, config);
     }
 
+    const assignedShift =
+      (await shiftAssignmentRepo.findOne({ staffId: String(user.userId), date: todayStr })) ||
+      (await shiftAssignmentRepo.findOne({ staffId: user.userId, date: todayStr }));
+
+    const effectiveShiftCode: ShiftCode =
+      assignedShift &&
+      (assignedShift.shiftCode === 'SHIFT_1' ||
+        assignedShift.shiftCode === 'SHIFT_2' ||
+        assignedShift.shiftCode === 'BOTH')
+        ? assignedShift.shiftCode
+        : attendance.shiftCode;
+
     // 1. Kiểm tra bàn giao ca cho nhân viên SALES khi bấm Check-out (bỏ qua nếu hôm nay làm việc từ xa WFH)
     if (attendance.department === 'SALES' && !isWfh) {
-      const handover = await shiftHandoverRepo.findOne({
-        date: todayStr,
-        fromStaffId: user.userId,
-        shiftCode: attendance.shiftCode,
-      });
+      const handover =
+        (await shiftHandoverRepo.findOne({
+          date: todayStr,
+          fromStaffId: user.userId,
+          shiftCode: effectiveShiftCode,
+        })) ||
+        (await shiftHandoverRepo.findOne({
+          date: todayStr,
+          fromStaffId: user.userId,
+          shiftCode: attendance.shiftCode,
+        }));
 
       if (!handover) {
         throw new ApiError(
@@ -416,10 +446,15 @@ attendanceRouter.post('/attendance/check-out', async (req, res, next) => {
     const totalMinutesNow = currentHours * 60 + currentMinutes;
 
     // Giờ kết thúc ca:
-    // Ca 1: 17:30 (1050 phút)
-    // Ca 2: 21:00 (1260 phút)
-    const shiftEndMinutes = attendance.shiftCode === 'SHIFT_1' ? 17 * 60 + 30 : 21 * 60;
+    // Ca 1 (SHIFT_1): 17:30 (1050 phút)
+    // Ca 2 (SHIFT_2) & Ca 1 + Ca 2 (BOTH): 21:00 (1260 phút)
+    const shiftEndMinutes = effectiveShiftCode === 'SHIFT_1' ? 17 * 60 + 30 : 21 * 60;
     let earlyMinutes = 0;
+    let lateCheckoutMinutes = 0;
+    let overtimeStatus: 'NONE' | 'PENDING' | 'APPROVED' | 'REJECTED' =
+      (attendance as any).overtimeStatus || 'NONE';
+    let overtimeApprovedMinutes = Number((attendance as any).overtimeApprovedMinutes || 0);
+    let cleanLateCheckoutReason = String(lateCheckoutReason || '').trim();
 
     if (totalMinutesNow < shiftEndMinutes) {
       earlyMinutes = shiftEndMinutes - totalMinutesNow;
@@ -431,6 +466,48 @@ attendanceRouter.post('/attendance/check-out', async (req, res, next) => {
           { earlyMinutes: String(earlyMinutes) }
         );
       }
+    } else if (totalMinutesNow > shiftEndMinutes) {
+      const diffLateOut = totalMinutesNow - shiftEndMinutes;
+      if (attendance.department === 'SALES') {
+        if (effectiveShiftCode === 'BOTH') {
+          // Làm 2 ca (BOTH) là ca đã ghi trong bảng xếp ca -> không tính là tăng ca
+          lateCheckoutMinutes = 0;
+          overtimeStatus = 'NONE';
+          overtimeApprovedMinutes = 0;
+          cleanLateCheckoutReason = '';
+        } else {
+          // Nhân viên Bán hàng làm 1 ca (SHIFT_1 hoặc SHIFT_2):
+          // Check-out trễ tối đa 5 phút; nếu sau 5 phút phải nhập lý do để HR xem xét có tính tăng ca hay không
+          if (diffLateOut > 5) {
+            if (!cleanLateCheckoutReason) {
+              throw new ApiError(
+                400,
+                'LATE_CHECKOUT_REASON_REQUIRED',
+                `Bạn đang check-out trễ ${diffLateOut} phút (quá 5 phút sau giờ kết thúc ca). Vui lòng nhập lý do check-out trễ để HR xem xét!`,
+                { lateCheckoutMinutes: String(diffLateOut) }
+              );
+            }
+            lateCheckoutMinutes = diffLateOut;
+            if (overtimeStatus !== 'APPROVED') {
+              overtimeStatus = 'PENDING';
+              overtimeApprovedMinutes = 0;
+            }
+          } else {
+            lateCheckoutMinutes = 0;
+            overtimeStatus = 'NONE';
+            overtimeApprovedMinutes = 0;
+            cleanLateCheckoutReason = '';
+          }
+        }
+      } else {
+        // Khối Văn phòng (OFFICE): phải được HR yêu cầu (overtimeStatus === 'APPROVED') thì mới có tăng ca
+        if (overtimeStatus === 'APPROVED') {
+          overtimeApprovedMinutes = overtimeApprovedMinutes > 0 ? overtimeApprovedMinutes : diffLateOut;
+        } else {
+          overtimeStatus = 'NONE';
+          overtimeApprovedMinutes = 0;
+        }
+      }
     }
 
     // 2. Tính toán tổng giờ làm việc thực tế
@@ -440,20 +517,28 @@ attendanceRouter.post('/attendance/check-out', async (req, res, next) => {
 
     // 3. Tự động trừ giờ nghỉ trưa (12:00 - 13:00 = 1 giờ; sáng 08:30-12:00, chiều 13:00-17:30) cho khối OFFICE
     let lunchPauseMinutes = 0;
-    if (attendance.department === 'OFFICE' && attendance.shiftCode === 'SHIFT_1') {
+    if (attendance.department === 'OFFICE' && effectiveShiftCode === 'SHIFT_1') {
       lunchPauseMinutes = 60; // 1 tiếng
       rawHours = Math.max(0, rawHours - 1);
     }
 
     const finalStatus = earlyMinutes > 0 ? 'EARLY_LEAVE' : 'COMPLETED';
+    const noteParts: string[] = [];
+    if (earlyReason) noteParts.push(`Lý do về sớm: ${earlyReason}`);
+    if (cleanLateCheckoutReason) noteParts.push(`Lý do check-out trễ (${lateCheckoutMinutes}p): ${cleanLateCheckoutReason}`);
 
     const updated = await attendanceRepo.updateById(attendance._id, {
+      shiftCode: effectiveShiftCode,
       checkOutTime: now,
       earlyMinutes,
+      lateCheckoutMinutes,
+      lateCheckoutReason: cleanLateCheckoutReason,
+      overtimeStatus,
+      overtimeApprovedMinutes,
       lunchPauseMinutes,
       totalWorkHours: Number(rawHours.toFixed(2)),
       status: finalStatus,
-      notes: earlyReason ? `Lý do về sớm: ${earlyReason}` : attendance.notes || '',
+      notes: noteParts.length > 0 ? noteParts.join(' | ') : attendance.notes || '',
     });
 
     res.json({

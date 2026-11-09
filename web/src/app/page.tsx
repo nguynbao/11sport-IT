@@ -10,6 +10,7 @@ import {
   getStoredToken,
   setStoredAuth,
   clearStoredAuth,
+  fetchMyShiftScheduleApi,
 } from "@/lib/api";
 import PosTab from "@/components/PosTab";
 import InventoryTab from "@/components/InventoryTab";
@@ -108,6 +109,7 @@ export default function WebPosHomePage() {
   const [invoiceOrder, setInvoiceOrder] = useState<Order | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showAttendanceModal, setShowAttendanceModal] = useState(false);
+  const [hasUnseenShiftSchedule, setHasUnseenShiftSchedule] = useState(false);
 
   // State form Login
   const [username, setUsername] = useState("");
@@ -139,6 +141,31 @@ export default function WebPosHomePage() {
     }, 8 * 60 * 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Kiểm tra thông báo chấm đỏ khi HR hoàn thành xếp ca cho nhân viên Bán hàng
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== "SALES") {
+      setHasUnseenShiftSchedule(false);
+      return;
+    }
+    let active = true;
+    const checkScheduleNoti = async () => {
+      try {
+        const sched = await fetchMyShiftScheduleApi();
+        if (active) {
+          setHasUnseenShiftSchedule(Boolean(sched.hasUnseenConfirmedSchedule));
+        }
+      } catch {
+        // bỏ qua lỗi mạng tạm thời
+      }
+    };
+    checkScheduleNoti();
+    const timer = setInterval(checkScheduleNoti, 30000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [currentUser]);
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -325,10 +352,19 @@ export default function WebPosHomePage() {
               onClick={() => setDrawerOpen(true)}
               title="Mở menu điều hướng"
               aria-label="Mở menu điều hướng"
-              className="min-h-[40px] min-w-[40px] px-2.5 md:px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white border border-slate-700 flex items-center justify-center gap-1.5 transition"
+              className="relative min-h-[40px] min-w-[40px] px-2.5 md:px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white border border-slate-700 flex items-center justify-center gap-1.5 transition"
             >
               <Menu className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-emerald-400" />
               <span className="hidden sm:inline">Menu</span>
+              {hasUnseenShiftSchedule && (
+                <span
+                  title="HR đã hoàn thành xếp ca tuần mới"
+                  className="absolute -top-1 -right-1 flex h-3 w-3"
+                >
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-red-600 border border-slate-900" />
+                </span>
+              )}
             </button>
           </div>
         </div>
@@ -397,6 +433,7 @@ export default function WebPosHomePage() {
           isAttendanceOnlyRole(currentUser.role) ? (
           <MyAttendanceCalendar
             currentUser={currentUser}
+            onScheduleSeen={() => setHasUnseenShiftSchedule(false)}
             onBack={
               isAttendanceOnlyRole(currentUser.role)
                 ? undefined
@@ -436,6 +473,7 @@ export default function WebPosHomePage() {
         onClose={() => setDrawerOpen(false)}
         currentUser={currentUser}
         activeDrawerPage={activeDrawerPage}
+        hasAttendanceNoti={hasUnseenShiftSchedule}
         onOpenProfile={() => setActiveDrawerPage("PROFILE")}
         onOpenAttendance={() => {
           setDrawerOpen(false);

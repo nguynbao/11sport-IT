@@ -13,12 +13,13 @@ import { getMergedHolidayMap } from './holidays';
  */
 export const attendanceTimesheetRouter = Router();
 
-type ShiftCode = 'SHIFT_1' | 'SHIFT_2';
+type ShiftCode = 'SHIFT_1' | 'SHIFT_2' | 'BOTH';
 
 // Khung giờ ca (phút trong ngày)
 const SHIFT_RULES: Record<ShiftCode, { start: number; end: number; label: string }> = {
   SHIFT_1: { start: 8 * 60 + 30, end: 17 * 60 + 30, label: 'Ca 1 (08:30-17:30)' },
   SHIFT_2: { start: 12 * 60, end: 21 * 60, label: 'Ca 2 (12:00-21:00)' },
+  BOTH: { start: 8 * 60 + 30, end: 21 * 60, label: 'Ca 1 + Ca 2 (08:30-21:00)' },
 };
 
 const LATE_TOLERANCE_MINUTES = 5;
@@ -326,14 +327,37 @@ export async function buildTimesheet(params: {
           const hours = Number(att.totalWorkHours || 0);
           summary.totalHours += hours;
 
-          // Tăng ca: số phút làm sau giờ kết thúc ca (>= ngưỡng ATTENDANCE_OVERTIME_MIN_MINUTES)
+          const effectiveShift: ShiftCode =
+            (assign &&
+            (assign.shiftCode === 'SHIFT_1' ||
+              assign.shiftCode === 'SHIFT_2' ||
+              assign.shiftCode === 'BOTH')
+              ? (assign.shiftCode as ShiftCode)
+              : (att.shiftCode as ShiftCode)) || 'SHIFT_1';
+
+          // Quy định tính Tăng ca:
+          // 1. Làm 2 ca (BOTH - Ca 1 + Ca 2 đã ghi trong bảng xếp ca): KHÔNG tính là tăng ca.
+          // 2. Khối Bán hàng (SALES) làm 1 ca (SHIFT_1 / SHIFT_2): chỉ khi check-out trễ > 5p có lý do và được HR xem xét duyệt (overtimeStatus === 'APPROVED').
+          // 3. Khối Văn phòng (OFFICE): phải được HR yêu cầu (overtimeStatus === 'APPROVED') thì mới có tăng ca.
           let overtimeMinutes = 0;
-          if (att.checkOutTime) {
+          const rule = SHIFT_RULES[effectiveShift] || SHIFT_RULES.SHIFT_1;
+          let rawLateOut = Number(att.lateCheckoutMinutes || 0);
+          if (att.checkOutTime && rawLateOut === 0) {
             const out = new Date(att.checkOutTime);
             const outMin = out.getHours() * 60 + out.getMinutes();
-            const rule = SHIFT_RULES[(att.shiftCode as ShiftCode) || 'SHIFT_1'] || SHIFT_RULES.SHIFT_1;
-            const ot = outMin - rule.end;
-            if (ot >= overtimeMin) overtimeMinutes = ot;
+            rawLateOut = Math.max(0, outMin - rule.end);
+          }
+
+          const cellOvertimeStatus: 'NONE' | 'PENDING' | 'APPROVED' | 'REJECTED' =
+            effectiveShift === 'BOTH' ? 'NONE' : (att.overtimeStatus || 'NONE');
+
+          if (effectiveShift !== 'BOTH' && cellOvertimeStatus === 'APPROVED') {
+            const approvedMins = Number(att.overtimeApprovedMinutes || 0);
+            overtimeMinutes = approvedMins > 0 ? approvedMins : rawLateOut;
+          }
+
+          if (cellOvertimeStatus === 'PENDING') {
+            summary.pendingRequests += 1;
           }
           if (overtimeMinutes > 0) {
             summary.overtimeDays += 1;
@@ -370,12 +394,16 @@ export async function buildTimesheet(params: {
           cells[date] = {
             code,
             attendanceId: String(att._id),
-            shiftCode: att.shiftCode,
+            shiftCode: effectiveShift,
             checkIn: toHHmm(att.checkInTime),
             checkOut: toHHmm(att.checkOutTime),
             hours,
             lateMinutes: Number(att.lateMinutes || 0),
             earlyMinutes: Number(att.earlyMinutes || 0),
+            lateCheckoutMinutes: effectiveShift === 'BOTH' ? 0 : rawLateOut,
+            lateCheckoutReason: effectiveShift === 'BOTH' ? '' : (att.lateCheckoutReason || ''),
+            overtimeStatus: cellOvertimeStatus,
+            overtimeApprovedMinutes: effectiveShift === 'BOTH' ? 0 : Number(att.overtimeApprovedMinutes || overtimeMinutes || 0),
             checkInType: att.checkInType,
             isHolidayWork: isOfficialHoliday,
             isPaidHoliday,
@@ -518,6 +546,7 @@ attendanceTimesheetRouter.get('/attendance/my-calendar', async (req, res, next) 
           shifts: {
             SHIFT_1: SHIFT_RULES.SHIFT_1.label,
             SHIFT_2: SHIFT_RULES.SHIFT_2.label,
+            BOTH: SHIFT_RULES.BOTH.label,
           },
           lateToleranceMinutes: LATE_TOLERANCE_MINUTES,
           overtimeMinMinutes: getOvertimeMinMinutes(),
@@ -531,12 +560,20 @@ attendanceTimesheetRouter.get('/attendance/my-calendar', async (req, res, next) 
   }
 });
 
-// PATCH /api/v1/attendance/:id  (HR điều chỉnh giờ công)
+// PATCH /api/v1/attendance/:id  (HR điều chỉnh giờ công & xét duyệt tăng ca)
 attendanceTimesheetRouter.patch('/attendance/:id', async (req, res, next) => {
   try {
     const user = requireHr(req);
     const { id } = req.params;
-    const { checkIn, checkOut, shiftCode, reason } = req.body || {};
+    const {
+      checkIn,
+      checkOut,
+      shiftCode,
+      overtimeStatus,
+      overtimeApprovedMinutes,
+      lateCheckoutReason,
+      reason,
+    } = req.body || {};
 
     if (!reason || !String(reason).trim()) {
       throw new ApiError(400, 'VALIDATION_ERROR', 'Vui lòng nhập lý do điều chỉnh giờ công');
@@ -546,7 +583,9 @@ attendanceTimesheetRouter.patch('/attendance/:id', async (req, res, next) => {
     if (!att) throw new ApiError(404, 'ATTENDANCE_NOT_FOUND', 'Không tìm thấy bản ghi chấm công');
 
     const finalShift: ShiftCode =
-      shiftCode === 'SHIFT_1' || shiftCode === 'SHIFT_2' ? shiftCode : att.shiftCode || 'SHIFT_1';
+      shiftCode === 'SHIFT_1' || shiftCode === 'SHIFT_2' || shiftCode === 'BOTH'
+        ? shiftCode
+        : att.shiftCode || 'SHIFT_1';
 
     const inMinutes =
       checkIn !== undefined ? parseHHmm(checkIn) : parseHHmm(toHHmm(att.checkInTime) || '');
@@ -572,6 +611,55 @@ attendanceTimesheetRouter.patch('/attendance/:id', async (req, res, next) => {
       checkOutMinutes: outMinutes,
     });
 
+    const rule = SHIFT_RULES[finalShift] || SHIFT_RULES.SHIFT_1;
+    const rawAfterShiftEnd = outMinutes !== null ? Math.max(0, outMinutes - rule.end) : 0;
+
+    let nextOvertimeStatus: 'NONE' | 'PENDING' | 'APPROVED' | 'REJECTED' =
+      att.overtimeStatus || 'NONE';
+    let nextOvertimeApprovedMinutes = Number(att.overtimeApprovedMinutes || 0);
+    let nextLateCheckoutMinutes = Number(att.lateCheckoutMinutes || 0);
+    let nextLateCheckoutReason =
+      lateCheckoutReason !== undefined ? String(lateCheckoutReason).trim() : att.lateCheckoutReason || '';
+
+    if (finalShift === 'BOTH') {
+      // Làm 2 ca (BOTH) trong bảng xếp ca -> không tính là tăng ca
+      nextOvertimeStatus = 'NONE';
+      nextOvertimeApprovedMinutes = 0;
+      nextLateCheckoutMinutes = 0;
+    } else {
+      if (att.department === 'SALES') {
+        nextLateCheckoutMinutes = rawAfterShiftEnd > 5 ? rawAfterShiftEnd : 0;
+      } else {
+        nextLateCheckoutMinutes = rawAfterShiftEnd;
+      }
+
+      if (
+        overtimeStatus === 'NONE' ||
+        overtimeStatus === 'PENDING' ||
+        overtimeStatus === 'APPROVED' ||
+        overtimeStatus === 'REJECTED'
+      ) {
+        nextOvertimeStatus = overtimeStatus;
+        if (overtimeStatus === 'APPROVED') {
+          nextOvertimeApprovedMinutes =
+            overtimeApprovedMinutes !== undefined
+              ? Math.max(0, Number(overtimeApprovedMinutes) || 0)
+              : rawAfterShiftEnd > 0
+                ? rawAfterShiftEnd
+                : nextLateCheckoutMinutes;
+        } else {
+          nextOvertimeApprovedMinutes = 0;
+        }
+      } else if (nextOvertimeStatus === 'APPROVED') {
+        nextOvertimeApprovedMinutes =
+          overtimeApprovedMinutes !== undefined
+            ? Math.max(0, Number(overtimeApprovedMinutes) || 0)
+            : rawAfterShiftEnd > 0
+              ? rawAfterShiftEnd
+              : nextOvertimeApprovedMinutes;
+      }
+    }
+
     const updated = await attendanceRepo.updateById(id, {
       shiftCode: finalShift,
       checkInTime: metrics.checkInTime,
@@ -579,6 +667,10 @@ attendanceTimesheetRouter.patch('/attendance/:id', async (req, res, next) => {
       checkOutTime: metrics.checkOutTime ?? null,
       lateMinutes: metrics.lateMinutes,
       earlyMinutes: metrics.earlyMinutes,
+      lateCheckoutMinutes: nextLateCheckoutMinutes,
+      lateCheckoutReason: nextLateCheckoutReason,
+      overtimeStatus: nextOvertimeStatus,
+      overtimeApprovedMinutes: nextOvertimeApprovedMinutes,
       totalWorkHours: metrics.totalWorkHours,
       lunchPauseMinutes: metrics.lunchPauseMinutes,
       status: metrics.status,
@@ -601,7 +693,16 @@ attendanceTimesheetRouter.patch('/attendance/:id', async (req, res, next) => {
 attendanceTimesheetRouter.post('/attendance/manual', async (req, res, next) => {
   try {
     const user = requireHr(req);
-    const { staffId, date, shiftCode = 'SHIFT_1', checkIn, checkOut, reason } = req.body || {};
+    const {
+      staffId,
+      date,
+      shiftCode = 'SHIFT_1',
+      checkIn,
+      checkOut,
+      overtimeStatus,
+      overtimeApprovedMinutes,
+      reason,
+    } = req.body || {};
 
     if (!staffId || !date || !checkIn) {
       throw new ApiError(400, 'VALIDATION_ERROR', 'Thiếu nhân viên, ngày hoặc giờ vào');
@@ -641,7 +742,9 @@ attendanceTimesheetRouter.post('/attendance/manual', async (req, res, next) => {
 
     const department = staff.department || (staff.role === 'SALES' ? 'SALES' : 'OFFICE');
     const finalShift: ShiftCode =
-      department === 'SALES' && shiftCode === 'SHIFT_2' ? 'SHIFT_2' : 'SHIFT_1';
+      department === 'SALES' && (shiftCode === 'SHIFT_2' || shiftCode === 'BOTH')
+        ? shiftCode
+        : 'SHIFT_1';
 
     const metrics = computeAttendanceMetrics({
       date: String(date),
@@ -650,6 +753,30 @@ attendanceTimesheetRouter.post('/attendance/manual', async (req, res, next) => {
       checkInMinutes: inMinutes,
       checkOutMinutes: outMinutes,
     });
+
+    const rule = SHIFT_RULES[finalShift] || SHIFT_RULES.SHIFT_1;
+    const rawAfterShiftEnd = outMinutes !== null ? Math.max(0, outMinutes - rule.end) : 0;
+
+    let finalOvertimeStatus: 'NONE' | 'PENDING' | 'APPROVED' | 'REJECTED' = 'NONE';
+    let finalOvertimeApprovedMinutes = 0;
+
+    if (finalShift !== 'BOTH') {
+      if (overtimeStatus === 'APPROVED') {
+        finalOvertimeStatus = 'APPROVED';
+        finalOvertimeApprovedMinutes =
+          overtimeApprovedMinutes !== undefined
+            ? Math.max(0, Number(overtimeApprovedMinutes) || 0)
+            : rawAfterShiftEnd;
+      } else if (
+        department === 'OFFICE' &&
+        overtimeStatus === undefined &&
+        rawAfterShiftEnd >= getOvertimeMinMinutes()
+      ) {
+        // HR trực tiếp chấm công bù giờ ra sau 17:30 cho Văn phòng -> HR yêu cầu/xác nhận tăng ca
+        finalOvertimeStatus = 'APPROVED';
+        finalOvertimeApprovedMinutes = rawAfterShiftEnd;
+      }
+    }
 
     const created = await attendanceRepo.create({
       staffId: String(staff._id),
@@ -665,6 +792,10 @@ attendanceTimesheetRouter.post('/attendance/manual', async (req, res, next) => {
       status: metrics.status,
       lateMinutes: metrics.lateMinutes,
       earlyMinutes: metrics.earlyMinutes,
+      lateCheckoutMinutes: department === 'SALES' && finalShift !== 'BOTH' && rawAfterShiftEnd > 5 ? rawAfterShiftEnd : 0,
+      lateCheckoutReason: '',
+      overtimeStatus: finalOvertimeStatus,
+      overtimeApprovedMinutes: finalOvertimeApprovedMinutes,
       lunchPauseMinutes: metrics.lunchPauseMinutes,
       totalWorkHours: metrics.totalWorkHours,
       notes: 'Chấm công bù bởi HR',

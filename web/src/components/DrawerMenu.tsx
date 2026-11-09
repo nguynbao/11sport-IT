@@ -33,6 +33,7 @@ interface DrawerMenuProps {
   onLogout: () => void;
   getRoleDisplayName: (role?: UserRole) => string;
   cmsUrl?: string;
+  hasAttendanceNoti?: boolean;
 }
 
 export default function DrawerMenu({
@@ -45,6 +46,7 @@ export default function DrawerMenu({
   onLogout,
   getRoleDisplayName,
   cmsUrl = "https://11sport-it-m1ei.vercel.app",
+  hasAttendanceNoti = false,
 }: DrawerMenuProps) {
   // Đóng drawer khi nhấn phím Escape & khóa cuộn trang nền khi mở
   useEffect(() => {
@@ -154,17 +156,31 @@ export default function DrawerMenu({
             >
               <div className="flex items-center gap-3 min-w-0">
                 <div
-                  className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                  className={`relative w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
                     activeDrawerPage === "ATTENDANCE"
                       ? "bg-white/20 text-white"
                       : "bg-amber-500/15 text-amber-400"
                   }`}
                 >
                   <Clock className="w-4 h-4" />
+                  {hasAttendanceNoti && (
+                    <span
+                      title="HR đã hoàn thành xếp ca tuần sau"
+                      className="absolute -top-1 -right-1 flex h-2.5 w-2.5"
+                    >
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-600" />
+                    </span>
+                  )}
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="truncate">Chấm công</span>
+                    {hasAttendanceNoti && (
+                      <span className="px-1.5 py-0.5 rounded-full bg-red-600 text-white text-[9px] font-black leading-none">
+                        Lịch ca mới
+                      </span>
+                    )}
                   </div>
                   <div
                     className={`text-[10px] font-normal truncate mt-0.5 ${

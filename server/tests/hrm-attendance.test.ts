@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app';
-import { connectDatabase, clearDatabase, staffRepo, shiftAssignmentRepo } from '../src/config/db';
+import { connectDatabase, clearDatabase, staffRepo, shiftAssignmentRepo, attendanceRepo } from '../src/config/db';
 import { seedDatabaseIfNeeded } from '../src/config/seed';
 
 describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
@@ -539,5 +539,232 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
       });
     expect(validShiftCheckIn.status).toBe(201);
     expect(validShiftCheckIn.body.data.attendance.shiftCode).toBe('SHIFT_2');
+  });
+
+  it('11. Áp dụng ca BOTH (08:30 - 21:00) vào check-in, check-out và bảng công tháng', async () => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+
+    const salesCreate = await request(app)
+      .post('/api/v1/staff')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        username: 'sales_both_shift',
+        password: 'password123',
+        fullName: 'Sales Ca Kép BOTH',
+        role: 'SALES',
+        department: 'SALES',
+      });
+    expect(salesCreate.status).toBe(201);
+    const staffId = salesCreate.body.data._id;
+
+    const loginRes = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ username: 'sales_both_shift', password: 'password123' });
+    const token = loginRes.body.data.token;
+
+    // 11.1 Phân ca BOTH cho hôm nay
+    await shiftAssignmentRepo.create({
+      weekStart: today,
+      date: today,
+      dayOfWeek: 1,
+      staffId: String(staffId),
+      staffCode: salesCreate.body.data.code,
+      staffName: 'Sales Ca Kép BOTH',
+      shiftCode: 'BOTH',
+      assignedBy: 'HR',
+    });
+
+    // 11.2 Nếu cố tình truyền shiftCode = SHIFT_1 hoặc SHIFT_2 sẽ bị chặn SHIFT_MISMATCH
+    const mismatch1 = await request(app)
+      .post('/api/v1/attendance/check-in')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        latitude: 16.0352,
+        longitude: 108.2185,
+        shiftCode: 'SHIFT_1',
+      });
+    expect(mismatch1.status).toBe(400);
+    expect(mismatch1.body.code).toBe('SHIFT_MISMATCH');
+
+    // 11.3 Check-in hợp lệ -> nhận đúng shiftCode = 'BOTH'
+    const okIn = await request(app)
+      .post('/api/v1/attendance/check-in')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        latitude: 16.0352,
+        longitude: 108.2185,
+      });
+    expect(okIn.status).toBe(201);
+    expect(okIn.body.data.attendance.shiftCode).toBe('BOTH');
+    const attId = okIn.body.data.attendance._id;
+
+    // 11.4 HR điều chỉnh ra ca lúc 17:30 trên ca BOTH (08:30-21:00) -> bị tính về sớm 210 phút (21:00 - 17:30), không tính tăng ca
+    const patch1730 = await request(app)
+      .patch(`/api/v1/attendance/${attId}`)
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({
+        shiftCode: 'BOTH',
+        checkIn: '08:30',
+        checkOut: '17:30',
+        reason: 'Kiểm tra ra ca lúc 17:30 khi làm 2 ca BOTH',
+      });
+    expect(patch1730.status).toBe(200);
+    expect(patch1730.body.data.shiftCode).toBe('BOTH');
+    expect(patch1730.body.data.earlyMinutes).toBe(210);
+    expect(patch1730.body.data.status).toBe('EARLY_LEAVE');
+
+    // 11.5 HR điều chỉnh ra ca lúc 21:35 trên ca BOTH (08:30-21:00) -> đủ giờ (earlyMinutes = 0, COMPLETED, 13.08h) nhưng làm 2 ca theo bảng xếp ca KHÔNG tính là tăng ca (overtimeMinutes = 0)
+    const patch2135 = await request(app)
+      .patch(`/api/v1/attendance/${attId}`)
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({
+        shiftCode: 'BOTH',
+        checkIn: '08:30',
+        checkOut: '21:35',
+        overtimeStatus: 'APPROVED',
+        overtimeApprovedMinutes: 35,
+        reason: 'Hoàn thành cả 2 ca theo bảng xếp ca',
+      });
+    expect(patch2135.status).toBe(200);
+    expect(patch2135.body.data.earlyMinutes).toBe(0);
+    expect(patch2135.body.data.status).toBe('COMPLETED');
+    expect(patch2135.body.data.totalWorkHours).toBe(13.08);
+    expect(patch2135.body.data.overtimeStatus).toBe('NONE');
+    expect(patch2135.body.data.overtimeApprovedMinutes).toBe(0);
+
+    const calRes = await request(app)
+      .get(`/api/v1/attendance/my-calendar?month=${now.getMonth() + 1}&year=${now.getFullYear()}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(calRes.status).toBe(200);
+    const cellToday = calRes.body.data.row.cells[today];
+    expect(cellToday.shiftCode).toBe('BOTH');
+    expect(cellToday.overtimeMinutes).toBe(0);
+  });
+
+  it('12. Quy tắc tăng ca: Sales (1 ca) trễ > 5p phải ghi lý do & chờ HR duyệt; Văn phòng chỉ tính tăng ca khi được HR yêu cầu', async () => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+
+    // 12.1 Tạo nhân viên Sales 1 ca (SHIFT_1) và nhân viên Văn phòng (OFFICE)
+    const sales1Res = await request(app)
+      .post('/api/v1/staff')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        username: 'sales_late_checkout',
+        password: 'password123',
+        fullName: 'Sales 1 Ca Check-out Trễ',
+        role: 'SALES',
+        department: 'SALES',
+      });
+    expect(sales1Res.status).toBe(201);
+    const sales1Id = sales1Res.body.data._id;
+
+    const officeRes = await request(app)
+      .post('/api/v1/staff')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        username: 'office_overtime_hr',
+        password: 'password123',
+        fullName: 'Văn Phòng Tăng Ca Theo Yêu Cầu HR',
+        role: 'WAREHOUSE',
+        department: 'OFFICE',
+      });
+    expect(officeRes.status).toBe(201);
+    const officeId = officeRes.body.data._id;
+
+    // 12.2 Chấm công thủ công cho Sales (Ca 1: 08:30 - 18:15, trễ 45p) nhưng HR chưa duyệt tăng ca -> overtimeMinutes = 0
+    const manualSales = await request(app)
+      .post('/api/v1/attendance/manual')
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({
+        staffId: sales1Id,
+        date: today,
+        shiftCode: 'SHIFT_1',
+        checkIn: '08:30',
+        checkOut: '18:15',
+        reason: 'Nhân viên ở lại hỗ trợ khách thử vợt đến 18:15',
+      });
+    expect(manualSales.status).toBe(201);
+    const salesAttId = manualSales.body.data._id;
+
+    // Giả lập nhân viên đã gửi lý do check-out trễ > 5p (45p, PENDING)
+    await attendanceRepo.updateById(salesAttId, {
+      lateCheckoutMinutes: 45,
+      lateCheckoutReason: 'Khách thử giày và đan vợt lấy gấp lúc 17:30',
+      overtimeStatus: 'PENDING',
+      overtimeApprovedMinutes: 0,
+    });
+
+    const tsBeforeApprove = await request(app)
+      .get(`/api/v1/attendance/timesheet?month=${now.getMonth() + 1}&year=${now.getFullYear()}`)
+      .set('Authorization', `Bearer ${hrToken}`);
+    expect(tsBeforeApprove.status).toBe(200);
+    const salesRowBefore = tsBeforeApprove.body.data.rows.find((r: any) => r.staffId === String(sales1Id));
+    expect(salesRowBefore.cells[today].overtimeStatus).toBe('PENDING');
+    expect(salesRowBefore.cells[today].lateCheckoutMinutes).toBe(45);
+    expect(salesRowBefore.cells[today].lateCheckoutReason).toContain('Khách thử giày');
+    expect(salesRowBefore.cells[today].overtimeMinutes).toBe(0); // Chưa duyệt -> chưa tính tăng ca
+
+    // 12.3 HR xem xét lý do và duyệt quy 45 phút check-out trễ thành tăng ca
+    const approveSales = await request(app)
+      .patch(`/api/v1/attendance/${salesAttId}`)
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({
+        overtimeStatus: 'APPROVED',
+        overtimeApprovedMinutes: 45,
+        reason: 'HR xác nhận có khách đan vợt trễ, duyệt 45p tăng ca',
+      });
+    expect(approveSales.status).toBe(200);
+    expect(approveSales.body.data.overtimeStatus).toBe('APPROVED');
+    expect(approveSales.body.data.overtimeApprovedMinutes).toBe(45);
+
+    const tsAfterApprove = await request(app)
+      .get(`/api/v1/attendance/timesheet?month=${now.getMonth() + 1}&year=${now.getFullYear()}`)
+      .set('Authorization', `Bearer ${hrToken}`);
+    const salesRowAfter = tsAfterApprove.body.data.rows.find((r: any) => r.staffId === String(sales1Id));
+    expect(salesRowAfter.cells[today].overtimeStatus).toBe('APPROVED');
+    expect(salesRowAfter.cells[today].overtimeMinutes).toBe(45);
+
+    // 12.4 Nhân viên Văn phòng ra ca lúc 19:00 (sau 17:30 là 90p) nhưng KHÔNG được HR yêu cầu -> overtimeMinutes = 0
+    const manualOffice = await request(app)
+      .post('/api/v1/attendance/manual')
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({
+        staffId: officeId,
+        date: today,
+        checkIn: '08:30',
+        checkOut: '19:00',
+        overtimeStatus: 'NONE',
+        reason: 'Nhân viên tự ở lại văn phòng, HR không yêu cầu tăng ca',
+      });
+    expect(manualOffice.status).toBe(201);
+    const officeAttId = manualOffice.body.data._id;
+
+    const tsOfficeNone = await request(app)
+      .get(`/api/v1/attendance/timesheet?month=${now.getMonth() + 1}&year=${now.getFullYear()}`)
+      .set('Authorization', `Bearer ${hrToken}`);
+    const officeRowNone = tsOfficeNone.body.data.rows.find((r: any) => r.staffId === String(officeId));
+    expect(officeRowNone.cells[today].overtimeMinutes).toBe(0);
+
+    // 12.5 HR yêu cầu tăng ca cho nhân viên Văn phòng (overtimeStatus = APPROVED, 90 phút) -> overtimeMinutes = 90
+    const approveOffice = await request(app)
+      .patch(`/api/v1/attendance/${officeAttId}`)
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({
+        overtimeStatus: 'APPROVED',
+        overtimeApprovedMinutes: 90,
+        reason: 'HR yêu cầu tăng ca chốt sổ kế toán cuối tháng 90p',
+      });
+    expect(approveOffice.status).toBe(200);
+
+    const tsOfficeApproved = await request(app)
+      .get(`/api/v1/attendance/timesheet?month=${now.getMonth() + 1}&year=${now.getFullYear()}`)
+      .set('Authorization', `Bearer ${hrToken}`);
+    const officeRowApproved = tsOfficeApproved.body.data.rows.find((r: any) => r.staffId === String(officeId));
+    expect(officeRowApproved.cells[today].overtimeStatus).toBe('APPROVED');
+    expect(officeRowApproved.cells[today].overtimeMinutes).toBe(90);
   });
 });

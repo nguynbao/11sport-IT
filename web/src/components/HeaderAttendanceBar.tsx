@@ -44,6 +44,8 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
   const [showHandoverModal, setShowHandoverModal] = useState(false);
   const [showFridayModal, setShowFridayModal] = useState(false);
   const [pendingHandoverToConfirm, setPendingHandoverToConfirm] = useState<any | null>(null);
+  const [lateCheckoutModal, setLateCheckoutModal] = useState<{ lateMinutes: number } | null>(null);
+  const [lateCheckoutReasonInput, setLateCheckoutReasonInput] = useState("");
 
   const showNotice = (type: "ok" | "err", text: string) => {
     setFeedback({ type, text });
@@ -205,15 +207,19 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
   };
 
   // Bấm nút PAUSE -> Check-out trực tiếp trên Header
-  const handlePauseCheckOut = async (forceEarly = false, earlyReason = "") => {
+  const handlePauseCheckOut = async (
+    forceEarly = false,
+    earlyReason = "",
+    lateCheckoutReason = ""
+  ) => {
     if (actionLoading) return;
 
-    // Kiểm tra đã đủ giờ kết thúc ca chưa (Ca 1: 17:30, Ca 2: 21:00)
+    // Kiểm tra đã đủ giờ kết thúc ca chưa (Ca 1: 17:30, Ca 2 & Ca 1+2 BOTH: 21:00)
     const now = new Date();
     const totalMinutesNow = now.getHours() * 60 + now.getMinutes();
-    const isShift2 = attendance?.shiftCode === "SHIFT_2";
-    const shiftEndMinutes = isShift2 ? 21 * 60 : 17 * 60 + 30;
-    const shiftEndLabel = isShift2 ? "21:00" : "17:30";
+    const isEnd21 = attendance?.shiftCode === "SHIFT_2" || attendance?.shiftCode === "BOTH";
+    const shiftEndMinutes = isEnd21 ? 21 * 60 : 17 * 60 + 30;
+    const shiftEndLabel = isEnd21 ? "21:00" : "17:30";
 
     if (totalMinutesNow < shiftEndMinutes && !isEarlyApprovedToday && !forceEarly) {
       const remain = shiftEndMinutes - totalMinutesNow;
@@ -227,16 +233,29 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
       return;
     }
 
+    // Nhân viên Bán hàng làm 1 ca (SHIFT_1 / SHIFT_2) check-out trễ > 5 phút phải nhập lý do để HR xem xét
+    const isSalesOneShift =
+      (currentUser?.department === "SALES" || currentUser?.role === "SALES") &&
+      attendance?.shiftCode !== "BOTH";
+    const diffLateOut = totalMinutesNow - shiftEndMinutes;
+    if (isSalesOneShift && diffLateOut > 5 && !lateCheckoutReason.trim()) {
+      setLateCheckoutModal({ lateMinutes: diffLateOut });
+      return;
+    }
+
     setActionLoading(true);
     setFeedback(null);
     try {
       const res = await checkOutApi({
         forceEarly: forceEarly || isEarlyApprovedToday,
         earlyReason: earlyReason || (isEarlyApprovedToday ? "Đã được HR duyệt về sớm" : ""),
+        lateCheckoutReason: lateCheckoutReason.trim() || undefined,
         latitude: coords ? coords.lat : officeLat,
         longitude: coords ? coords.lng : officeLng,
       });
       setAttendance(res.attendance);
+      setLateCheckoutModal(null);
+      setLateCheckoutReasonInput("");
       showNotice("ok", `Đã kết thúc ca (${res.attendance.totalWorkHours}h)!`);
 
       const today = new Date();
@@ -246,6 +265,9 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
     } catch (err: any) {
       if (err.code === "HANDOVER_REQUIRED") {
         setShowHandoverModal(true);
+      } else if (err.code === "LATE_CHECKOUT_REASON_REQUIRED") {
+        const lateMins = Number(err.fields?.lateCheckoutMinutes || diffLateOut || 6);
+        setLateCheckoutModal({ lateMinutes: lateMins });
       } else {
         showNotice("err", err?.message || "Không thể kết ca");
       }
@@ -382,9 +404,48 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
           onSuccess={async () => {
             setShowHandoverModal(false);
             showNotice("ok", "Đã gửi biên bản bàn giao Kho Tầng 1!");
-            await handlePauseCheckOut(false);
+            await handlePauseCheckOut(false, "", lateCheckoutReasonInput);
           }}
         />
+      )}
+
+      {lateCheckoutModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 p-5 space-y-3 text-xs text-slate-800">
+            <div className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+              Check-out trễ {lateCheckoutModal.lateMinutes} phút sau giờ kết ca
+            </div>
+            <p className="text-slate-600 leading-relaxed">
+              Quy định chỉ cho phép check-out trễ tối đa <b>5 phút</b>. Vì bạn check-out sau 5 phút, vui lòng nhập{" "}
+              <b>lý do check-out trễ</b> để HR xem xét có tính thời gian này vào tăng ca hay không:
+            </p>
+            <textarea
+              rows={3}
+              value={lateCheckoutReasonInput}
+              onChange={(e) => setLateCheckoutReasonInput(e.target.value)}
+              placeholder="VD: Ở lại tư vấn chốt đơn cho khách đến trễ / kiểm hàng cuối ca..."
+              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+            />
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setLateCheckoutModal(null)}
+                className="px-3.5 py-2 rounded-xl font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                disabled={!lateCheckoutReasonInput.trim() || actionLoading}
+                onClick={() => handlePauseCheckOut(false, "", lateCheckoutReasonInput.trim())}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold cursor-pointer"
+              >
+                {actionLoading ? "Đang gửi..." : "Gửi lý do & Check-out"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {showFridayModal && (

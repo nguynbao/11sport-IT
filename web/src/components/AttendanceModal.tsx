@@ -42,7 +42,7 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
   const [currentTime, setCurrentTime] = useState<string>("");
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [distanceMeters, setDistanceMeters] = useState<number | null>(null);
-  const [selectedShift, setSelectedShift] = useState<"SHIFT_1" | "SHIFT_2">("SHIFT_1");
+  const [selectedShift, setSelectedShift] = useState<"SHIFT_1" | "SHIFT_2" | "BOTH">("SHIFT_1");
 
   // Modals phụ
   const [showHandoverModal, setShowHandoverModal] = useState(false);
@@ -83,7 +83,11 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
       ]);
       setAttendance(data.attendance);
       setIsWfhToday(data.isWfhToday);
-      if (data.assignedShift === "SHIFT_1" || data.assignedShift === "SHIFT_2") {
+      if (
+        data.assignedShift === "SHIFT_1" ||
+        data.assignedShift === "SHIFT_2" ||
+        data.assignedShift === "BOTH"
+      ) {
         setSelectedShift(data.assignedShift);
       }
 
@@ -184,11 +188,15 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
     }
   };
 
-  const handleCheckOut = async (forceEarly = false, earlyReason = "") => {
+  const handleCheckOut = async (
+    forceEarly = false,
+    earlyReason = "",
+    lateCheckoutReason = ""
+  ) => {
     setStatusMsg(null);
     setActionLoading(true);
     try {
-      const res = await checkOutApi({ forceEarly, earlyReason });
+      const res = await checkOutApi({ forceEarly, earlyReason, lateCheckoutReason });
       setStatusMsg({ type: "success", text: res.message });
       setAttendance(res.attendance);
 
@@ -205,7 +213,20 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
         const earlyMins = err.fields?.earlyMinutes || "vài";
         const reason = prompt(`Bạn đang về sớm ${earlyMins} phút trước giờ kết thúc ca. Nhập lý do về sớm để hoàn tất:`);
         if (reason !== null) {
-          handleCheckOut(true, reason);
+          handleCheckOut(true, reason, lateCheckoutReason);
+        }
+      } else if (err.code === "LATE_CHECKOUT_REASON_REQUIRED") {
+        const lateMins = err.fields?.lateCheckoutMinutes || "quá 5";
+        const reason = prompt(
+          `Bạn đang check-out trễ ${lateMins} phút (quá 5 phút sau giờ kết ca). Vui lòng nhập lý do vì sao check-out trễ để HR xem xét tính tăng ca:`
+        );
+        if (reason && reason.trim()) {
+          handleCheckOut(forceEarly, earlyReason, reason.trim());
+        } else {
+          setStatusMsg({
+            type: "error",
+            text: "Bắt buộc nhập lý do khi check-out trễ quá 5 phút sau giờ kết thúc ca!",
+          });
         }
       } else {
         setStatusMsg({ type: "error", text: err.message || "Lỗi khi Check-out" });
@@ -348,7 +369,7 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
           {!attendance && (
             <div className="space-y-2">
               <label className="block font-bold text-slate-700">Chọn Ca làm việc hôm nay:</label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <button
                   type="button"
                   onClick={() => setSelectedShift("SHIFT_1")}
@@ -374,6 +395,19 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
                   <div>Ca 2 (Chiều - Tối)</div>
                   <div className="text-[11px] font-mono text-slate-400 mt-0.5">12:00 - 21:00</div>
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedShift("BOTH")}
+                  className={`p-3 rounded-2xl border font-bold text-left transition ${
+                    selectedShift === "BOTH"
+                      ? "bg-emerald-50 border-emerald-600 text-emerald-950 shadow-xs"
+                      : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  <div>Ca 1 + Ca 2 (2 ca)</div>
+                  <div className="text-[11px] font-mono text-slate-400 mt-0.5">08:30 - 21:00</div>
+                </button>
               </div>
             </div>
           )}
@@ -396,7 +430,13 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
               <div className="text-slate-600 space-y-1">
                 <div>
                   Ca làm việc:{" "}
-                  <strong>{attendance.shiftCode === "SHIFT_1" ? "Ca 1 (08:30 - 17:30)" : "Ca 2 (12:00 - 21:00)"}</strong>
+                  <strong>
+                    {attendance.shiftCode === "BOTH"
+                      ? "Ca 1 + Ca 2 (08:30 - 21:00)"
+                      : attendance.shiftCode === "SHIFT_2"
+                      ? "Ca 2 (12:00 - 21:00)"
+                      : "Ca 1 (08:30 - 17:30)"}
+                  </strong>
                 </div>
                 <div>
                   Mốc tính công chuẩn:{" "}

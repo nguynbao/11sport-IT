@@ -194,9 +194,9 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
 
     const now = new Date();
     const totalMinutesNow = now.getHours() * 60 + now.getMinutes();
-    const isShift2 = attendance?.shiftCode === "SHIFT_2";
-    const shiftEndMinutes = isShift2 ? 21 * 60 : 17 * 60 + 30;
-    const shiftEndLabel = isShift2 ? "21:00" : "17:30";
+    const isEnd21 = attendance?.shiftCode === "SHIFT_2" || attendance?.shiftCode === "BOTH";
+    const shiftEndMinutes = isEnd21 ? 21 * 60 : 17 * 60 + 30;
+    const shiftEndLabel = isEnd21 ? "21:00" : "17:30";
 
     if (totalMinutesNow < shiftEndMinutes && !isEarlyApprovedToday && !forceEarly) {
       const remain = shiftEndMinutes - totalMinutesNow;

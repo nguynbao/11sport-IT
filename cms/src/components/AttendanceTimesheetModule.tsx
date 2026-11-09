@@ -639,6 +639,10 @@ function MatrixView({
                     cell.hours ? `${cell.hours}h` : "",
                     cell.lateMinutes ? `Trễ ${cell.lateMinutes}p` : "",
                     cell.earlyMinutes ? `Về sớm ${cell.earlyMinutes}p` : "",
+                    cell.overtimeStatus === "PENDING" && cell.lateCheckoutMinutes
+                      ? `⏳ Check-out trễ ${cell.lateCheckoutMinutes}p – Chờ HR xét duyệt tăng ca${cell.lateCheckoutReason ? ` (Lý do: ${cell.lateCheckoutReason})` : ""}`
+                      : "",
+                    cell.overtimeMinutes ? `Tăng ca (đã duyệt): ${cell.overtimeMinutes}p` : "",
                     cell.isPaidHoliday ? "Nghỉ lễ hưởng nguyên lương: +1 công" : "",
                     cell.isHolidayWork ? "Đi làm ngày lễ chính thức – lương x4" : "",
                     cell.adjusted ? `Đã điều chỉnh bởi ${cell.adjustedByName}: ${cell.adjustReason}` : "",
@@ -656,10 +660,13 @@ function MatrixView({
                         disabled={!clickable}
                         onClick={() => onCellClick(row, d, cell)}
                         className={`relative w-[26px] h-[26px] rounded-md text-[10px] font-black inline-flex items-center justify-center transition ${style.className
-                          } ${cell.isHolidayWork ? "ring-2 ring-rose-500 ring-offset-1" : ""} ${clickable ? "hover:scale-110 hover:shadow-md cursor-pointer" : "cursor-default"
+                          } ${cell.isHolidayWork ? "ring-2 ring-rose-500 ring-offset-1" : ""} ${cell.overtimeStatus === "PENDING" ? "ring-2 ring-amber-500 ring-offset-1" : ""} ${clickable ? "hover:scale-110 hover:shadow-md cursor-pointer" : "cursor-default"
                           }`}
                       >
                         {style.symbol}
+                        {cell.overtimeStatus === "PENDING" && (
+                          <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber-500 border border-white" />
+                        )}
                         {cell.adjusted && (
                           <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-slate-900" />
                         )}
@@ -825,11 +832,21 @@ function CellDetailModal({
   const { row, day, cell } = target;
   const hasRecord = Boolean(cell.attendanceId);
   const isSales = row.department === "SALES";
-  const defaultShift = (cell.shiftCode || "SHIFT_1") as "SHIFT_1" | "SHIFT_2";
+  const defaultShift = (cell.shiftCode || "SHIFT_1") as "SHIFT_1" | "SHIFT_2" | "BOTH";
 
-  const [checkIn, setCheckIn] = useState(cell.checkIn || (defaultShift === "SHIFT_2" ? "12:00" : "08:30"));
-  const [checkOut, setCheckOut] = useState(cell.checkOut || (defaultShift === "SHIFT_2" ? "21:00" : "17:30"));
-  const [shiftCode, setShiftCode] = useState<"SHIFT_1" | "SHIFT_2">(defaultShift);
+  const [checkIn, setCheckIn] = useState(
+    cell.checkIn || (defaultShift === "SHIFT_2" ? "12:00" : "08:30")
+  );
+  const [checkOut, setCheckOut] = useState(
+    cell.checkOut || (defaultShift === "SHIFT_1" ? "17:30" : "21:00")
+  );
+  const [shiftCode, setShiftCode] = useState<"SHIFT_1" | "SHIFT_2" | "BOTH">(defaultShift);
+  const [overtimeStatus, setOvertimeStatus] = useState<"NONE" | "PENDING" | "APPROVED" | "REJECTED">(
+    cell.overtimeStatus || "NONE"
+  );
+  const [overtimeApprovedMinutes, setOvertimeApprovedMinutes] = useState<number>(
+    cell.overtimeApprovedMinutes || cell.lateCheckoutMinutes || 0
+  );
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -851,6 +868,11 @@ function CellDetailModal({
           checkIn,
           checkOut: checkOut || undefined,
           shiftCode: isSales ? shiftCode : undefined,
+          overtimeStatus: shiftCode === "BOTH" ? "NONE" : overtimeStatus,
+          overtimeApprovedMinutes:
+            shiftCode !== "BOTH" && overtimeStatus === "APPROVED"
+              ? Math.max(0, Number(overtimeApprovedMinutes) || 0)
+              : 0,
           reason: reason.trim(),
         });
         onSaved(`Đã điều chỉnh giờ công ${row.staffName} ngày ${dd}/${mm}`);
@@ -861,6 +883,12 @@ function CellDetailModal({
           shiftCode: isSales ? shiftCode : "SHIFT_1",
           checkIn,
           checkOut: checkOut || undefined,
+          overtimeStatus:
+            shiftCode !== "BOTH" && overtimeStatus === "APPROVED" ? "APPROVED" : "NONE",
+          overtimeApprovedMinutes:
+            shiftCode !== "BOTH" && overtimeStatus === "APPROVED"
+              ? Math.max(0, Number(overtimeApprovedMinutes) || 0)
+              : 0,
           reason: reason.trim(),
         });
         onSaved(`Đã chấm công bù cho ${row.staffName} ngày ${dd}/${mm}`);
@@ -931,6 +959,27 @@ function CellDetailModal({
                 Đã điều chỉnh bởi {cell.adjustedByName || "HR"}: {cell.adjustReason}
               </div>
             )}
+            {!!cell.lateCheckoutMinutes && (
+              <div className="col-span-3 p-2 rounded-lg bg-amber-50 border border-amber-200 text-left text-[11px] text-amber-900">
+                <div>
+                  <b>Check-out trễ sau giờ kết ca:</b> {cell.lateCheckoutMinutes} phút{" "}
+                  <span className="font-bold">
+                    (
+                    {cell.overtimeStatus === "APPROVED"
+                      ? `HR đã duyệt tính tăng ca ${cell.overtimeMinutes || cell.overtimeApprovedMinutes}p`
+                      : cell.overtimeStatus === "REJECTED"
+                      ? "HR không tính tăng ca"
+                      : "⏳ Đang chờ HR xem xét"}
+                    )
+                  </span>
+                </div>
+                {cell.lateCheckoutReason && (
+                  <div className="mt-0.5 text-slate-700">
+                    <b>Lý do NV giải trình:</b> {cell.lateCheckoutReason}
+                  </div>
+                )}
+              </div>
+            )}
             {cell.note && !cell.adjusted && (
               <div className="col-span-3 text-[11px] text-slate-500 italic">{cell.note}</div>
             )}
@@ -944,8 +993,8 @@ function CellDetailModal({
           </div>
 
           {isSales && (
-            <div className="grid grid-cols-2 gap-2">
-              {(["SHIFT_1", "SHIFT_2"] as const).map((sc) => (
+            <div className="grid grid-cols-3 gap-2">
+              {(["SHIFT_1", "SHIFT_2", "BOTH"] as const).map((sc) => (
                 <button
                   key={sc}
                   type="button"
@@ -955,7 +1004,11 @@ function CellDetailModal({
                       : "bg-white border-slate-200 text-slate-600"
                     }`}
                 >
-                  {sc === "SHIFT_1" ? "Ca 1 (08:30–17:30)" : "Ca 2 (12:00–21:00)"}
+                  {sc === "BOTH"
+                    ? "Ca 1+2 (08:30–21:00)"
+                    : sc === "SHIFT_1"
+                    ? "Ca 1 (08:30–17:30)"
+                    : "Ca 2 (12:00–21:00)"}
                 </button>
               ))}
             </div>
@@ -982,6 +1035,116 @@ function CellDetailModal({
               />
             </label>
           </div>
+
+          {/* Xét duyệt Tăng ca / Check-out trễ */}
+          {isSales ? (
+            shiftCode === "BOTH" ? (
+              <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600">
+                Nhân viên làm <b>2 ca (Ca 1 + Ca 2: 08:30–21:00)</b> theo bảng xếp ca —{" "}
+                <b>không tính là tăng ca</b>.
+              </div>
+            ) : (
+              <div className="p-3 rounded-xl bg-indigo-50/50 border border-indigo-200 space-y-2 text-xs">
+                <div className="font-bold text-indigo-950">
+                  Xét duyệt Check-out trễ / Tăng ca (Khối Bán hàng – 1 ca)
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setOvertimeStatus("NONE")}
+                    className={`px-2 py-1.5 rounded-lg border text-[11px] font-bold cursor-pointer ${
+                      overtimeStatus === "NONE" || overtimeStatus === "REJECTED"
+                        ? "bg-slate-800 border-slate-800 text-white"
+                        : "bg-white border-slate-200 text-slate-600"
+                    }`}
+                  >
+                    Không tính TC
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOvertimeStatus("PENDING")}
+                    className={`px-2 py-1.5 rounded-lg border text-[11px] font-bold cursor-pointer ${
+                      overtimeStatus === "PENDING"
+                        ? "bg-amber-500 border-amber-500 text-white"
+                        : "bg-white border-slate-200 text-slate-600"
+                    }`}
+                  >
+                    Chờ xem xét
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOvertimeStatus("APPROVED");
+                      if (!overtimeApprovedMinutes && cell.lateCheckoutMinutes) {
+                        setOvertimeApprovedMinutes(cell.lateCheckoutMinutes);
+                      }
+                    }}
+                    className={`px-2 py-1.5 rounded-lg border text-[11px] font-bold cursor-pointer ${
+                      overtimeStatus === "APPROVED"
+                        ? "bg-indigo-600 border-indigo-600 text-white"
+                        : "bg-white border-slate-200 text-slate-600"
+                    }`}
+                  >
+                    ✓ Duyệt Tăng ca
+                  </button>
+                </div>
+                {overtimeStatus === "APPROVED" && (
+                  <label className="block text-[11px] font-semibold text-indigo-900">
+                    Số phút check-out trễ được HR quy thành Tăng ca:
+                    <input
+                      type="number"
+                      min={0}
+                      value={overtimeApprovedMinutes}
+                      onChange={(e) => setOvertimeApprovedMinutes(Math.max(0, Number(e.target.value) || 0))}
+                      className="mt-1 w-full px-3 py-1.5 bg-white border border-indigo-300 rounded-lg text-xs font-mono font-bold outline-none"
+                    />
+                  </label>
+                )}
+              </div>
+            )
+          ) : (
+            <div className="p-3 rounded-xl bg-indigo-50/50 border border-indigo-200 space-y-2 text-xs">
+              <div className="font-bold text-indigo-950">
+                Yêu cầu Tăng ca (Khối Văn phòng – chỉ tính khi HR yêu cầu)
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setOvertimeStatus("NONE")}
+                  className={`px-2 py-1.5 rounded-lg border text-[11px] font-bold cursor-pointer ${
+                    overtimeStatus !== "APPROVED"
+                      ? "bg-slate-800 border-slate-800 text-white"
+                      : "bg-white border-slate-200 text-slate-600"
+                  }`}
+                >
+                  Không tăng ca
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOvertimeStatus("APPROVED")}
+                  className={`px-2 py-1.5 rounded-lg border text-[11px] font-bold cursor-pointer ${
+                    overtimeStatus === "APPROVED"
+                      ? "bg-indigo-600 border-indigo-600 text-white"
+                      : "bg-white border-slate-200 text-slate-600"
+                  }`}
+                >
+                  ✓ HR yêu cầu Tăng ca
+                </button>
+              </div>
+              {overtimeStatus === "APPROVED" && (
+                <label className="block text-[11px] font-semibold text-indigo-900">
+                  Số phút Tăng ca được tính (0 = tự tính theo giờ ra sau 17:30):
+                  <input
+                    type="number"
+                    min={0}
+                    value={overtimeApprovedMinutes}
+                    onChange={(e) => setOvertimeApprovedMinutes(Math.max(0, Number(e.target.value) || 0))}
+                    className="mt-1 w-full px-3 py-1.5 bg-white border border-indigo-300 rounded-lg text-xs font-mono font-bold outline-none"
+                  />
+                </label>
+              )}
+            </div>
+          )}
 
           <label className="block text-xs font-semibold text-slate-600">
             Lý do (bắt buộc, lưu vết) *
@@ -1036,7 +1199,7 @@ function ManualAttendanceModal({
 
   const [staffId, setStaffId] = useState(rows[0]?.staffId || "");
   const [date, setDate] = useState(todayStr);
-  const [shiftCode, setShiftCode] = useState<"SHIFT_1" | "SHIFT_2">("SHIFT_1");
+  const [shiftCode, setShiftCode] = useState<"SHIFT_1" | "SHIFT_2" | "BOTH">("SHIFT_1");
   const [checkIn, setCheckIn] = useState("08:30");
   const [checkOut, setCheckOut] = useState("17:30");
   const [reason, setReason] = useState("");
@@ -1107,14 +1270,14 @@ function ManualAttendanceModal({
             />
           </label>
           {isSales && (
-            <div className="grid grid-cols-2 gap-2">
-              {(["SHIFT_1", "SHIFT_2"] as const).map((sc) => (
+            <div className="grid grid-cols-3 gap-2">
+              {(["SHIFT_1", "SHIFT_2", "BOTH"] as const).map((sc) => (
                 <button
                   key={sc}
                   type="button"
                   onClick={() => {
                     setShiftCode(sc);
-                    setCheckIn(sc === "SHIFT_1" ? "08:30" : "12:00");
+                    setCheckIn(sc === "SHIFT_2" ? "12:00" : "08:30");
                     setCheckOut(sc === "SHIFT_1" ? "17:30" : "21:00");
                   }}
                   className={`px-2 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer ${shiftCode === sc
@@ -1122,7 +1285,11 @@ function ManualAttendanceModal({
                       : "bg-white border-slate-200 text-slate-600"
                     }`}
                 >
-                  {sc === "SHIFT_1" ? "Ca 1 (08:30–17:30)" : "Ca 2 (12:00–21:00)"}
+                  {sc === "BOTH"
+                    ? "Ca 1+2 (08:30–21:00)"
+                    : sc === "SHIFT_1"
+                    ? "Ca 1 (08:30–17:30)"
+                    : "Ca 2 (12:00–21:00)"}
                 </button>
               ))}
             </div>
