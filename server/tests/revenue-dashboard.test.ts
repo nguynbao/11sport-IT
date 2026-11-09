@@ -125,5 +125,21 @@ describe('v2.3: Đổi mật khẩu CMS & Dashboard Doanh thu chi tiết / Sản
     expect(pushP2).toBeDefined();
     expect(pushP2.stockFloor2).toBe(12);
     expect(pushP2.pushReasons.length).toBeGreaterThan(0);
+
+    // MARKETING được phép truy cập GET /api/v1/reports/push-products để quan sát Các Sản Phẩm Đang Cần Đẩy Mạnh
+    const mktLogin = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ username: 'marketing1', password: '123456' });
+    const mktToken = mktLogin.body.data.token;
+
+    const mktPushRes = await request(app)
+      .get('/api/v1/reports/push-products')
+      .set('Authorization', `Bearer ${mktToken}`);
+    expect(mktPushRes.status).toBe(200);
+    expect(mktPushRes.body.data.summary.totalPushProducts).toBeGreaterThanOrEqual(1);
+    const mktPushP2 = mktPushRes.body.data.needsPushProducts.find((r: any) => r.productCode === p2.code);
+    expect(mktPushP2).toBeDefined();
+    expect(mktPushP2.stockFloor2).toBe(12);
+    expect(mktPushP2.pushReasons.length).toBeGreaterThan(0);
   });
 });
