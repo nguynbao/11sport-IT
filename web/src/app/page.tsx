@@ -17,8 +17,10 @@ import ImportTab from "@/components/ImportTab";
 import CustomerTab from "@/components/CustomerTab";
 import ReturnExchangeTab from "@/components/ReturnExchangeTab";
 import InvoicePdfModal from "@/components/InvoicePdfModal";
+import MyAttendanceCalendar from "@/components/MyAttendanceCalendar";
 import AccountProfileTab from "@/components/AccountProfileTab";
 import WiseCalculatorStash from "@/components/WiseCalculatorStash";
+import HeaderAttendanceBar from "@/components/HeaderAttendanceBar";
 import DrawerMenu, {
   TabType,
   TabConfig,
@@ -84,8 +86,15 @@ function getDefaultTabForRole(role: UserRole): TabType {
   return "POS";
 }
 
+function isAttendanceOnlyRole(role?: UserRole): boolean {
+  return role === "MARKETING" || role === "HR" || role === "ACCOUNTANT";
+}
+
 function getRoleDisplayName(role?: UserRole): string {
   if (role === "ADMIN") return "Quản lý (ADMIN)";
+  if (role === "HR") return "Nhân sự (HR)";
+  if (role === "ACCOUNTANT") return "Kế toán (ACCOUNTANT)";
+  if (role === "MARKETING") return "Marketing (MARKETING)";
   if (role === "WAREHOUSE") return "Thủ kho (WAREHOUSE)";
   return "NV Bán hàng (SALES)";
 }
@@ -98,6 +107,7 @@ export default function WebPosHomePage() {
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [invoiceOrder, setInvoiceOrder] = useState<Order | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [showAttendanceModal, setShowAttendanceModal] = useState(false);
 
   // State form Login
   const [username, setUsername] = useState("");
@@ -110,7 +120,11 @@ export default function WebPosHomePage() {
     const savedToken = getStoredToken();
     if (savedUser && savedToken && savedToken !== "demo-token") {
       setCurrentUser(savedUser);
-      setActiveTab(getDefaultTabForRole(savedUser.role));
+      if (isAttendanceOnlyRole(savedUser.role)) {
+        setActiveDrawerPage("ATTENDANCE");
+      } else {
+        setActiveTab(getDefaultTabForRole(savedUser.role));
+      }
     } else {
       clearStoredAuth();
     }
@@ -149,7 +163,12 @@ export default function WebPosHomePage() {
       if (res.data?.token && res.data?.user) {
         setStoredAuth(res.data.token, res.data.user);
         setCurrentUser(res.data.user);
-        setActiveTab(getDefaultTabForRole(res.data.user.role));
+        if (isAttendanceOnlyRole(res.data.user.role)) {
+          setActiveDrawerPage("ATTENDANCE");
+        } else {
+          setActiveDrawerPage("NONE");
+          setActiveTab(getDefaultTabForRole(res.data.user.role));
+        }
         setPassword("");
       }
     } catch (err: any) {
@@ -195,9 +214,6 @@ export default function WebPosHomePage() {
             <h1 className="text-xl font-extrabold tracking-tight">
               ĐĂNG NHẬP 11SPORT POS & KHO
             </h1>
-            <p className="text-xs text-slate-400 mt-1">
-              Hệ thống Bán hàng tại quầy, Kiểm kho Camera & Quản lý Tồn kho
-            </p>
           </div>
 
           <form onSubmit={handleLoginSubmit} className="p-4 sm:p-6 space-y-4">
@@ -218,7 +234,7 @@ export default function WebPosHomePage() {
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Nhập username (VD: sales1, warehouse1, admin)..."
+                  placeholder="Nhập username"
                   autoComplete="username"
                   className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
                 />
@@ -250,21 +266,6 @@ export default function WebPosHomePage() {
               <LogIn className="w-4 h-4" />
               {loginLoading ? "Đang xác thực..." : "Đăng nhập vào Hệ thống"}
             </button>
-
-            <div className="pt-3 border-t border-slate-200 text-xs text-slate-500 space-y-1">
-              <div className="font-bold text-slate-700">
-                Phân quyền truy cập theo vai trò:
-              </div>
-              <div>
-                • <strong>NV Bán hàng (SALES):</strong> Bán hàng POS, Tồn kho, Tra cứu Khách & PDF, Trả/Đổi hàng.
-              </div>
-              <div>
-                • <strong>Thủ kho (WAREHOUSE):</strong> Tồn kho, Nhập kho (7 Bước & Camera OCR).
-              </div>
-              <div>
-                • <strong>Quản lý (ADMIN):</strong> Mở toàn bộ 5 chức năng & Quản trị CMS.
-              </div>
-            </div>
           </form>
         </div>
       </div>
@@ -293,15 +294,17 @@ export default function WebPosHomePage() {
                   v1.0
                 </span>
               </div>
-              <div className="hidden md:block text-xs text-slate-400">
-                Hệ thống Bán hàng, Xuất PDF (K80/A4), Camera OCR Kiểm kho & Đổi trả
-              </div>
               {/* Mobile: tên nhân sự rút gọn dưới tên thương hiệu */}
               <div className="md:hidden text-[11px] text-slate-400 truncate">
                 {currentUser.fullName} ·{" "}
                 <span className="text-emerald-400 font-bold">{currentUser.role}</span>
               </div>
             </div>
+          </div>
+
+          {/* Thanh Chấm công trực tiếp nằm ở giữa Header (Play / Pause & Đồng hồ giờ làm) */}
+          <div className="flex-1 flex items-center justify-center px-1">
+            <HeaderAttendanceBar currentUser={currentUser} />
           </div>
 
           {/* Thông tin tài khoản đang đăng nhập & Đăng xuất */}
@@ -330,49 +333,51 @@ export default function WebPosHomePage() {
           </div>
         </div>
 
-        {/* Thanh 5 Tab chức năng phân quyền theo Role (mobile: cuộn ngang) */}
-        <div className="bg-slate-800/90 border-t border-slate-800">
-          <div className="w-full mx-auto px-2 sm:px-3 lg:px-4 flex items-center gap-1 md:gap-1.5 overflow-x-auto no-scrollbar snap-x py-1.5">
-            {TABS_CONFIG.map((tab) => {
-              const Icon = tab.icon;
-              const isAllowed = tab.allowedRoles.includes(currentUser.role);
-              const isActive =
-                activeDrawerPage === "NONE" && activeTab === tab.id;
+        {/* Thanh 5 Tab chức năng phân quyền theo Role (ẩn với tài khoản Marketing / Khối văn phòng chỉ dùng Chấm công) */}
+        {!isAttendanceOnlyRole(currentUser.role) && (
+          <div className="bg-slate-800/90 border-t border-slate-800">
+            <div className="w-full mx-auto px-2 sm:px-3 lg:px-4 flex items-center gap-1 md:gap-1.5 overflow-x-auto no-scrollbar snap-x py-1.5">
+              {TABS_CONFIG.map((tab) => {
+                const Icon = tab.icon;
+                const isAllowed = tab.allowedRoles.includes(currentUser.role);
+                const isActive =
+                  activeDrawerPage === "NONE" && activeTab === tab.id;
 
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  disabled={!isAllowed}
-                  title={
-                    isAllowed
-                      ? tab.label
-                      : `Chức năng này chỉ dành cho: ${tab.roleHint}`
-                  }
-                  onClick={() => {
-                    if (isAllowed) {
-                      setActiveDrawerPage("NONE");
-                      setActiveTab(tab.id);
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    disabled={!isAllowed}
+                    title={
+                      isAllowed
+                        ? tab.label
+                        : `Chức năng này chỉ dành cho: ${tab.roleHint}`
                     }
-                  }}
-                  className={`min-h-[40px] shrink-0 snap-start px-3 md:px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 md:gap-2 whitespace-nowrap transition ${!isAllowed
-                    ? "opacity-40 cursor-not-allowed text-slate-400 bg-slate-900/40"
-                    : isActive
-                      ? "bg-emerald-600 text-white shadow"
-                      : "text-slate-300 hover:bg-slate-700/60 hover:text-white"
-                    }`}
-                >
-                  {isAllowed ? (
-                    <Icon className="w-4 h-4" />
-                  ) : (
-                    <Lock className="w-3.5 h-3.5 text-amber-400" />
-                  )}
-                  {tab.label}
-                </button>
-              );
-            })}
+                    onClick={() => {
+                      if (isAllowed) {
+                        setActiveDrawerPage("NONE");
+                        setActiveTab(tab.id);
+                      }
+                    }}
+                    className={`min-h-[40px] shrink-0 snap-start px-3 md:px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 md:gap-2 whitespace-nowrap transition ${!isAllowed
+                      ? "opacity-40 cursor-not-allowed text-slate-400 bg-slate-900/40"
+                      : isActive
+                        ? "bg-emerald-600 text-white shadow"
+                        : "text-slate-300 hover:bg-slate-700/60 hover:text-white"
+                      }`}
+                  >
+                    {isAllowed ? (
+                      <Icon className="w-4 h-4" />
+                    ) : (
+                      <Lock className="w-3.5 h-3.5 text-amber-400" />
+                    )}
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
       </header>
 
       {/* Main Content */}
@@ -381,38 +386,23 @@ export default function WebPosHomePage() {
           <AccountProfileTab
             currentUser={currentUser}
             onUserUpdated={(updated) => setCurrentUser(updated)}
-            onBack={() => setActiveDrawerPage("NONE")}
+            onBack={() =>
+              setActiveDrawerPage(
+                isAttendanceOnlyRole(currentUser.role) ? "ATTENDANCE" : "NONE"
+              )
+            }
             getRoleDisplayName={getRoleDisplayName}
           />
-        ) : activeDrawerPage === "ATTENDANCE" ? (
-          <div className="max-w-2xl mx-auto bg-white rounded-2xl border border-slate-200 p-8 text-center space-y-4 shadow-sm">
-            <div className="w-14 h-14 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center mx-auto">
-              <Clock className="w-7 h-7 text-amber-500" />
-            </div>
-            <div className="space-y-1.5">
-              <span className="inline-block text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-lg bg-amber-100 text-amber-700">
-                Chưa triển khai (Coming Soon)
-              </span>
-              <h3 className="text-lg font-extrabold text-slate-900">
-                Tính năng Chấm công ca làm việc
-              </h3>
-              <p className="text-xs text-slate-500 max-w-md mx-auto">
-                Chức năng điểm danh, chấm công nhận ca / kết ca dành cho nhân sự{" "}
-                <strong>11Sport</strong> đang trong quá trình phát triển và sẽ sớm
-                được cập nhật.
-              </p>
-            </div>
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={() => setActiveDrawerPage("NONE")}
-                className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow transition"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span>Quay lại màn hình làm việc</span>
-              </button>
-            </div>
-          </div>
+        ) : activeDrawerPage === "ATTENDANCE" ||
+          isAttendanceOnlyRole(currentUser.role) ? (
+          <MyAttendanceCalendar
+            currentUser={currentUser}
+            onBack={
+              isAttendanceOnlyRole(currentUser.role)
+                ? undefined
+                : () => setActiveDrawerPage("NONE")
+            }
+          />
         ) : !isCurrentTabAllowed ? (
           <div className="bg-white rounded-xl border border-slate-200 p-8 text-center space-y-2">
             <Lock className="w-10 h-10 text-amber-500 mx-auto" />
@@ -447,14 +437,17 @@ export default function WebPosHomePage() {
         currentUser={currentUser}
         activeDrawerPage={activeDrawerPage}
         onOpenProfile={() => setActiveDrawerPage("PROFILE")}
-        onOpenAttendance={() => setActiveDrawerPage("ATTENDANCE")}
+        onOpenAttendance={() => {
+          setDrawerOpen(false);
+          setActiveDrawerPage("ATTENDANCE");
+        }}
         onLogout={handleLogout}
         getRoleDisplayName={getRoleDisplayName}
         cmsUrl={
           process.env.NEXT_PUBLIC_CMS_URL ||
           (typeof window !== "undefined" &&
-          (window.location.hostname === "localhost" ||
-            window.location.hostname === "127.0.0.1")
+            (window.location.hostname === "localhost" ||
+              window.location.hostname === "127.0.0.1")
             ? "http://localhost:3001"
             : "https://11sport-it-m1ei.vercel.app")
         }

@@ -8,6 +8,12 @@ import { CustomerModel, ICustomer } from '../models/Customer';
 import { OrderModel, IOrder } from '../models/Order';
 import { ReturnExchangeModel, IReturnExchange } from '../models/ReturnExchange';
 import { PromotionModel, IPromotion } from '../models/Promotion';
+import { AttendanceModel, IAttendance } from '../models/Attendance';
+import { LeaveRequestModel, ILeaveRequest } from '../models/LeaveRequest';
+import { ShiftAssignmentModel, IShiftAssignment } from '../models/ShiftAssignment';
+import { ShiftHandoverModel, IShiftHandover } from '../models/ShiftHandover';
+import { HolidayModel, IHoliday } from '../models/Holiday';
+import { AttendanceConfigModel, IAttendanceConfig } from '../models/AttendanceConfig';
 import { Repository, memoryStore } from './repository';
 
 export const staffRepo = new Repository<IStaff>(StaffModel, 'staffs');
@@ -19,6 +25,12 @@ export const customerRepo = new Repository<ICustomer>(CustomerModel, 'customers'
 export const orderRepo = new Repository<IOrder>(OrderModel, 'orders');
 export const returnExchangeRepo = new Repository<IReturnExchange>(ReturnExchangeModel, 'return_exchanges');
 export const promotionRepo = new Repository<IPromotion>(PromotionModel, 'promotions');
+export const attendanceRepo = new Repository<IAttendance>(AttendanceModel, 'attendances');
+export const leaveRequestRepo = new Repository<ILeaveRequest>(LeaveRequestModel, 'leave_requests');
+export const shiftAssignmentRepo = new Repository<IShiftAssignment>(ShiftAssignmentModel, 'shift_assignments');
+export const shiftHandoverRepo = new Repository<IShiftHandover>(ShiftHandoverModel, 'shift_handovers');
+export const holidayRepo = new Repository<IHoliday>(HolidayModel, 'holidays');
+export const attendanceConfigRepo = new Repository<IAttendanceConfig>(AttendanceConfigModel, 'attendance_configs');
 
 let dbMode: 'mongodb' | 'memory' = 'memory';
 let mongoMemoryServerInstance: any = null;
