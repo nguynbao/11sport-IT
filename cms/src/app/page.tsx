@@ -18,6 +18,8 @@ import StaffModule from "@/components/StaffModule";
 import StaffActivityModule from "@/components/StaffActivityModule";
 import PromotionModule from "@/components/PromotionModule";
 import DebtManagementModule from "@/components/DebtManagementModule";
+import HrmAttendanceModule from "@/components/HrmAttendanceModule";
+import HeaderAttendanceBar from "@/components/HeaderAttendanceBar";
 import InvoicePdfModal from "@/components/InvoicePdfModal";
 import {
   Boxes,
@@ -39,6 +41,7 @@ import {
   Menu,
   ChevronRight,
   X,
+  CalendarCheck,
 } from "lucide-react";
 
 type CmsModuleType =
@@ -49,11 +52,11 @@ type CmsModuleType =
   | "STAFF"
   | "ACTIVITY"
   | "PROMOTIONS"
-  | "DEBTS";
+  | "DEBTS"
+  | "HRM";
 
 const CMS_MENU_ITEMS: {
   id: CmsModuleType;
-  num: string;
   label: string;
   desc: string;
   icon: React.ComponentType<{ className?: string }>;
@@ -61,61 +64,65 @@ const CMS_MENU_ITEMS: {
 }[] = [
     {
       id: "REVENUE",
-      num: "01",
-      label: "1. Dashboard Doanh thu & SP Bán chạy / Cần đẩy",
+      label: "Dashboard Doanh thu & SP Bán chạy / Cần đẩy",
       desc: "Thống kê doanh thu, lãi gộp, xu hướng & tổng quan công nợ",
       icon: TrendingUp,
     },
     {
       id: "INVENTORY",
-      num: "02",
-      label: "2. Quản lý Kho, Giá bán & Sổ kho",
+      label: "Quản lý Kho, Giá bán & Sổ kho",
       desc: "Tồn kho Tầng 1 & Tầng 2, phiếu nhập/xuất, điều chỉnh giá",
       icon: Boxes,
     },
     {
       id: "CATEGORIES",
-      num: "03",
-      label: "3. Quản lý Category (Danh mục)",
+      label: "Quản lý Category (Danh mục)",
       desc: "Phân loại nhóm sản phẩm cầu lông & phụ kiện 11Sport",
       icon: FolderKanban,
     },
     {
       id: "ORDERS",
-      num: "04",
-      label: "4. Quản lý Đơn hàng & Trả/Đổi",
+      label: "Quản lý Đơn hàng & Trả/Đổi",
       desc: "Tra cứu hóa đơn POS, bản nháp, lịch sử trả/đổi & in PDF",
       icon: ShoppingBag,
     },
     {
       id: "STAFF",
-      num: "05",
-      label: "5. Quản lý Nhân viên & Phân quyền",
-      desc: "Tài khoản Admin, Thu ngân (Sales) & Nhân viên Kho",
+      label: "Quản lý Nhân sự & Khóa Tài khoản",
+      desc: "Danh sách nhân viên và khóa / mở khóa tài khoản",
       icon: Users,
     },
     {
+      id: "HRM",
+      label: "Chấm công, Xếp ca & Lịch lễ (HRM)",
+      desc: "Duyệt WFH, kéo-thả xếp ca tuần, quản lý ngày lễ & tạo tài khoản NV",
+      icon: CalendarCheck,
+    },
+    {
       id: "ACTIVITY",
-      num: "06",
-      label: "6. Hoạt động NV (Bán hàng / Kiểm kho)",
+      label: "Hoạt động NV (Bán hàng / Kiểm kho)",
       desc: "Nhật ký hiệu suất bán hàng & kiểm đếm kho theo nhân sự",
       icon: Activity,
     },
     {
       id: "PROMOTIONS",
-      num: "07",
-      label: "7. Chương trình Khuyến mãi",
+      label: "Chương trình Khuyến mãi",
       desc: "Cấu hình giảm giá %, giảm tiền & quà tặng kèm tự động",
       icon: Gift,
     },
     {
       id: "DEBTS",
-      num: "08",
-      label: "8. Quản lý Công nợ & Thu nợ",
+      label: "Quản lý Công nợ & Thu nợ",
       desc: "Theo dõi khách mua trước trả sau, cảnh báo quá hạn & tất toán",
       icon: Wallet,
     },
   ];
+
+const ROLE_ALLOWED_MODULES: Record<string, CmsModuleType[]> = {
+  ADMIN: ["REVENUE", "INVENTORY", "CATEGORIES", "ORDERS", "STAFF", "ACTIVITY", "PROMOTIONS", "DEBTS"],
+  ACCOUNTANT: ["REVENUE", "INVENTORY", "CATEGORIES", "ORDERS", "DEBTS"],
+  HR: ["HRM"],
+};
 
 export default function CmsDashboardPage() {
   const [activeModule, setActiveModule] = useState<CmsModuleType>("REVENUE");
@@ -145,8 +152,10 @@ export default function CmsDashboardPage() {
     try {
       const saved = getStoredUser();
       const token = getStoredToken();
-      if (saved && token && token !== "demo-admin-token" && saved.role === "ADMIN") {
+      if (saved && token && token !== "demo-admin-token" && ["ADMIN", "HR", "ACCOUNTANT"].includes(saved.role)) {
         setAdminUser(saved);
+        if (saved.role === "ACCOUNTANT") setActiveModule("REVENUE");
+        else if (saved.role === "HR") setActiveModule("HRM");
       } else {
         clearStoredAuth();
       }
@@ -187,14 +196,18 @@ export default function CmsDashboardPage() {
         }
       );
       if (res.data?.token && res.data?.user) {
-        if (res.data.user.role !== "ADMIN") {
+        const allowedRoles = ["ADMIN", "HR", "ACCOUNTANT"];
+        if (!allowedRoles.includes(res.data.user.role)) {
           setLoginError(
-            `Tài khoản "${res.data.user.username}" có vai trò ${res.data.user.role}. Chỉ Quản lý (ADMIN) mới được phép truy cập CMS!`
+            `Tài khoản "${res.data.user.username}" có vai trò ${res.data.user.role}. Chỉ Quản lý (ADMIN), Nhân sự (HR) hoặc Kế toán (ACCOUNTANT) mới được phép truy cập CMS!`
           );
           return;
         }
         setStoredAuth(res.data.token, res.data.user);
         setAdminUser(res.data.user);
+        if (res.data.user.role === "ACCOUNTANT") setActiveModule("REVENUE");
+        else if (res.data.user.role === "HR") setActiveModule("HRM");
+        else setActiveModule("REVENUE");
         setPassword("");
       }
     } catch (err: any) {
@@ -323,9 +336,6 @@ export default function CmsDashboardPage() {
             <h1 className="text-xl font-extrabold tracking-tight">
               ĐĂNG NHẬP QUẢN TRỊ 11SPORT (CMS)
             </h1>
-            <p className="text-xs text-slate-400 mt-1">
-              Dành riêng cho Quản lý / Admin (Quản lý Kho, Giá bán, Category & Nhân sự)
-            </p>
           </div>
 
           <form onSubmit={handleLoginSubmit} className="p-6 space-y-4">
@@ -346,7 +356,7 @@ export default function CmsDashboardPage() {
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Nhập username quản trị (VD: admin)..."
+                  placeholder="Nhập username"
                   autoComplete="username"
                   className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
                 />
@@ -384,8 +394,20 @@ export default function CmsDashboardPage() {
     );
   }
 
+  const userAllowedModules = adminUser?.role ? (ROLE_ALLOWED_MODULES[adminUser.role] || ["HRM"]) : [];
+  const visibleMenuItems = CMS_MENU_ITEMS.filter((item) => userAllowedModules.includes(item.id)).map(
+    (item, idx) => ({
+      ...item,
+      displayLabel: `${idx + 1}. ${item.label}`,
+    })
+  );
+  const effectiveModule: CmsModuleType = userAllowedModules.includes(activeModule)
+    ? activeModule
+    : (userAllowedModules[0] || "REVENUE");
+
   const currentMenu =
-    CMS_MENU_ITEMS.find((item) => item.id === activeModule) || CMS_MENU_ITEMS[0];
+    visibleMenuItems.find((item) => item.id === effectiveModule) ||
+    visibleMenuItems[0] || { ...CMS_MENU_ITEMS[0], displayLabel: `1. ${CMS_MENU_ITEMS[0].label}` };
   const CurrentIcon = currentMenu.icon;
 
   return (
@@ -414,10 +436,10 @@ export default function CmsDashboardPage() {
             <div className="border-l border-slate-700 pl-3">
               <div className="flex items-center gap-2">
                 <span className="font-extrabold text-sm sm:text-base tracking-tight">
-                  11SPORT ADMIN CMS
+                  11SPORT CMS
                 </span>
                 <span className="text-[10px] font-mono bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded">
-                  Admin
+                  {adminUser.role}
                 </span>
               </div>
               <button
@@ -426,16 +448,21 @@ export default function CmsDashboardPage() {
                 className="mt-0.5 inline-flex items-center gap-1.5 text-xs font-bold text-amber-300 hover:text-amber-200 transition"
               >
                 <CurrentIcon className="w-3.5 h-3.5" />
-                <span>Đang mở: {currentMenu.label}</span>
+                <span>Đang mở: {currentMenu.displayLabel}</span>
                 <ChevronRight className="w-3.5 h-3.5 opacity-75" />
               </button>
             </div>
           </div>
 
+          {/* Thanh Chấm công trực tiếp nằm ở giữa Header CMS (Play / Pause & Đồng hồ giờ làm) */}
+          <div className="flex-1 flex items-center justify-center px-2">
+            <HeaderAttendanceBar currentUser={adminUser} />
+          </div>
+
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700 text-xs">
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span className="text-slate-300 hidden md:inline">Quản trị viên:</span>
+              <span className="text-slate-300 hidden md:inline">Tài khoản:</span>
               <strong className="text-white">{adminUser.fullName}</strong>
               <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-emerald-600 text-white font-bold">
                 {adminUser.role}
@@ -484,11 +511,11 @@ export default function CmsDashboardPage() {
                 </button>
               </div>
 
-              {/* Danh sách 8 Module trong Drawer */}
+              {/* Danh sách Module trong Drawer theo quyền */}
               <nav className="p-3 space-y-1.5">
-                {CMS_MENU_ITEMS.map((item) => {
+                {visibleMenuItems.map((item) => {
                   const Icon = item.icon;
-                  const isActive = activeModule === item.id;
+                  const isActive = effectiveModule === item.id;
                   return (
                     <button
                       key={item.id}
@@ -498,21 +525,21 @@ export default function CmsDashboardPage() {
                         setIsDrawerOpen(false);
                       }}
                       className={`w-full text-left p-3 rounded-xl border transition flex items-start gap-3 ${isActive
-                          ? "bg-emerald-600 text-white border-emerald-500 shadow-lg"
-                          : "bg-slate-800/40 hover:bg-slate-800 text-slate-200 border-slate-800"
+                        ? "bg-emerald-600 text-white border-emerald-500 shadow-lg"
+                        : "bg-slate-800/40 hover:bg-slate-800 text-slate-200 border-slate-800"
                         }`}
                     >
                       <div
                         className={`p-2 rounded-lg shrink-0 mt-0.5 ${isActive
-                            ? "bg-white/20 text-white"
-                            : "bg-slate-800 text-emerald-400"
+                          ? "bg-white/20 text-white"
+                          : "bg-slate-800 text-emerald-400"
                           }`}
                       >
                         <Icon className="w-4 h-4" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-xs font-extrabold leading-snug">
-                          {item.label}
+                          {item.displayLabel}
                         </div>
                         <div
                           className={`text-[11px] mt-0.5 line-clamp-2 ${isActive ? "text-white/85" : "text-slate-400"
@@ -535,24 +562,10 @@ export default function CmsDashboardPage() {
             <div className="p-4 border-t border-slate-800 bg-slate-950/60 space-y-2.5 text-xs">
               <div className="flex items-center justify-between text-slate-300">
                 <span>Đang đăng nhập:</span>
-                <strong className="text-white">{adminUser.fullName} (ADMIN)</strong>
+                <strong className="text-white">
+                  {adminUser.fullName} ({adminUser.role})
+                </strong>
               </div>
-              <a
-                href={
-                  process.env.NEXT_PUBLIC_WEB_URL ||
-                  (typeof window !== "undefined" &&
-                  (window.location.hostname === "localhost" ||
-                    window.location.hostname === "127.0.0.1")
-                    ? "http://localhost:3000"
-                    : "https://11sport-it.vercel.app")
-                }
-                target="_blank"
-                rel="noreferrer"
-                className="w-full py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 font-extrabold flex items-center justify-center gap-2 border border-slate-700 transition"
-              >
-                <span>Mở Web POS & Kho</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
@@ -581,20 +594,21 @@ export default function CmsDashboardPage() {
 
       {/* Main Content (Nới rộng tối đa không gian hiển thị 2 bên) */}
       <main className="flex-1 max-w-[98vw] 2xl:max-w-[1880px] w-full mx-auto px-3 sm:px-5 py-5 print:p-0">
-        {activeModule === "INVENTORY" && <InventoryModule />}
-        {activeModule === "REVENUE" && (
+        {effectiveModule === "INVENTORY" && <InventoryModule />}
+        {effectiveModule === "REVENUE" && (
           <RevenueDashboardModule
             onNavigateToInventory={() => setActiveModule("INVENTORY")}
           />
         )}
-        {activeModule === "CATEGORIES" && <CategoryModule />}
-        {activeModule === "ORDERS" && (
+        {effectiveModule === "CATEGORIES" && <CategoryModule />}
+        {effectiveModule === "ORDERS" && (
           <OrdersReturnsModule onOpenInvoice={(ord) => setInvoiceOrder(ord)} />
         )}
-        {activeModule === "STAFF" && <StaffModule />}
-        {activeModule === "ACTIVITY" && <StaffActivityModule />}
-        {activeModule === "PROMOTIONS" && <PromotionModule />}
-        {activeModule === "DEBTS" && (
+        {effectiveModule === "STAFF" && <StaffModule mode="ADMIN_LOCK_ONLY" />}
+        {effectiveModule === "HRM" && <HrmAttendanceModule currentUser={adminUser} />}
+        {effectiveModule === "ACTIVITY" && <StaffActivityModule />}
+        {effectiveModule === "PROMOTIONS" && <PromotionModule />}
+        {effectiveModule === "DEBTS" && (
           <DebtManagementModule onOpenInvoice={(ord) => setInvoiceOrder(ord)} />
         )}
       </main>

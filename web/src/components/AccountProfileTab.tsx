@@ -22,7 +22,11 @@ import {
   AlertCircle,
   Hash,
   AtSign,
+  FileText,
+  Eye,
+  Download,
 } from "lucide-react";
+import ContractFilePreviewModal from "./ContractFilePreviewModal";
 
 interface AccountProfileTabProps {
   currentUser: StaffUser;
@@ -39,6 +43,28 @@ export default function AccountProfileTab({
 }: AccountProfileTabProps) {
   const [fullName, setFullName] = useState(currentUser.fullName || "");
   const [phone, setPhone] = useState(currentUser.phone || "");
+  const [email, setEmail] = useState(currentUser.email || "");
+  const [citizenId, setCitizenId] = useState(currentUser.citizenId || "");
+  const [address, setAddress] = useState(currentUser.address || "");
+  const [department, setDepartment] = useState(
+    currentUser.department ||
+      (currentUser.role === "SALES" ? "SALES" : "OFFICE")
+  );
+  const [contractType, setContractType] = useState(
+    currentUser.contractType || ""
+  );
+  const [contractStartDate, setContractStartDate] = useState(
+    currentUser.contractStartDate
+      ? String(currentUser.contractStartDate).slice(0, 10)
+      : ""
+  );
+  const [contractFileUrl, setContractFileUrl] = useState(
+    currentUser.contractFileUrl || ""
+  );
+  const [contractFileName, setContractFileName] = useState(
+    currentUser.contractFileName || ""
+  );
+  const [showContractPreview, setShowContractPreview] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileMsg, setProfileMsg] = useState<{
     type: "success" | "error";
@@ -69,6 +95,20 @@ export default function AccountProfileTab({
         if (found) {
           setFullName(found.fullName || "");
           setPhone(found.phone || "");
+          setEmail(found.email || "");
+          setCitizenId(found.citizenId || "");
+          setAddress(found.address || "");
+          setDepartment(
+            found.department || (found.role === "SALES" ? "SALES" : "OFFICE")
+          );
+          setContractType(found.contractType || "");
+          setContractStartDate(
+            found.contractStartDate
+              ? String(found.contractStartDate).slice(0, 10)
+              : ""
+          );
+          setContractFileUrl(found.contractFileUrl || "");
+          setContractFileName(found.contractFileName || "");
           const merged: StaffUser = {
             ...currentUser,
             ...found,
@@ -92,6 +132,9 @@ export default function AccountProfileTab({
 
     const cleanName = fullName.trim();
     const cleanPhone = cleanPhoneDigits(phone);
+    const cleanEmail = email.trim();
+    const cleanCitizenId = citizenId.trim();
+    const cleanAddress = address.trim();
 
     if (!cleanName) {
       setProfileMsg({
@@ -108,6 +151,9 @@ export default function AccountProfileTab({
         body: JSON.stringify({
           fullName: cleanName,
           phone: cleanPhone,
+          email: cleanEmail,
+          citizenId: cleanCitizenId,
+          address: cleanAddress,
         }),
       });
 
@@ -116,6 +162,13 @@ export default function AccountProfileTab({
         ...(res.data || {}),
         fullName: res.data?.fullName || cleanName,
         phone: res.data?.phone !== undefined ? res.data.phone : cleanPhone,
+        email: res.data?.email !== undefined ? res.data.email : cleanEmail,
+        citizenId:
+          res.data?.citizenId !== undefined
+            ? res.data.citizenId
+            : cleanCitizenId,
+        address:
+          res.data?.address !== undefined ? res.data.address : cleanAddress,
       };
 
       const token = getStoredToken();
@@ -337,32 +390,168 @@ export default function AccountProfileTab({
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
-                Số điện thoại liên hệ
-              </label>
-              <div className="relative">
-                <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
+                  Số điện thoại liên hệ
+                </label>
+                <div className="relative">
+                  <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type="tel"
+                    value={formatPhone(phone)}
+                    onChange={(e) => setPhone(cleanPhoneDigits(e.target.value))}
+                    placeholder="VD: 0901 234 567"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
+                  Email liên hệ
+                </label>
                 <input
-                  type="tel"
-                  value={formatPhone(phone)}
-                  onChange={(e) => setPhone(cleanPhoneDigits(e.target.value))}
-                  placeholder="VD: 0901 234 567"
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="VD: nhanvien@11sport.vn"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
+                  Số CCCD / CMND
+                </label>
+                <input
+                  type="text"
+                  value={citizenId}
+                  onChange={(e) => setCitizenId(e.target.value)}
+                  placeholder="Số CCCD 12 số..."
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-mono focus:border-emerald-600 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
+                  Địa chỉ thường trú
+                </label>
+                <input
+                  type="text"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="Số nhà, đường, quận/huyện..."
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
+                  Vai trò phân quyền
+                </label>
+                <input
+                  type="text"
+                  value={getRoleDisplayName(currentUser.role)}
+                  disabled
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-100 text-slate-600 text-xs font-semibold cursor-not-allowed"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
+                  Khối làm việc
+                </label>
+                <input
+                  type="text"
+                  value={
+                    department === "OFFICE"
+                      ? "Khối Văn phòng (OFFICE)"
+                      : "Khối Bán hàng (SALES)"
+                  }
+                  disabled
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-100 text-slate-600 text-xs font-semibold cursor-not-allowed"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
+                  Loại hợp đồng
+                </label>
+                <input
+                  type="text"
+                  value={
+                    contractType === "FULLTIME"
+                      ? "Chính thức"
+                      : contractType === "PROBATION"
+                      ? "Thử việc"
+                      : contractType === "INTERN"
+                      ? "Thực tập (Intern)"
+                      : contractType === "PARTTIME"
+                      ? "Bán thời gian (cũ)"
+                      : "Chưa cập nhật – liên hệ HR"
+                  }
+                  disabled
+                  className={`w-full px-3 py-2.5 rounded-xl border text-xs font-bold cursor-not-allowed ${
+                    contractType === "FULLTIME"
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      : contractType === "INTERN"
+                      ? "border-sky-200 bg-sky-50 text-sky-700"
+                      : "border-amber-200 bg-amber-50 text-amber-700"
+                  }`}
+                />
+                <p className="text-[10px] text-slate-500 mt-1">
+                  {contractType === "FULLTIME"
+                    ? "Được hưởng 1 ngày nghỉ phép có lương mỗi tháng."
+                    : "Chưa có ngày nghỉ phép có lương (chỉ dành cho nhân viên Chính thức)."}
+                </p>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
+                  Ngày bắt đầu HĐ
+                </label>
+                <input
+                  type="text"
+                  value={contractStartDate || "Chưa cập nhật"}
+                  disabled
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-100 text-slate-600 text-xs font-mono cursor-not-allowed"
                 />
               </div>
             </div>
 
             <div>
               <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
-                Vai trò phân quyền
+                File hợp đồng lao động (Chỉ xem)
               </label>
-              <input
-                type="text"
-                value={getRoleDisplayName(currentUser.role)}
-                disabled
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-100 text-slate-600 text-sm font-semibold cursor-not-allowed"
-              />
+              {contractFileUrl ? (
+                <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl border border-emerald-200 bg-emerald-50/70">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <FileText className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span className="text-xs font-bold text-slate-800 truncate">
+                      {contractFileName || "Hop-dong-lao-dong"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setShowContractPreview(true)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Xem hợp đồng</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-100 text-slate-500 text-xs italic">
+                  Chưa có file hợp đồng đính kèm (Do bộ phận Nhân sự HR cập nhật)
+                </div>
+              )}
             </div>
           </div>
 
@@ -461,6 +650,17 @@ export default function AccountProfileTab({
           </button>
         </form>
       </div>
+
+      {/* Modal Xem Hợp Đồng Lao Động (Hỗ trợ xem trước PDF, DOCX, DOC, Ảnh) */}
+      {showContractPreview && contractFileUrl && (
+        <ContractFilePreviewModal
+          staffName={fullName || currentUser.fullName}
+          fileName={contractFileName || "Hop-dong-lao-dong"}
+          fileUrl={contractFileUrl}
+          readOnlyLabel="Chế độ chỉ xem"
+          onClose={() => setShowContractPreview(false)}
+        />
+      )}
     </div>
   );
 }

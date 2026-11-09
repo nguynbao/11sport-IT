@@ -139,7 +139,7 @@ export default function DrawerMenu({
               Tiện ích nhân sự
             </div>
 
-            {/* 1. Chấm công (chưa implement) */}
+            {/* 1. Chấm công: Lịch công tháng của tôi */}
             <button
               type="button"
               onClick={() => {
@@ -165,15 +165,6 @@ export default function DrawerMenu({
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="truncate">Chấm công</span>
-                    <span
-                      className={`text-[9px] px-1.5 py-0.5 rounded font-semibold uppercase ${
-                        activeDrawerPage === "ATTENDANCE"
-                          ? "bg-white/20 text-white"
-                          : "bg-amber-500/20 text-amber-300 border border-amber-500/30"
-                      }`}
-                    >
-                      Sắp ra mắt
-                    </span>
                   </div>
                   <div
                     className={`text-[10px] font-normal truncate mt-0.5 ${
@@ -182,7 +173,7 @@ export default function DrawerMenu({
                         : "text-slate-400"
                     }`}
                   >
-                    Điểm danh ca làm việc (chưa triển khai)
+                    Lịch công tháng, đơn từ & tăng ca
                   </div>
                 </div>
               </div>

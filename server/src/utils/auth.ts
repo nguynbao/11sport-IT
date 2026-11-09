@@ -1,5 +1,7 @@
 import crypto from 'crypto';
 
+import { StaffRole, StaffDepartment } from '../models/Staff';
+
 export function hashPassword(password: string): string {
   return crypto.createHash('sha256').update(`11sport_salt_${password}`).digest('hex');
 }
@@ -12,7 +14,8 @@ export interface TokenPayload {
   userId: string;
   username: string;
   fullName: string;
-  role: 'SALES' | 'WAREHOUSE' | 'ADMIN';
+  role: StaffRole;
+  department?: StaffDepartment;
   code: string;
 }
 

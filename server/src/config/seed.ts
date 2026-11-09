@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import {
   staffRepo,
   categoryRepo,
@@ -6,6 +7,8 @@ import {
   stockMovementRepo,
   orderRepo,
   returnExchangeRepo,
+  holidayRepo,
+  getDbMode,
 } from './db';
 import { hashPassword } from '../utils/auth';
 import {
@@ -255,40 +258,169 @@ export async function ensureStandardProductCodesMigrated(): Promise<void> {
 export async function seedDatabaseIfNeeded(): Promise<void> {
   await ensureStandardProductCodesMigrated();
 
+  const isTestMemory =
+    process.env.FORCE_MEMORY_DB === 'true' || process.env.NODE_ENV === 'test';
+  const isMemoryDb = isTestMemory || getDbMode() === 'memory';
+  const isProduction = process.env.NODE_ENV === 'production';
+  const allowDemoSeed =
+    !isProduction && (isMemoryDb || process.env.SEED_DEMO_ACCOUNTS === 'true');
   const existingStaffCount = await staffRepo.countDocuments({});
-  if (existingStaffCount > 0) {
-    return;
+
+  if (existingStaffCount === 0) {
+    if (isMemoryDb) {
+      console.log('[Seed] Initializing default staff accounts (in-memory/test)...');
+
+      await staffRepo.create({
+        code: 'NV001',
+        username: 'admin',
+        passwordHash: hashPassword('admin123'),
+        fullName: 'Quản Trị Viên 11Sport',
+        phone: '0909000001',
+        role: 'ADMIN',
+        department: 'OFFICE',
+        status: 'ACTIVE',
+        contractType: 'FULLTIME',
+      });
+
+      await staffRepo.create({
+        code: 'NV002',
+        username: 'warehouse1',
+        passwordHash: hashPassword('123456'),
+        fullName: 'Lê Văn Kho',
+        phone: '0909000002',
+        role: 'WAREHOUSE',
+        department: 'OFFICE',
+        status: 'ACTIVE',
+        contractType: 'FULLTIME',
+      });
+
+      await staffRepo.create({
+        code: 'NV003',
+        username: 'sales1',
+        passwordHash: hashPassword('123456'),
+        fullName: 'Nguyễn Văn Bán',
+        phone: '0909000003',
+        role: 'SALES',
+        department: 'SALES',
+        status: 'ACTIVE',
+        contractType: 'FULLTIME',
+      });
+    } else {
+      // Trên DB thật đang trống hoàn toàn: chỉ khởi tạo 1 tài khoản admin với mật khẩu từ biến môi trường hoặc sinh ngẫu nhiên + buộc đổi mật khẩu lần đầu
+      const initialAdminPassword =
+        process.env.INITIAL_ADMIN_PASSWORD || crypto.randomBytes(16).toString('base64url');
+      await staffRepo.create({
+        code: 'NV001',
+        username: 'admin',
+        passwordHash: hashPassword(initialAdminPassword),
+        fullName: 'Quản Trị Viên 11Sport',
+        phone: '0909000001',
+        role: 'ADMIN',
+        department: 'OFFICE',
+        status: 'ACTIVE',
+        contractType: 'FULLTIME',
+        mustChangePassword: true,
+      });
+      if (!process.env.INITIAL_ADMIN_PASSWORD) {
+        console.warn(
+          `[Seed] Bootstrapped initial ADMIN account (username: admin, one-time password: ${initialAdminPassword}). Please change password immediately.`
+        );
+      }
+    }
   }
 
-  console.log('[Seed] Initializing default staff accounts (admin, warehouse1, sales1)...');
+  // Chỉ tạo các tài khoản mẫu (HR, ACCOUNTANT, MARKETING) ngoài production (trên memory/test hoặc khi bật SEED_DEMO_ACCOUNTS=true)
+  if (allowDemoSeed) {
+    const ensureStaff = async (data: {
+      username: string;
+      fullName: string;
+      phone: string;
+      role: 'HR' | 'ACCOUNTANT' | 'MARKETING' | 'SALES' | 'ADMIN';
+      department: 'OFFICE' | 'SALES';
+    }) => {
+      const existing = await staffRepo.findOne({ username: data.username });
+      if (!existing) {
+        const allStaff = await staffRepo.find({});
+        const maxCodeNum = allStaff.reduce((max, s) => {
+          const num = parseInt(String(s.code || '').replace(/\D/g, ''), 10);
+          return !isNaN(num) && num > max ? num : max;
+        }, 0);
+        const nextCode = `NV${String(maxCodeNum + 1).padStart(3, '0')}`;
+        // Trên memory/test dùng mật khẩu test cố định; trên DB thật (khi bật SEED_DEMO_ACCOUNTS=true) sinh mật khẩu ngẫu nhiên và buộc đổi lần đầu
+        const plainPassword = isMemoryDb
+          ? '123456'
+          : crypto.randomBytes(12).toString('base64url');
+        await staffRepo.create({
+          ...data,
+          code: nextCode,
+          passwordHash: hashPassword(plainPassword),
+          status: 'ACTIVE',
+          contractType: 'FULLTIME',
+          mustChangePassword: !isMemoryDb,
+        });
+      }
+    };
 
-  await staffRepo.create({
-    code: 'NV001',
-    username: 'admin',
-    passwordHash: hashPassword('admin123'),
-    fullName: 'Quản Trị Viên 11Sport',
-    phone: '0909000001',
-    role: 'ADMIN',
-    status: 'ACTIVE',
-  });
+    await ensureStaff({
+      username: 'hr',
+      fullName: 'Quản Lý Nhân Sự (HR)',
+      phone: '0909111222',
+      role: 'HR',
+      department: 'OFFICE',
+    });
 
-  await staffRepo.create({
-    code: 'NV002',
-    username: 'warehouse1',
-    passwordHash: hashPassword('123456'),
-    fullName: 'Lê Văn Kho',
-    phone: '0909000002',
-    role: 'WAREHOUSE',
-    status: 'ACTIVE',
-  });
+    await ensureStaff({
+      username: 'hr1',
+      fullName: 'Trần Thị Nhân Sự (HR)',
+      phone: '0909000004',
+      role: 'HR',
+      department: 'OFFICE',
+    });
 
-  await staffRepo.create({
-    code: 'NV003',
-    username: 'sales1',
-    passwordHash: hashPassword('123456'),
-    fullName: 'Nguyễn Văn Bán',
-    phone: '0909000003',
-    role: 'SALES',
-    status: 'ACTIVE',
-  });
+    await ensureStaff({
+      username: 'accountant1',
+      fullName: 'Phạm Thị Kế Toán',
+      phone: '0909000005',
+      role: 'ACCOUNTANT',
+      department: 'OFFICE',
+    });
+
+    await ensureStaff({
+      username: 'marketing1',
+      fullName: 'Hoàng Văn Marketing',
+      phone: '0909000006',
+      role: 'MARKETING',
+      department: 'OFFICE',
+    });
+  }
+
+  // Chuẩn hóa department / contractType cho các tài khoản cũ chưa có trường này (không tự nâng quyền role)
+  if (!isTestMemory) {
+    const allExistingStaff = await staffRepo.find({});
+    for (const st of allExistingStaff) {
+      const nextDept = st.department || (st.role === 'SALES' ? 'SALES' : 'OFFICE');
+      // Không tự gán "Chính thức": tài khoản chưa có loại hợp đồng -> Thử việc (HR cập nhật lại trong CMS)
+      const nextContract = st.contractType || 'PROBATION';
+      if (st.department !== nextDept || st.contractType !== nextContract) {
+        await staffRepo.updateById(st._id, {
+          department: nextDept,
+          contractType: nextContract,
+        });
+      }
+    }
+
+    const holidayCount = await holidayRepo.countDocuments({});
+    if (holidayCount === 0) {
+      const defaultHolidays = [
+        { date: '2026-01-01', name: 'Tết Dương Lịch', description: 'Nghỉ lễ toàn công ty (1 ngày)' },
+        { date: '2026-04-26', name: 'Giỗ Tổ Hùng Vương (10/3 ÂL)', description: 'Nghỉ lễ theo quy định Nhà nước' },
+        { date: '2026-04-30', name: 'Ngày Giải phóng miền Nam 30/4', description: 'Nghỉ lễ 30/4 - 1/5' },
+        { date: '2026-05-01', name: 'Ngày Quốc tế Lao động 1/5', description: 'Nghỉ lễ 30/4 - 1/5' },
+        { date: '2026-09-02', name: 'Quốc khánh 2/9', description: 'Nghỉ lễ Quốc khánh' },
+      ];
+      for (const h of defaultHolidays) {
+        await holidayRepo.create(h);
+      }
+    }
+  }
 }
