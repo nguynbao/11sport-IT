@@ -10,9 +10,10 @@ import {
   ChevronRight,
   Clock,
   UserCog,
+  Rocket,
 } from "lucide-react";
 
-export type TabType = "POS" | "INVENTORY" | "IMPORT" | "CUSTOMER" | "RETURN";
+export type TabType = "POS" | "INVENTORY" | "IMPORT" | "CUSTOMER" | "RETURN" | "PUSH_PRODUCTS";
 export type DrawerPageType = "NONE" | "PROFILE" | "ATTENDANCE";
 
 export interface TabConfig {
@@ -30,6 +31,7 @@ interface DrawerMenuProps {
   activeDrawerPage: DrawerPageType;
   onOpenProfile: () => void;
   onOpenAttendance: () => void;
+  onOpenPushProducts?: () => void;
   onLogout: () => void;
   getRoleDisplayName: (role?: UserRole) => string;
   cmsUrl?: string;
@@ -43,6 +45,7 @@ export default function DrawerMenu({
   activeDrawerPage,
   onOpenProfile,
   onOpenAttendance,
+  onOpenPushProducts,
   onLogout,
   getRoleDisplayName,
   cmsUrl = "https://11sport-it-m1ei.vercel.app",
@@ -140,6 +143,52 @@ export default function DrawerMenu({
             <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-400">
               Tiện ích nhân sự
             </div>
+
+            {currentUser.role === "MARKETING" && onOpenPushProducts && (
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenPushProducts();
+                  onClose();
+                }}
+                className={`w-full text-left px-3 py-3 rounded-xl text-xs font-bold flex items-center justify-between gap-2.5 transition ${
+                  activeDrawerPage === "NONE"
+                    ? "bg-amber-500 text-slate-950 shadow-md"
+                    : "text-slate-200 hover:bg-slate-800 hover:text-white"
+                }`}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                      activeDrawerPage === "NONE"
+                        ? "bg-slate-950/15 text-slate-950"
+                        : "bg-amber-500/15 text-amber-400"
+                    }`}
+                  >
+                    <Rocket className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="truncate">Các SP Đang Cần Đẩy Mạnh</div>
+                    <div
+                      className={`text-[10px] font-normal truncate mt-0.5 ${
+                        activeDrawerPage === "NONE"
+                          ? "text-slate-800"
+                          : "text-slate-400"
+                      }`}
+                    >
+                      Quan sát tồn kho cao, bán chậm & đọng vốn
+                    </div>
+                  </div>
+                </div>
+                <ChevronRight
+                  className={`w-4 h-4 shrink-0 ${
+                    activeDrawerPage === "NONE"
+                      ? "text-slate-950"
+                      : "text-slate-500"
+                  }`}
+                />
+              </button>
+            )}
 
             {/* 1. Chấm công: Lịch công tháng của tôi */}
             <button

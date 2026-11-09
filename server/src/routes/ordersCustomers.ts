@@ -22,6 +22,7 @@ import {
   getVariantFloorStocks,
   formatProductWithVariant,
 } from '../utils/warehouseFloor';
+import { executeUnpackSetToRetail } from '../utils/unpackSet';
 import { buildVariantKey } from '../utils/productCode';
 import { filterAndRankBySearch, normalizePhoneDigits } from '../utils/search';
 
@@ -366,31 +367,6 @@ async function prepareOrderData(body: any, isDraft: boolean) {
     const totalRequestedForVariant = (requestedQtyByVariant.get(variantKey) || 0) + qty;
     requestedQtyByVariant.set(variantKey, totalRequestedForVariant);
 
-    // Khi chốt đơn thanh toán (!isDraft): bắt buộc kiểm tra đủ tồn tại Kho Tầng 1
-    if (!isDraft) {
-      const floors = getFloorStocks(product);
-      if (floors.stockFloor1 < totalRequestedForProduct) {
-        throw new ApiError(
-          400,
-          'INSUFFICIENT_STOCK',
-          `Sản phẩm "${product.name}" không đủ tồn tại Kho Tầng 1 (Tồn Kho Tầng 1: ${floors.stockFloor1}, Yêu cầu: ${totalRequestedForProduct})`,
-          { productId: String(product._id), stockFloor1: String(floors.stockFloor1) }
-        );
-      }
-
-      if ((itemColor || itemSize) && floors.variants.length > 0) {
-        const vStocks = getVariantFloorStocks(product, itemColor, itemSize);
-        if (vStocks.stockFloor1 < totalRequestedForVariant) {
-          throw new ApiError(
-            400,
-            'INSUFFICIENT_STOCK',
-            `Sản phẩm "${displayProductName}" không đủ tồn tại Kho Tầng 1 (Tồn Kho Tầng 1: ${vStocks.stockFloor1}, Yêu cầu: ${totalRequestedForVariant})`,
-            { productId: String(product._id), stockFloor1: String(vStocks.stockFloor1) }
-          );
-        }
-      }
-    }
-
     const originalUnitPrice = Math.round(Number(product.sellingPrice) || 0);
 
     if (isGift) {
@@ -455,6 +431,108 @@ async function prepareOrderData(body: any, isDraft: boolean) {
     }
 
     productUpdates.push({ product, qty, isGift, color: itemColor, size: itemSize });
+  }
+
+  // Khi chốt đơn thanh toán (!isDraft): kiểm tra đủ tồn tại Kho Tầng 1 hoặc tự động tách từ Sản phẩm Bộ ở Kho Tầng 1
+  const autoUnpackPlans: {
+    retailProduct: any;
+    parentProduct: any;
+    setsToUnpack: number;
+    color: string;
+    size: string;
+  }[] = [];
+
+  if (!isDraft) {
+    const checkedKeys = new Set<string>();
+    const plannedSetsBySetId = new Map<string, number>();
+
+    for (const upd of productUpdates) {
+      const { product, color: itemColor, size: itemSize } = upd;
+      const prodKey = String(product._id);
+      const floors = getFloorStocks(product);
+      const hasVariant = Boolean((itemColor || itemSize) && floors.variants.length > 0);
+      const checkKey = hasVariant
+        ? `${prodKey}__${buildVariantKey(itemColor, itemSize)}`
+        : prodKey;
+
+      if (checkedKeys.has(checkKey)) continue;
+      checkedKeys.add(checkKey);
+
+      const displayProductName = formatProductWithVariant(product.name, itemColor, itemSize);
+      const vStocks = hasVariant ? getVariantFloorStocks(product, itemColor, itemSize) : floors;
+      const currentRetailFloor1 = vStocks.stockFloor1;
+      const neededQty = hasVariant
+        ? requestedQtyByVariant.get(checkKey) || 0
+        : requestedQtyByProdId.get(prodKey) || 0;
+
+      if (currentRetailFloor1 < neededQty) {
+        const parentSetId = String(product.parentSetProductId || '').trim();
+        const packSize = Math.max(0, Math.round(Number(product.packSize) || 0));
+        const parentProduct =
+          parentSetId && packSize > 0 && parentSetId !== prodKey
+            ? await productRepo.findById(parentSetId)
+            : null;
+
+        if (parentProduct && packSize > 0) {
+          const shortage = neededQty - currentRetailFloor1;
+          const setsNeeded = Math.ceil(shortage / packSize);
+          const parentId = String(parentProduct._id);
+          const parentFloors = getFloorStocks(parentProduct);
+          const parentHasVariants =
+            parentFloors.variants.length > 0 && Boolean(itemColor || itemSize);
+          const parentTargetStocks = parentHasVariants
+            ? getVariantFloorStocks(parentProduct, itemColor, itemSize)
+            : parentFloors;
+
+          const directSetInCart = requestedQtyByProdId.get(parentId) || 0;
+          const alreadyPlannedSets = plannedSetsBySetId.get(parentId) || 0;
+          const parentAvailFloor1 = Math.max(
+            0,
+            parentTargetStocks.stockFloor1 - directSetInCart - alreadyPlannedSets
+          );
+          const parentAvailFloor2 = parentTargetStocks.stockFloor2;
+
+          if (parentAvailFloor1 < setsNeeded) {
+            if (parentAvailFloor2 >= setsNeeded) {
+              throw new ApiError(
+                400,
+                'INSUFFICIENT_SET_FLOOR1_NEED_TRANSFER',
+                `Sản phẩm lẻ "${displayProductName}" không đủ tại Kho Tầng 1 (còn ${currentRetailFloor1} ${product.unit}, cần ${neededQty}) và Sản phẩm bộ "${parentProduct.name}" (${parentProduct.code}) đã hết tại Kho Tầng 1 (đang còn ${parentAvailFloor2} ${parentProduct.unit} ở Kho Tầng 2). Vui lòng làm phiếu chuyển tầng Sản phẩm bộ xuống Kho Tầng 1 trước khi bán!`,
+                {
+                  productId: prodKey,
+                  stockFloor1: String(currentRetailFloor1),
+                  parentSetProductId: parentId,
+                  parentSetStockFloor2: String(parentAvailFloor2),
+                }
+              );
+            }
+
+            throw new ApiError(
+              400,
+              'INSUFFICIENT_STOCK',
+              `Sản phẩm "${displayProductName}" không đủ tồn tại Kho Tầng 1 (Tồn lẻ Tầng 1: ${currentRetailFloor1} ${product.unit}, Sản phẩm bộ "${parentProduct.name}" ở Tầng 1 còn: ${parentAvailFloor1} ${parentProduct.unit} = +${parentAvailFloor1 * packSize} ${product.unit}, Yêu cầu: ${neededQty} ${product.unit})`,
+              { productId: prodKey, stockFloor1: String(currentRetailFloor1) }
+            );
+          }
+
+          plannedSetsBySetId.set(parentId, alreadyPlannedSets + setsNeeded);
+          autoUnpackPlans.push({
+            retailProduct: product,
+            parentProduct,
+            setsToUnpack: setsNeeded,
+            color: itemColor,
+            size: itemSize,
+          });
+        } else {
+          throw new ApiError(
+            400,
+            'INSUFFICIENT_STOCK',
+            `Sản phẩm "${hasVariant ? displayProductName : product.name}" không đủ tồn tại Kho Tầng 1 (Tồn Kho Tầng 1: ${currentRetailFloor1}, Yêu cầu: ${neededQty})`,
+            { productId: prodKey, stockFloor1: String(currentRetailFloor1) }
+          );
+        }
+      }
+    }
   }
 
   const rawSubtotal = orderItems.reduce(
@@ -565,6 +643,7 @@ async function prepareOrderData(body: any, isDraft: boolean) {
     finalCustomerName,
     orderItems,
     productUpdates,
+    autoUnpackPlans,
     rawSubtotal,
     itemDiscountTotal,
     subtotal,
@@ -609,6 +688,23 @@ async function applyPaidOrderSideEffects(
       totalSpent: (customer.totalSpent || 0) + prepared.totalAmount,
       lastOrderAt: new Date(),
     });
+  }
+
+  // Thực hiện tự động tách Bộ -> Lẻ tại Kho Tầng 1 trước khi trừ tồn bán hàng
+  if (Array.isArray(prepared.autoUnpackPlans) && prepared.autoUnpackPlans.length > 0) {
+    for (const plan of prepared.autoUnpackPlans) {
+      await executeUnpackSetToRetail({
+        retailProductId: String(plan.retailProduct._id),
+        setsToUnpack: plan.setsToUnpack,
+        warehouse: 'FLOOR_1',
+        color: plan.color,
+        size: plan.size,
+        reason: `Tự động tách bộ khi bán đơn ${orderCode}`,
+        actorId: user?.userId || 'SALES',
+        actorName: user?.fullName || 'Nhân viên bán hàng',
+        actorRole: user?.role || 'SALES',
+      });
+    }
   }
 
   for (const { product, qty, isGift, color, size } of prepared.productUpdates) {

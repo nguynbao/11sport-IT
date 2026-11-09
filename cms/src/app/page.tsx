@@ -19,6 +19,7 @@ import StaffActivityModule from "@/components/StaffActivityModule";
 import PromotionModule from "@/components/PromotionModule";
 import DebtManagementModule from "@/components/DebtManagementModule";
 import HrmAttendanceModule from "@/components/HrmAttendanceModule";
+import MarketingPushProductsModule from "@/components/MarketingPushProductsModule";
 import HeaderAttendanceBar from "@/components/HeaderAttendanceBar";
 import InvoicePdfModal from "@/components/InvoicePdfModal";
 import {
@@ -42,6 +43,7 @@ import {
   ChevronRight,
   X,
   CalendarCheck,
+  Rocket,
 } from "lucide-react";
 
 type CmsModuleType =
@@ -53,7 +55,8 @@ type CmsModuleType =
   | "ACTIVITY"
   | "PROMOTIONS"
   | "DEBTS"
-  | "HRM";
+  | "HRM"
+  | "PUSH_PRODUCTS";
 
 const CMS_MENU_ITEMS: {
   id: CmsModuleType;
@@ -64,9 +67,15 @@ const CMS_MENU_ITEMS: {
 }[] = [
     {
       id: "REVENUE",
-      label: "Dashboard Doanh thu & SP Bán chạy / Cần đẩy",
+      label: "Dashboard Doanh thu & SP Bán chạy",
       desc: "Thống kê doanh thu, lãi gộp, xu hướng & tổng quan công nợ",
       icon: TrendingUp,
+    },
+    {
+      id: "PUSH_PRODUCTS",
+      label: "Các Sản Phẩm Đang Cần Đẩy Mạnh",
+      desc: "Quan sát các mặt hàng tồn kho cao, bán chậm, đọng vốn hoặc nằm ở Kho Tầng 2",
+      icon: Rocket,
     },
     {
       id: "INVENTORY",
@@ -122,6 +131,7 @@ const ROLE_ALLOWED_MODULES: Record<string, CmsModuleType[]> = {
   ADMIN: ["REVENUE", "INVENTORY", "CATEGORIES", "ORDERS", "STAFF", "ACTIVITY", "PROMOTIONS", "DEBTS"],
   ACCOUNTANT: ["REVENUE", "INVENTORY", "CATEGORIES", "ORDERS", "DEBTS"],
   HR: ["HRM"],
+  MARKETING: ["PUSH_PRODUCTS"],
 };
 
 export default function CmsDashboardPage() {
@@ -152,10 +162,11 @@ export default function CmsDashboardPage() {
     try {
       const saved = getStoredUser();
       const token = getStoredToken();
-      if (saved && token && token !== "demo-admin-token" && ["ADMIN", "HR", "ACCOUNTANT"].includes(saved.role)) {
+      if (saved && token && token !== "demo-admin-token" && ["ADMIN", "HR", "ACCOUNTANT", "MARKETING"].includes(saved.role)) {
         setAdminUser(saved);
         if (saved.role === "ACCOUNTANT") setActiveModule("REVENUE");
         else if (saved.role === "HR") setActiveModule("HRM");
+        else if (saved.role === "MARKETING") setActiveModule("PUSH_PRODUCTS");
       } else {
         clearStoredAuth();
       }
@@ -196,10 +207,10 @@ export default function CmsDashboardPage() {
         }
       );
       if (res.data?.token && res.data?.user) {
-        const allowedRoles = ["ADMIN", "HR", "ACCOUNTANT"];
+        const allowedRoles = ["ADMIN", "HR", "ACCOUNTANT", "MARKETING"];
         if (!allowedRoles.includes(res.data.user.role)) {
           setLoginError(
-            `Tài khoản "${res.data.user.username}" có vai trò ${res.data.user.role}. Chỉ Quản lý (ADMIN), Nhân sự (HR) hoặc Kế toán (ACCOUNTANT) mới được phép truy cập CMS!`
+            `Tài khoản "${res.data.user.username}" có vai trò ${res.data.user.role}. Chỉ Quản lý (ADMIN), Nhân sự (HR), Kế toán (ACCOUNTANT) hoặc Marketing (MARKETING) mới được phép truy cập CMS!`
           );
           return;
         }
@@ -207,6 +218,7 @@ export default function CmsDashboardPage() {
         setAdminUser(res.data.user);
         if (res.data.user.role === "ACCOUNTANT") setActiveModule("REVENUE");
         else if (res.data.user.role === "HR") setActiveModule("HRM");
+        else if (res.data.user.role === "MARKETING") setActiveModule("PUSH_PRODUCTS");
         else setActiveModule("REVENUE");
         setPassword("");
       }
@@ -611,6 +623,7 @@ export default function CmsDashboardPage() {
         {effectiveModule === "DEBTS" && (
           <DebtManagementModule onOpenInvoice={(ord) => setInvoiceOrder(ord)} />
         )}
+        {effectiveModule === "PUSH_PRODUCTS" && <MarketingPushProductsModule />}
       </main>
 
       {/* Modal Đổi mật khẩu Quản trị viên (Header CMS) */}

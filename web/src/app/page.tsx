@@ -17,6 +17,7 @@ import InventoryTab from "@/components/InventoryTab";
 import ImportTab from "@/components/ImportTab";
 import CustomerTab from "@/components/CustomerTab";
 import ReturnExchangeTab from "@/components/ReturnExchangeTab";
+import MarketingPushProductsTab from "@/components/MarketingPushProductsTab";
 import InvoicePdfModal from "@/components/InvoicePdfModal";
 import MyAttendanceCalendar from "@/components/MyAttendanceCalendar";
 import AccountProfileTab from "@/components/AccountProfileTab";
@@ -42,6 +43,8 @@ import {
   AlertCircle,
   Clock,
   ArrowLeft,
+  Rocket,
+  CalendarCheck,
 } from "lucide-react";
 
 const TABS_CONFIG: TabConfig[] = [
@@ -84,11 +87,12 @@ const TABS_CONFIG: TabConfig[] = [
 
 function getDefaultTabForRole(role: UserRole): TabType {
   if (role === "WAREHOUSE") return "IMPORT";
+  if (role === "MARKETING") return "PUSH_PRODUCTS";
   return "POS";
 }
 
 function isAttendanceOnlyRole(role?: UserRole): boolean {
-  return role === "MARKETING" || role === "HR" || role === "ACCOUNTANT";
+  return role === "HR" || role === "ACCOUNTANT";
 }
 
 function getRoleDisplayName(role?: UserRole): string {
@@ -301,7 +305,9 @@ export default function WebPosHomePage() {
 
   const currentTabConfig = TABS_CONFIG.find((t) => t.id === activeTab);
   const isCurrentTabAllowed =
-    currentTabConfig?.allowedRoles.includes(currentUser.role) ?? false;
+    currentUser.role === "MARKETING"
+      ? activeTab === "PUSH_PRODUCTS"
+      : currentTabConfig?.allowedRoles.includes(currentUser.role) ?? false;
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-100">
@@ -369,50 +375,85 @@ export default function WebPosHomePage() {
           </div>
         </div>
 
-        {/* Thanh 5 Tab chức năng phân quyền theo Role (ẩn với tài khoản Marketing / Khối văn phòng chỉ dùng Chấm công) */}
-        {!isAttendanceOnlyRole(currentUser.role) && (
+        {/* Thanh Tab chức năng dành riêng cho Marketing: Các Sản Phẩm Đang Cần Đẩy Mạnh & Chấm công */}
+        {currentUser.role === "MARKETING" ? (
           <div className="bg-slate-800/90 border-t border-slate-800">
-            <div className="w-full mx-auto px-2 sm:px-3 lg:px-4 flex items-center gap-1 md:gap-1.5 overflow-x-auto no-scrollbar snap-x py-1.5">
-              {TABS_CONFIG.map((tab) => {
-                const Icon = tab.icon;
-                const isAllowed = tab.allowedRoles.includes(currentUser.role);
-                const isActive =
-                  activeDrawerPage === "NONE" && activeTab === tab.id;
-
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    disabled={!isAllowed}
-                    title={
-                      isAllowed
-                        ? tab.label
-                        : `Chức năng này chỉ dành cho: ${tab.roleHint}`
-                    }
-                    onClick={() => {
-                      if (isAllowed) {
-                        setActiveDrawerPage("NONE");
-                        setActiveTab(tab.id);
-                      }
-                    }}
-                    className={`min-h-[40px] shrink-0 snap-start px-3 md:px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 md:gap-2 whitespace-nowrap transition ${!isAllowed
-                      ? "opacity-40 cursor-not-allowed text-slate-400 bg-slate-900/40"
-                      : isActive
-                        ? "bg-emerald-600 text-white shadow"
-                        : "text-slate-300 hover:bg-slate-700/60 hover:text-white"
-                      }`}
-                  >
-                    {isAllowed ? (
-                      <Icon className="w-4 h-4" />
-                    ) : (
-                      <Lock className="w-3.5 h-3.5 text-amber-400" />
-                    )}
-                    {tab.label}
-                  </button>
-                );
-              })}
+            <div className="w-full mx-auto px-2 sm:px-3 lg:px-4 flex items-center gap-1.5 overflow-x-auto no-scrollbar snap-x py-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveDrawerPage("NONE");
+                  setActiveTab("PUSH_PRODUCTS");
+                }}
+                className={`min-h-[40px] shrink-0 snap-start px-3.5 md:px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 whitespace-nowrap transition cursor-pointer ${
+                  activeDrawerPage === "NONE" && activeTab === "PUSH_PRODUCTS"
+                    ? "bg-amber-400 text-slate-950 shadow"
+                    : "text-slate-300 hover:bg-slate-700/60 hover:text-white"
+                }`}
+              >
+                <Rocket className="w-4 h-4" />
+                1. Các Sản Phẩm Đang Cần Đẩy Mạnh
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveDrawerPage("ATTENDANCE")}
+                className={`min-h-[40px] shrink-0 snap-start px-3.5 md:px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 whitespace-nowrap transition cursor-pointer ${
+                  activeDrawerPage === "ATTENDANCE"
+                    ? "bg-emerald-600 text-white shadow"
+                    : "text-slate-300 hover:bg-slate-700/60 hover:text-white"
+                }`}
+              >
+                <CalendarCheck className="w-4 h-4" />
+                2. Chấm công & Lịch công tháng
+              </button>
             </div>
           </div>
+        ) : (
+          /* Thanh 5 Tab chức năng phân quyền theo Role (ẩn với tài khoản Khối văn phòng chỉ dùng Chấm công) */
+          !isAttendanceOnlyRole(currentUser.role) && (
+            <div className="bg-slate-800/90 border-t border-slate-800">
+              <div className="w-full mx-auto px-2 sm:px-3 lg:px-4 flex items-center gap-1 md:gap-1.5 overflow-x-auto no-scrollbar snap-x py-1.5">
+                {TABS_CONFIG.map((tab) => {
+                  const Icon = tab.icon;
+                  const isAllowed = tab.allowedRoles.includes(currentUser.role);
+                  const isActive =
+                    activeDrawerPage === "NONE" && activeTab === tab.id;
+
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      disabled={!isAllowed}
+                      title={
+                        isAllowed
+                          ? tab.label
+                          : `Chức năng này chỉ dành cho: ${tab.roleHint}`
+                      }
+                      onClick={() => {
+                        if (isAllowed) {
+                          setActiveDrawerPage("NONE");
+                          setActiveTab(tab.id);
+                        }
+                      }}
+                      className={`min-h-[40px] shrink-0 snap-start px-3 md:px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 md:gap-2 whitespace-nowrap transition ${!isAllowed
+                        ? "opacity-40 cursor-not-allowed text-slate-400 bg-slate-900/40"
+                        : isActive
+                          ? "bg-emerald-600 text-white shadow"
+                          : "text-slate-300 hover:bg-slate-700/60 hover:text-white"
+                        }`}
+                    >
+                      {isAllowed ? (
+                        <Icon className="w-4 h-4" />
+                      ) : (
+                        <Lock className="w-3.5 h-3.5 text-amber-400" />
+                      )}
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )
         )}
       </header>
 
@@ -463,6 +504,7 @@ export default function WebPosHomePage() {
               <CustomerTab onOpenInvoice={(ord) => setInvoiceOrder(ord)} />
             )}
             {activeTab === "RETURN" && <ReturnExchangeTab />}
+            {activeTab === "PUSH_PRODUCTS" && <MarketingPushProductsTab />}
           </>
         )}
       </main>
@@ -478,6 +520,11 @@ export default function WebPosHomePage() {
         onOpenAttendance={() => {
           setDrawerOpen(false);
           setActiveDrawerPage("ATTENDANCE");
+        }}
+        onOpenPushProducts={() => {
+          setDrawerOpen(false);
+          setActiveDrawerPage("NONE");
+          setActiveTab("PUSH_PRODUCTS");
         }}
         onLogout={handleLogout}
         getRoleDisplayName={getRoleDisplayName}

@@ -530,12 +530,42 @@ export function exportRevenueDashboard(data: RevenueDashboardData, from?: string
       title: "TOP SẢN PHẨM ĐANG BÁN CHẠY (BEST SELLERS)",
       subtitle,
     }),
-    buildSheet("SP Can day manh", pushCols, data.needsPushProducts, {
-      title: "DANH SÁCH SẢN PHẨM CẦN ĐẨY MẠNH / XẢ HÀNG / CHUYỂN TẦNG",
-      subtitle,
-    }),
     buildSheet("Theo Category", catCols, data.byCategory, {
       title: "DOANH THU THEO DANH MỤC (CATEGORY)",
+      subtitle,
+    }),
+  ]);
+}
+
+export function exportPushProducts(
+  rows: ProductSalesAnalysisRow[],
+  from?: string,
+  to?: string
+): void {
+  const period =
+    from || to ? `${from || "Đầu kỳ"} → ${to || "Hiện tại"}` : "Toàn thời gian";
+  const subtitle = `Kỳ thống kê: ${period} · Thời điểm xuất: ${new Date().toLocaleString("vi-VN")}`;
+
+  const pushCols: ExcelColumn<ProductSalesAnalysisRow>[] = [
+    { header: "Thứ tự", value: (_p, i) => i + 1, format: "int", width: 8 },
+    { header: "Mã hàng", value: (p) => p.productCode },
+    { header: "Tên sản phẩm", value: (p) => p.productName, width: 45 },
+    { header: "Category", value: (p) => p.categoryName },
+    { header: "ĐVT", value: (p) => p.unit, width: 8 },
+    { header: "Tồn Kho Tầng 1", value: (p) => p.stockFloor1, format: "int", total: true },
+    { header: "Tồn Kho Tầng 2", value: (p) => p.stockFloor2, format: "int", total: true },
+    { header: "Tổng tồn", value: (p) => p.stock, format: "int", total: true },
+    { header: "SL đã bán trong kỳ", value: (p) => p.netSoldQty, format: "int", total: true },
+    { header: "Giá gốc", value: (p) => p.costPrice, format: "money" },
+    { header: "Giá bán lẻ", value: (p) => p.sellingPrice, format: "money" },
+    { header: "Vốn tồn đọng", value: (p) => p.inventoryCostValue, format: "money", total: true },
+    { header: "Lý do cần đẩy mạnh", value: (p) => p.pushReasons.join("; "), width: 45 },
+    { header: "Đề xuất hành động", value: (p) => p.suggestedAction, width: 45 },
+  ];
+
+  downloadExcel(excelFileName("Marketing_SP_CanDayManh"), [
+    buildSheet("SP Can day manh", pushCols, rows, {
+      title: "DANH SÁCH CÁC SẢN PHẨM ĐANG CẦN ĐẨY MẠNH (BỘ PHẬN MARKETING)",
       subtitle,
     }),
   ]);
