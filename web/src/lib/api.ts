@@ -1173,7 +1173,7 @@ export interface AttendanceData {
   staffName: string;
   department: Department;
   date: string;
-  shiftCode: "SHIFT_1" | "SHIFT_2";
+  shiftCode: "SHIFT_1" | "SHIFT_2" | "BOTH";
   checkInTime: string;
   workStartTime: string;
   checkOutTime?: string;
@@ -1181,13 +1181,17 @@ export interface AttendanceData {
   status: "ON_TIME" | "LATE" | "EARLY_LEAVE" | "COMPLETED";
   lateMinutes: number;
   earlyMinutes: number;
+  lateCheckoutMinutes?: number;
+  lateCheckoutReason?: string;
+  overtimeStatus?: "NONE" | "PENDING" | "APPROVED" | "REJECTED";
+  overtimeApprovedMinutes?: number;
   totalWorkHours: number;
 }
 
 export async function checkInApi(params: {
   latitude?: number;
   longitude?: number;
-  shiftCode?: "SHIFT_1" | "SHIFT_2";
+  shiftCode?: "SHIFT_1" | "SHIFT_2" | "BOTH";
 }): Promise<{ attendance: AttendanceData; isWfh: boolean; message: string }> {
   const res = await apiRequest<{ attendance: AttendanceData; isWfh: boolean; message: string }>(
     "/attendance/check-in",
@@ -1202,6 +1206,7 @@ export async function checkInApi(params: {
 export async function checkOutApi(params?: {
   forceEarly?: boolean;
   earlyReason?: string;
+  lateCheckoutReason?: string;
   latitude?: number;
   longitude?: number;
 }): Promise<{ attendance: AttendanceData; message: string }> {
@@ -1218,7 +1223,7 @@ export async function checkOutApi(params?: {
 export async function getTodayAttendanceApi(): Promise<{
   date: string;
   attendance: AttendanceData | null;
-  assignedShift?: "SHIFT_1" | "SHIFT_2" | "OFF" | null;
+  assignedShift?: "SHIFT_1" | "SHIFT_2" | "BOTH" | "OFF" | null;
   isWfhToday: boolean;
   isEarlyApprovedToday?: boolean;
   handoverStatus: "PENDING" | "ACCEPTED" | null;
@@ -1226,7 +1231,7 @@ export async function getTodayAttendanceApi(): Promise<{
   const res = await apiRequest<{
     date: string;
     attendance: AttendanceData | null;
-    assignedShift?: "SHIFT_1" | "SHIFT_2" | "OFF" | null;
+    assignedShift?: "SHIFT_1" | "SHIFT_2" | "BOTH" | "OFF" | null;
     isWfhToday: boolean;
     isEarlyApprovedToday?: boolean;
     handoverStatus: "PENDING" | "ACCEPTED" | null;
@@ -1236,7 +1241,7 @@ export async function getTodayAttendanceApi(): Promise<{
 
 export async function createHandoverApi(data: {
   date?: string;
-  shiftCode?: "SHIFT_1" | "SHIFT_2";
+  shiftCode?: "SHIFT_1" | "SHIFT_2" | "BOTH";
   cashBalance: number;
   discrepancies: Array<{ productCode: string; expected: number; actual: number; note?: string }>;
   notes?: string;
@@ -1346,12 +1351,16 @@ export interface MyCalendarLeave {
 export interface MyCalendarCell {
   code: MyCalendarCellCode;
   attendanceId?: string;
-  shiftCode?: "SHIFT_1" | "SHIFT_2" | null;
+  shiftCode?: "SHIFT_1" | "SHIFT_2" | "BOTH" | null;
   checkIn?: string | null;
   checkOut?: string | null;
   hours?: number;
   lateMinutes?: number;
   earlyMinutes?: number;
+  lateCheckoutMinutes?: number;
+  lateCheckoutReason?: string;
+  overtimeStatus?: "NONE" | "PENDING" | "APPROVED" | "REJECTED";
+  overtimeApprovedMinutes?: number;
   checkInType?: "STANDARD" | "WFH";
   isHolidayWork?: boolean;
   isPaidHoliday?: boolean;
@@ -1412,7 +1421,7 @@ export interface MyCalendarData {
     summary: MyCalendarSummary;
   } | null;
   rules: {
-    shifts: { SHIFT_1: string; SHIFT_2: string };
+    shifts: { SHIFT_1: string; SHIFT_2: string; BOTH?: string };
     lateToleranceMinutes: number;
     overtimeMinMinutes: number;
     holidayWorkPayMultiplier: number;

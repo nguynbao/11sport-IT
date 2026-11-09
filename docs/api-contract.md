@@ -727,29 +727,36 @@
 
 #### A. Chấm công (`/attendance`)
 - `POST /api/v1/attendance/check-in`
-  - Body: `{ "latitude": number, "longitude": number, "clientIp"?: string, "shiftCode"?: "SHIFT_1 | SHIFT_2" }`
+  - Body: `{ "latitude": number, "longitude": number, "clientIp"?: string, "shiftCode"?: "SHIFT_1 | SHIFT_2 | BOTH" }`
   - Headers: `Authorization: Bearer <token>`
   - Logic xác thực:
     - **Đối chiếu lịch phân ca (`ShiftAssignment`) theo ngày**:
       - Nếu nhân viên đã có bản ghi phân ca trong ngày (`shiftAssignmentRepo`):
         - Nếu `shiftCode === "OFF"` (ngày nghỉ theo lịch xếp ca) -> Chặn check-in với lỗi `400 SCHEDULED_DAY_OFF`.
-        - Nếu `shiftCode` là `"SHIFT_1"` hoặc `"SHIFT_2"`: Bắt buộc áp dụng ca đã được phân công; nếu client truyền `shiftCode` khác với ca đã xếp -> Trả lỗi `400 SHIFT_MISMATCH`.
+        - Nếu `shiftCode` là `"SHIFT_1"`, `"SHIFT_2"`, hoặc `"BOTH"` (`Ca 1 + Ca 2: 08:30–21:00`): Bắt buộc áp dụng đúng ca đã được phân công (`selectedShift = assignedShift.shiftCode`); nếu client truyền `shiftCode` khác với ca đã xếp -> Trả lỗi `400 SHIFT_MISMATCH`.
       - Chỉ khi chưa có lịch phân ca cho ngày đó: Tự động nhận diện ca làm việc theo giờ bấm Check-in (với `SALES`, nếu không truyền `shiftCode`, gán `SHIFT_1` nếu trước `11:30`, `SHIFT_2` nếu từ `11:30` trở đi; khối `OFFICE` mặc định `SHIFT_1`).
     - Nếu nhân viên (cả khối `OFFICE` và `SALES`) có đơn `WFH` được `HR` duyệt trong ngày hôm nay (kiểm tra hoàn toàn phía server qua `approvedWfh`): Bỏ qua kiểm tra GPS & IP (ghi nhận `checkInType: "WFH"`). Server tuyệt đối không nhận cờ `bypassNetwork` từ client.
     - **Kiểm tra 2 Cơ sở theo cặp (`Location 1 đi với Mạng 1`, `Location 2 đi với Mạng 2`)**:
       - Nếu không có đơn WFH: Vị trí GPS và IP Wi-Fi của nhân viên phải đồng thời khớp với **Cơ sở 1 (`ATTENDANCE_OFFICE_LAT/LNG` + `ATTENDANCE_ALLOWED_IPS`)** HOẶC đồng thời khớp với **Cơ sở 2 (`ATTENDANCE_OFFICE_2_LAT/LNG` + `ATTENDANCE_ALLOWED_IPS_2`)**.
       - Nếu đứng ở Location 1 nhưng dùng Mạng 2 (hoặc ngược lại đứng ở Location 2 nhưng dùng Mạng 1) -> Trả lỗi `400 WIFI_IP_NOT_ALLOWED`. Nếu nằm ngoài bán kính của cả 2 cơ sở -> Trả lỗi `400 LOCATION_OUT_OF_RANGE`.
-    - Làm tròn check-in sớm: Nếu check-in trước giờ bắt đầu ca (`08:30` hoặc `12:00`), mốc tính công `workStartTime` tự động quy về `08:30` hoặc `12:00`.
-  - Response: `{ "data": { "attendance": { "id": "...", "date": "2026-11-05", "shiftCode": "SHIFT_1 | SHIFT_2", "checkInTime": "...", "workStartTime": "...", "status": "ON_TIME | LATE", "lateMinutes": 0, "checkInType": "STANDARD | WFH" } } }`
+    - Làm tròn check-in sớm: Nếu check-in trước giờ bắt đầu ca (`08:30` đối với `SHIFT_1` / `BOTH`, hoặc `12:00` đối với `SHIFT_2`), mốc tính công `workStartTime` tự động quy về `08:30` hoặc `12:00`.
+  - Response: `{ "data": { "attendance": { "id": "...", "date": "2026-11-05", "shiftCode": "SHIFT_1 | SHIFT_2 | BOTH", "checkInTime": "...", "workStartTime": "...", "status": "ON_TIME | LATE", "lateMinutes": 0, "checkInType": "STANDARD | WFH" } } }`
 
 - `POST /api/v1/attendance/check-out`
-  - Body: `{ "forceEarly": boolean, "earlyReason": string, "latitude"?: number, "longitude"?: number, "clientIp"?: string }`
+  - Body: `{ "forceEarly"?: boolean, "earlyReason"?: string, "lateCheckoutReason"?: string, "latitude"?: number, "longitude"?: number, "clientIp"?: string }`
   - Logic xác thực:
     - Kiểm tra vị trí & mạng 2 cơ sở (`Location 1 + Mạng 1` hoặc `Location 2 + Mạng 2`) tương tự lúc Check-in đối với nhân viên làm việc tại cơ sở (`checkInType !== "WFH"` và không có đơn `WFH` đã duyệt trong ngày; không chấp nhận cờ `bypassNetwork` từ client).
-    - Chặn bấm Check-out & Bàn giao ca khi chưa đủ giờ làm việc của ca (`17:30` đối với Ca 1, `21:00` đối với Ca 2), trừ khi nhân viên có đơn xin về sớm (`type: "EARLY"`) đã được `HR` duyệt trong ngày.
+    - Chặn bấm Check-out & Bàn giao ca khi chưa đủ giờ làm việc của ca (`17:30` đối với `SHIFT_1`, `21:00` đối với `SHIFT_2` và `BOTH` `08:30–21:00`), trừ khi nhân viên có đơn xin về sớm (`type: "EARLY"`) đã được `HR` duyệt trong ngày hoặc xác nhận về sớm (`forceEarly = true`).
+    - **Kiểm tra Check-out trễ & Tăng ca**:
+      - **Làm 2 ca (`BOTH`: `08:30–21:00`)**: Là ca đã ghi trong bảng xếp ca, **không tính là tăng ca** (`overtimeMinutes = 0`).
+      - **Khối Bán hàng (`SALES`) làm 1 ca (`SHIFT_1` hoặc `SHIFT_2`)**:
+        - Chỉ được phép check-out trễ tối đa **5 phút** sau giờ kết thúc ca (`<= 17:35` với Ca 1, `<= 21:05` với Ca 2).
+        - Nếu check-out trễ **quá 5 phút** (`lateCheckoutMinutes > 5`) mà chưa truyền `lateCheckoutReason`: Trả lỗi `400 LATE_CHECKOUT_REASON_REQUIRED` kèm `{ lateCheckoutMinutes }` để giao diện yêu cầu nhân viên nhập lý do vì sao check-out trễ.
+        - Khi có `lateCheckoutReason`: Lưu `lateCheckoutMinutes`, `lateCheckoutReason` và đặt `overtimeStatus: "PENDING"` để HR xem xét và quyết định số giờ/phút check-out trễ đó có được tính là tăng ca hay không.
+      - **Khối Văn phòng (`OFFICE`)**: Tự check-out muộn sau `17:30` không tự động tính tăng ca; chỉ được tính tăng ca khi **được HR yêu cầu / phê duyệt** (`overtimeStatus: "APPROVED"`).
     - Nếu nhân viên là `SALES` và đã đủ giờ kết ca: Khi bấm nút Pause (Check-out) trên Header mà chưa lập biên bản bàn giao Kho Tầng 1 trong ca, trả `400 HANDOVER_REQUIRED` để giao diện tự động mở popup Bàn giao ca (`ShiftHandoverModal`) mà không cần nút `Bàn giao K1` trên Header. Sau khi gửi biên bản bàn giao, tự động hoàn tất Check-out.
     - Tự động trừ giờ nghỉ trưa: Với nhân viên `OFFICE`, khoảng thời gian `12:00 - 13:00` (1h; ca sáng `08:30 - 12:00`, ca chiều `13:00 - 17:30`) được tự động loại khỏi giờ làm thực tế.
-  - Response: `{ "data": { "attendance": { "id": "...", "checkOutTime": "...", "totalWorkHours": 8, "status": "COMPLETED | EARLY_LEAVE" } } }`
+  - Response: `{ "data": { "attendance": { "id": "...", "checkOutTime": "...", "totalWorkHours": 8, "status": "COMPLETED | EARLY_LEAVE", "lateCheckoutMinutes": 0, "lateCheckoutReason": "", "overtimeStatus": "NONE | PENDING | APPROVED | REJECTED", "overtimeApprovedMinutes": 0 } } }`
 
 - `GET /api/v1/attendance/today`
   - Trả về trạng thái chấm công của nhân viên hôm nay, ca được phân công, trạng thái WFH, và thông tin bàn giao ca (nếu là Sales).
@@ -777,17 +784,17 @@
 - `GET /api/v1/attendance/my-calendar` (Mọi nhân viên trừ `ADMIN`) — **Lịch công tháng của chính mình** (Web)
   - Query: `?month=11&year=2026`.
   - Response: `{ "data": { month, year, days[], row (cùng cấu trúc 1 dòng của /attendance/timesheet), rules: { shifts, lateToleranceMinutes, overtimeMinMinutes, holidayWorkPayMultiplier: 4 } } }`
-  - Bổ sung cho mỗi `Cell` (cả ở `/attendance/timesheet`): `overtimeMinutes` (số phút làm sau giờ kết thúc ca, chỉ tính khi ≥ `ATTENDANCE_OVERTIME_MIN_MINUTES`, mặc định 30), `earlyApproved`, `lateApproved` (có đơn xin về sớm / đi trễ đã duyệt), `leaveRequests[]` (`{ id, type, status, reason, reviewNote }` mọi trạng thái).
+  - Bổ sung cho mỗi `Cell` (cả ở `/attendance/timesheet`): `overtimeMinutes` (số phút tăng ca đã được HR duyệt; ca `BOTH` không tính tăng ca; `SALES` 1 ca chỉ tính khi HR duyệt phần check-out trễ > 5p; `OFFICE` chỉ tính khi được HR yêu cầu), `overtimeStatus` (`NONE | PENDING | APPROVED | REJECTED`), `overtimeApprovedMinutes`, `lateCheckoutMinutes`, `lateCheckoutReason`, `earlyApproved`, `lateApproved` (có đơn xin về sớm / đi trễ đã duyệt), `leaveRequests[]` (`{ id, type, status, reason, reviewNote }` mọi trạng thái).
   - Bổ sung `summary`: `overtimeDays`, `overtimeMinutes`, `pendingRequests`, `paidLeaveEntitled` (0/1), `paidLeaveUsed`, `paidLeaveForfeited` (1 nếu tháng đã qua mà không dùng).
   - `Cell.code = "PAID_LEAVE"`: nghỉ phép có lương đã duyệt → **+1 công** (cộng vào `paidUnits`).
   - Đi làm ngày lễ chính thức hiển thị nhãn **x4 lương** (100% lương ngày lễ + ≥ 300% lương làm việc ngày lễ).
 
-- `PATCH /api/v1/attendance/:id` (Role `HR` hoặc `ADMIN`) — **Điều chỉnh giờ công** (quên check-out, sai giờ)
-  - Body: `{ "checkIn"?: "08:30", "checkOut"?: "17:30", "shiftCode"?: "SHIFT_1|SHIFT_2", "reason": "string (bắt buộc)" }`
-  - Server tự tính lại `workStartTime`, `lateMinutes`, `earlyMinutes`, `totalWorkHours`, `status`; ghi vết `adjustedBy`, `adjustedByName`, `adjustedAt`, `adjustReason`.
+- `PATCH /api/v1/attendance/:id` (Role `HR` hoặc `ADMIN`) — **Điều chỉnh giờ công & Xét duyệt tăng ca** (quên check-out, sai giờ, xét duyệt check-out trễ của Sales hoặc giao tăng ca cho Văn phòng)
+  - Body: `{ "checkIn"?: "08:30", "checkOut"?: "17:30", "shiftCode"?: "SHIFT_1|SHIFT_2|BOTH", "overtimeStatus"?: "NONE|PENDING|APPROVED|REJECTED", "overtimeApprovedMinutes"?: number, "reason": "string (bắt buộc)" }`
+  - Server tự tính lại `workStartTime`, `lateMinutes`, `earlyMinutes`, `totalWorkHours`, `status`, cập nhật trạng thái & số phút tăng ca (`overtimeStatus`, `overtimeApprovedMinutes`); ghi vết `adjustedBy`, `adjustedByName`, `adjustedAt`, `adjustReason`.
 
 - `POST /api/v1/attendance/manual` (Role `HR` hoặc `ADMIN`) — **Chấm công bù** cho nhân viên quên chấm công
-  - Body: `{ "staffId": "...", "date": "2026-11-05", "shiftCode": "SHIFT_1", "checkIn": "08:30", "checkOut": "17:30", "reason": "string (bắt buộc)" }`
+  - Body: `{ "staffId": "...", "date": "2026-11-05", "shiftCode": "SHIFT_1|SHIFT_2|BOTH", "checkIn": "08:30", "checkOut": "17:30", "overtimeStatus"?: "NONE|APPROVED", "overtimeApprovedMinutes"?: number, "reason": "string (bắt buộc)" }`
   - Lỗi: `400 ALREADY_CHECKED_IN` nếu ngày đó đã có bản ghi (dùng PATCH để sửa).
 
 - `GET /api/v1/attendance/config`

@@ -105,7 +105,7 @@ export interface AttendanceRecord {
   staffName: string;
   department: Department;
   date: string;
-  shiftCode: "SHIFT_1" | "SHIFT_2";
+  shiftCode: "SHIFT_1" | "SHIFT_2" | "BOTH";
   checkInTime: string;
   workStartTime: string;
   checkOutTime?: string;
@@ -113,6 +113,10 @@ export interface AttendanceRecord {
   status: "ON_TIME" | "LATE" | "EARLY_LEAVE" | "COMPLETED";
   lateMinutes: number;
   earlyMinutes: number;
+  lateCheckoutMinutes?: number;
+  lateCheckoutReason?: string;
+  overtimeStatus?: "NONE" | "PENDING" | "APPROVED" | "REJECTED";
+  overtimeApprovedMinutes?: number;
   lunchPauseMinutes: number;
   totalWorkHours: number;
   notes?: string;
@@ -1564,12 +1568,17 @@ export type TimesheetCellCode =
 export interface TimesheetCell {
   code: TimesheetCellCode;
   attendanceId?: string;
-  shiftCode?: "SHIFT_1" | "SHIFT_2" | null;
+  shiftCode?: "SHIFT_1" | "SHIFT_2" | "BOTH" | null;
   checkIn?: string | null;
   checkOut?: string | null;
   hours?: number;
   lateMinutes?: number;
   earlyMinutes?: number;
+  lateCheckoutMinutes?: number;
+  lateCheckoutReason?: string;
+  overtimeStatus?: "NONE" | "PENDING" | "APPROVED" | "REJECTED";
+  overtimeApprovedMinutes?: number;
+  overtimeMinutes?: number;
   checkInType?: "STANDARD" | "WFH";
   isHolidayWork?: boolean;
   /** Ngày lễ chính thức được nghỉ hưởng nguyên lương (tính 1 công) */
@@ -1658,7 +1667,14 @@ export async function fetchTimesheetApi(params: {
 
 export async function adjustAttendanceApi(
   id: string,
-  data: { checkIn?: string; checkOut?: string; shiftCode?: "SHIFT_1" | "SHIFT_2"; reason: string }
+  data: {
+    checkIn?: string;
+    checkOut?: string;
+    shiftCode?: "SHIFT_1" | "SHIFT_2" | "BOTH";
+    overtimeStatus?: "NONE" | "PENDING" | "APPROVED" | "REJECTED";
+    overtimeApprovedMinutes?: number;
+    reason: string;
+  }
 ): Promise<AttendanceRecord> {
   const res = await apiRequest<AttendanceRecord>(`/attendance/${id}`, {
     method: "PATCH",
@@ -1670,9 +1686,11 @@ export async function adjustAttendanceApi(
 export async function createManualAttendanceApi(data: {
   staffId: string;
   date: string;
-  shiftCode?: "SHIFT_1" | "SHIFT_2";
+  shiftCode?: "SHIFT_1" | "SHIFT_2" | "BOTH";
   checkIn: string;
   checkOut?: string;
+  overtimeStatus?: "NONE" | "APPROVED";
+  overtimeApprovedMinutes?: number;
   reason: string;
 }): Promise<AttendanceRecord> {
   const res = await apiRequest<AttendanceRecord>("/attendance/manual", {

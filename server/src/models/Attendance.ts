@@ -1,8 +1,9 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
-export type ShiftCode = 'SHIFT_1' | 'SHIFT_2';
+export type ShiftCode = 'SHIFT_1' | 'SHIFT_2' | 'BOTH';
 export type AttendanceCheckInType = 'STANDARD' | 'WFH';
 export type AttendanceStatus = 'ON_TIME' | 'LATE' | 'EARLY_LEAVE' | 'COMPLETED';
+export type OvertimeStatus = 'NONE' | 'PENDING' | 'APPROVED' | 'REJECTED';
 
 export interface IAttendance extends Document {
   staffId: string;
@@ -21,6 +22,10 @@ export interface IAttendance extends Document {
   status: AttendanceStatus;
   lateMinutes: number;
   earlyMinutes: number;
+  lateCheckoutMinutes: number;
+  lateCheckoutReason?: string;
+  overtimeStatus: OvertimeStatus;
+  overtimeApprovedMinutes: number;
   lunchPauseMinutes: number;
   totalWorkHours: number;
   notes?: string;
@@ -39,7 +44,7 @@ const AttendanceSchema = new Schema<IAttendance>(
     staffName: { type: String, required: true },
     department: { type: String, enum: ['OFFICE', 'SALES'], required: true },
     date: { type: String, required: true, index: true },
-    shiftCode: { type: String, enum: ['SHIFT_1', 'SHIFT_2'], required: true, default: 'SHIFT_1' },
+    shiftCode: { type: String, enum: ['SHIFT_1', 'SHIFT_2', 'BOTH'], required: true, default: 'SHIFT_1' },
     checkInTime: { type: Date, required: true },
     workStartTime: { type: Date, required: true },
     checkOutTime: { type: Date },
@@ -54,6 +59,14 @@ const AttendanceSchema = new Schema<IAttendance>(
     },
     lateMinutes: { type: Number, default: 0 },
     earlyMinutes: { type: Number, default: 0 },
+    lateCheckoutMinutes: { type: Number, default: 0 },
+    lateCheckoutReason: { type: String, default: '' },
+    overtimeStatus: {
+      type: String,
+      enum: ['NONE', 'PENDING', 'APPROVED', 'REJECTED'],
+      default: 'NONE',
+    },
+    overtimeApprovedMinutes: { type: Number, default: 0 },
     lunchPauseMinutes: { type: Number, default: 0 },
     totalWorkHours: { type: Number, default: 0 },
     notes: { type: String, default: '' },

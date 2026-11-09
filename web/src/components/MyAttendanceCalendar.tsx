@@ -715,10 +715,13 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
                   {data.row?.department === "SALES" ? "nghỉ đúng 1 ngày OFF theo lịch xếp ca" : "nghỉ Chủ nhật"}).
                 </p>
                 <p>
-                  • {data.rules.shifts.SHIFT_1}; {data.rules.shifts.SHIFT_2}.
+                  • {data.rules.shifts.SHIFT_1}; {data.rules.shifts.SHIFT_2}. Làm 2 ca (Ca 1 + Ca 2) theo bảng xếp ca không tính là tăng ca.
                 </p>
                 <p>
-                  • Trễ quá {data.rules.lateToleranceMinutes}p tính đi trễ. Tăng ca tính từ {data.rules.overtimeMinMinutes}p sau giờ kết ca.
+                  • Trễ quá {data.rules.lateToleranceMinutes}p tính đi trễ.{" "}
+                  {data.row?.department === "SALES"
+                    ? "Khối Bán hàng (1 ca): check-out trễ tối đa 5p; sau 5p phải nhập lý do để HR xem xét có tính tăng ca hay không."
+                    : "Khối Văn phòng: chỉ tính tăng ca khi được HR yêu cầu."}
                 </p>
                 <p>
                   •{" "}
@@ -826,7 +829,14 @@ function DayCell({
   const hasPending = (cell.leaveRequests || []).some((l) => l.status === "PENDING");
   const eventHoliday = day.holiday && !day.holiday.isOfficialDayOff ? day.holiday : null;
   const officialHoliday = day.holiday && day.holiday.isOfficialDayOff ? day.holiday : null;
-  const shiftLabel = cell.shiftCode === "SHIFT_2" ? "Ca 2" : cell.shiftCode === "SHIFT_1" ? "Ca 1" : null;
+  const shiftLabel =
+    cell.shiftCode === "BOTH"
+      ? "Ca 1 + Ca 2"
+      : cell.shiftCode === "SHIFT_2"
+      ? "Ca 2"
+      : cell.shiftCode === "SHIFT_1"
+      ? "Ca 1"
+      : null;
 
   let statusText = st.short;
   if (cell.code === "EARLY" || cell.code === "LATE_EARLY") {
@@ -889,6 +899,11 @@ function DayCell({
           {!!cell.overtimeMinutes && (
             <span className="px-1 rounded bg-indigo-600 text-white text-[9px] font-black">
               TC {fmtMinutes(cell.overtimeMinutes)}
+            </span>
+          )}
+          {!cell.overtimeMinutes && cell.overtimeStatus === "PENDING" && !!cell.lateCheckoutMinutes && (
+            <span className="px-1 rounded bg-amber-100 text-amber-800 text-[9px] font-bold">
+              ⏳ Chờ duyệt TC ({fmtMinutes(cell.lateCheckoutMinutes)})
             </span>
           )}
           {cell.isPaidHoliday && cell.code === "HOLIDAY" && (
@@ -988,7 +1003,16 @@ function DayDetailModal({
 
           <div className="space-y-1.5 text-xs">
             {cell.shiftCode && (
-              <Row icon={<Clock className="w-3.5 h-3.5" />} text={cell.shiftCode === "SHIFT_2" ? "Ca 2 (12:00 – 21:00)" : "Ca 1 (08:30 – 17:30)"} />
+              <Row
+                icon={<Clock className="w-3.5 h-3.5" />}
+                text={
+                  cell.shiftCode === "BOTH"
+                    ? "Ca 1 + Ca 2 (08:30 – 21:00)"
+                    : cell.shiftCode === "SHIFT_2"
+                    ? "Ca 2 (12:00 – 21:00)"
+                    : "Ca 1 (08:30 – 17:30)"
+                }
+              />
             )}
             {!!cell.lateMinutes && cell.lateMinutes > 0 && (
               <Row
@@ -1003,7 +1027,26 @@ function DayDetailModal({
               />
             )}
             {!!cell.overtimeMinutes && (
-              <Row icon={<Timer className="w-3.5 h-3.5 text-indigo-600" />} text={`Tăng ca ${fmtMinutes(cell.overtimeMinutes)}`} />
+              <Row
+                icon={<Timer className="w-3.5 h-3.5 text-indigo-600" />}
+                text={`Tăng ca ${fmtMinutes(cell.overtimeMinutes)} (Đã được HR phê duyệt)`}
+              />
+            )}
+            {!cell.overtimeMinutes && cell.overtimeStatus === "PENDING" && !!cell.lateCheckoutMinutes && (
+              <Row
+                icon={<Timer className="w-3.5 h-3.5 text-amber-600" />}
+                text={`Check-out trễ ${cell.lateCheckoutMinutes} phút – Đang chờ HR xem xét tính tăng ca${
+                  cell.lateCheckoutReason ? ` (Lý do: ${cell.lateCheckoutReason})` : ""
+                }`}
+              />
+            )}
+            {!cell.overtimeMinutes && cell.overtimeStatus === "REJECTED" && !!cell.lateCheckoutMinutes && (
+              <Row
+                icon={<Timer className="w-3.5 h-3.5 text-slate-500" />}
+                text={`Check-out trễ ${cell.lateCheckoutMinutes} phút – HR xác nhận không tính tăng ca${
+                  cell.lateCheckoutReason ? ` (Lý do: ${cell.lateCheckoutReason})` : ""
+                }`}
+              />
             )}
             {cell.isHolidayWork && (
               <Row

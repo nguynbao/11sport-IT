@@ -16,7 +16,7 @@ import {
 
 interface Props {
   currentUser: StaffUser | null;
-  shiftCode?: "SHIFT_1" | "SHIFT_2";
+  shiftCode?: "SHIFT_1" | "SHIFT_2" | "BOTH";
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -121,7 +121,9 @@ export default function ShiftHandoverModal({ currentUser, shiftCode = "SHIFT_1",
             <div>
               <h3 className="font-extrabold text-base">Kết Ca & Bàn Giao Kho Tầng 1</h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                {shiftCode === "SHIFT_2"
+                {shiftCode === "BOTH"
+                  ? "Ca 1 + Ca 2 (08:30 - 21:00) chốt két & đối soát Kho Tầng 1"
+                  : shiftCode === "SHIFT_2"
                   ? "Ca 2 (12:00 - 21:00) chốt két & đối soát Kho Tầng 1"
                   : "Ca 1 (08:30 - 17:30) bàn giao cho Ca 2"}
               </p>
