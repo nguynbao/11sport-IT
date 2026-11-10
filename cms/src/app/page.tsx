@@ -127,12 +127,6 @@ const CMS_MENU_ITEMS: {
       desc: "Theo dõi khách mua trước trả sau, cảnh báo quá hạn & tất toán",
       icon: Wallet,
     },
-    {
-      id: "PROFILE",
-      label: "Thông tin tài khoản cá nhân",
-      desc: "Xem hồ sơ nhân sự, hợp đồng, chế độ lương & đổi mật khẩu",
-      icon: User,
-    },
   ];
 
 const ROLE_ALLOWED_MODULES: Record<string, CmsModuleType[]> = {
@@ -426,8 +420,16 @@ export default function CmsDashboardPage() {
     : (userAllowedModules[0] || "REVENUE");
 
   const currentMenu =
-    visibleMenuItems.find((item) => item.id === effectiveModule) ||
-    visibleMenuItems[0] || { ...CMS_MENU_ITEMS[0], displayLabel: `1. ${CMS_MENU_ITEMS[0].label}` };
+    effectiveModule === "PROFILE"
+      ? {
+          id: "PROFILE" as CmsModuleType,
+          label: "Thông tin tài khoản cá nhân",
+          desc: "Xem hồ sơ nhân sự, hợp đồng, chế độ lương & đổi mật khẩu",
+          icon: User,
+          displayLabel: "Thông tin tài khoản cá nhân",
+        }
+      : visibleMenuItems.find((item) => item.id === effectiveModule) ||
+        visibleMenuItems[0] || { ...CMS_MENU_ITEMS[0], displayLabel: `1. ${CMS_MENU_ITEMS[0].label}` };
   const CurrentIcon = currentMenu.icon;
 
   return (
@@ -595,17 +597,6 @@ export default function CmsDashboardPage() {
                   {adminUser.fullName} ({adminUser.role})
                 </strong>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsDrawerOpen(false);
-                  setActiveModule("PROFILE");
-                }}
-                className="w-full py-2 px-3 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 font-bold flex items-center justify-center gap-1.5 border border-emerald-500/30 transition cursor-pointer"
-              >
-                <User className="w-3.5 h-3.5" />
-                Thông tin tài khoản cá nhân
-              </button>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"

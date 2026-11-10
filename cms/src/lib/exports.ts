@@ -268,7 +268,7 @@ export function exportImports(imports: any[]) {
 const formatOrderItemsDetail = (o: Order): string => {
   if (!Array.isArray(o.items) || o.items.length === 0) return "";
   return o.items
-    .map((it) => {
+    .map((it, idx) => {
       const variant = formatVariantLabel(it.color, it.size);
       const variantPart = variant && variant !== "Mặc định" ? ` [${variant}]` : "";
       const giftTag = it.isGift || it.discountType === "GIFT" ? " (Hàng tặng)" : "";
@@ -277,9 +277,10 @@ const formatOrderItemsDetail = (o: Order): string => {
         Number(it.lineTotal) || (Number(it.unitPrice) || 0) * qty;
       const returnedPart =
         Number(it.returnedQuantity) > 0 ? ` (Đã trả: ${it.returnedQuantity})` : "";
-      return `${it.productCode ? `[${it.productCode}] ` : ""}${it.productName}${variantPart}${giftTag} x${qty} (${lineTotal.toLocaleString("vi-VN")}đ)${returnedPart}`;
+      const prefix = o.items.length > 1 ? `${idx + 1}. ` : "";
+      return `${prefix}${it.productCode ? `[${it.productCode}] ` : ""}${it.productName}${variantPart}${giftTag} x${qty} (${lineTotal.toLocaleString("vi-VN")}đ)${returnedPart}`;
     })
-    .join(" | ");
+    .join("\n");
 };
 
 export function exportOrders(orders: Order[]) {

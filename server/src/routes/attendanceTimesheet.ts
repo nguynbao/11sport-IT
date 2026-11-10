@@ -235,8 +235,13 @@ export async function buildTimesheet(params: {
       const leaves = leaveByStaff.get(staffId) || new Map();
       const allLeavesOfStaff = allLeavesByStaff.get(staffId) || new Map<string, any[]>();
       const assigns = assignByStaff.get(staffId) || new Map();
-      // Chỉ dùng hireDate (nếu có cấu hình ngày vào làm thực tế), không dùng createdAt (ngày tạo/seed DB) để tránh chặn công lễ các tháng trong năm
-      const joinedStr = staff.hireDate ? toDateStr(new Date(staff.hireDate)) : '1970-01-01';
+      // Chỉ dùng contractStartDate (hoặc hireDate nếu có), không dùng createdAt (ngày tạo/seed DB) để tránh chặn công lễ các tháng trong năm
+      const rawStartDate = staff.contractStartDate || staff.hireDate;
+      const joinedStr = rawStartDate
+        ? typeof rawStartDate === 'string' && /^\d{4}-\d{2}-\d{2}/.test(rawStartDate)
+          ? rawStartDate.slice(0, 10)
+          : toDateStr(new Date(rawStartDate))
+        : '1970-01-01';
 
       const summary = {
         standardDays: 0,

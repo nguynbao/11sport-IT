@@ -898,3 +898,8 @@
 - `POST /api/v1/holidays` (Role `HR` hoặc `ADMIN`)
   - Body: `{ "date": "2026-01-01", "name": "Tết Dương Lịch", "note": "Nghỉ lễ toàn quốc" }`.
 - `DELETE /api/v1/holidays/:id` (Role `HR` hoặc `ADMIN`).
+
+#### E. Kiểm tra Phiên bản Build trên Web & CMS (`GET /api/version`)
+- `GET /api/version` (Next.js App Router endpoint trên `web/` và `cms/`, header `Cache-Control: no-store, no-cache, must-revalidate`)
+  - Response: `{ "buildId": "string", "timestamp": "ISO-8601" }`
+  - Dùng cho `<VersionChecker />` trên thiết bị di động & máy trạm kiểm tra khi `visibilitychange` / `focus` hoặc định kỳ để hiển thị thanh thông báo cập nhật phiên bản mới.
