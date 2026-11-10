@@ -114,6 +114,7 @@ shiftsRouter.post('/shifts/preferences', async (req, res, next) => {
     for (const ym of monthsInWeek) {
       const usedOutsideWeek = await getSalesMonthlyUnpaidOffDates(String(staff._id), ym, {
         excludeShiftDates: weekDateSet,
+        includePendingLeave: true,
       });
       const offDatesInMonthThisWeek = offItems
         .map((item: any) => String(item.date))
@@ -250,8 +251,11 @@ shiftsRouter.get('/shifts/my-schedule', async (req, res, next) => {
 
     for (const ym of monthsInWeek) {
       const [usedTotalSet, usedOutsideSet] = await Promise.all([
-        getSalesMonthlyUnpaidOffDates(String(user.userId), ym),
-        getSalesMonthlyUnpaidOffDates(String(user.userId), ym, { excludeShiftDates: weekDateSet }),
+        getSalesMonthlyUnpaidOffDates(String(user.userId), ym, { includePendingLeave: true }),
+        getSalesMonthlyUnpaidOffDates(String(user.userId), ym, {
+          excludeShiftDates: weekDateSet,
+          includePendingLeave: true,
+        }),
       ]);
       byMonth[ym] = {
         limit: SALES_MAX_UNPAID_OFF_PER_MONTH,
@@ -361,8 +365,11 @@ shiftsRouter.get('/shifts/schedule', async (req, res, next) => {
       const byMonth: Record<string, { limit: number; usedTotal: number; usedOutsideWeek: number; remainingForWeek: number }> = {};
       for (const ym of monthsInWeek) {
         const [usedTotalSet, usedOutsideSet] = await Promise.all([
-          getSalesMonthlyUnpaidOffDates(sid, ym),
-          getSalesMonthlyUnpaidOffDates(sid, ym, { excludeShiftDates: weekDateSet }),
+          getSalesMonthlyUnpaidOffDates(sid, ym, { includePendingLeave: true }),
+          getSalesMonthlyUnpaidOffDates(sid, ym, {
+            excludeShiftDates: weekDateSet,
+            includePendingLeave: true,
+          }),
         ]);
         byMonth[ym] = {
           limit: SALES_MAX_UNPAID_OFF_PER_MONTH,
@@ -472,7 +479,10 @@ shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
         problems.push(`đang nghỉ ${offCount} ngày trong tuần (tối đa ${SALES_MAX_UNPAID_OFF_PER_MONTH} ngày/tháng)`);
       }
       for (const ym of monthsInWeek) {
-        const usedOutside = await getSalesMonthlyUnpaidOffDates(sid, ym, { excludeShiftDates: weekDateSet });
+        const usedOutside = await getSalesMonthlyUnpaidOffDates(sid, ym, {
+          excludeShiftDates: weekDateSet,
+          includePendingLeave: true,
+        });
         const offInMonthThisWeek = offDatesInWeek.filter((d) => d.startsWith(`${ym}-`) && !usedOutside.has(d));
         const totalInMonth = usedOutside.size + offInMonthThisWeek.length;
         if (totalInMonth > SALES_MAX_UNPAID_OFF_PER_MONTH) {

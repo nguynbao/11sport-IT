@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import VersionChecker from "@/components/VersionChecker";
 
 export const metadata: Metadata = {
   title: "11Sport CMS — Hệ thống Quản trị Kho, Danh mục, Đơn hàng & Nhân sự",
@@ -22,7 +23,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="vi">
-      <body className="min-h-screen antialiased font-sans">{children}</body>
+      <body className="min-h-screen antialiased font-sans">
+        {children}
+        <VersionChecker />
+      </body>
     </html>
   );
 }

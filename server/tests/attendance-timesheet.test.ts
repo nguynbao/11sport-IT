@@ -594,4 +594,43 @@ describe('Bảng công tháng (Timesheet), Điều chỉnh giờ công & Chấm 
     expect(patchWfh.status).toBe(200);
     expect(patchWfh.body.data.checkInType).toBe('WFH');
   });
+
+  it('15. Đọc contractStartDate đã lưu khi tính công lễ và quyền nghỉ phép có lương (paidLeaveEntitled)', async () => {
+    const createRes = await request(app)
+      .post('/api/v1/staff')
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({
+        username: 'office_future_start',
+        password: '123456',
+        fullName: 'Nhân Viên Bắt Đầu Tháng 10',
+        role: 'MARKETING',
+        department: 'OFFICE',
+        contractType: 'FULLTIME',
+        contractStartDate: '2026-10-01',
+      });
+    expect(createRes.status).toBe(201);
+    const newStaffId = createRes.body.data._id;
+
+    // Xem tháng 9/2026 (trước contractStartDate 2026-10-01): không được cộng công lễ 01-02/09 và không có paidLeaveEntitled
+    const sepTs = await request(app)
+      .get('/api/v1/attendance/timesheet?month=9&year=2026&department=OFFICE')
+      .set('Authorization', `Bearer ${hrToken}`);
+    expect(sepTs.status).toBe(200);
+    const sepRow = sepTs.body.data.rows.find((r: any) => r.staffId === newStaffId);
+    expect(sepRow).toBeDefined();
+    expect(sepRow.summary.holidayPaidDays).toBe(0);
+    expect(sepRow.summary.paidUnits).toBe(0);
+    expect(sepRow.summary.paidLeaveEntitled).toBe(0);
+    expect(sepRow.cells['2026-09-01'].code).toBe('DAY_OFF');
+    expect(sepRow.cells['2026-09-02'].code).toBe('DAY_OFF');
+
+    // Xem tháng 10/2026 (từ tháng bắt đầu hợp đồng): được cấp paidLeaveEntitled = 1
+    const octTs = await request(app)
+      .get('/api/v1/attendance/timesheet?month=10&year=2026&department=OFFICE')
+      .set('Authorization', `Bearer ${hrToken}`);
+    expect(octTs.status).toBe(200);
+    const octRow = octTs.body.data.rows.find((r: any) => r.staffId === newStaffId);
+    expect(octRow).toBeDefined();
+    expect(octRow.summary.paidLeaveEntitled).toBe(1);
+  });
 });

@@ -58,7 +58,7 @@ export default function AccountProfileTab({
   const [address, setAddress] = useState(currentUser.address || "");
   const [department, setDepartment] = useState(
     currentUser.department ||
-      (currentUser.role === "SALES" ? "SALES" : "OFFICE")
+    (currentUser.role === "SALES" ? "SALES" : "OFFICE")
   );
   const [contractType, setContractType] = useState(
     currentUser.contractType || ""
@@ -392,11 +392,10 @@ export default function AccountProfileTab({
 
             {profileMsg && (
               <div
-                className={`p-3 rounded-xl text-xs font-medium flex items-start gap-2 border ${
-                  profileMsg.type === "success"
-                    ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-                    : "bg-red-50 border-red-200 text-red-700"
-                }`}
+                className={`p-3 rounded-xl text-xs font-medium flex items-start gap-2 border ${profileMsg.type === "success"
+                  ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                  : "bg-red-50 border-red-200 text-red-700"
+                  }`}
               >
                 {profileMsg.type === "success" ? (
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
@@ -532,9 +531,6 @@ export default function AccountProfileTab({
                   <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-tight">
                     Hồ sơ Công việc, Hợp đồng &amp; Chế độ
                   </h3>
-                  <p className="text-[11px] text-slate-500">
-                    Thông tin do bộ phận Nhân sự (HR) quản lý — Nhân viên chỉ xem
-                  </p>
                 </div>
               </div>
             </div>
@@ -585,13 +581,12 @@ export default function AccountProfileTab({
                 </div>
                 <div className="mt-1">
                   <span
-                    className={`inline-block px-2 py-0.5 rounded-md text-xs font-bold ${
-                      contractType === "FULLTIME"
-                        ? "bg-emerald-100 text-emerald-800"
-                        : contractType === "INTERN"
-                          ? "bg-sky-100 text-sky-800"
-                          : "bg-amber-100 text-amber-800"
-                    }`}
+                    className={`inline-block px-2 py-0.5 rounded-md text-xs font-bold ${contractType === "FULLTIME"
+                      ? "bg-emerald-100 text-emerald-800"
+                      : contractType === "INTERN"
+                        ? "bg-sky-100 text-sky-800"
+                        : "bg-amber-100 text-amber-800"
+                      }`}
                   >
                     {contractLabel}
                   </span>
@@ -722,11 +717,10 @@ export default function AccountProfileTab({
 
             {pwdMsg && (
               <div
-                className={`p-3 rounded-xl text-xs font-medium flex items-start gap-2 border ${
-                  pwdMsg.type === "success"
-                    ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-                    : "bg-red-50 border-red-200 text-red-700"
-                }`}
+                className={`p-3 rounded-xl text-xs font-medium flex items-start gap-2 border ${pwdMsg.type === "success"
+                  ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                  : "bg-red-50 border-red-200 text-red-700"
+                  }`}
               >
                 {pwdMsg.type === "success" ? (
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />

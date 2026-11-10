@@ -368,4 +368,138 @@ describe('Xếp ca tuần: Sửa & Lưu hàng loạt (PUT /shifts/assign/bulk) +
     expect(sales1Tue?.preferenceShift).toBe('BOTH');
     expect(sales1Tue?.shiftCode).toBe('BOTH');
   });
+
+  it('Giữ đơn OFF (đã duyệt & đang chờ) trong tuần/tháng khi kiểm tra hạn mức xếp ca (/shifts/preferences & /shifts/assign/bulk)', async () => {
+    const createSales = async (code: string, username: string) => {
+      const created = await staffRepo.create({
+        code,
+        username,
+        passwordHash: hashPassword('123456'),
+        fullName: `Sales Quota ${code}`,
+        phone: '0909888799',
+        role: 'SALES',
+        department: 'SALES',
+        status: 'ACTIVE',
+        contractType: 'FULLTIME',
+      });
+      const login = await request(app).post('/api/v1/auth/login').send({ username, password: '123456' });
+      return { id: String(created._id), token: login.body.data.token };
+    };
+
+    // Case 1: Đơn OFF đã duyệt nằm TRONG tuần đang thay lịch, nhưng lịch mới đặt ngày đó là SHIFT_1 và chọn thêm 4 ngày OFF khác -> tổng thực tế 5 ngày -> phải chặn 400
+    const sApproved = await createSales('NV094', 'sales_approved_in_week');
+    const leave1 = await request(app)
+      .post('/api/v1/leave-requests')
+      .set('Authorization', `Bearer ${sApproved.token}`)
+      .send({ type: 'OFF', date: '2026-11-09', reason: 'Xin nghỉ Thứ 2' });
+    expect(leave1.status).toBe(201);
+    const approve1 = await request(app)
+      .patch(`/api/v1/leave-requests/${leave1.body.data._id}`)
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({ status: 'APPROVED' });
+    expect(approve1.status).toBe(200);
+
+    // Lịch tuần 09/11..15/11 đặt 2026-11-09 là SHIFT_1 nhưng đặt 4 ngày khác (10..13/11) là OFF -> vượt 4 ngày/tháng
+    const bulkExceedApprovedInWeek = await request(app)
+      .put('/api/v1/shifts/assign/bulk')
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({
+        weekStart,
+        changes: week.map((date, i) => ({
+          staffId: sApproved.id,
+          date,
+          dayOfWeek: i + 1,
+          shiftCode: i >= 1 && i <= 4 ? 'OFF' : 'SHIFT_1',
+        })),
+      });
+    expect(bulkExceedApprovedInWeek.status).toBe(400);
+
+    // Tương tự với /shifts/preferences: đặt 2026-11-09 là SHIFT_1 và 4 ngày khác là OFF -> chặn 400
+    const prefExceedApprovedInWeek = await request(app)
+      .post('/api/v1/shifts/preferences')
+      .set('Authorization', `Bearer ${sApproved.token}`)
+      .send({
+        weekStart,
+        preferences: week.map((date, i) => ({
+          date,
+          dayOfWeek: i + 1,
+          isOffRequested: i >= 1 && i <= 4,
+          preferenceShift: i >= 1 && i <= 4 ? 'OFF' : 'SHIFT_1',
+        })),
+      });
+    expect(prefExceedApprovedInWeek.status).toBe(400);
+
+    // Nhưng nếu lịch tuần đặt đúng ngày 2026-11-09 là OFF cùng 3 ngày khác (tổng 4 ngày trùng ngày đơn) -> hợp lệ 200
+    const prefOkSameDay = await request(app)
+      .post('/api/v1/shifts/preferences')
+      .set('Authorization', `Bearer ${sApproved.token}`)
+      .send({
+        weekStart,
+        preferences: week.map((date, i) => ({
+          date,
+          dayOfWeek: i + 1,
+          isOffRequested: i <= 3,
+          preferenceShift: i <= 3 ? 'OFF' : 'SHIFT_1',
+        })),
+      });
+    expect(prefOkSameDay.status).toBe(200);
+
+    // Case 2: Đơn OFF đang chờ duyệt (PENDING) trong tháng phải được tính khi kiểm tra hạn mức ở /shifts/preferences và /shifts/assign/bulk
+    const sPending = await createSales('NV095', 'sales_pending_leave');
+    const pendingLeave = await request(app)
+      .post('/api/v1/leave-requests')
+      .set('Authorization', `Bearer ${sPending.token}`)
+      .send({ type: 'OFF', date: '2026-11-25', reason: 'Xin nghỉ ngày 25/11 chờ duyệt' });
+    expect(pendingLeave.status).toBe(201);
+
+    // Đã có 1 đơn OFF PENDING ngày 25/11 -> tuần 09/11..15/11 không được xếp thêm 4 ngày OFF (vì 1 + 4 = 5 > 4)
+    const prefExceedPending = await request(app)
+      .post('/api/v1/shifts/preferences')
+      .set('Authorization', `Bearer ${sPending.token}`)
+      .send({
+        weekStart,
+        preferences: week.map((date, i) => ({
+          date,
+          dayOfWeek: i + 1,
+          isOffRequested: i < 4,
+          preferenceShift: i < 4 ? 'OFF' : 'SHIFT_1',
+        })),
+      });
+    expect(prefExceedPending.status).toBe(400);
+
+    const bulkExceedPending = await request(app)
+      .put('/api/v1/shifts/assign/bulk')
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({
+        weekStart,
+        changes: week.map((date, i) => ({
+          staffId: sPending.id,
+          date,
+          dayOfWeek: i + 1,
+          shiftCode: i < 4 ? 'OFF' : 'SHIFT_1',
+        })),
+      });
+    expect(bulkExceedPending.status).toBe(400);
+
+    // Xếp 3 ngày OFF trong tuần 09/11..15/11 (1 đơn chờ + 3 ngày ca OFF = 4) -> hợp lệ 200, và sau đó HR duyệt đơn chờ không bị lỗi
+    const bulkOkThree = await request(app)
+      .put('/api/v1/shifts/assign/bulk')
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({
+        weekStart,
+        changes: week.map((date, i) => ({
+          staffId: sPending.id,
+          date,
+          dayOfWeek: i + 1,
+          shiftCode: i < 3 ? 'OFF' : 'SHIFT_1',
+        })),
+      });
+    expect(bulkOkThree.status).toBe(200);
+
+    const approvePending = await request(app)
+      .patch(`/api/v1/leave-requests/${pendingLeave.body.data._id}`)
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({ status: 'APPROVED' });
+    expect(approvePending.status).toBe(200);
+  });
 });

@@ -51,7 +51,9 @@ export function buildSheet<T>(
         const v = r[ci];
         if (v instanceof Date) return 17;
         if (typeof v === "number") return String(Math.round(v)).length + 4;
-        return String(v ?? "").length;
+        return String(v ?? "")
+          .split("\n")
+          .reduce((m, line) => Math.max(m, line.length), 0);
       })
     );
     return Math.min(60, Math.max(8, longest + 2));
@@ -73,13 +75,16 @@ export function buildSheet<T>(
 
 const escapeXml = (s: string) =>
   s
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
     // loại ký tự điều khiển không hợp lệ trong XML
     // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/"/g, "&quot;")
+    .replace(/\n/g, "&#10;");
 
 const colLetter = (n: number) => {
   let s = "";
@@ -160,8 +165,14 @@ function sheetXml(sheet: ExcelSheet): string {
   r++;
 
   for (const row of sheet.rows) {
+    const maxLines = row.reduce<number>((max, v) => {
+      if (typeof v !== "string" || !v.includes("\n")) return max;
+      return Math.max(max, v.split("\n").length);
+    }, 1);
+    const rowHeightAttr =
+      maxLines > 1 ? ` ht="${Math.min(220, maxLines * 16 + 6)}" customHeight="1"` : "";
     out.push(
-      `<row r="${r}">${row
+      `<row r="${r}"${rowHeightAttr}>${row
         .map((v, ci) => cellXml(`${colLetter(ci)}${r}`, v, styleFor(sheet.formats[ci], false)))
         .join("")}</row>`
     );
@@ -228,17 +239,17 @@ const STYLES_XML =
   `</borders>` +
   `<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>` +
   `<cellXfs count="11">` +
-  `<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"/>` + // 0 normal
+  `<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>` + // 0 normal
   `<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>` + // 1 header
-  `<xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1"/>` + // 2 money
-  `<xf numFmtId="3" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1"/>` + // 3 int
-  `<xf numFmtId="165" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left"/></xf>` + // 4 datetime
+  `<xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>` + // 2 money
+  `<xf numFmtId="3" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>` + // 3 int
+  `<xf numFmtId="165" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>` + // 4 datetime
   `<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>` + // 5 title
   `<xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/>` + // 6 subtitle
-  `<xf numFmtId="0" fontId="4" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>` + // 7 total text
-  `<xf numFmtId="164" fontId="4" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/>` + // 8 total money
-  `<xf numFmtId="3" fontId="4" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/>` + // 9 total int
-  `<xf numFmtId="166" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left"/></xf>` + // 10 date
+  `<xf numFmtId="0" fontId="4" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>` + // 7 total text
+  `<xf numFmtId="164" fontId="4" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>` + // 8 total money
+  `<xf numFmtId="3" fontId="4" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>` + // 9 total int
+  `<xf numFmtId="166" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>` + // 10 date
   `</cellXfs>` +
   `<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>` +
   `</styleSheet>`;

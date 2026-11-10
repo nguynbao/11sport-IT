@@ -58,7 +58,6 @@ export async function getSalesMonthlyUnpaidOffDates(
     const d = String(l.date || '');
     if (!d.startsWith(monthPrefix)) continue;
     if (excludeLeaveId && String(l._id) === excludeLeaveId) continue;
-    if (excludeShiftDates && excludeShiftDates.has(d)) continue;
     const validStatus = includePending
       ? l.status === 'PENDING' || l.status === 'APPROVED'
       : l.status === 'APPROVED';
