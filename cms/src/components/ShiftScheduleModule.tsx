@@ -5,6 +5,7 @@ import {
   ShiftAssignment,
   StaffUser,
   ShiftChange,
+  StaffMonthlyOffStats,
   fetchShiftSchedule,
   saveShiftChangesApi,
 } from "@/lib/api";
@@ -91,6 +92,7 @@ export default function ShiftScheduleModule({ onScheduleUpdated }: { onScheduleU
   const [weekStart, setWeekStart] = useState<string>(() => mondayOf(new Date()));
   const [assignments, setAssignments] = useState<ShiftAssignment[]>([]);
   const [staffList, setStaffList] = useState<StaffUser[]>([]);
+  const [monthlyOffByStaff, setMonthlyOffByStaff] = useState<Record<string, StaffMonthlyOffStats>>({});
   const [nextWeekPendingStaffCount, setNextWeekPendingStaffCount] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -125,6 +127,7 @@ export default function ShiftScheduleModule({ onScheduleUpdated }: { onScheduleU
       const res = await fetchShiftSchedule(ws);
       setAssignments(res.assignments);
       setStaffList(res.staffList.filter((s) => s.role === "SALES" || s.department === "SALES"));
+      setMonthlyOffByStaff(res.monthlyOffByStaff || {});
       refreshNextWeekBadge();
     } catch (e: any) {
       showToast("err", e?.message || "Lỗi tải lịch ca");
@@ -246,26 +249,60 @@ export default function ShiftScheduleModule({ onScheduleUpdated }: { onScheduleU
     return list;
   }, [days, staffList, effectiveCode]);
 
-  // Quy định: Khối Bán hàng làm 6 ngày + nghỉ ĐÚNG 1 ngày/tuần
+  // Quy định: Khối Bán hàng xếp đủ 7 ngày/tuần, tối đa 4 ngày nghỉ không lương (OFF)/tháng (có thể gộp 4 ngày trong 1 tuần, hết 4 ngày thì các tuần sau trong tháng không nghỉ thêm)
   const weekCheck = useMemo(() => {
-    const result = new Map<string, { assigned: number; off: number; ok: boolean; message: string }>();
+    const result = new Map<
+      string,
+      { assigned: number; off: number; ok: boolean; message: string; monthUsedAfterWeek: number; monthLimit: number }
+    >();
+    const monthsInWeek = Array.from(new Set(days.map((d) => d.date.slice(0, 7))));
     for (const st of staffList) {
       const codes = days.map((d) => effectiveCode(st._id, d.date));
       const assigned = codes.filter((c) => c !== null).length;
       const off = codes.filter((c) => c === "OFF").length;
+      const stats = monthlyOffByStaff[st._id];
+      const limit = stats?.limit ?? 4;
+      const primaryOutside = stats?.usedOutsideWeek ?? 0;
+      const primaryMonth = stats?.primaryMonth || weekStart.slice(0, 7);
+      const offInPrimaryMonthThisWeek = days.filter(
+        (d, idx) => d.date.startsWith(`${primaryMonth}-`) && codes[idx] === "OFF"
+      ).length;
+      const monthUsedAfterWeek = primaryOutside + offInPrimaryMonthThisWeek;
+
       let message = "";
+      let monthQuotaExceeded = false;
       if (assigned === 0) message = "Chưa xếp lịch tuần này";
       else {
         const problems: string[] = [];
         if (assigned < 7) problems.push(`còn ${7 - assigned} ngày chưa xếp`);
-        if (off === 0) problems.push("chưa có ngày nghỉ");
-        if (off > 1) problems.push(`đang nghỉ ${off} ngày`);
+        if (off > limit) problems.push(`đang nghỉ ${off} ngày/tuần (tối đa ${limit} ngày/tháng)`);
+        for (const ym of monthsInWeek) {
+          const mStats = stats?.byMonth?.[ym];
+          const usedOutside = mStats?.usedOutsideWeek ?? (ym === primaryMonth ? primaryOutside : 0);
+          const offInMonth = days.filter((d, idx) => d.date.startsWith(`${ym}-`) && codes[idx] === "OFF").length;
+          if (usedOutside + offInMonth > limit) {
+            monthQuotaExceeded = true;
+            const rem = Math.max(0, limit - usedOutside);
+            problems.push(
+              rem === 0
+                ? `T${ym.slice(5, 7)} đã hết ${limit}/${limit} ngày OFF ở tuần khác`
+                : `T${ym.slice(5, 7)} vượt ${usedOutside + offInMonth}/${limit} ngày OFF (chỉ còn ${rem} ngày)`
+            );
+          }
+        }
         message = problems.join(", ");
       }
-      result.set(st._id, { assigned, off, ok: assigned === 7 && off === 1, message });
+      result.set(st._id, {
+        assigned,
+        off,
+        ok: assigned === 7 && off >= 0 && off <= limit && !monthQuotaExceeded,
+        message,
+        monthUsedAfterWeek,
+        monthLimit: limit,
+      });
     }
     return result;
-  }, [staffList, days, effectiveCode]);
+  }, [staffList, days, effectiveCode, monthlyOffByStaff, weekStart]);
 
   const blockingViolations = staffList.filter((st) => {
     const c = weekCheck.get(st._id);
@@ -904,10 +941,18 @@ export default function ShiftScheduleModule({ onScheduleUpdated }: { onScheduleU
                     {(() => {
                       const c = weekCheck.get(s._id);
                       if (!c) return null;
-                      if (c.ok) return <div className="text-[10px] font-bold text-emerald-600">✓ Đúng quy định</div>;
                       return (
-                        <div className={`text-[10px] font-bold ${c.assigned === 0 ? "text-amber-600" : "text-rose-600"}`}>
-                          ⚠ {c.message}
+                        <div className="space-y-0.5">
+                          <div className="text-[10px] font-semibold text-slate-500">
+                            OFF tháng: {c.monthUsedAfterWeek}/{c.monthLimit} ngày
+                          </div>
+                          {c.ok ? (
+                            <div className="text-[10px] font-bold text-emerald-600">✓ Đúng quy định</div>
+                          ) : (
+                            <div className={`text-[10px] font-bold ${c.assigned === 0 ? "text-amber-600" : "text-rose-600"}`}>
+                              ⚠ {c.message}
+                            </div>
+                          )}
                         </div>
                       );
                     })()}

@@ -7,6 +7,11 @@ import {
 } from '../config/db';
 import { ApiError } from '../utils/errors';
 import { getMergedHolidayMap } from './holidays';
+import {
+  assertPaidLeaveQuota,
+  assertSalesUnpaidOffQuota,
+  SALES_MAX_UNPAID_OFF_PER_MONTH,
+} from './leaveRequests';
 
 /**
  * Bảng công tháng toàn công ty (Timesheet) + Điều chỉnh giờ công / Chấm công bù cho HR.
@@ -230,7 +235,8 @@ export async function buildTimesheet(params: {
       const leaves = leaveByStaff.get(staffId) || new Map();
       const allLeavesOfStaff = allLeavesByStaff.get(staffId) || new Map<string, any[]>();
       const assigns = assignByStaff.get(staffId) || new Map();
-      const joinedStr = staff.createdAt ? toDateStr(new Date(staff.createdAt)) : '1970-01-01';
+      // Chỉ dùng hireDate (nếu có cấu hình ngày vào làm thực tế), không dùng createdAt (ngày tạo/seed DB) để tránh chặn công lễ các tháng trong năm
+      const joinedStr = staff.hireDate ? toDateStr(new Date(staff.hireDate)) : '1970-01-01';
 
       const summary = {
         standardDays: 0,
@@ -254,12 +260,16 @@ export async function buildTimesheet(params: {
         paidLeaveEntitled: 0,
         paidLeaveUsed: 0,
         paidLeaveForfeited: 0,
+        salesOffEntitled: department === 'SALES' ? SALES_MAX_UNPAID_OFF_PER_MONTH : 0,
+        salesOffUsed: 0,
+        salesOffRemaining: department === 'SALES' ? SALES_MAX_UNPAID_OFF_PER_MONTH : 0,
       };
       // Không suy diễn mặc định: chỉ HĐ được ghi rõ FULLTIME mới có ngày phép có lương
       const contractType = staff.contractType || 'UNKNOWN';
       const monthLastDate = days[days.length - 1]?.date || `${monthPrefix}31`;
       // Hợp đồng Chính thức: 1 ngày nghỉ phép có lương/tháng (nếu đã vào làm trong tháng)
       if (contractType === 'FULLTIME' && joinedStr <= monthLastDate) summary.paidLeaveEntitled = 1;
+      const salesUnpaidOffDates = new Set<string>();
 
       const cells: Record<string, any> = {};
 
@@ -282,14 +292,18 @@ export async function buildTimesheet(params: {
 
         // Có phải ngày làm việc theo lịch không?
         //  - VĂN PHÒNG: T2-T7 (nghỉ Chủ nhật bắt buộc); ngày lễ chính thức được nghỉ.
-        //  - BÁN HÀNG: MẶC ĐỊNH NGÀY NÀO CŨNG LÀ NGÀY LÀM (kể cả Chủ nhật & ngày lễ).
-        //    Chỉ nghỉ khi HR xếp ca OFF (bắt buộc đúng 1 ngày/tuần).
+        //  - BÁN HÀNG: MẶC ĐỊNH NGÀY NÀNG CŨNG LÀ NGÀY LÀM (kể cả Chủ nhật & ngày lễ).
+        //    Chỉ nghỉ khi HR xếp ca OFF hoặc có đơn OFF được duyệt (tối đa 4 ngày OFF không lương/tháng).
+        //  - Công chuẩn tháng (standardDays): 1 tuần có 6 ngày làm việc -> tính động theo lịch thực tế của tháng:
+        //    + Tháng 31 ngày: 27 công (4 CN) hoặc 26 công (5 CN)
+        //    + Tháng 30 ngày: 26 công (4 CN) hoặc 25 công (5 CN)
+        //    + Tháng 2 năm nhuận (29 ngày): 25 công (4 CN) hoặc 24 công (5 CN)
+        //    + Tháng 2 không nhuận (28 ngày): 24 công (4 CN)
         let isScheduledWorkday: boolean;
         let countsInStandard: boolean;
         if (department === 'SALES') {
           isScheduledWorkday = assign ? assign.shiftCode !== 'OFF' : true;
-          // Công chuẩn Sales = 6 ngày/tuần: tuần đã xếp ca -> theo ca; chưa xếp -> tạm trừ 1 ngày/tuần (Chủ nhật) khi đếm
-          countsInStandard = assign ? assign.shiftCode !== 'OFF' : weekday !== 0;
+          countsInStandard = officeWorkdays.includes(weekday);
         } else {
           isScheduledWorkday = officeWorkdays.includes(weekday);
           countsInStandard = isScheduledWorkday;
@@ -305,10 +319,10 @@ export async function buildTimesheet(params: {
           countsInStandard = false;
         }
         const isBeforeJoin = date < joinedStr;
-        // Công chuẩn tháng = ngày làm theo lịch + ngày lễ chính thức hưởng lương (VP) (không phụ thuộc ngày tạo tài khoản)
+        // Công chuẩn tháng = ngày làm theo lịch 6 ngày/tuần + ngày lễ chính thức hưởng lương (VP)
         if (countsInStandard || isPaidHoliday) summary.standardDays += 1;
-        // Công lễ hưởng lương: tính khi đã tới ngày đó và nhân viên đã vào làm
-        if (isPaidHoliday && !isBeforeJoin && date <= todayStr) summary.holidayPaidDays += 1;
+        // Công lễ hưởng lương (Khối Văn phòng): cộng ngay +1 công cho mọi ngày lễ chính thức rơi vào T2-T7 trong tháng
+        if (isPaidHoliday && !isBeforeJoin) summary.holidayPaidDays += 1;
 
         if (att) {
           const isOpen = !att.checkOutTime;
@@ -422,17 +436,27 @@ export async function buildTimesheet(params: {
         // Không có bản ghi chấm công
         let code: string;
         if (isBeforeJoin) code = 'DAY_OFF';
-        else if (date > todayStr) code = isOfficeHolidayOff ? 'HOLIDAY' : isScheduledWorkday ? 'FUTURE' : 'DAY_OFF';
-        else if (approvedTypes.has('PAID_LEAVE') && isScheduledWorkday && contractType === 'FULLTIME')
-          code = 'PAID_LEAVE';
         else if (isOfficeHolidayOff) code = 'HOLIDAY';
+        else if (
+          approvedTypes.has('PAID_LEAVE') &&
+          (department === 'SALES' || isScheduledWorkday) &&
+          contractType === 'FULLTIME'
+        )
+          code = 'PAID_LEAVE';
         else if (leave && leave.type === 'OFF') code = 'LEAVE';
         else if (!isScheduledWorkday) code = 'DAY_OFF';
-        else if (date === todayStr) code = 'FUTURE';
+        else if (date >= todayStr) code = 'FUTURE';
         else code = 'ABSENT';
 
         if (code === 'LEAVE') summary.leaveDays += 1;
         if (code === 'PAID_LEAVE') summary.paidLeaveUsed += 1;
+        if (
+          department === 'SALES' &&
+          code !== 'PAID_LEAVE' &&
+          (assign?.shiftCode === 'OFF' || (leave && leave.type === 'OFF') || approvedTypes.has('OFF'))
+        ) {
+          salesUnpaidOffDates.add(date);
+        }
         if (code === 'ABSENT') {
           summary.absentDays += 1;
           absentMonth += 1;
@@ -453,6 +477,11 @@ export async function buildTimesheet(params: {
           leaveRequests,
           note: leave ? leave.reason || '' : '',
         };
+      }
+
+      if (department === 'SALES') {
+        summary.salesOffUsed = salesUnpaidOffDates.size;
+        summary.salesOffRemaining = Math.max(0, SALES_MAX_UNPAID_OFF_PER_MONTH - salesUnpaidOffDates.size);
       }
 
       summary.workUnits = Number(summary.workUnits.toFixed(2));
@@ -482,11 +511,27 @@ export async function buildTimesheet(params: {
 
     rows.sort((a: any, b: any) => String(a.staffCode).localeCompare(String(b.staffCode)));
 
+    const isLeapYear = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+    const sundaysCount = days.filter((d) => !officeWorkdays.includes(d.weekday)).length;
+    const standardDaysInMonth = days.filter((d) => officeWorkdays.includes(d.weekday)).length;
+    const officialHolidaysCount = days.filter((d) => d.holiday?.isOfficialDayOff).length;
+    const officePaidHolidaysCount = days.filter(
+      (d) => d.holiday?.isOfficialDayOff && officeWorkdays.includes(d.weekday)
+    ).length;
+
     return {
       month,
       year,
       days,
       rows,
+      monthMeta: {
+        daysInMonth,
+        isLeapYear,
+        sundaysCount,
+        standardDays: standardDaysInMonth,
+        officialHolidaysCount,
+        officePaidHolidaysCount,
+      },
       overview: {
         totalStaff: rows.length,
         workingNow,
@@ -560,7 +605,119 @@ attendanceTimesheetRouter.get('/attendance/my-calendar', async (req, res, next) 
   }
 });
 
-// PATCH /api/v1/attendance/:id  (HR điều chỉnh giờ công & xét duyệt tăng ca)
+/**
+ * HR chấm công bù / điều chỉnh sang trạng thái OFF (Nghỉ không lương OFF hoặc Nghỉ phép có lương PAID_LEAVE).
+ */
+async function applyManualOffForStaffDate(params: {
+  staff: any;
+  date: string;
+  offType?: 'OFF' | 'PAID_LEAVE';
+  reason: string;
+  reviewerName: string;
+}) {
+  const { staff, date, reason, reviewerName } = params;
+  const targetOffType: 'OFF' | 'PAID_LEAVE' =
+    params.offType === 'PAID_LEAVE' ? 'PAID_LEAVE' : 'OFF';
+  const staffId = String(staff._id);
+  const department = staff.department || (staff.role === 'SALES' ? 'SALES' : 'OFFICE');
+
+  const existingLeaves = await leaveRequestRepo.find({ staffId, date });
+  const existingSameType = (existingLeaves as any[]).find((l) => l.type === targetOffType);
+
+  if (targetOffType === 'PAID_LEAVE') {
+    if (staff.contractType !== 'FULLTIME') {
+      throw new ApiError(
+        400,
+        'PAID_LEAVE_NOT_ELIGIBLE',
+        'Chỉ nhân viên hợp đồng Chính thức mới được chấm nghỉ phép có lương'
+      );
+    }
+    await assertPaidLeaveQuota(staffId, date, existingSameType?._id, true);
+  } else {
+    await assertSalesUnpaidOffQuota(staffId, date, existingSameType?._id, true);
+  }
+
+  // Xóa các bản ghi chấm công đi làm trong ngày đó (nếu có)
+  const existingAtts = await attendanceRepo.find({ staffId, date });
+  for (const a of existingAtts as any[]) {
+    await attendanceRepo.deleteById(String(a._id));
+  }
+
+  // Xóa các đơn OFF / PAID_LEAVE khác loại trên cùng ngày để tránh xung đột
+  for (const l of existingLeaves as any[]) {
+    if ((l.type === 'OFF' || l.type === 'PAID_LEAVE') && l.type !== targetOffType) {
+      await leaveRequestRepo.deleteById(String(l._id));
+    }
+  }
+
+  let savedLeave: any;
+  if (existingSameType) {
+    savedLeave = await leaveRequestRepo.updateById(String(existingSameType._id), {
+      reason: String(reason).trim(),
+      status: 'APPROVED',
+      reviewNote: 'HR chấm OFF trên Bảng chấm công',
+      reviewedBy: reviewerName,
+      reviewedAt: new Date(),
+    });
+  } else {
+    savedLeave = await leaveRequestRepo.create({
+      staffId: staff._id,
+      staffCode: staff.code,
+      staffName: staff.fullName,
+      department,
+      type: targetOffType,
+      date,
+      reason: String(reason).trim(),
+      status: 'APPROVED',
+      reviewNote: 'HR chấm OFF trên Bảng chấm công',
+      reviewedBy: reviewerName,
+      reviewedAt: new Date(),
+    });
+  }
+
+  // Với khối SALES khi chấm OFF không lương: đồng bộ ShiftAssignment của ngày đó về OFF
+  if (department === 'SALES' && targetOffType === 'OFF') {
+    const existingAssign =
+      (await shiftAssignmentRepo.findOne({ staffId, date })) ||
+      (await shiftAssignmentRepo.findOne({ staffId: staff._id, date }));
+    if (existingAssign) {
+      await shiftAssignmentRepo.updateById(existingAssign._id, {
+        shiftCode: 'OFF',
+        isOffRequested: true,
+      });
+    } else {
+      const [y, m, d] = date.split('-').map(Number);
+      const dt = new Date(y, m - 1, d);
+      const dow = dt.getDay();
+      const mondayOffset = dow === 0 ? 6 : dow - 1;
+      const mon = new Date(y, m - 1, d - mondayOffset);
+      const weekStart = `${mon.getFullYear()}-${pad(mon.getMonth() + 1)}-${pad(mon.getDate())}`;
+      await shiftAssignmentRepo.create({
+        weekStart,
+        date,
+        dayOfWeek: dow === 0 ? 7 : dow,
+        staffId: staff._id,
+        staffCode: staff.code,
+        staffName: staff.fullName,
+        shiftCode: 'OFF',
+        preferenceShift: 'OFF',
+        isOffRequested: true,
+        assignedBy: 'HR',
+        seenByStaff: true,
+      });
+    }
+  }
+
+  return {
+    offApplied: true,
+    offType: targetOffType,
+    date,
+    staffId,
+    leaveRequest: savedLeave,
+  };
+}
+
+// PATCH /api/v1/attendance/:id  (HR điều chỉnh giờ công, chuyển sang OFF & xét duyệt tăng ca)
 attendanceTimesheetRouter.patch('/attendance/:id', async (req, res, next) => {
   try {
     const user = requireHr(req);
@@ -569,6 +726,8 @@ attendanceTimesheetRouter.patch('/attendance/:id', async (req, res, next) => {
       checkIn,
       checkOut,
       shiftCode,
+      checkInType,
+      offType,
       overtimeStatus,
       overtimeApprovedMinutes,
       lateCheckoutReason,
@@ -581,6 +740,23 @@ attendanceTimesheetRouter.patch('/attendance/:id', async (req, res, next) => {
 
     const att: any = await attendanceRepo.findById(id);
     if (!att) throw new ApiError(404, 'ATTENDANCE_NOT_FOUND', 'Không tìm thấy bản ghi chấm công');
+
+    if (shiftCode === 'OFF') {
+      const staff: any = await staffRepo.findById(String(att.staffId));
+      if (!staff) throw new ApiError(404, 'STAFF_NOT_FOUND', 'Không tìm thấy nhân viên');
+      const result = await applyManualOffForStaffDate({
+        staff,
+        date: String(att.date),
+        offType: offType === 'PAID_LEAVE' ? 'PAID_LEAVE' : 'OFF',
+        reason: String(reason).trim(),
+        reviewerName: user.fullName || user.username || 'HR',
+      });
+      res.json({
+        data: result,
+        meta: { message: 'Đã chuyển ngày công sang trạng thái nghỉ (OFF)' },
+      });
+      return;
+    }
 
     const finalShift: ShiftCode =
       shiftCode === 'SHIFT_1' || shiftCode === 'SHIFT_2' || shiftCode === 'BOTH'
@@ -660,8 +836,16 @@ attendanceTimesheetRouter.patch('/attendance/:id', async (req, res, next) => {
       }
     }
 
+    const finalCheckInType: 'STANDARD' | 'WFH' =
+      checkInType === 'WFH' || checkInType === 'STANDARD'
+        ? checkInType
+        : att.checkInType === 'WFH'
+          ? 'WFH'
+          : 'STANDARD';
+
     const updated = await attendanceRepo.updateById(id, {
       shiftCode: finalShift,
+      checkInType: finalCheckInType,
       checkInTime: metrics.checkInTime,
       workStartTime: metrics.workStartTime,
       checkOutTime: metrics.checkOutTime ?? null,
@@ -689,7 +873,7 @@ attendanceTimesheetRouter.patch('/attendance/:id', async (req, res, next) => {
   }
 });
 
-// POST /api/v1/attendance/manual  (HR chấm công bù)
+// POST /api/v1/attendance/manual  (HR chấm công bù hoặc chấm OFF)
 attendanceTimesheetRouter.post('/attendance/manual', async (req, res, next) => {
   try {
     const user = requireHr(req);
@@ -697,6 +881,8 @@ attendanceTimesheetRouter.post('/attendance/manual', async (req, res, next) => {
       staffId,
       date,
       shiftCode = 'SHIFT_1',
+      checkInType,
+      offType,
       checkIn,
       checkOut,
       overtimeStatus,
@@ -704,7 +890,7 @@ attendanceTimesheetRouter.post('/attendance/manual', async (req, res, next) => {
       reason,
     } = req.body || {};
 
-    if (!staffId || !date || !checkIn) {
+    if (!staffId || !date || (shiftCode !== 'OFF' && !checkIn)) {
       throw new ApiError(400, 'VALIDATION_ERROR', 'Thiếu nhân viên, ngày hoặc giờ vào');
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date))) {
@@ -713,14 +899,29 @@ attendanceTimesheetRouter.post('/attendance/manual', async (req, res, next) => {
     if (!reason || !String(reason).trim()) {
       throw new ApiError(400, 'VALIDATION_ERROR', 'Vui lòng nhập lý do chấm công bù');
     }
-    if (String(date) > toDateStr(new Date())) {
-      throw new ApiError(400, 'VALIDATION_ERROR', 'Không thể chấm công bù cho ngày trong tương lai');
+    if (shiftCode !== 'OFF' && String(date) > toDateStr(new Date())) {
+      throw new ApiError(400, 'VALIDATION_ERROR', 'Không thể chấm công bù đi làm cho ngày trong tương lai');
     }
 
     const staff: any = await staffRepo.findById(String(staffId));
     if (!staff) throw new ApiError(404, 'STAFF_NOT_FOUND', 'Không tìm thấy nhân viên');
     if (staff.role === 'ADMIN') {
       throw new ApiError(400, 'ADMIN_NO_ATTENDANCE', 'Tài khoản Quản trị viên không cần chấm công');
+    }
+
+    if (shiftCode === 'OFF') {
+      const result = await applyManualOffForStaffDate({
+        staff,
+        date: String(date),
+        offType: offType === 'PAID_LEAVE' ? 'PAID_LEAVE' : 'OFF',
+        reason: String(reason).trim(),
+        reviewerName: user.fullName || user.username || 'HR',
+      });
+      res.status(201).json({
+        data: result,
+        meta: { message: 'Đã chấm OFF trên bảng chấm công' },
+      });
+      return;
     }
 
     const existing = await attendanceRepo.findOne({ staffId: String(staff._id), date: String(date) });
@@ -778,6 +979,35 @@ attendanceTimesheetRouter.post('/attendance/manual', async (req, res, next) => {
       }
     }
 
+    // Nếu ngày đó trước đó đang có đơn OFF / PAID_LEAVE hoặc phân ca OFF thì gỡ bỏ khi HR chấm bù đi làm
+    const prevLeaves = await leaveRequestRepo.find({ staffId: String(staff._id), date: String(date) });
+    for (const l of prevLeaves as any[]) {
+      if (l.type === 'OFF' || l.type === 'PAID_LEAVE') {
+        await leaveRequestRepo.deleteById(String(l._id));
+      }
+    }
+    const prevAssign =
+      (await shiftAssignmentRepo.findOne({ staffId: String(staff._id), date: String(date) })) ||
+      (await shiftAssignmentRepo.findOne({ staffId: staff._id, date: String(date) }));
+    if (prevAssign && prevAssign.shiftCode === 'OFF') {
+      await shiftAssignmentRepo.updateById(prevAssign._id, {
+        shiftCode: finalShift,
+        isOffRequested: false,
+      });
+    }
+
+    const hasApprovedWfh = (prevLeaves as any[]).some(
+      (l) => l.type === 'WFH' && l.status === 'APPROVED'
+    );
+    const finalCheckInType: 'STANDARD' | 'WFH' =
+      checkInType === 'WFH'
+        ? 'WFH'
+        : checkInType === 'STANDARD'
+          ? 'STANDARD'
+          : hasApprovedWfh
+            ? 'WFH'
+            : 'STANDARD';
+
     const created = await attendanceRepo.create({
       staffId: String(staff._id),
       staffCode: staff.code,
@@ -788,7 +1018,7 @@ attendanceTimesheetRouter.post('/attendance/manual', async (req, res, next) => {
       checkInTime: metrics.checkInTime,
       workStartTime: metrics.workStartTime,
       checkOutTime: metrics.checkOutTime,
-      checkInType: 'STANDARD',
+      checkInType: finalCheckInType,
       status: metrics.status,
       lateMinutes: metrics.lateMinutes,
       earlyMinutes: metrics.earlyMinutes,

@@ -13,6 +13,7 @@ export interface IStaff extends Document {
   fullName: string;
   phone: string;
   email?: string;
+  companyEmail?: string;
   citizenId?: string;
   address?: string;
   role: StaffRole;
@@ -22,6 +23,10 @@ export interface IStaff extends Document {
   contractEndDate?: Date;
   contractFileUrl?: string;
   contractFileName?: string;
+  baseSalary?: number;
+  allowance?: number;
+  bonus?: number;
+  insurance?: number;
   mustChangePassword?: boolean;
   status: StaffStatus;
   createdAt: Date;
@@ -36,6 +41,7 @@ const StaffSchema = new Schema<IStaff>(
     fullName: { type: String, required: true, trim: true },
     phone: { type: String, default: '', trim: true },
     email: { type: String, default: '', trim: true },
+    companyEmail: { type: String, default: '', trim: true },
     citizenId: { type: String, default: '', trim: true },
     address: { type: String, default: '', trim: true },
     role: {
@@ -59,6 +65,10 @@ const StaffSchema = new Schema<IStaff>(
     contractEndDate: { type: Date },
     contractFileUrl: { type: String, default: '' },
     contractFileName: { type: String, default: '', trim: true },
+    baseSalary: { type: Number, default: 0, min: 0 },
+    allowance: { type: Number, default: 0, min: 0 },
+    bonus: { type: Number, default: 0, min: 0 },
+    insurance: { type: Number, default: 0, min: 0 },
     mustChangePassword: { type: Boolean, default: false },
     status: { type: String, enum: ['ACTIVE', 'LOCKED'], required: true, default: 'ACTIVE' },
   },

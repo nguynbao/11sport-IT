@@ -31,6 +31,7 @@ export interface StaffUser {
   fullName: string;
   phone?: string;
   email?: string;
+  companyEmail?: string;
   citizenId?: string;
   address?: string;
   role: UserRole;
@@ -40,6 +41,10 @@ export interface StaffUser {
   contractEndDate?: string;
   contractFileUrl?: string;
   contractFileName?: string;
+  baseSalary?: number;
+  allowance?: number;
+  bonus?: number;
+  insurance?: number;
   status: "ACTIVE" | "LOCKED";
 }
 
@@ -819,6 +824,7 @@ export function formatDateTime(dateStr?: string): string {
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
+      hour12: false,
     });
   } catch {
     return dateStr;
@@ -1324,6 +1330,23 @@ export interface MyShiftScheduleData {
   isConfirmedByHr: boolean;
   unseenConfirmedCount: number;
   hasUnseenConfirmedSchedule: boolean;
+  monthlyOffQuota?: {
+    limit: number;
+    primaryMonth: string;
+    usedTotal: number;
+    usedOutsideWeek: number;
+    remainingForWeek: number;
+    byMonth?: Record<
+      string,
+      {
+        limit: number;
+        usedTotal: number;
+        usedOutsideWeek: number;
+        remainingForWeek: number;
+        usedDatesOutsideWeek: string[];
+      }
+    >;
+  };
 }
 
 export async function fetchMyShiftScheduleApi(weekStart?: string): Promise<MyShiftScheduleData> {
@@ -1419,6 +1442,9 @@ export interface MyCalendarSummary {
   paidLeaveEntitled: number;
   paidLeaveUsed: number;
   paidLeaveForfeited: number;
+  salesOffEntitled?: number;
+  salesOffUsed?: number;
+  salesOffRemaining?: number;
 }
 
 export interface MyCalendarDay {

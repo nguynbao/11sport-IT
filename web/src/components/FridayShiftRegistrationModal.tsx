@@ -37,6 +37,23 @@ export default function FridayShiftRegistrationModal({ onClose, onSuccess }: Pro
   const [nextMondayStr, setNextMondayStr] = useState<string>(() => getNextMondayLocalStr());
   const [isConfirmedByHr, setIsConfirmedByHr] = useState(false);
   const [loadingExisting, setLoadingExisting] = useState(true);
+  const [monthlyOffQuota, setMonthlyOffQuota] = useState<{
+    limit: number;
+    primaryMonth: string;
+    usedTotal: number;
+    usedOutsideWeek: number;
+    remainingForWeek: number;
+    byMonth?: Record<
+      string,
+      {
+        limit: number;
+        usedTotal: number;
+        usedOutsideWeek: number;
+        remainingForWeek: number;
+        usedDatesOutsideWeek: string[];
+      }
+    >;
+  } | null>(null);
 
   const [preferences, setPreferences] = useState<
     Array<{
@@ -72,6 +89,9 @@ export default function FridayShiftRegistrationModal({ onClose, onSuccess }: Pro
         setNextMondayStr(ws);
         const confirmed = Boolean(data.isConfirmedByHr);
         setIsConfirmedByHr(confirmed);
+        if (data.monthlyOffQuota) {
+          setMonthlyOffQuota(data.monthlyOffQuota);
+        }
 
         const byDate = new Map((data.assignments || []).map((a) => [a.date, a]));
         setPreferences(
@@ -112,8 +132,31 @@ export default function FridayShiftRegistrationModal({ onClose, onSuccess }: Pro
     };
   }, []);
 
+  const getMonthRemainingForDate = (dateStr: string) => {
+    const ym = dateStr.slice(0, 7);
+    const byM = monthlyOffQuota?.byMonth?.[ym];
+    if (byM) return byM.remainingForWeek;
+    return monthlyOffQuota?.remainingForWeek ?? 4;
+  };
+
   const handleToggleOff = (index: number) => {
     if (isConfirmedByHr) return;
+    setErrorMsg("");
+    const target = preferences[index];
+    if (!target) return;
+    if (!target.isOff) {
+      const ym = target.date.slice(0, 7);
+      const maxForMonth = getMonthRemainingForDate(target.date);
+      const selectedInSameMonth = preferences.filter((p) => p.isOff && p.date.startsWith(`${ym}-`)).length;
+      if (selectedInSameMonth >= maxForMonth) {
+        setErrorMsg(
+          maxForMonth === 0
+            ? `Tháng ${ym.slice(5, 7)}/${ym.slice(0, 4)} bạn đã dùng hết 4/4 ngày nghỉ không lương (OFF) ở các tuần trước. Các tuần còn lại trong tháng không được dùng thêm, phải qua tháng mới!`
+            : `Tháng ${ym.slice(5, 7)}/${ym.slice(0, 4)} bạn chỉ còn tối đa ${maxForMonth}/4 ngày nghỉ không lương (OFF) cho tuần này.`
+        );
+        return;
+      }
+    }
     setPreferences((prev) =>
       prev.map((item, idx) =>
         idx === index
@@ -130,6 +173,7 @@ export default function FridayShiftRegistrationModal({ onClose, onSuccess }: Pro
 
   const handleToggleShift = (index: number, which: "SHIFT_1" | "SHIFT_2") => {
     if (isConfirmedByHr) return;
+    setErrorMsg("");
     setPreferences((prev) =>
       prev.map((item, idx) => {
         if (idx !== index) return item;
@@ -149,7 +193,15 @@ export default function FridayShiftRegistrationModal({ onClose, onSuccess }: Pro
   const workCount = preferences.filter((p) => !p.isOff && (p.shift1 || p.shift2)).length;
   const doubleShiftDays = preferences.filter((p) => !p.isOff && p.shift1 && p.shift2).length;
   const unselectedCount = 7 - offCount - workCount;
-  const isRuleValid = offCount === 1 && workCount === 6 && unselectedCount === 0;
+  const maxOffThisWeek = monthlyOffQuota?.remainingForWeek ?? 4;
+  const usedOutsideWeek = monthlyOffQuota?.usedOutsideWeek ?? 0;
+  const monthlyLimit = monthlyOffQuota?.limit ?? 4;
+  const isMonthQuotaValid = Array.from(new Set(preferences.map((p) => p.date.slice(0, 7)))).every((ym) => {
+    const picked = preferences.filter((p) => p.isOff && p.date.startsWith(`${ym}-`)).length;
+    const rem = monthlyOffQuota?.byMonth?.[ym]?.remainingForWeek ?? maxOffThisWeek;
+    return picked <= rem;
+  });
+  const isRuleValid = unselectedCount === 0 && offCount >= 0 && offCount <= 4 && isMonthQuotaValid;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -157,7 +209,7 @@ export default function FridayShiftRegistrationModal({ onClose, onSuccess }: Pro
 
     if (!isRuleValid) {
       setErrorMsg(
-        `Quy định khối Bán hàng: Phải chọn đủ 7 ngày gồm 6 ngày làm việc và đúng 1 ngày nghỉ (OFF). Hiện tại bạn đã chọn ${workCount} ngày làm, ${offCount} ngày OFF${unselectedCount > 0 ? ` (còn ${unselectedCount} ngày chưa chọn)` : ""}.`
+        `Quy định khối Bán hàng: Phải chọn đủ 7 ngày trong tuần, tối đa 4 ngày nghỉ không lương (OFF)/tháng (tuần này còn tối đa ${maxOffThisWeek} ngày OFF). Hiện tại bạn đã chọn ${workCount} ngày làm, ${offCount} ngày OFF${unselectedCount > 0 ? ` (còn ${unselectedCount} ngày chưa chọn)` : ""}.`
       );
       return;
     }
@@ -194,8 +246,8 @@ export default function FridayShiftRegistrationModal({ onClose, onSuccess }: Pro
   const [weY, weM, weD] = weekEndStr.split("-");
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-      <div className="bg-white rounded-3xl max-w-xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 text-slate-900">
+      <div className="bg-white text-slate-900 rounded-3xl max-w-xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
         <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="p-2 bg-amber-500/20 text-amber-400 rounded-xl">
@@ -206,7 +258,7 @@ export default function FridayShiftRegistrationModal({ onClose, onSuccess }: Pro
                 Đăng Ký Ca Tuần Sau ({wsD}/{wsM} – {weD}/{weM}/{weY})
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                Chọn 6 ngày làm việc (có thể chọn 1 hoặc cả 2 ca/ngày) và đúng 1 ngày nghỉ (OFF)
+                Chọn đủ 7 ngày trong tuần • Nghỉ không lương (OFF) tối đa 4 ngày/tháng (có thể gộp 4 ngày trong 1 tuần)
               </p>
             </div>
           </div>
@@ -232,20 +284,31 @@ export default function FridayShiftRegistrationModal({ onClose, onSuccess }: Pro
             </div>
           )}
 
-          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-wrap items-center justify-between gap-2 text-slate-600">
-            <span>
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-slate-600">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span>
+                <b>Hạn mức OFF không lương tháng {wsM}/{weY}:</b> Tối đa <b>{monthlyLimit} ngày/tháng</b> (đã dùng ở tuần khác:{" "}
+                <b>{usedOutsideWeek}/{monthlyLimit}</b> ngày • tuần này được chọn tối đa <b>{maxOffThisWeek}</b> ngày OFF).
+                {maxOffThisWeek === 0 && (
+                  <b className="text-rose-600 ml-1">
+                    Đã dùng hết 4 ngày OFF trong tháng — tuần này bắt buộc đăng ký làm đủ 7 ngày, đợi qua tháng mới!
+                  </b>
+                )}
+              </span>
+              <span
+                className={`px-2.5 py-1 rounded-lg font-extrabold text-[11px] shrink-0 ${
+                  isRuleValid
+                    ? "bg-emerald-100 text-emerald-800"
+                    : "bg-slate-200 text-slate-700"
+                }`}
+              >
+                {workCount} ngày làm{doubleShiftDays > 0 ? ` (${doubleShiftDays} ngày 2 ca)` : ""} • {offCount}/{maxOffThisWeek} ngày OFF{" "}
+                {isRuleValid ? "✓" : unselectedCount > 0 ? `(Chưa chọn ${unselectedCount} ngày)` : "(Vượt hạn mức OFF tháng)"}
+              </span>
+            </div>
+            <div className="text-[11px] text-slate-500">
               Có thể bấm chọn cả <b>Ca 1 + Ca 2</b> trong cùng 1 ngày: nếu có ca trống sẽ được xếp làm cả 2 ca, nếu cả 2 ca đều đã có người thì hệ thống tự chọn ngẫu nhiên 1 trong 2 ca.
-            </span>
-            <span
-              className={`px-2.5 py-1 rounded-lg font-extrabold text-[11px] shrink-0 ${
-                isRuleValid
-                  ? "bg-emerald-100 text-emerald-800"
-                  : "bg-slate-200 text-slate-700"
-              }`}
-            >
-              {workCount}/6 ngày làm{doubleShiftDays > 0 ? ` (${doubleShiftDays} ngày 2 ca)` : ""} • {offCount}/1 ngày OFF{" "}
-              {isRuleValid ? "✓" : unselectedCount > 0 ? `(Chưa chọn ${unselectedCount} ngày)` : "(Cần đúng 6 ngày làm + 1 OFF)"}
-            </span>
+            </div>
           </div>
 
           {loadingExisting ? (

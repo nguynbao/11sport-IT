@@ -42,6 +42,7 @@ export interface StaffUser {
   fullName: string;
   phone?: string;
   email?: string;
+  companyEmail?: string;
   citizenId?: string;
   address?: string;
   role: UserRole;
@@ -51,6 +52,10 @@ export interface StaffUser {
   contractEndDate?: string;
   contractFileUrl?: string;
   contractFileName?: string;
+  baseSalary?: number;
+  allowance?: number;
+  bonus?: number;
+  insurance?: number;
   status: "ACTIVE" | "LOCKED";
   createdAt?: string;
 }
@@ -1094,6 +1099,7 @@ export function formatDateTime(dateStr?: string): string {
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
+      hour12: false,
     });
   } catch {
     return dateStr;
@@ -1512,9 +1518,34 @@ export async function reviewLeaveRequestApi(id: string, status: "APPROVED" | "RE
   return res.data;
 }
 
-export async function fetchShiftSchedule(weekStart?: string): Promise<{ assignments: ShiftAssignment[]; staffList: StaffUser[] }> {
+export interface StaffMonthlyOffStats {
+  limit: number;
+  primaryMonth: string;
+  usedTotal: number;
+  usedOutsideWeek: number;
+  remainingForWeek: number;
+  byMonth?: Record<
+    string,
+    {
+      limit: number;
+      usedTotal: number;
+      usedOutsideWeek: number;
+      remainingForWeek: number;
+    }
+  >;
+}
+
+export async function fetchShiftSchedule(weekStart?: string): Promise<{
+  assignments: ShiftAssignment[];
+  staffList: StaffUser[];
+  monthlyOffByStaff?: Record<string, StaffMonthlyOffStats>;
+}> {
   const query = weekStart ? `?weekStart=${weekStart}` : "";
-  const res = await apiRequest<{ assignments: ShiftAssignment[]; staffList: StaffUser[] }>(`/shifts/schedule${query}`);
+  const res = await apiRequest<{
+    assignments: ShiftAssignment[];
+    staffList: StaffUser[];
+    monthlyOffByStaff?: Record<string, StaffMonthlyOffStats>;
+  }>(`/shifts/schedule${query}`);
   return res.data;
 }
 
@@ -1610,6 +1641,13 @@ export interface TimesheetCell {
   adjustedByName?: string;
   adjustReason?: string;
   note?: string;
+  leaveRequests?: {
+    id: string;
+    type: string;
+    status: string;
+    reason?: string;
+    reviewNote?: string;
+  }[];
 }
 
 export interface TimesheetSummary {
@@ -1639,6 +1677,10 @@ export interface TimesheetSummary {
   paidLeaveUsed?: number;
   /** 1 = tháng đã qua mà không dùng -> mất quyền lợi */
   paidLeaveForfeited?: number;
+  /** Khối SALES: tối đa 4 ngày nghỉ không lương/tháng */
+  salesOffEntitled?: number;
+  salesOffUsed?: number;
+  salesOffRemaining?: number;
 }
 
 export interface TimesheetRow {
@@ -1661,11 +1703,21 @@ export interface TimesheetDay {
   holiday: { name: string; isOfficialDayOff: boolean } | null;
 }
 
+export interface TimesheetMonthMeta {
+  daysInMonth: number;
+  isLeapYear: boolean;
+  sundaysCount: number;
+  standardDays: number;
+  officialHolidaysCount: number;
+  officePaidHolidaysCount: number;
+}
+
 export interface TimesheetData {
   month: number;
   year: number;
   days: TimesheetDay[];
   rows: TimesheetRow[];
+  monthMeta?: TimesheetMonthMeta;
   overview: {
     totalStaff: number;
     workingNow: number;
@@ -1693,7 +1745,9 @@ export async function adjustAttendanceApi(
   data: {
     checkIn?: string;
     checkOut?: string;
-    shiftCode?: "SHIFT_1" | "SHIFT_2" | "BOTH";
+    shiftCode?: "SHIFT_1" | "SHIFT_2" | "BOTH" | "OFF";
+    checkInType?: "STANDARD" | "WFH";
+    offType?: "OFF" | "PAID_LEAVE";
     overtimeStatus?: "NONE" | "PENDING" | "APPROVED" | "REJECTED";
     overtimeApprovedMinutes?: number;
     reason: string;
@@ -1709,8 +1763,10 @@ export async function adjustAttendanceApi(
 export async function createManualAttendanceApi(data: {
   staffId: string;
   date: string;
-  shiftCode?: "SHIFT_1" | "SHIFT_2" | "BOTH";
-  checkIn: string;
+  shiftCode?: "SHIFT_1" | "SHIFT_2" | "BOTH" | "OFF";
+  checkInType?: "STANDARD" | "WFH";
+  offType?: "OFF" | "PAID_LEAVE";
+  checkIn?: string;
   checkOut?: string;
   overtimeStatus?: "NONE" | "APPROVED";
   overtimeApprovedMinutes?: number;

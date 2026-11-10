@@ -230,6 +230,12 @@ export function LeaveRequestModal({
               lợi, không cộng dồn sang tháng sau.
             </p>
           )}
+          {type === "OFF" && department === "SALES" && (
+            <p className="text-[11px] text-purple-800 bg-purple-50 border border-purple-200 rounded-lg px-2.5 py-1.5">
+              Nhân viên Sales có tối đa <b>4 ngày nghỉ không lương (OFF)/tháng</b> (có thể dùng gộp tối đa 4 ngày trong 1 tuần; khi
+              đã dùng hết 4 ngày trong tháng thì các tuần còn lại trong tháng không được dùng thêm, phải qua tháng mới).
+            </p>
+          )}
 
           <div className={`grid gap-2 ${allowRange ? "grid-cols-2" : "grid-cols-1"}`}>
             <label className="text-xs font-semibold text-slate-600">

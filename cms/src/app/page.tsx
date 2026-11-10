@@ -20,6 +20,7 @@ import PromotionModule from "@/components/PromotionModule";
 import DebtManagementModule from "@/components/DebtManagementModule";
 import HrmAttendanceModule from "@/components/HrmAttendanceModule";
 import MarketingPushProductsModule from "@/components/MarketingPushProductsModule";
+import AccountProfileModule from "@/components/AccountProfileModule";
 import HeaderAttendanceBar from "@/components/HeaderAttendanceBar";
 import InvoicePdfModal from "@/components/InvoicePdfModal";
 import {
@@ -56,7 +57,8 @@ type CmsModuleType =
   | "PROMOTIONS"
   | "DEBTS"
   | "HRM"
-  | "PUSH_PRODUCTS";
+  | "PUSH_PRODUCTS"
+  | "PROFILE";
 
 const CMS_MENU_ITEMS: {
   id: CmsModuleType;
@@ -125,13 +127,19 @@ const CMS_MENU_ITEMS: {
       desc: "Theo dõi khách mua trước trả sau, cảnh báo quá hạn & tất toán",
       icon: Wallet,
     },
+    {
+      id: "PROFILE",
+      label: "Thông tin tài khoản cá nhân",
+      desc: "Xem hồ sơ nhân sự, hợp đồng, chế độ lương & đổi mật khẩu",
+      icon: User,
+    },
   ];
 
 const ROLE_ALLOWED_MODULES: Record<string, CmsModuleType[]> = {
-  ADMIN: ["REVENUE", "INVENTORY", "CATEGORIES", "ORDERS", "STAFF", "ACTIVITY", "PROMOTIONS", "DEBTS"],
-  ACCOUNTANT: ["REVENUE", "INVENTORY", "CATEGORIES", "ORDERS", "DEBTS"],
-  HR: ["HRM"],
-  MARKETING: ["PUSH_PRODUCTS"],
+  ADMIN: ["REVENUE", "INVENTORY", "CATEGORIES", "ORDERS", "STAFF", "ACTIVITY", "PROMOTIONS", "DEBTS", "PROFILE"],
+  ACCOUNTANT: ["REVENUE", "INVENTORY", "CATEGORIES", "ORDERS", "DEBTS", "PROFILE"],
+  HR: ["HRM", "PROFILE"],
+  MARKETING: ["PUSH_PRODUCTS", "PROFILE"],
 };
 
 export default function CmsDashboardPage() {
@@ -472,14 +480,23 @@ export default function CmsDashboardPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700 text-xs">
+            <button
+              type="button"
+              onClick={() => setActiveModule("PROFILE")}
+              title="Xem & chỉnh sửa thông tin tài khoản cá nhân"
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs transition cursor-pointer ${
+                effectiveModule === "PROFILE"
+                  ? "bg-emerald-600/25 border-emerald-500 text-white"
+                  : "bg-slate-800 hover:bg-slate-700 border-slate-700"
+              }`}
+            >
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
               <span className="text-slate-300 hidden md:inline">Tài khoản:</span>
               <strong className="text-white">{adminUser.fullName}</strong>
               <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-emerald-600 text-white font-bold">
                 {adminUser.role}
               </span>
-            </div>
+            </button>
           </div>
         </div>
       </header>
@@ -578,6 +595,17 @@ export default function CmsDashboardPage() {
                   {adminUser.fullName} ({adminUser.role})
                 </strong>
               </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsDrawerOpen(false);
+                  setActiveModule("PROFILE");
+                }}
+                className="w-full py-2 px-3 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 font-bold flex items-center justify-center gap-1.5 border border-emerald-500/30 transition cursor-pointer"
+              >
+                <User className="w-3.5 h-3.5" />
+                Thông tin tài khoản cá nhân
+              </button>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
@@ -624,6 +652,17 @@ export default function CmsDashboardPage() {
           <DebtManagementModule onOpenInvoice={(ord) => setInvoiceOrder(ord)} />
         )}
         {effectiveModule === "PUSH_PRODUCTS" && <MarketingPushProductsModule />}
+        {effectiveModule === "PROFILE" && (
+          <AccountProfileModule
+            currentUser={adminUser}
+            onUserUpdated={(updated) => setAdminUser(updated)}
+            onBack={() =>
+              setActiveModule(
+                userAllowedModules.find((m) => m !== "PROFILE") || "REVENUE"
+              )
+            }
+          />
+        )}
       </main>
 
       {/* Modal Đổi mật khẩu Quản trị viên (Header CMS) */}

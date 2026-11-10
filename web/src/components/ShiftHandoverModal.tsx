@@ -21,6 +21,18 @@ interface Props {
   onSuccess: () => void;
 }
 
+function formatMoneyInput(val: number | string | undefined | null): string {
+  const digits = String(val ?? "").replace(/\D/g, "").replace(/^0+/, "");
+  if (!digits) return "";
+  return Number(digits).toLocaleString("vi-VN");
+}
+
+function parseMoneyInput(raw: string): number {
+  const digits = String(raw || "").replace(/\D/g, "").replace(/^0+/, "");
+  if (!digits) return 0;
+  return Number(digits) || 0;
+}
+
 export default function ShiftHandoverModal({ currentUser, shiftCode = "SHIFT_1", onClose, onSuccess }: Props) {
   const [cashBalance, setCashBalance] = useState<number>(0);
   const [note, setNote] = useState("");
@@ -110,8 +122,8 @@ export default function ShiftHandoverModal({ currentUser, shiftCode = "SHIFT_1",
   );
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-      <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-fade-in">
+    <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 text-slate-900">
+      <div className="bg-white text-slate-900 rounded-3xl max-w-2xl w-full max-h-[90vh] shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-fade-in">
         {/* Header */}
         <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
@@ -158,13 +170,13 @@ export default function ShiftHandoverModal({ currentUser, shiftCode = "SHIFT_1",
                   Tiền mặt thực tế đếm trong két (VND) *
                 </label>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
                   required
-                  min={0}
-                  value={cashBalance || ""}
-                  onChange={(e) => setCashBalance(Number(e.target.value))}
-                  placeholder="VD: 5000000..."
-                  className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm font-mono font-bold focus:ring-2 focus:ring-amber-500 outline-none"
+                  value={formatMoneyInput(cashBalance)}
+                  onChange={(e) => setCashBalance(parseMoneyInput(e.target.value))}
+                  placeholder="VD: 5.000.000..."
+                  className="w-full px-3.5 py-2.5 bg-white text-slate-900 placeholder:text-slate-400 border border-slate-300 rounded-xl text-sm font-mono font-bold focus:ring-2 focus:ring-amber-500 outline-none"
                 />
               </div>
               <div>
@@ -174,7 +186,7 @@ export default function ShiftHandoverModal({ currentUser, shiftCode = "SHIFT_1",
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                   placeholder="VD: Tiền lẻ quầy 500k, còn lại tiền thu ca..."
-                  className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 outline-none"
+                  className="w-full px-3.5 py-2.5 bg-white text-slate-900 placeholder:text-slate-400 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 outline-none"
                 />
               </div>
             </div>
@@ -199,7 +211,7 @@ export default function ShiftHandoverModal({ currentUser, shiftCode = "SHIFT_1",
                 placeholder="Tìm nhanh mã hoặc tên sản phẩm..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full pl-10 pr-4 py-2 bg-white text-slate-900 placeholder:text-slate-400 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
 
