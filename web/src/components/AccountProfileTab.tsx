@@ -24,7 +24,14 @@ import {
   AtSign,
   FileText,
   Eye,
-  Download,
+  Mail,
+  Building2,
+  MapPin,
+  CreditCard,
+  Briefcase,
+  Calendar,
+  Wallet,
+  Info,
 } from "lucide-react";
 import ContractFilePreviewModal from "./ContractFilePreviewModal";
 
@@ -44,6 +51,9 @@ export default function AccountProfileTab({
   const [fullName, setFullName] = useState(currentUser.fullName || "");
   const [phone, setPhone] = useState(currentUser.phone || "");
   const [email, setEmail] = useState(currentUser.email || "");
+  const [companyEmail, setCompanyEmail] = useState(
+    currentUser.companyEmail || ""
+  );
   const [citizenId, setCitizenId] = useState(currentUser.citizenId || "");
   const [address, setAddress] = useState(currentUser.address || "");
   const [department, setDepartment] = useState(
@@ -58,11 +68,26 @@ export default function AccountProfileTab({
       ? String(currentUser.contractStartDate).slice(0, 10)
       : ""
   );
+  const [contractEndDate, setContractEndDate] = useState(
+    currentUser.contractEndDate
+      ? String(currentUser.contractEndDate).slice(0, 10)
+      : ""
+  );
   const [contractFileUrl, setContractFileUrl] = useState(
     currentUser.contractFileUrl || ""
   );
   const [contractFileName, setContractFileName] = useState(
     currentUser.contractFileName || ""
+  );
+  const [baseSalary, setBaseSalary] = useState<number>(
+    Number(currentUser.baseSalary || 0)
+  );
+  const [allowance, setAllowance] = useState<number>(
+    Number(currentUser.allowance || 0)
+  );
+  const [bonus, setBonus] = useState<number>(Number(currentUser.bonus || 0));
+  const [insurance, setInsurance] = useState<number>(
+    Number(currentUser.insurance || 0)
   );
   const [showContractPreview, setShowContractPreview] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
@@ -96,6 +121,7 @@ export default function AccountProfileTab({
           setFullName(found.fullName || "");
           setPhone(found.phone || "");
           setEmail(found.email || "");
+          setCompanyEmail(found.companyEmail || "");
           setCitizenId(found.citizenId || "");
           setAddress(found.address || "");
           setDepartment(
@@ -107,8 +133,17 @@ export default function AccountProfileTab({
               ? String(found.contractStartDate).slice(0, 10)
               : ""
           );
+          setContractEndDate(
+            found.contractEndDate
+              ? String(found.contractEndDate).slice(0, 10)
+              : ""
+          );
           setContractFileUrl(found.contractFileUrl || "");
           setContractFileName(found.contractFileName || "");
+          setBaseSalary(Number(found.baseSalary || 0));
+          setAllowance(Number(found.allowance || 0));
+          setBonus(Number(found.bonus || 0));
+          setInsurance(Number(found.insurance || 0));
           const merged: StaffUser = {
             ...currentUser,
             ...found,
@@ -133,6 +168,7 @@ export default function AccountProfileTab({
     const cleanName = fullName.trim();
     const cleanPhone = cleanPhoneDigits(phone);
     const cleanEmail = email.trim();
+    const cleanCompanyEmail = companyEmail.trim();
     const cleanCitizenId = citizenId.trim();
     const cleanAddress = address.trim();
 
@@ -152,6 +188,7 @@ export default function AccountProfileTab({
           fullName: cleanName,
           phone: cleanPhone,
           email: cleanEmail,
+          companyEmail: cleanCompanyEmail,
           citizenId: cleanCitizenId,
           address: cleanAddress,
         }),
@@ -163,6 +200,10 @@ export default function AccountProfileTab({
         fullName: res.data?.fullName || cleanName,
         phone: res.data?.phone !== undefined ? res.data.phone : cleanPhone,
         email: res.data?.email !== undefined ? res.data.email : cleanEmail,
+        companyEmail:
+          res.data?.companyEmail !== undefined
+            ? res.data.companyEmail
+            : cleanCompanyEmail,
         citizenId:
           res.data?.citizenId !== undefined
             ? res.data.citizenId
@@ -185,7 +226,8 @@ export default function AccountProfileTab({
       setProfileMsg({
         type: "error",
         text:
-          err?.message || "Không thể cập nhật thông tin cá nhân. Vui lòng thử lại.",
+          err?.message ||
+          "Không thể cập nhật thông tin cá nhân. Vui lòng thử lại.",
       });
     } finally {
       setSavingProfile(false);
@@ -243,93 +285,109 @@ export default function AccountProfileTab({
       setPwdMsg({
         type: "error",
         text:
-          err?.message || "Mật khẩu hiện tại không đúng hoặc không thể đổi mật khẩu.",
+          err?.message ||
+          "Mật khẩu hiện tại không đúng hoặc không thể đổi mật khẩu.",
       });
     } finally {
       setSavingPwd(false);
     }
   };
 
+  const contractLabel =
+    contractType === "FULLTIME"
+      ? "Chính thức"
+      : contractType === "PROBATION"
+        ? "Thử việc"
+        : contractType === "INTERN"
+          ? "Thực tập (Intern)"
+          : contractType === "PARTTIME"
+            ? "Bán thời gian (cũ)"
+            : "Chưa cập nhật";
+
+  const formatMoney = (val: number) =>
+    new Intl.NumberFormat("vi-VN").format(Number(val || 0));
+
   return (
-    <div className="max-w-4xl mx-auto space-y-4 md:space-y-6">
-      {/* Thanh tiêu đề & nút Quay lại */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 md:p-5 shadow-sm flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow">
-            <User className="w-5 h-5" />
+    <div className="max-w-6xl mx-auto space-y-5">
+      {/* Hero Banner: Thông tin tổng quan tài khoản & nút Quay lại */}
+      <div className="bg-gradient-to-r from-slate-900 via-slate-900 to-slate-800 text-white rounded-2xl p-5 md:p-6 shadow-md border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-start sm:items-center gap-4">
+          <div className="w-14 h-14 md:w-16 md:h-16 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-black text-2xl shrink-0 shadow-inner">
+            {(fullName || currentUser.username || "U").charAt(0).toUpperCase()}
           </div>
-          <div>
-            <h2 className="text-base md:text-lg font-extrabold text-slate-900">
-              Thông tin tài khoản cá nhân
-            </h2>
-            <p className="text-xs text-slate-500">
-              Xem hồ sơ nhân sự, cập nhật thông tin liên hệ và bảo mật tài khoản
-            </p>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={onBack}
-          className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span>Quay lại làm việc</span>
-        </button>
-      </div>
-
-      {/* Thẻ tóm tắt tài khoản */}
-      <div className="bg-slate-900 text-white rounded-2xl p-5 shadow-md border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-black text-xl shrink-0">
-            {(currentUser.fullName || currentUser.username || "U")
-              .charAt(0)
-              .toUpperCase()}
-          </div>
-          <div className="space-y-1">
-            <div className="text-base md:text-lg font-extrabold flex flex-wrap items-center gap-2">
-              <span>{currentUser.fullName}</span>
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-lg md:text-xl font-extrabold tracking-tight text-white">
+                {fullName || currentUser.fullName}
+              </h2>
               <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-lg bg-emerald-600 text-white font-bold">
                 {getRoleDisplayName(currentUser.role)}
               </span>
+              <span className="inline-flex items-center gap-1 bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 px-2.5 py-0.5 rounded-lg text-[11px] font-bold">
+                <BadgeCheck className="w-3.5 h-3.5 text-emerald-400" />
+                Đang hoạt động
+              </span>
             </div>
+
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-300">
-              <span className="flex items-center gap-1 font-mono">
+              <span className="inline-flex items-center gap-1 font-mono">
                 <Hash className="w-3.5 h-3.5 text-slate-400" />
-                Mã NV: <strong>{currentUser.code || "N/A"}</strong>
+                Mã NV: <strong className="text-white">{currentUser.code || "N/A"}</strong>
               </span>
-              <span className="flex items-center gap-1 font-mono">
+              <span className="inline-flex items-center gap-1 font-mono">
                 <AtSign className="w-3.5 h-3.5 text-slate-400" />
-                Username: <strong>{currentUser.username}</strong>
+                Username: <strong className="text-white">{currentUser.username}</strong>
               </span>
-              {currentUser.phone && (
-                <span className="flex items-center gap-1">
+              <span className="inline-flex items-center gap-1">
+                <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                Khối:{" "}
+                <strong className="text-white">
+                  {department === "OFFICE" ? "Văn phòng" : "Bán hàng"}
+                </strong>
+              </span>
+              {phone && (
+                <span className="inline-flex items-center gap-1 font-mono">
                   <Phone className="w-3.5 h-3.5 text-slate-400" />
-                  SĐT: <strong>{formatPhone(currentUser.phone)}</strong>
+                  <strong className="text-white">{formatPhone(phone)}</strong>
                 </span>
               )}
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-center bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 px-3 py-1.5 rounded-xl text-xs font-bold">
-          <BadgeCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-          <span>Đang hoạt động</span>
-        </div>
+        <button
+          type="button"
+          onClick={onBack}
+          className="self-start md:self-center px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/15 text-xs font-bold flex items-center gap-2 transition cursor-pointer shrink-0"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Quay lại làm việc</span>
+        </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-        {/* Cột 1: Chỉnh sửa thông tin cá nhân */}
-        <form
-          onSubmit={handleSaveProfile}
-          className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex flex-col justify-between space-y-4"
-        >
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
-              <ShieldCheck className="w-5 h-5 text-emerald-600" />
-              <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-tight">
-                Chỉnh sửa thông tin cá nhân
-              </h3>
+      {/* Bố cục 2 cột cân đối: Trái (7/12) Thông tin liên hệ + Hồ sơ HR | Phải (5/12) Đổi mật khẩu + Quy định */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+        {/* CỘT TRÁI (7/12) */}
+        <div className="lg:col-span-7 space-y-5">
+          {/* Card 1: Thông tin cá nhân & Liên hệ (Cho phép chỉnh sửa) */}
+          <form
+            onSubmit={handleSaveProfile}
+            className="bg-white rounded-2xl border border-slate-200 p-5 md:p-6 shadow-xs space-y-4"
+          >
+            <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center shrink-0">
+                  <User className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-tight">
+                    Thông tin cá nhân &amp; Liên hệ
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Bạn có thể chủ động cập nhật thông tin liên lạc cá nhân dưới đây
+                  </p>
+                </div>
+              </div>
             </div>
 
             {profileMsg && (
@@ -349,48 +407,23 @@ export default function AccountProfileTab({
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
-                  Mã nhân viên
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
+                  Họ và tên nhân sự <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="text"
-                  value={currentUser.code || ""}
-                  disabled
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-100 text-slate-500 text-sm font-mono cursor-not-allowed"
-                />
+                <div className="relative">
+                  <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type="text"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="Nhập họ và tên..."
+                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
-                  Tên đăng nhập
-                </label>
-                <input
-                  type="text"
-                  value={currentUser.username || ""}
-                  disabled
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-100 text-slate-500 text-sm font-mono cursor-not-allowed"
-                />
-              </div>
-            </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
-                Họ và tên nhân sự <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                <input
-                  type="text"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Nhập họ và tên..."
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
                   Số điện thoại liên hệ
@@ -402,7 +435,7 @@ export default function AccountProfileTab({
                     value={formatPhone(phone)}
                     onChange={(e) => setPhone(cleanPhoneDigits(e.target.value))}
                     placeholder="VD: 0901 234 567"
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-mono focus:border-emerald-600 focus:outline-none"
                   />
                 </div>
               </div>
@@ -411,173 +444,280 @@ export default function AccountProfileTab({
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
                   Email liên hệ
                 </label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="VD: nhanvien@11sport.vn"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
-                />
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="VD: ca_nhan@gmail.com"
+                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                  />
+                </div>
               </div>
-            </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
+                  Email công ty
+                </label>
+                <div className="relative">
+                  <AtSign className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type="email"
+                    value={companyEmail}
+                    onChange={(e) => setCompanyEmail(e.target.value)}
+                    placeholder="VD: nhanvien@11sport.vn"
+                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
                   Số CCCD / CMND
                 </label>
-                <input
-                  type="text"
-                  value={citizenId}
-                  onChange={(e) => setCitizenId(e.target.value)}
-                  placeholder="Số CCCD 12 số..."
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-mono focus:border-emerald-600 focus:outline-none"
-                />
+                <div className="relative">
+                  <CreditCard className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type="text"
+                    value={citizenId}
+                    onChange={(e) => setCitizenId(e.target.value)}
+                    placeholder="Số CCCD 12 số..."
+                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-mono focus:border-emerald-600 focus:outline-none"
+                  />
+                </div>
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
                   Địa chỉ thường trú
                 </label>
-                <input
-                  type="text"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  placeholder="Số nhà, đường, quận/huyện..."
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
-                />
+                <div className="relative">
+                  <MapPin className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type="text"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    placeholder="Số nhà, đường, quận/huyện..."
+                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                  />
+                </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 pt-1">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
+            <div className="pt-2 border-t border-slate-100 flex items-center justify-end">
+              <button
+                type="submit"
+                disabled={savingProfile}
+                className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm transition cursor-pointer"
+              >
+                <Save className="w-4 h-4" />
+                <span>
+                  {savingProfile
+                    ? "Đang lưu thay đổi..."
+                    : "Lưu thông tin cá nhân"}
+                </span>
+              </button>
+            </div>
+          </form>
+
+          {/* Card 2: Hồ sơ Nhân sự, Hợp đồng & Chế độ đãi ngộ (Chỉ xem) */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 md:p-6 shadow-xs space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 flex items-center justify-center shrink-0">
+                  <Briefcase className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-tight">
+                    Hồ sơ Công việc, Hợp đồng &amp; Chế độ
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Thông tin do bộ phận Nhân sự (HR) quản lý — Nhân viên chỉ xem
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Lưới thông tin công việc & hợp đồng */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+                <div className="text-[10px] font-bold text-slate-400 uppercase">
+                  Mã nhân viên
+                </div>
+                <div className="text-sm font-extrabold font-mono text-slate-800 mt-0.5">
+                  {currentUser.code || "N/A"}
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+                <div className="text-[10px] font-bold text-slate-400 uppercase">
+                  Tên đăng nhập
+                </div>
+                <div className="text-sm font-extrabold font-mono text-slate-800 mt-0.5">
+                  @{currentUser.username}
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+                <div className="text-[10px] font-bold text-slate-400 uppercase">
                   Vai trò phân quyền
-                </label>
-                <input
-                  type="text"
-                  value={getRoleDisplayName(currentUser.role)}
-                  disabled
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-100 text-slate-600 text-xs font-semibold cursor-not-allowed"
-                />
+                </div>
+                <div className="text-xs font-bold text-slate-800 mt-1">
+                  {getRoleDisplayName(currentUser.role)}
+                </div>
               </div>
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
+
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+                <div className="text-[10px] font-bold text-slate-400 uppercase">
                   Khối làm việc
-                </label>
-                <input
-                  type="text"
-                  value={
-                    department === "OFFICE"
-                      ? "Khối Văn phòng (OFFICE)"
-                      : "Khối Bán hàng (SALES)"
-                  }
-                  disabled
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-100 text-slate-600 text-xs font-semibold cursor-not-allowed"
-                />
+                </div>
+                <div className="text-xs font-bold text-slate-800 mt-1">
+                  {department === "OFFICE"
+                    ? "Khối Văn phòng (OFFICE)"
+                    : "Khối Bán hàng (SALES)"}
+                </div>
               </div>
-            </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+                <div className="text-[10px] font-bold text-slate-400 uppercase">
                   Loại hợp đồng
-                </label>
-                <input
-                  type="text"
-                  value={
-                    contractType === "FULLTIME"
-                      ? "Chính thức"
-                      : contractType === "PROBATION"
-                      ? "Thử việc"
-                      : contractType === "INTERN"
-                      ? "Thực tập (Intern)"
-                      : contractType === "PARTTIME"
-                      ? "Bán thời gian (cũ)"
-                      : "Chưa cập nhật – liên hệ HR"
-                  }
-                  disabled
-                  className={`w-full px-3 py-2.5 rounded-xl border text-xs font-bold cursor-not-allowed ${
-                    contractType === "FULLTIME"
-                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                      : contractType === "INTERN"
-                      ? "border-sky-200 bg-sky-50 text-sky-700"
-                      : "border-amber-200 bg-amber-50 text-amber-700"
-                  }`}
-                />
-                <p className="text-[10px] text-slate-500 mt-1">
-                  {contractType === "FULLTIME"
-                    ? "Được hưởng 1 ngày nghỉ phép có lương mỗi tháng."
-                    : "Chưa có ngày nghỉ phép có lương (chỉ dành cho nhân viên Chính thức)."}
-                </p>
+                </div>
+                <div className="mt-1">
+                  <span
+                    className={`inline-block px-2 py-0.5 rounded-md text-xs font-bold ${
+                      contractType === "FULLTIME"
+                        ? "bg-emerald-100 text-emerald-800"
+                        : contractType === "INTERN"
+                          ? "bg-sky-100 text-sky-800"
+                          : "bg-amber-100 text-amber-800"
+                    }`}
+                  >
+                    {contractLabel}
+                  </span>
+                </div>
               </div>
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
-                  Ngày bắt đầu HĐ
-                </label>
-                <input
-                  type="text"
-                  value={contractStartDate || "Chưa cập nhật"}
-                  disabled
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-100 text-slate-600 text-xs font-mono cursor-not-allowed"
-                />
+
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+                <div className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1">
+                  <Calendar className="w-3 h-3" />
+                  Thời hạn hợp đồng
+                </div>
+                <div className="text-xs font-mono font-bold text-slate-800 mt-1">
+                  {contractStartDate
+                    ? `${contractStartDate}${contractEndDate ? ` → ${contractEndDate}` : ""}`
+                    : "Chưa cập nhật"}
+                </div>
               </div>
             </div>
 
-            <div>
-              <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
+            {/* Chế độ Lương, Trợ cấp, Thưởng & Bảo hiểm */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 uppercase">
+                <Wallet className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Chế độ Lương, Trợ cấp, Thưởng &amp; Bảo hiểm (VNĐ)</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/90">
+                  <div className="text-[10px] font-bold text-slate-500 uppercase">
+                    Lương cơ bản
+                  </div>
+                  <div className="text-sm font-extrabold font-mono text-slate-900 mt-1">
+                    {formatMoney(baseSalary)}{" "}
+                    <span className="text-[10px] font-normal text-slate-500">
+                      đ
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/90">
+                  <div className="text-[10px] font-bold text-slate-500 uppercase">
+                    Trợ cấp
+                  </div>
+                  <div className="text-sm font-extrabold font-mono text-slate-900 mt-1">
+                    {formatMoney(allowance)}{" "}
+                    <span className="text-[10px] font-normal text-slate-500">
+                      đ
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/90">
+                  <div className="text-[10px] font-bold text-slate-500 uppercase">
+                    Thưởng
+                  </div>
+                  <div className="text-sm font-extrabold font-mono text-slate-900 mt-1">
+                    {formatMoney(bonus)}{" "}
+                    <span className="text-[10px] font-normal text-slate-500">
+                      đ
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/90">
+                  <div className="text-[10px] font-bold text-slate-500 uppercase">
+                    Bảo hiểm
+                  </div>
+                  <div className="text-sm font-extrabold font-mono text-slate-900 mt-1">
+                    {formatMoney(insurance)}{" "}
+                    <span className="text-[10px] font-normal text-slate-500">
+                      đ
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* File hợp đồng lao động (Chỉ xem) - nằm dưới cùng */}
+            <div className="pt-1">
+              <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1.5">
                 File hợp đồng lao động (Chỉ xem)
               </label>
               {contractFileUrl ? (
-                <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl border border-emerald-200 bg-emerald-50/70">
-                  <div className="flex items-center gap-2 min-w-0">
+                <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 rounded-xl border border-emerald-200 bg-emerald-50/70">
+                  <div className="flex items-center gap-2.5 min-w-0">
                     <FileText className="w-4 h-4 text-emerald-600 shrink-0" />
                     <span className="text-xs font-bold text-slate-800 truncate">
                       {contractFileName || "Hop-dong-lao-dong"}
                     </span>
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setShowContractPreview(true)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>Xem hợp đồng</span>
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowContractPreview(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs cursor-pointer"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>Xem hợp đồng</span>
+                  </button>
                 </div>
               ) : (
-                <div className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-100 text-slate-500 text-xs italic">
+                <div className="px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-500 text-xs italic">
                   Chưa có file hợp đồng đính kèm (Do bộ phận Nhân sự HR cập nhật)
                 </div>
               )}
             </div>
           </div>
+        </div>
 
-          <button
-            type="submit"
-            disabled={savingProfile}
-            className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow transition"
+        {/* CỘT PHẢI (5/12): Đổi mật khẩu + Ghi chú quyền lợi */}
+        <div className="lg:col-span-5 space-y-5">
+          {/* Card 3: Đổi mật khẩu đăng nhập */}
+          <form
+            onSubmit={handleChangePassword}
+            className="bg-white rounded-2xl border border-slate-200 p-5 md:p-6 shadow-xs space-y-4"
           >
-            <Save className="w-4 h-4" />
-            <span>
-              {savingProfile ? "Đang lưu thay đổi..." : "Lưu thông tin cá nhân"}
-            </span>
-          </button>
-        </form>
-
-        {/* Cột 2: Đổi mật khẩu */}
-        <form
-          onSubmit={handleChangePassword}
-          className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex flex-col justify-between space-y-4"
-        >
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
-              <KeyRound className="w-5 h-5 text-amber-500" />
-              <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-tight">
-                Đổi mật khẩu đăng nhập
-              </h3>
+            <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
+              <div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center shrink-0">
+                <KeyRound className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-tight">
+                  Đổi mật khẩu đăng nhập
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  Bảo mật tài khoản bằng mật khẩu riêng của bạn
+                </p>
+              </div>
             </div>
 
             {pwdMsg && (
@@ -638,26 +778,62 @@ export default function AccountProfileTab({
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
               />
             </div>
-          </div>
 
-          <button
-            type="submit"
-            disabled={savingPwd}
-            className="w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-60 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow transition"
-          >
-            <KeyRound className="w-4 h-4" />
-            <span>{savingPwd ? "Đang cập nhật..." : "Cập nhật mật khẩu"}</span>
-          </button>
-        </form>
+            <button
+              type="submit"
+              disabled={savingPwd}
+              className="w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-60 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm transition cursor-pointer"
+            >
+              <KeyRound className="w-4 h-4 text-amber-400" />
+              <span>
+                {savingPwd ? "Đang cập nhật..." : "Cập nhật mật khẩu"}
+              </span>
+            </button>
+          </form>
+
+          {/* Card 4: Quyền lợi hợp đồng & Lưu ý nhân sự */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3">
+            <div className="flex items-center gap-2 text-xs font-extrabold text-slate-800 uppercase">
+              <Info className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>Quyền lợi &amp; Quy định Hồ sơ Nhân sự</span>
+            </div>
+            <ul className="space-y-2 text-xs text-slate-600 leading-relaxed">
+              <li className="flex items-start gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
+                <span>
+                  <strong>Chế độ phép có lương:</strong>{" "}
+                  {contractType === "FULLTIME"
+                    ? "Bạn đang là nhân viên Chính thức — được hưởng 1 ngày nghỉ phép có lương mỗi tháng."
+                    : "Chỉ áp dụng 1 ngày phép có lương/tháng đối với nhân viên Hợp đồng Chính thức."}
+                </span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
+                <span>
+                  <strong>Thông tin liên hệ:</strong> Nhân viên chủ động cập nhật
+                  Số điện thoại, Email liên hệ, Email công ty, CCCD và Địa chỉ
+                  thường trú.
+                </span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
+                <span>
+                  <strong>Chế độ Lương &amp; Hợp đồng:</strong> Lương cơ bản, Trợ
+                  cấp, Thưởng, Bảo hiểm và File hợp đồng do bộ phận{" "}
+                  <strong>Nhân sự (HR)</strong> cập nhật.
+                </span>
+              </li>
+            </ul>
+          </div>
+        </div>
       </div>
 
-      {/* Modal Xem Hợp Đồng Lao Động (Hỗ trợ xem trước PDF, DOCX, DOC, Ảnh) */}
+      {/* Modal Xem trước / Tải về File Hợp đồng */}
       {showContractPreview && contractFileUrl && (
         <ContractFilePreviewModal
           staffName={fullName || currentUser.fullName}
           fileName={contractFileName || "Hop-dong-lao-dong"}
           fileUrl={contractFileUrl}
-          readOnlyLabel="Chế độ chỉ xem"
           onClose={() => setShowContractPreview(false)}
         />
       )}

@@ -161,7 +161,7 @@ export default function OrdersReturnsModule({
 
           <div className="flex flex-wrap items-center gap-2">
             <ExportExcelButton
-              label="Xuất Excel (kèm chi tiết)"
+              label="Xuất Excel"
               onExport={() => exportOrders(displayedOrders)}
               disabled={displayedOrders.length === 0}
             />

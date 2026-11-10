@@ -48,20 +48,82 @@ describe('Xếp ca tuần: Sửa & Lưu hàng loạt (PUT /shifts/assign/bulk) +
     expect(res.status).toBe(403);
   });
 
-  it('Chặn lưu khi Sales chưa đủ 7 ngày / không có ngày nghỉ / nghỉ 2 ngày', async () => {
+  it('Chặn lưu khi Sales chưa đủ 7 ngày hoặc nghỉ quá 4 ngày/tháng; cho phép gộp tối đa 4 ngày OFF trong 1 tuần và các tuần sau nghỉ 0 ngày', async () => {
     const partial = await save(fullWeek(2).slice(0, 2));
     expect(partial.status).toBe(400);
     expect(partial.body.code).toBe('WEEKLY_OFF_REQUIRED');
 
-    const noOff = await save(week.map((date, i) => ({ staffId: salesId, date, dayOfWeek: i + 1, shiftCode: 'SHIFT_1' })));
-    expect(noOff.status).toBe(400);
-    expect(noOff.body.code).toBe('WEEKLY_OFF_REQUIRED');
-
-    const twoOff = fullWeek(2);
-    twoOff[5].shiftCode = 'OFF';
-    expect((await save(twoOff)).status).toBe(400);
+    // Nghỉ 5 ngày trong 1 tuần -> vượt tối đa 4 ngày/tháng -> chặn 400
+    const fiveOff = week.map((date, i) => ({
+      staffId: salesId,
+      date,
+      dayOfWeek: i + 1,
+      shiftCode: i < 5 ? 'OFF' : 'SHIFT_1',
+    }));
+    expect((await save(fiveOff)).status).toBe(400);
 
     // Lỗi thì không lưu gì
+    expect(await getWeek()).toHaveLength(0);
+
+    // Dùng hết cả 4 ngày OFF ngay trong 1 tuần (tuần 09/11..15/11) -> hợp lệ 200
+    const fourOffInOneWeek = week.map((date, i) => ({
+      staffId: salesId,
+      date,
+      dayOfWeek: i + 1,
+      shiftCode: i < 4 ? 'OFF' : 'SHIFT_1',
+    }));
+    const okFour = await save(fourOffInOneWeek);
+    expect(okFour.status).toBe(200);
+
+    // Sang tuần tiếp theo trong cùng tháng 11 (23/11..29/11): vì đã dùng hết 4 ngày OFF trong tháng 11, nếu xin thêm 1 ngày OFF -> bị chặn 400!
+    const week3Start = '2026-11-23';
+    const week3 = [
+      '2026-11-23',
+      '2026-11-24',
+      '2026-11-25',
+      '2026-11-26',
+      '2026-11-27',
+      '2026-11-28',
+      '2026-11-29',
+    ];
+    const exceedMonth = await request(app)
+      .put('/api/v1/shifts/assign/bulk')
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({
+        weekStart: week3Start,
+        changes: week3.map((date, i) => ({
+          staffId: salesId,
+          date,
+          dayOfWeek: i + 1,
+          shiftCode: i === 0 ? 'OFF' : 'SHIFT_1',
+        })),
+      });
+    expect(exceedMonth.status).toBe(400);
+
+    // Tuần 23/11..29/11 đi làm cả 7 ngày (0 ngày OFF vì đã hết quota tháng) -> hợp lệ 200!
+    const zeroOffWeek3 = await request(app)
+      .put('/api/v1/shifts/assign/bulk')
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({
+        weekStart: week3Start,
+        changes: week3.map((date, i) => ({
+          staffId: salesId,
+          date,
+          dayOfWeek: i + 1,
+          shiftCode: 'SHIFT_1',
+        })),
+      });
+    expect(zeroOffWeek3.status).toBe(200);
+
+    // Dọn lại dữ liệu tuần 1 & tuần 3 cho các test sau
+    await save(week.map((date) => ({ staffId: salesId, date, shiftCode: null })));
+    await request(app)
+      .put('/api/v1/shifts/assign/bulk')
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({
+        weekStart: week3Start,
+        changes: week3.map((date) => ({ staffId: salesId, date, shiftCode: null })),
+      });
     expect(await getWeek()).toHaveLength(0);
   });
 
@@ -99,7 +161,7 @@ describe('Xếp ca tuần: Sửa & Lưu hàng loạt (PUT /shifts/assign/bulk) +
   });
 
   it('Luồng Sales đăng ký ca tuần sau -> HR chỉnh tay/xác nhận -> Sales nhận thông báo chấm đỏ & xem lịch', async () => {
-    // 1. Sales gửi đăng ký ca sai quy định (0 ngày OFF) -> chặn 400
+    // 1. Sales gửi đăng ký ca sai quy định (5 ngày OFF > 4 ngày/tháng) -> chặn 400
     const badPref = await request(app)
       .post('/api/v1/shifts/preferences')
       .set('Authorization', `Bearer ${salesToken}`)
@@ -108,8 +170,8 @@ describe('Xếp ca tuần: Sửa & Lưu hàng loạt (PUT /shifts/assign/bulk) +
         preferences: week.map((date, i) => ({
           date,
           dayOfWeek: i + 1,
-          isOffRequested: false,
-          preferenceShift: 'SHIFT_1',
+          isOffRequested: i < 5,
+          preferenceShift: i < 5 ? 'OFF' : 'SHIFT_1',
         })),
       });
     expect(badPref.status).toBe(400);
