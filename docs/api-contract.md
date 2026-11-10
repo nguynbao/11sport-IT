@@ -41,16 +41,19 @@
   - Body: `{ "currentPassword": "string", "newPassword": "string" }`
   - Quy tắc: Kiểm tra `currentPassword` khớp mật khẩu hiện tại (sai → `400 INVALID_CURRENT_PASSWORD`), `newPassword` tối thiểu 4 ký tự (`400 VALIDATION_ERROR`).
   - Response: `{ "data": { "changed": true, "username": "admin", "fullName": "Quản Trị Viên 11Sport" }, "meta": {} }`
-- `GET /api/v1/staff` — Danh sách nhân viên (CMS: role `ADMIN` hoặc `HR`)
-- `POST /api/v1/staff` — Tạo nhân viên mới (`username`, `password`, `fullName`, `phone`, `role`, `department`, `contractType`, `citizenId`, `contractStartDate`, `contractEndDate`, `contractFileUrl`, `contractFileName`):
+- `GET /api/v1/staff` — Danh sách nhân viên (CMS: role `ADMIN` hoặc `HR`; nhân viên đăng nhập xem thông tin cá nhân của mình). Hỗ trợ query lọc & sắp xếp: `?role=`, `?department=`, `?contractType=`, `?status=`, `?search=`, `?sortBy=code|fullName|baseSalary|allowance|bonus|insurance|createdAt`, `?sortOrder=asc|desc`.
+- `POST /api/v1/staff` — Tạo nhân viên mới (`username`, `password`, `fullName`, `phone`, `email`, `companyEmail`, `role`, `department`, `contractType`, `citizenId`, `contractStartDate`, `contractEndDate`, `contractFileUrl`, `contractFileName`, `baseSalary`, `allowance`, `bonus`, `insurance`):
   - `ADMIN` tạo tài khoản nhanh với `username`, `password`, `role` (được cấp mọi role kể cả `ADMIN`; nếu bỏ trống `fullName` hệ thống tự lấy theo `username`).
-  - `HR` tạo tài khoản kèm hồ sơ nhân sự chi tiết và tải file hợp đồng (`contractFileUrl`, `contractFileName`), nhưng **không được phép** cấp `role: "ADMIN"` (trả `403 FORBIDDEN`).
+  - `HR` tạo tài khoản kèm hồ sơ nhân sự chi tiết, tải file hợp đồng (`contractFileUrl`, `contractFileName`) và thiết lập thông tin lương/chế độ (`baseSalary`, `allowance`, `bonus`, `insurance`), nhưng **không được phép** cấp `role: "ADMIN"` (trả `403 FORBIDDEN`).
   - **Loại hợp đồng `contractType`**: `INTERN` (Thực tập) | `PROBATION` (Thử việc) | `FULLTIME` (Chính thức). Giá trị cũ `PARTTIME` vẫn được đọc để tương thích nhưng không còn cho chọn mới.
     - `HR` tạo tài khoản **bắt buộc chọn** loại hợp đồng (không có mặc định trên giao diện). Giá trị khác danh sách → `400 INVALID_CONTRACT_TYPE`.
     - Nếu không truyền (VD `ADMIN` tạo nhanh), server mặc định **`PROBATION` (Thử việc)** — không còn mặc định Chính thức.
     - Chỉ `FULLTIME` mới được hưởng ngày nghỉ phép có lương (`PAID_LEAVE`).
 - `PATCH /api/v1/staff/:id` — Cập nhật thông tin nhân sự & phân quyền:
-  - `HR` được chỉnh sửa toàn bộ thông tin hồ sơ nhân sự (`fullName`, `phone`, `email`, `citizenId`, `address`, `department`, `contractType`, `contractStartDate`, `contractEndDate`, `contractFileUrl`, `contractFileName`, `password`) — bao gồm tải lên mới, thay thế hoặc xóa file hợp đồng (`contractFileUrl: ""`, `contractFileName: ""`) — và đổi `role` giữa `SALES | HR | ACCOUNTANT | MARKETING`, nhưng **không được phép** nâng quyền user thành `ADMIN` hoặc chỉnh sửa tài khoản `ADMIN` (`403 FORBIDDEN`), và **không được phép** khóa/mở khóa tài khoản (`status`).
+  - `HR` được chỉnh sửa toàn bộ thông tin hồ sơ nhân sự (`fullName`, `phone`, `email`, `companyEmail`, `citizenId`, `address`, `department`, `contractType`, `contractStartDate`, `contractEndDate`, `contractFileUrl`, `contractFileName`, `password`, `baseSalary`, `allowance`, `bonus`, `insurance`) — bao gồm tải lên mới, thay thế hoặc xóa file hợp đồng (`contractFileUrl: ""`, `contractFileName: ""`) — và đổi `role` giữa `SALES | HR | ACCOUNTANT | MARKETING`, nhưng **không được phép** nâng quyền user thành `ADMIN` hoặc chỉnh sửa tài khoản `ADMIN` (`403 FORBIDDEN`), và **không được phép** khóa/mở khóa tài khoản (`status`).
+  - **Thông tin Lương & Chế độ (`baseSalary` – Lương cơ bản, `allowance` – Trợ cấp, `bonus` – Thưởng, `insurance` – Bảo hiểm)**:
+    - **Chỉ duy nhất `HR` (`role === "HR"`)** mới có quyền chỉnh sửa 4 trường này (`403 FORBIDDEN` nếu `ADMIN` hoặc nhân viên tự gửi yêu cầu sửa).
+    - Nhân viên được phép **xem** (chỉ đọc) 4 trường Lương cơ bản, Trợ cấp, Thưởng, Bảo hiểm của mình trong trang Hồ sơ cá nhân.
   - Nhân viên thông thường trên Web chỉ được xem/tải về file hợp đồng (`contractFileUrl`, `contractFileName`), không được phép tự chỉnh sửa hoặc xóa file hợp đồng (`403 FORBIDDEN`).
   - `ADMIN` được phép cấp mọi `role` (bao gồm `ADMIN`) và khóa/mở khóa tài khoản (`status: "ACTIVE" | "LOCKED"`).
 
@@ -806,43 +809,46 @@
       - `summary`: `{ standardDays, workUnits (công đi làm quy đổi), holidayPaidDays (công nghỉ lễ chính thức hưởng lương), paidUnits (tổng công tính lương = workUnits + holidayPaidDays), totalHours, lateCount, lateMinutes, earlyCount, earlyMinutes, missingCheckout, absentDays, leaveDays, wfhDays, holidayWorkDays, holidayWorkHours }`
       - `Cell.isPaidHoliday = true` khi là ngày lễ chính thức được nghỉ hưởng nguyên lương.
     - `overview`: `{ totalStaff, workingNow, checkedInToday, lateToday, notCheckedInToday, missingCheckoutMonth, absentMonth }`
-  - Quy ước: Giờ chuẩn/ngày `OFFICE` = 8h (`08:30–12:00` và `13:00–17:30`, trừ nghỉ trưa 1h), `SALES` = 9h. Ngày công quy đổi = `min(1, giờ thực tế / giờ chuẩn)`. Ngày làm việc khối `OFFICE` lấy từ `.env` `ATTENDANCE_OFFICE_WORKDAYS` (mặc định `1,2,3,4,5,6` = T2–T7); khối `SALES` theo lịch xếp ca (`OFF` = ngày nghỉ). Ngày nghỉ lễ chính thức không tính vắng; đi làm vào ngày lễ chính thức được đếm `holidayWorkDays` để tính lương lễ.
+    - `monthMeta`: `{ daysInMonth, isLeapYear, sundaysCount, standardDays, officialHolidaysCount, officePaidHolidaysCount }` — thông tin công chuẩn của tháng (1 tuần 6 ngày làm việc: tháng 28 ngày = 24 công; tháng 29 ngày năm nhuận = 24 hoặc 25 công; tháng 30 ngày = 25 hoặc 26 công tuỳ 5 hay 4 Chủ nhật; tháng 31 ngày = 26 hoặc 27 công tuỳ 5 hay 4 Chủ nhật).
+  - Quy ước: Giờ chuẩn/ngày `OFFICE` = 8h (`08:30–12:00` và `13:00–17:30`, trừ nghỉ trưa 1h), `SALES` = 9h. Ngày công quy đổi = `min(1, giờ thực tế / giờ chuẩn)`. Ngày làm việc khối `OFFICE` lấy từ `.env` `ATTENDANCE_OFFICE_WORKDAYS` (mặc định `1,2,3,4,5,6` = T2–T7); khối `SALES` theo lịch xếp ca (`OFF` = ngày nghỉ). Công chuẩn tháng (`standardDays`) tính thống nhất theo quy tắc 1 tuần 6 ngày làm việc (`số ngày T2–T7 trong tháng = daysInMonth - sundaysCount`). Ngày nghỉ lễ chính thức không tính vắng; đi làm vào ngày lễ chính thức được đếm `holidayWorkDays` để tính lương lễ.
   - **Ngày lễ chính thức (Điều 112 BLLĐ 2019)**: chỉ lễ có `isOfficialDayOff = true` mới áp dụng; lễ sự kiện/kỷ niệm là ngày làm việc bình thường, không tính công.
-    - **Khối Văn phòng**: lễ rơi vào T2–T7 được nghỉ và vẫn **tính 1 công** (`holidayPaidDays`, nằm trong công chuẩn). Nếu bị yêu cầu đi làm → **lương x4** (`holidayWorkDays`, `holidayWorkHours`), không cộng thêm vào `workUnits`.
-    - **Khối Bán hàng**: **mặc định không có ngày nghỉ, kể cả Chủ nhật và ngày lễ** — chỉ nghỉ khi HR xếp ca `OFF` (đúng 1 ngày/tuần). Ngày lễ là ngày làm bình thường: không cộng công lễ, vẫn nằm trong công chuẩn; đi làm → tính công + **lương x4** (`holidayWorkDays`, `holidayWorkHours`); không đi làm (không có đơn) → `ABSENT`. Công chuẩn Sales = 6 ngày/tuần (tuần chưa xếp ca tạm trừ 1 ngày/tuần khi đếm).
-    - Lễ trùng Chủ nhật không cộng công.
+    - **Khối Văn phòng**: mọi ngày lễ chính thức rơi vào T2–T7 trong tháng đang xem đều hiển thị `HOLIDAY` (`L`), được nghỉ hưởng nguyên lương và **tự động cộng +1 công** vào `holidayPaidDays` và `paidUnits` (cột `Công`), nằm trong `standardDays` của tháng (không bị chặn bởi ngày tạo bản ghi `createdAt` hay `todayStr`). Nếu bị yêu cầu đi làm → **lương x4** (`holidayWorkDays`, `holidayWorkHours`), không cộng trùng thêm vào `workUnits`.
+    - **Khối Bán hàng**: **mặc định không có ngày nghỉ cố định, kể cả Chủ nhật và ngày lễ** — chỉ nghỉ khi xếp ca `OFF` hoặc có đơn nghỉ được duyệt. Mỗi tháng nhân viên Sales có tối đa **4 ngày nghỉ không lương (`OFF`)**, có thể đăng ký/sử dụng gộp tới **4 ngày trong cùng 1 tuần**; khi đã dùng hết 4 ngày nghỉ không lương trong tháng thì các tuần còn lại trong tháng đó **không được nghỉ không lương thêm** (`0` ngày OFF còn lại), phải qua tháng mới. Ngày lễ là ngày làm bình thường: không cộng công lễ, vẫn nằm trong công chuẩn; đi làm → tính công + **lương x4** (`holidayWorkDays`, `holidayWorkHours`); không đi làm (không có đơn/lịch OFF) → `ABSENT`. Công chuẩn tháng (`standardDays`) tính theo lịch 6 ngày/tuần của tháng (`24`, `25`, `26`, hoặc `27` công tuỳ tháng 28/29/30/31 ngày và số Chủ nhật trong tháng).
+    - Lễ trùng Chủ nhật không cộng công thêm.
 
 - `GET /api/v1/attendance/my-calendar` (Mọi nhân viên trừ `ADMIN`) — **Lịch công tháng của chính mình** (Web)
   - Query: `?month=11&year=2026`.
   - Response: `{ "data": { month, year, days[], row (cùng cấu trúc 1 dòng của /attendance/timesheet), rules: { shifts, lateToleranceMinutes, overtimeMinMinutes, holidayWorkPayMultiplier: 4 } } }`
   - Bổ sung cho mỗi `Cell` (cả ở `/attendance/timesheet`): `overtimeMinutes` (số phút tăng ca đã được HR duyệt; ca `BOTH` không tính tăng ca; `SALES` 1 ca chỉ tính khi HR duyệt phần check-out trễ > 5p; `OFFICE` chỉ tính khi được HR yêu cầu), `overtimeStatus` (`NONE | PENDING | APPROVED | REJECTED`), `overtimeApprovedMinutes`, `lateCheckoutMinutes`, `lateCheckoutReason`, `earlyApproved`, `lateApproved` (có đơn xin về sớm / đi trễ đã duyệt), `leaveRequests[]` (`{ id, type, status, reason, reviewNote }` mọi trạng thái).
-  - Bổ sung `summary`: `overtimeDays`, `overtimeMinutes`, `pendingRequests`, `paidLeaveEntitled` (0/1), `paidLeaveUsed`, `paidLeaveForfeited` (1 nếu tháng đã qua mà không dùng).
+  - Bổ sung `summary`: `overtimeDays`, `overtimeMinutes`, `pendingRequests`, `paidLeaveEntitled` (0/1), `paidLeaveUsed`, `paidLeaveForfeited` (1 nếu tháng đã qua mà không dùng), `salesOffEntitled` (`4` với khối `SALES`, `0` với khối `OFFICE`), `salesOffUsed`, `salesOffRemaining`.
   - `Cell.code = "PAID_LEAVE"`: nghỉ phép có lương đã duyệt → **+1 công** (cộng vào `paidUnits`).
   - Đi làm ngày lễ chính thức hiển thị nhãn **x4 lương** (100% lương ngày lễ + ≥ 300% lương làm việc ngày lễ).
 
-- `PATCH /api/v1/attendance/:id` (Role `HR` hoặc `ADMIN`) — **Điều chỉnh giờ công & Xét duyệt tăng ca** (quên check-out, sai giờ, xét duyệt check-out trễ của Sales hoặc giao tăng ca cho Văn phòng)
-  - Body: `{ "checkIn"?: "08:30", "checkOut"?: "17:30", "shiftCode"?: "SHIFT_1|SHIFT_2|BOTH", "overtimeStatus"?: "NONE|PENDING|APPROVED|REJECTED", "overtimeApprovedMinutes"?: number, "reason": "string (bắt buộc)" }`
-  - Server tự tính lại `workStartTime`, `lateMinutes`, `earlyMinutes`, `totalWorkHours`, `status`, cập nhật trạng thái & số phút tăng ca (`overtimeStatus`, `overtimeApprovedMinutes`); ghi vết `adjustedBy`, `adjustedByName`, `adjustedAt`, `adjustReason`.
+- `PATCH /api/v1/attendance/:id` (Role `HR` hoặc `ADMIN`) — **Điều chỉnh giờ công, Chuyển sang OFF/WFH & Xét duyệt tăng ca** (quên check-out, sai giờ, đổi hình thức làm việc trực tiếp/WFH, chuyển ngày đó thành ngày nghỉ OFF/PAID_LEAVE, xét duyệt check-out trễ của Sales hoặc giao tăng ca cho Văn phòng)
+  - Body: `{ "checkIn"?: "08:30", "checkOut"?: "17:30", "shiftCode"?: "SHIFT_1|SHIFT_2|BOTH|OFF", "checkInType"?: "STANDARD|WFH", "offType"?: "OFF|PAID_LEAVE", "overtimeStatus"?: "NONE|PENDING|APPROVED|REJECTED", "overtimeApprovedMinutes"?: number, "reason": "string (bắt buộc)" }`
+  - Khi `shiftCode = "OFF"`: không yêu cầu `checkIn`/`checkOut`; xoá bản ghi chấm công đi làm của ngày đó, tự động tạo/cập nhật đơn nghỉ đã duyệt (`APPROVED`) loại `offType` (`OFF` nghỉ không lương hoặc `PAID_LEAVE` nghỉ phép có lương cho nhân viên `FULLTIME`), đồng thời đồng bộ lịch phân ca ngày đó về `OFF` (nếu là `SALES` và `offType = "OFF"`).
+  - Khi `shiftCode` là `SHIFT_1 | SHIFT_2 | BOTH`: Server tự tính lại `workStartTime`, `lateMinutes`, `earlyMinutes`, `totalWorkHours`, `status`, cập nhật `checkInType` (`STANDARD` hoặc `WFH`), trạng thái & số phút tăng ca (`overtimeStatus`, `overtimeApprovedMinutes`); ghi vết `adjustedBy`, `adjustedByName`, `adjustedAt`, `adjustReason`.
 
-- `POST /api/v1/attendance/manual` (Role `HR` hoặc `ADMIN`) — **Chấm công bù** cho nhân viên quên chấm công
-  - Body: `{ "staffId": "...", "date": "2026-11-05", "shiftCode": "SHIFT_1|SHIFT_2|BOTH", "checkIn": "08:30", "checkOut": "17:30", "overtimeStatus"?: "NONE|APPROVED", "overtimeApprovedMinutes"?: number, "reason": "string (bắt buộc)" }`
-  - Lỗi: `400 ALREADY_CHECKED_IN` nếu ngày đó đã có bản ghi (dùng PATCH để sửa).
+- `POST /api/v1/attendance/manual` (Role `HR` hoặc `ADMIN`) — **Chấm công bù (bao gồm chấm công đi làm trực tiếp, chấm công WFH hoặc chấm OFF)** cho nhân viên
+  - Body: `{ "staffId": "...", "date": "2026-11-05", "shiftCode": "SHIFT_1|SHIFT_2|BOTH|OFF", "checkInType"?: "STANDARD|WFH", "offType"?: "OFF|PAID_LEAVE", "checkIn"?: "08:30", "checkOut"?: "17:30", "overtimeStatus"?: "NONE|APPROVED", "overtimeApprovedMinutes"?: number, "reason": "string (bắt buộc)" }`
+  - Khi `shiftCode = "OFF"`: không cần truyền `checkIn`/`checkOut`; hệ thống ghi nhận ngày nghỉ (`OFF` không lương hoặc `PAID_LEAVE` có lương cho `FULLTIME`, kiểm tra hạn mức 4 ngày OFF không lương/tháng đối với `SALES` và 1 ngày `PAID_LEAVE`/tháng đối với `FULLTIME`), xoá bản ghi chấm công nếu đã lỡ tạo trong ngày và đồng bộ `ShiftAssignment` sang `OFF`.
+  - Lỗi: `400 ALREADY_CHECKED_IN` nếu ngày đó đã có bản ghi chấm công và `shiftCode !== "OFF"` (dùng PATCH để sửa).
 
 - `GET /api/v1/attendance/config`
   - Trả về cấu hình vị trí GPS và danh sách IP Wi-Fi/LAN công ty (chỉ đọc từ biến môi trường `.env` trên Server: `ATTENDANCE_OFFICE_NAME`, `ATTENDANCE_OFFICE_LAT`, `ATTENDANCE_OFFICE_LNG`, `ATTENDANCE_MAX_DISTANCE_METERS`, `ATTENDANCE_REQUIRE_GPS`, `ATTENDANCE_REQUIRE_IP`, `ATTENDANCE_ALLOWED_IPS`), kèm `detectedClientIp`. Không cho phép chỉnh sửa qua UI/API (HR và Admin đều không được sửa trên giao diện).
   - Response: `{ "data": { "config": { "officeName": "...", "officeLat": 16.0352, "officeLng": 108.2185, "maxDistanceMeters": 50, "allowedIps": ["127.0.0.1", "::1"], "requireGps": true, "requireIp": false }, "detectedClientIp": "127.0.0.1" } }`
 
 #### B. Đơn từ & Phê duyệt WFH / Nghỉ phép (`/leave-requests`)
-- **Quy trình làm việc**: tuần làm 6 ngày.
+- **Quy trình làm việc**:
   - Khối `OFFICE`: bắt buộc nghỉ **Chủ nhật** (`ATTENDANCE_OFFICE_WORKDAYS=1,2,3,4,5,6`).
-  - Khối `SALES`: bắt buộc nghỉ **đúng 1 ngày bất kỳ/tuần** theo lịch xếp ca (xem `PUT /shifts/assign/bulk`).
-  - Hợp đồng **Chính thức (`FULLTIME`)**: mỗi tháng có **1 ngày nghỉ phép có lương** (`PAID_LEAVE`), dùng trong tháng, hết tháng không dùng thì **mất quyền lợi** (không cộng dồn, không quy đổi tiền). Thử việc/Bán thời gian không có.
+  - Khối `SALES`: mỗi tháng có tối đa **4 ngày nghỉ không lương (`OFF`)**. Có thể dùng linh hoạt trong tháng (tối đa **4 ngày trong 1 tuần**, tức có thể dùng hết cả 4 ngày ngay trong 1 tuần); khi đã dùng đủ 4 ngày nghỉ không lương trong tháng thì các tuần còn lại trong tháng không được đăng ký/xin nghỉ không lương thêm nữa mà phải đợi qua tháng mới.
+  - Hợp đồng **Chính thức (`FULLTIME`)** (cả `OFFICE` và `SALES`): mỗi tháng vẫn giữ nguyên **1 ngày nghỉ phép có lương (`PAID_LEAVE`, +1 công)**, dùng trong tháng, hết tháng không dùng thì **mất quyền lợi** (không cộng dồn, không quy đổi tiền). Thử việc/Bán thời gian không có.
 - `POST /api/v1/leave-requests`
   - Tạo đơn (`type: "WFH" | "OFF" | "LATE" | "EARLY" | "PAID_LEAVE"`), `date`, `reason`.
   - `reason`: bắt buộc, **tối đa 100 ký tự** (sau khi bỏ khoảng trắng đầu/cuối) → vượt quá trả `400 REASON_TOO_LONG`.
   - Cả nhân viên khối `OFFICE` và khối `SALES` đều được phép nộp đơn `WFH` (Làm việc từ xa).
   - `PAID_LEAVE` (Nghỉ phép có lương): chỉ hợp đồng `FULLTIME` (`400 PAID_LEAVE_NOT_ELIGIBLE`); tối đa 1 đơn đang chờ/đã duyệt mỗi tháng (`400 PAID_LEAVE_QUOTA_EXCEEDED`). HR duyệt cũng kiểm tra lại hạn mức.
-  - `OFF` = nghỉ không lương (không tính công).
+  - `OFF` = nghỉ không lương (không tính công). Với nhân viên `SALES`: tổng số ngày nghỉ không lương trong tháng (`YYYY-MM`, tính gộp các ngày có lịch phân ca `shiftCode === "OFF"` và các đơn `type === "OFF"` đang chờ duyệt/đã duyệt theo ngày phân biệt, không tính ngày có `PAID_LEAVE` đã duyệt) tối đa **4 ngày/tháng**; vượt quá trả `400 SALES_OFF_QUOTA_EXCEEDED`.
   - Lỗi `400 DUPLICATE_REQUEST` nếu đã có đơn cùng loại, cùng ngày đang chờ duyệt hoặc đã duyệt.
 - `GET /api/v1/leave-requests`
   - HR xem danh sách đơn chờ duyệt; nhân viên xem danh sách đơn của mình (sắp xếp ngày mới nhất trước).
@@ -854,16 +860,16 @@
 #### C. Xếp ca & Bàn giao Kho Tầng 1 (`/shifts`)
 - `POST /api/v1/shifts/preferences`
   - Nhân viên Bán hàng (`SALES`) nộp đăng ký ca tuần tới: `{ "weekStart": "2026-11-09", "preferences": [{ "date": "2026-11-09", "dayOfWeek": 1, "isOffRequested": false, "preferenceShift": "SHIFT_1 | SHIFT_2 | BOTH | OFF" }] }`.
-  - **Ràng buộc**: Bắt buộc gửi đủ 7 ngày của tuần (`weekStart`..`weekStart + 6 ngày`) gồm **6 ngày làm (`SHIFT_1`, `SHIFT_2`, hoặc cả 2 ca `BOTH`) + đúng 1 ngày nghỉ (`isOffRequested: true` / `OFF`)**. Nếu sai trả `400 WEEKLY_OFF_REQUIRED`.
+  - **Ràng buộc**: Bắt buộc gửi đủ 7 ngày của tuần (`weekStart`..`weekStart + 6 ngày`), trong đó mỗi tuần được chọn từ **0 đến 4 ngày nghỉ (`isOffRequested: true` / `OFF`)** và tổng số ngày nghỉ không lương (`OFF`) của nhân viên trong tháng (`YYYY-MM`) không vượt quá **4 ngày/tháng**. Nếu tháng đó đã dùng hết 4 ngày nghỉ ở các tuần trước thì các tuần sau trong tháng chỉ được đăng ký `0` ngày `OFF` (đi làm đủ 7 ngày) cho đến khi sang tháng mới. Vi phạm trả `400 WEEKLY_OFF_REQUIRED` hoặc `400 SALES_OFF_QUOTA_EXCEEDED`.
   - **Logic xử lý đăng ký 2 ca/ngày (`preferenceShift = "BOTH"`)**:
     - Nếu trong ngày đó cả `Ca 1` và `Ca 2` đều đã có nhân viên khác đăng ký/trực (ca không trống): Hệ thống tự động **random 1 trong 2 ca (`SHIFT_1` hoặc `SHIFT_2`)** cho nhân viên đó.
     - Nếu trong ngày đó có ca bị trống (`Ca 1` hoặc `Ca 2` chưa có ai khác đăng ký): Nhân viên đăng ký 2 ca sẽ được xếp **làm cả 2 ca (`shiftCode = "BOTH"`)**, hiển thị ở cả hàng `Ca 1` và `Ca 2` trên bảng phân ca của HR.
   - Lưu bản ghi `ShiftAssignment` với `assignedBy: "AUTO"`, `preferenceShift`, `isOffRequested`, `seenByStaff: true` để hiển thị ngay trên bảng phân ca tuần của HR. Nếu tuần đó đã được HR chốt (`assignedBy: "HR"`), trả lỗi `400 SCHEDULE_ALREADY_CONFIRMED`.
 - `GET /api/v1/shifts/schedule`
-  - Xem bảng lịch ca của tuần: `?weekStart=2026-11-09` (lấy toàn bộ phân ca có `date` từ `weekStart` đến `weekStart + 6 ngày`).
+  - Xem bảng lịch ca của tuần: `?weekStart=2026-11-09` (lấy toàn bộ phân ca có `date` từ `weekStart` đến `weekStart + 6 ngày`), kèm thống kê số ngày `OFF` không lương trong tháng của từng nhân viên `SALES` (`monthlyOffByStaff`).
 - `GET /api/v1/shifts/my-schedule`
   - Query: `?weekStart=2026-11-16` (mặc định Thứ Hai tuần kế tiếp).
-  - Trả về lịch ca của chính nhân viên đang đăng nhập cho tuần `weekStart`, kèm `unseenConfirmedCount` (số ca đã được HR xác nhận `assignedBy === "HR"` mà nhân viên chưa xem `seenByStaff === false`) và `confirmedWeeks` (danh sách tuần đã được HR chốt).
+  - Trả về lịch ca của chính nhân viên đang đăng nhập cho tuần `weekStart`, kèm `unseenConfirmedCount` (số ca đã được HR xác nhận `assignedBy === "HR"` mà nhân viên chưa xem `seenByStaff === false`), `confirmedWeeks` (danh sách tuần đã được HR chốt) và `monthlyOffQuota` (`{ limit: 4, byMonth: { "YYYY-MM": { used, usedOtherWeeks, remainingForWeek } } }`).
 - `POST /api/v1/shifts/my-schedule/seen`
   - Đánh dấu toàn bộ lịch ca đã được HR xác nhận (`assignedBy === "HR"`) của nhân viên đang đăng nhập thành `seenByStaff: true` (tắt chấm đỏ thông báo trên Menu & tab Chấm công).
 - `PUT /api/v1/shifts/assign/bulk` (Role `HR` hoặc `ADMIN`) — **Lưu thay đổi & Xác nhận hoàn thành lịch ca tuần** (trên CMS)
@@ -871,7 +877,7 @@
   - `shiftCode = null` → xoá phân ca của nhân viên ngày đó. Mỗi nhân viên chỉ có 1 ca/ngày (ghi đè nếu đã có).
   - Khi `confirmWeek = false` (HR bấm **Lưu nháp**): chỉ lưu thay đổi `shiftCode`, giữ nguyên trạng thái chờ xác nhận (`assignedBy: "AUTO"`, `seenByStaff: true`) của cả nhân viên được chỉnh lẫn các nhân viên khác trong tuần; không khóa sửa đăng ký và chưa bật thông báo cho nhân viên (`confirmed: 0`).
   - Chỉ khi `confirmWeek = true` (HR bấm **Xác nhận & Hoàn tất**): toàn bộ các bản ghi phân ca trong tuần của nhân viên mới được chuyển sang `assignedBy: "HR"`, gắn `confirmedAt: new Date()`, và đặt `seenByStaff: false` để bật **chấm đỏ thông báo** bên giao diện Web của nhân viên Bán hàng.
-  - **Bắt buộc 6 ngày làm + 1 ngày nghỉ/tuần**: sau khi áp dụng thay đổi, mỗi nhân viên `SALES` có phân ca trong tuần phải được xếp đủ 7 ngày gồm **đúng 1 ngày `OFF`**. Sai → `400 WEEKLY_OFF_REQUIRED`, `fields: { "<tên NV>": "mô tả lỗi" }`, không lưu gì.
+  - **Ràng buộc 7 ngày/tuần & tối đa 4 ngày nghỉ không lương/tháng**: sau khi áp dụng thay đổi, mỗi nhân viên `SALES` có phân ca trong tuần phải được xếp đủ 7 ngày, trong đó số ngày `OFF` trong tuần từ `0..4` ngày và tổng số ngày nghỉ không lương trong tháng (`YYYY-MM`) không vượt quá **4 ngày/tháng**. Sai → `400 WEEKLY_OFF_REQUIRED`, `fields: { "<tên NV>": "mô tả lỗi" }`, không lưu gì.
   - Response: `{ "data": { "updated": 3, "created": 2, "deleted": 1, "confirmed": 7 } }`
 - `POST /api/v1/shifts/auto-assign`
   - HR kích hoạt tự động xếp ca dựa trên preferences Thứ 6: `{ "weekStart": "2026-11-09" }`.

@@ -265,6 +265,23 @@ export function exportImports(imports: any[]) {
 
 /* -------------------------------- Đơn hàng -------------------------------- */
 
+const formatOrderItemsDetail = (o: Order): string => {
+  if (!Array.isArray(o.items) || o.items.length === 0) return "";
+  return o.items
+    .map((it) => {
+      const variant = formatVariantLabel(it.color, it.size);
+      const variantPart = variant && variant !== "Mặc định" ? ` [${variant}]` : "";
+      const giftTag = it.isGift || it.discountType === "GIFT" ? " (Hàng tặng)" : "";
+      const qty = Number(it.quantity) || 0;
+      const lineTotal =
+        Number(it.lineTotal) || (Number(it.unitPrice) || 0) * qty;
+      const returnedPart =
+        Number(it.returnedQuantity) > 0 ? ` (Đã trả: ${it.returnedQuantity})` : "";
+      return `${it.productCode ? `[${it.productCode}] ` : ""}${it.productName}${variantPart}${giftTag} x${qty} (${lineTotal.toLocaleString("vi-VN")}đ)${returnedPart}`;
+    })
+    .join(" | ");
+};
+
 export function exportOrders(orders: Order[]) {
   const orderCols: ExcelColumn<Order>[] = [
     { header: "Mã đơn", value: (o) => o.orderCode || o.code || o._id },
@@ -283,6 +300,11 @@ export function exportOrders(orders: Order[]) {
       value: (o) => (o.items || []).reduce((s, it) => s + (Number(it.quantity) || 0), 0),
       format: "int",
       total: true,
+    },
+    {
+      header: "Chi tiết đơn hàng",
+      value: formatOrderItemsDetail,
+      width: 60,
     },
     { header: "Tiền hàng (niêm yết)", value: (o) => Number(o.rawSubtotal || o.subtotal) || 0, format: "money", total: true },
     { header: "Giảm giá SP", value: (o) => Number(o.itemDiscountTotal) || 0, format: "money", total: true },
@@ -378,7 +400,25 @@ export function exportStaff(staff: StaffUser[]) {
     { header: "Username", value: (s) => s.username },
     { header: "Họ và tên", value: (s) => s.fullName, width: 28 },
     { header: "SĐT", value: (s) => s.phone || "" },
+    { header: "Email liên hệ", value: (s) => s.email || "", width: 24 },
+    { header: "Email công ty", value: (s) => s.companyEmail || "", width: 24 },
+    { header: "Khối", value: (s) => (s.department === "OFFICE" ? "Văn phòng" : "Bán hàng") },
     { header: "Phân quyền", value: (s) => ROLE[s.role] || s.role },
+    {
+      header: "Loại hợp đồng",
+      value: (s) =>
+        s.contractType === "FULLTIME"
+          ? "Chính thức"
+          : s.contractType === "INTERN"
+            ? "Thực tập"
+            : s.contractType === "PROBATION"
+              ? "Thử việc"
+              : s.contractType || "",
+    },
+    { header: "Lương cơ bản", value: (s) => Number(s.baseSalary || 0), format: "money", total: true, width: 16 },
+    { header: "Trợ cấp", value: (s) => Number(s.allowance || 0), format: "money", total: true, width: 15 },
+    { header: "Thưởng", value: (s) => Number(s.bonus || 0), format: "money", total: true, width: 15 },
+    { header: "Bảo hiểm", value: (s) => Number(s.insurance || 0), format: "money", total: true, width: 15 },
     { header: "Trạng thái", value: (s) => (s.status === "ACTIVE" ? "Đang hoạt động" : "Đã khóa") },
     { header: "Ngày tạo", value: (s) => toDate(s.createdAt), format: "datetime", width: 17 },
   ];

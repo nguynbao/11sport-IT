@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { shiftAssignmentRepo, shiftHandoverRepo, staffRepo } from '../config/db';
 import { ApiError } from '../utils/errors';
 import { ShiftType } from '../models/ShiftAssignment';
+import { getSalesMonthlyUnpaidOffDates, SALES_MAX_UNPAID_OFF_PER_MONTH } from './leaveRequests';
 
 export const shiftsRouter = Router();
 
@@ -92,19 +93,42 @@ shiftsRouter.post('/shifts/preferences', async (req, res, next) => {
       throw new ApiError(
         400,
         'WEEKLY_OFF_REQUIRED',
-        'Vui lòng đăng ký đủ 7 ngày trong tuần (6 ngày làm việc + đúng 1 ngày nghỉ OFF)'
+        `Vui lòng đăng ký đủ 7 ngày trong tuần (tối đa ${SALES_MAX_UNPAID_OFF_PER_MONTH} ngày nghỉ không lương OFF/tháng)`
       );
     }
 
-    const offCount = preferences.filter(
+    const offItems = preferences.filter(
       (item: any) => Boolean(item?.isOffRequested) || item?.preferenceShift === 'OFF'
-    ).length;
-    if (offCount !== 1) {
+    );
+    const offCount = offItems.length;
+    if (offCount > SALES_MAX_UNPAID_OFF_PER_MONTH) {
       throw new ApiError(
         400,
         'WEEKLY_OFF_REQUIRED',
-        `Quy định khối Bán hàng: bắt buộc đăng ký 6 ngày làm việc và đúng 1 ngày nghỉ (OFF) trong tuần (hiện chọn ${offCount} ngày OFF)`
+        `Quy định khối Bán hàng: mỗi tháng chỉ được nghỉ không lương tối đa ${SALES_MAX_UNPAID_OFF_PER_MONTH} ngày (hiện chọn ${offCount} ngày OFF trong tuần)`
       );
+    }
+
+    const weekDateSet = new Set<string>(preferences.map((item: any) => String(item?.date || '')));
+    const monthsInWeek = Array.from(new Set(Array.from(weekDateSet).map((d) => d.slice(0, 7))));
+    for (const ym of monthsInWeek) {
+      const usedOutsideWeek = await getSalesMonthlyUnpaidOffDates(String(staff._id), ym, {
+        excludeShiftDates: weekDateSet,
+      });
+      const offDatesInMonthThisWeek = offItems
+        .map((item: any) => String(item.date))
+        .filter((d: string) => d.startsWith(`${ym}-`) && !usedOutsideWeek.has(d));
+      const totalInMonth = usedOutsideWeek.size + offDatesInMonthThisWeek.length;
+      if (totalInMonth > SALES_MAX_UNPAID_OFF_PER_MONTH) {
+        const remaining = Math.max(0, SALES_MAX_UNPAID_OFF_PER_MONTH - usedOutsideWeek.size);
+        throw new ApiError(
+          400,
+          'SALES_OFF_QUOTA_EXCEEDED',
+          remaining === 0
+            ? `Tháng ${ym.slice(5, 7)}/${ym.slice(0, 4)} bạn đã dùng hết ${SALES_MAX_UNPAID_OFF_PER_MONTH}/${SALES_MAX_UNPAID_OFF_PER_MONTH} ngày nghỉ không lương (OFF). Các tuần còn lại trong tháng không được đăng ký OFF thêm, phải qua tháng mới!`
+            : `Tháng ${ym.slice(5, 7)}/${ym.slice(0, 4)} chỉ còn ${remaining}/${SALES_MAX_UNPAID_OFF_PER_MONTH} ngày nghỉ không lương (đã dùng ${usedOutsideWeek.size} ngày ở tuần khác), nhưng tuần này bạn đang chọn ${offDatesInMonthThisWeek.length} ngày OFF.`
+        );
+      }
     }
 
     // Kiểm tra nếu tuần này đã được HR chốt lịch thì không cho tự ghi đè
@@ -208,6 +232,44 @@ shiftsRouter.get('/shifts/my-schedule', async (req, res, next) => {
       weekAssignments.length === 7 && weekAssignments.every((a: any) => a.assignedBy === 'HR');
     const isRegistered = weekAssignments.length > 0;
 
+    // Tính hạn mức nghỉ không lương (tối đa 4 ngày/tháng) cho tuần đang chọn
+    const weekDates = Array.from({ length: 7 }, (_, i) => addDaysStr(targetWeekStart, i));
+    const weekDateSet = new Set<string>(weekDates);
+    const monthsInWeek = Array.from(new Set(weekDates.map((d) => d.slice(0, 7))));
+    const primaryMonth = targetWeekStart.slice(0, 7);
+    const byMonth: Record<
+      string,
+      {
+        limit: number;
+        usedTotal: number;
+        usedOutsideWeek: number;
+        remainingForWeek: number;
+        usedDatesOutsideWeek: string[];
+      }
+    > = {};
+
+    for (const ym of monthsInWeek) {
+      const [usedTotalSet, usedOutsideSet] = await Promise.all([
+        getSalesMonthlyUnpaidOffDates(String(user.userId), ym),
+        getSalesMonthlyUnpaidOffDates(String(user.userId), ym, { excludeShiftDates: weekDateSet }),
+      ]);
+      byMonth[ym] = {
+        limit: SALES_MAX_UNPAID_OFF_PER_MONTH,
+        usedTotal: usedTotalSet.size,
+        usedOutsideWeek: usedOutsideSet.size,
+        remainingForWeek: Math.max(0, SALES_MAX_UNPAID_OFF_PER_MONTH - usedOutsideSet.size),
+        usedDatesOutsideWeek: Array.from(usedOutsideSet).sort(),
+      };
+    }
+
+    const primaryStats = byMonth[primaryMonth] || {
+      limit: SALES_MAX_UNPAID_OFF_PER_MONTH,
+      usedTotal: 0,
+      usedOutsideWeek: 0,
+      remainingForWeek: SALES_MAX_UNPAID_OFF_PER_MONTH,
+      usedDatesOutsideWeek: [],
+    };
+
     res.json({
       data: {
         weekStart: targetWeekStart,
@@ -222,6 +284,14 @@ shiftsRouter.get('/shifts/my-schedule', async (req, res, next) => {
         isConfirmedByHr,
         unseenConfirmedCount: unseenConfirmed.length,
         hasUnseenConfirmedSchedule: unseenConfirmed.length > 0,
+        monthlyOffQuota: {
+          limit: SALES_MAX_UNPAID_OFF_PER_MONTH,
+          primaryMonth,
+          usedTotal: primaryStats.usedTotal,
+          usedOutsideWeek: primaryStats.usedOutsideWeek,
+          remainingForWeek: primaryStats.remainingForWeek,
+          byMonth,
+        },
       },
       meta: {},
     });
@@ -258,15 +328,64 @@ shiftsRouter.get('/shifts/schedule', async (req, res, next) => {
   try {
     const { weekStart } = req.query;
     let assignments = await shiftAssignmentRepo.find({});
+    const startStr =
+      typeof weekStart === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(weekStart)
+        ? String(weekStart)
+        : getCurrentMondayStr();
+    const weekDates = Array.from({ length: 7 }, (_, i) => addDaysStr(startStr, i));
+    const endStr = weekDates[6];
     if (weekStart) {
-      // Lấy theo khoảng ngày của tuần (tránh sót phân ca lưu với weekStart khác)
-      const startStr = String(weekStart);
-      const [y, m, d] = startStr.split('-').map(Number);
-      const end = new Date(y, m - 1, d + 6);
-      const endStr = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
       assignments = assignments.filter((a: any) => a.date >= startStr && a.date <= endStr);
     }
     const allStaff = await staffRepo.find({ status: 'ACTIVE' });
+
+    const weekDateSet = new Set<string>(weekDates);
+    const monthsInWeek = Array.from(new Set(weekDates.map((d) => d.slice(0, 7))));
+    const primaryMonth = startStr.slice(0, 7);
+    const monthlyOffByStaff: Record<
+      string,
+      {
+        limit: number;
+        primaryMonth: string;
+        usedTotal: number;
+        usedOutsideWeek: number;
+        remainingForWeek: number;
+        byMonth: Record<string, { limit: number; usedTotal: number; usedOutsideWeek: number; remainingForWeek: number }>;
+      }
+    > = {};
+
+    for (const s of allStaff as any[]) {
+      const dept = s.department || (s.role === 'SALES' ? 'SALES' : 'OFFICE');
+      if (dept !== 'SALES') continue;
+      const sid = String(s._id);
+      const byMonth: Record<string, { limit: number; usedTotal: number; usedOutsideWeek: number; remainingForWeek: number }> = {};
+      for (const ym of monthsInWeek) {
+        const [usedTotalSet, usedOutsideSet] = await Promise.all([
+          getSalesMonthlyUnpaidOffDates(sid, ym),
+          getSalesMonthlyUnpaidOffDates(sid, ym, { excludeShiftDates: weekDateSet }),
+        ]);
+        byMonth[ym] = {
+          limit: SALES_MAX_UNPAID_OFF_PER_MONTH,
+          usedTotal: usedTotalSet.size,
+          usedOutsideWeek: usedOutsideSet.size,
+          remainingForWeek: Math.max(0, SALES_MAX_UNPAID_OFF_PER_MONTH - usedOutsideSet.size),
+        };
+      }
+      const pStats = byMonth[primaryMonth] || {
+        limit: SALES_MAX_UNPAID_OFF_PER_MONTH,
+        usedTotal: 0,
+        usedOutsideWeek: 0,
+        remainingForWeek: SALES_MAX_UNPAID_OFF_PER_MONTH,
+      };
+      monthlyOffByStaff[sid] = {
+        limit: SALES_MAX_UNPAID_OFF_PER_MONTH,
+        primaryMonth,
+        usedTotal: pStats.usedTotal,
+        usedOutsideWeek: pStats.usedOutsideWeek,
+        remainingForWeek: pStats.remainingForWeek,
+        byMonth,
+      };
+    }
 
     res.json({
       data: {
@@ -278,6 +397,7 @@ shiftsRouter.get('/shifts/schedule', async (req, res, next) => {
           role: s.role,
           department: s.department,
         })),
+        monthlyOffByStaff,
       },
       meta: { total: assignments.length },
     });
@@ -308,7 +428,7 @@ shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
       }
     }
 
-    // ---- Kiểm tra quy định: Khối Bán hàng làm 6 ngày + nghỉ ĐÚNG 1 ngày/tuần ----
+    // ---- Kiểm tra quy định: Khối Bán hàng xếp đủ 7 ngày/tuần & tối đa 4 ngày nghỉ không lương/tháng ----
     const wsStr = /^\d{4}-\d{2}-\d{2}$/.test(String(weekStart || ''))
       ? String(weekStart)
       : String(changes[0]?.date || getNextMondayStr());
@@ -317,6 +437,8 @@ shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
       const d = new Date(wy, wm - 1, wd + i);
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     });
+    const weekDateSet = new Set<string>(weekDates);
+    const monthsInWeek = Array.from(new Set(weekDates.map((d) => d.slice(0, 7))));
     const finalPlan = new Map<string, Map<string, string>>();
     const allAssign = await shiftAssignmentRepo.find({});
     for (const a of allAssign as any[]) {
@@ -339,19 +461,38 @@ shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
       if (!st) continue;
       const dept = st.department || (st.role === 'SALES' ? 'SALES' : 'OFFICE');
       if (dept !== 'SALES') continue;
-      const offCount = Array.from(plan.values()).filter((v) => v === 'OFF').length;
+      const offDatesInWeek = Array.from(plan.entries())
+        .filter(([, v]) => v === 'OFF')
+        .map(([d]) => d);
+      const offCount = offDatesInWeek.length;
       const missing = 7 - plan.size;
       const problems: string[] = [];
       if (missing > 0) problems.push(`còn ${missing} ngày chưa xếp`);
-      if (offCount === 0) problems.push('chưa có ngày nghỉ');
-      if (offCount > 1) problems.push(`đang nghỉ ${offCount} ngày`);
-      if (problems.length) violations[st.fullName || sid] = `${problems.join(', ')} (quy định: 6 ngày làm + 1 ngày nghỉ)`;
+      if (offCount > SALES_MAX_UNPAID_OFF_PER_MONTH) {
+        problems.push(`đang nghỉ ${offCount} ngày trong tuần (tối đa ${SALES_MAX_UNPAID_OFF_PER_MONTH} ngày/tháng)`);
+      }
+      for (const ym of monthsInWeek) {
+        const usedOutside = await getSalesMonthlyUnpaidOffDates(sid, ym, { excludeShiftDates: weekDateSet });
+        const offInMonthThisWeek = offDatesInWeek.filter((d) => d.startsWith(`${ym}-`) && !usedOutside.has(d));
+        const totalInMonth = usedOutside.size + offInMonthThisWeek.length;
+        if (totalInMonth > SALES_MAX_UNPAID_OFF_PER_MONTH) {
+          const remaining = Math.max(0, SALES_MAX_UNPAID_OFF_PER_MONTH - usedOutside.size);
+          problems.push(
+            remaining === 0
+              ? `tháng ${ym.slice(5, 7)}/${ym.slice(0, 4)} đã dùng hết ${SALES_MAX_UNPAID_OFF_PER_MONTH}/${SALES_MAX_UNPAID_OFF_PER_MONTH} ngày OFF ở các tuần trước (tuần này không được nghỉ thêm)`
+              : `tháng ${ym.slice(5, 7)}/${ym.slice(0, 4)} vượt hạn mức ${totalInMonth}/${SALES_MAX_UNPAID_OFF_PER_MONTH} ngày OFF (đã dùng ${usedOutside.size} ngày tuần khác, tuần này chỉ còn tối đa ${remaining} ngày)`
+          );
+        }
+      }
+      if (problems.length) {
+        violations[st.fullName || sid] = `${problems.join(', ')} (quy định: xếp đủ 7 ngày/tuần, tối đa ${SALES_MAX_UNPAID_OFF_PER_MONTH} ngày nghỉ không lương/tháng)`;
+      }
     }
     if (Object.keys(violations).length > 0) {
       throw new ApiError(
         400,
         'WEEKLY_OFF_REQUIRED',
-        `Mỗi nhân viên Bán hàng phải làm 6 ngày và nghỉ đúng 1 ngày/tuần: ${Object.entries(violations)
+        `Vi phạm quy định xếp ca khối Bán hàng (đủ 7 ngày/tuần, tối đa ${SALES_MAX_UNPAID_OFF_PER_MONTH} ngày OFF/tháng): ${Object.entries(violations)
           .map(([n, p]) => `${n} – ${p}`)
           .join('; ')}`,
         violations

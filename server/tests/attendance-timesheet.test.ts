@@ -75,10 +75,8 @@ describe('Bảng công tháng (Timesheet), Điều chỉnh giờ công & Chấm 
     expect(row1.summary.missingCheckout).toBe(1);
     expect(ts1.body.data.rows.some((r: any) => r.role === 'ADMIN')).toBe(false);
 
-    // Công chuẩn Văn phòng = số ngày T2-T7 trong tháng trừ ngày nghỉ lễ chính thức (không phụ thuộc ngày tạo tài khoản)
-    const expectedStandard = ts1.body.data.days.filter(
-      (d: any) => d.weekday !== 0 && !(d.holiday && d.holiday.isOfficialDayOff)
-    ).length;
+    // Công chuẩn Văn phòng = tổng số ngày T2-T7 trong tháng (bao gồm cả ngày nghỉ lễ chính thức hưởng lương)
+    const expectedStandard = ts1.body.data.days.filter((d: any) => d.weekday !== 0).length;
     expect(row1.summary.standardDays).toBe(expectedStandard);
 
     // Điều chỉnh thiếu lý do -> 400
@@ -452,5 +450,148 @@ describe('Bảng công tháng (Timesheet), Điều chỉnh giờ công & Chấm 
       .set('Authorization', `Bearer ${mktLogin.body.data.token}`)
       .send({ type: 'LATE', date: '2026-12-20', reason: 'a'.repeat(100) });
     expect(ok.status).toBe(201);
+  });
+
+  it('12. HR chấm công bù OFF (nghỉ không lương & phép có lương) và giới hạn Sales tối đa 4 ngày OFF không lương/tháng', async () => {
+    const createdSales = await request(app)
+      .post('/api/v1/staff')
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({
+        username: 'sales_quota_test',
+        password: '123456',
+        fullName: 'Sales Quota Test',
+        role: 'SALES',
+        department: 'SALES',
+        contractType: 'FULLTIME',
+      });
+    expect(createdSales.status).toBe(201);
+    const sId = createdSales.body.data._id;
+
+    // HR chấm OFF không lương cho 4 ngày trong cùng 1 tuần (tháng 10/2026)
+    for (const d of ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08']) {
+      const mOff = await request(app)
+        .post('/api/v1/attendance/manual')
+        .set('Authorization', `Bearer ${hrToken}`)
+        .send({ staffId: sId, date: d, shiftCode: 'OFF', offType: 'OFF', reason: 'HR chấm OFF tuần 1' });
+      expect(mOff.status).toBe(201);
+    }
+
+    // Ngày thứ 5 nghỉ không lương trong cùng tháng 10/2026 -> bị chặn 400 SALES_OFF_QUOTA_EXCEEDED
+    const fifthOff = await request(app)
+      .post('/api/v1/attendance/manual')
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({ staffId: sId, date: '2026-10-15', shiftCode: 'OFF', offType: 'OFF', reason: 'Vượt 4 ngày' });
+    expect(fifthOff.status).toBe(400);
+    expect(fifthOff.body.code).toBe('SALES_OFF_QUOTA_EXCEEDED');
+
+    // Tuy nhiên nhân viên Chính thức (FULLTIME) vẫn được hưởng 1 ngày nghỉ phép có lương (PAID_LEAVE) trong tháng 10/2026!
+    const paidLeaveRes = await request(app)
+      .post('/api/v1/attendance/manual')
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({ staffId: sId, date: '2026-10-16', shiftCode: 'OFF', offType: 'PAID_LEAVE', reason: 'Phép có lương tháng 10' });
+    expect(paidLeaveRes.status).toBe(201);
+
+    // Qua tháng mới (11/2026) -> lại được chấm OFF không lương bình thường
+    const nextMonthOff = await request(app)
+      .post('/api/v1/attendance/manual')
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({ staffId: sId, date: '2026-11-02', shiftCode: 'OFF', offType: 'OFF', reason: 'Tháng mới' });
+    expect(nextMonthOff.status).toBe(201);
+  });
+
+  it('13. Công chuẩn tháng (1 tuần 6 ngày) theo 28/29/30/31 ngày (nhuận/không nhuận) & cộng công nghỉ lễ Văn phòng vào cột Công', async () => {
+    const cases = [
+      // Tháng 31 ngày (4 CN -> 27 công; 5 CN -> 26 công)
+      { month: 10, year: 2026, daysInMonth: 31, sundays: 4, expectedStandard: 27, isLeap: false },
+      { month: 8, year: 2026, daysInMonth: 31, sundays: 5, expectedStandard: 26, isLeap: false },
+      // Tháng 30 ngày (4 CN -> 26 công; 5 CN -> 25 công)
+      { month: 9, year: 2026, daysInMonth: 30, sundays: 4, expectedStandard: 26, isLeap: false },
+      { month: 11, year: 2026, daysInMonth: 30, sundays: 5, expectedStandard: 25, isLeap: false },
+      // Tháng 2 không nhuận (28 ngày, 4 CN -> 24 công)
+      { month: 2, year: 2026, daysInMonth: 28, sundays: 4, expectedStandard: 24, isLeap: false },
+      // Tháng 2 năm nhuận (29 ngày, 4 CN -> 25 công; trường hợp đặc biệt 5 CN -> 24 công)
+      { month: 2, year: 2028, daysInMonth: 29, sundays: 4, expectedStandard: 25, isLeap: true },
+      { month: 2, year: 2032, daysInMonth: 29, sundays: 5, expectedStandard: 24, isLeap: true },
+    ];
+
+    for (const c of cases) {
+      const res = await request(app)
+        .get(`/api/v1/attendance/timesheet?month=${c.month}&year=${c.year}`)
+        .set('Authorization', `Bearer ${hrToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body.data.monthMeta.daysInMonth).toBe(c.daysInMonth);
+      expect(res.body.data.monthMeta.sundaysCount).toBe(c.sundays);
+      expect(res.body.data.monthMeta.standardDays).toBe(c.expectedStandard);
+      expect(res.body.data.monthMeta.isLeapYear).toBe(c.isLeap);
+
+      for (const r of res.body.data.rows) {
+        expect(r.summary.standardDays).toBe(c.expectedStandard);
+      }
+    }
+
+    // Kiểm tra Tháng 9/2026 (có 2 ngày nghỉ lễ Quốc khánh 01/09 và 02/09 rơi vào T3, T4):
+    // Mọi nhân viên Khối Văn phòng (kể cả tài khoản mới tạo) đều được cộng +2 công lễ vào holidayPaidDays và paidUnits!
+    const sepRes = await request(app)
+      .get('/api/v1/attendance/timesheet?month=9&year=2026&department=OFFICE')
+      .set('Authorization', `Bearer ${hrToken}`);
+    expect(sepRes.status).toBe(200);
+    for (const r of sepRes.body.data.rows) {
+      expect(r.cells['2026-09-01'].code).toBe('HOLIDAY');
+      expect(r.cells['2026-09-02'].code).toBe('HOLIDAY');
+      expect(r.summary.holidayPaidDays).toBeGreaterThanOrEqual(2);
+      expect(r.summary.paidUnits).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it('14. Chấm công bù và điều chỉnh chấm công hỗ trợ hình thức Làm từ xa (WFH)', async () => {
+    const wfhDate = '2026-09-05';
+    const manualRes = await request(app)
+      .post('/api/v1/attendance/manual')
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({
+        staffId: marketingId,
+        date: wfhDate,
+        shiftCode: 'SHIFT_1',
+        checkInType: 'WFH',
+        checkIn: '08:30',
+        checkOut: '17:30',
+        reason: 'Chấm công bù WFH cho nhân viên Marketing',
+      });
+    expect(manualRes.status).toBe(201);
+    expect(manualRes.body.data.checkInType).toBe('WFH');
+
+    const ts1 = await request(app)
+      .get('/api/v1/attendance/timesheet?month=9&year=2026')
+      .set('Authorization', `Bearer ${hrToken}`);
+    const row1 = ts1.body.data.rows.find((r: any) => r.staffId === marketingId);
+    expect(row1.cells[wfhDate].code).toBe('WFH');
+    expect(row1.cells[wfhDate].checkInType).toBe('WFH');
+    expect(row1.summary.wfhDays).toBeGreaterThanOrEqual(1);
+
+    // Điều chỉnh từ WFH về STANDARD và ngược lại qua PATCH /api/v1/attendance/:id
+    const attId = row1.cells[wfhDate].attendanceId;
+    const patchStandard = await request(app)
+      .patch(`/api/v1/attendance/${attId}`)
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({
+        checkIn: '08:30',
+        checkOut: '17:30',
+        checkInType: 'STANDARD',
+        reason: 'Đổi lại thành làm trực tiếp tại VP',
+      });
+    expect(patchStandard.status).toBe(200);
+    expect(patchStandard.body.data.checkInType).toBe('STANDARD');
+
+    const patchWfh = await request(app)
+      .patch(`/api/v1/attendance/${attId}`)
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({
+        checkIn: '08:30',
+        checkOut: '17:30',
+        checkInType: 'WFH',
+        reason: 'Xác nhận lại làm từ xa (WFH)',
+      });
+    expect(patchWfh.status).toBe(200);
+    expect(patchWfh.body.data.checkInType).toBe('WFH');
   });
 });

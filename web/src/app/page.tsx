@@ -342,7 +342,16 @@ export default function WebPosHomePage() {
 
           {/* Thông tin tài khoản đang đăng nhập & Đăng xuất */}
           <div className="flex items-center gap-1.5 md:gap-2.5 shrink-0">
-            <div className="hidden md:flex items-center gap-2 bg-slate-800 px-3.5 py-2 rounded-xl border border-slate-700">
+            <button
+              type="button"
+              onClick={() => setActiveDrawerPage("PROFILE")}
+              title="Xem & chỉnh sửa thông tin tài khoản cá nhân"
+              className={`hidden md:flex items-center gap-2 px-3.5 py-2 rounded-xl border transition cursor-pointer ${
+                activeDrawerPage === "PROFILE"
+                  ? "bg-emerald-600/20 border-emerald-500 text-white"
+                  : "bg-slate-800 hover:bg-slate-700 border-slate-700"
+              }`}
+            >
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
               <div className="text-xs">
                 <span className="text-slate-400">Nhân sự: </span>
@@ -351,7 +360,7 @@ export default function WebPosHomePage() {
                   {getRoleDisplayName(currentUser.role)}
                 </span>
               </div>
-            </div>
+            </button>
 
             <button
               type="button"

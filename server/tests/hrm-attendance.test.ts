@@ -767,4 +767,85 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
     expect(officeRowApproved.cells[today].overtimeStatus).toBe('APPROVED');
     expect(officeRowApproved.cells[today].overtimeMinutes).toBe(90);
   });
+
+  it('13. Lương cơ bản, trợ cấp, thưởng, bảo hiểm: chỉ HR được sửa, nhân viên được xem; hỗ trợ filter & sort danh sách nhân viên', async () => {
+    // 13.1 HR tạo nhân viên mới kèm lương cơ bản, trợ cấp, thưởng, bảo hiểm
+    const createdByHr = await request(app)
+      .post('/api/v1/staff')
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({
+        username: 'sales_salary_test',
+        password: 'password123',
+        fullName: 'Nhân Viên Lương Test',
+        role: 'SALES',
+        department: 'SALES',
+        contractType: 'FULLTIME',
+        baseSalary: 8500000,
+        allowance: 1200000,
+        bonus: 500000,
+        insurance: 850000,
+      });
+    expect(createdByHr.status).toBe(201);
+    expect(createdByHr.body.data.baseSalary).toBe(8500000);
+    expect(createdByHr.body.data.allowance).toBe(1200000);
+    expect(createdByHr.body.data.bonus).toBe(500000);
+    expect(createdByHr.body.data.insurance).toBe(850000);
+    const staffId = createdByHr.body.data._id;
+
+    // 13.2 HR chỉnh sửa lương cơ bản, trợ cấp, thưởng, bảo hiểm -> Thành công (200)
+    const hrUpdate = await request(app)
+      .patch(`/api/v1/staff/${staffId}`)
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({
+        baseSalary: 9500000,
+        allowance: 1500000,
+        bonus: 800000,
+        insurance: 950000,
+      });
+    expect(hrUpdate.status).toBe(200);
+    expect(hrUpdate.body.data.baseSalary).toBe(9500000);
+    expect(hrUpdate.body.data.allowance).toBe(1500000);
+    expect(hrUpdate.body.data.bonus).toBe(800000);
+    expect(hrUpdate.body.data.insurance).toBe(950000);
+
+    // 13.3 Nhân viên tự đăng nhập: được xem thông tin lương của chính mình, nhưng bị chặn 403 nếu cố tự sửa lương
+    const empLogin = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ username: 'sales_salary_test', password: 'password123' });
+    expect(empLogin.status).toBe(200);
+    expect(empLogin.body.data.user.baseSalary).toBe(9500000);
+    expect(empLogin.body.data.user.allowance).toBe(1500000);
+    expect(empLogin.body.data.user.bonus).toBe(800000);
+    expect(empLogin.body.data.user.insurance).toBe(950000);
+    const empToken = empLogin.body.data.token;
+
+    const empSelfEditSalary = await request(app)
+      .patch(`/api/v1/staff/${staffId}`)
+      .set('Authorization', `Bearer ${empToken}`)
+      .send({ baseSalary: 50000000 });
+    expect(empSelfEditSalary.status).toBe(403);
+
+    // Admin cũng không được sửa lương (chỉ HR được sửa)
+    const adminEditSalary = await request(app)
+      .patch(`/api/v1/staff/${staffId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ bonus: 2000000 });
+    expect(adminEditSalary.status).toBe(403);
+
+    // 13.4 Nhân viên gọi GET /api/v1/staff vẫn xem được lương của mình
+    const empViewList = await request(app)
+      .get('/api/v1/staff')
+      .set('Authorization', `Bearer ${empToken}`);
+    expect(empViewList.status).toBe(200);
+    const selfRecord = empViewList.body.data.find((s: any) => s._id === staffId);
+    expect(selfRecord.baseSalary).toBe(9500000);
+
+    // 13.5 Filter & Sort trên GET /api/v1/staff
+    const sortedRes = await request(app)
+      .get('/api/v1/staff?department=SALES&contractType=FULLTIME&sortBy=baseSalary&sortOrder=desc')
+      .set('Authorization', `Bearer ${hrToken}`);
+    expect(sortedRes.status).toBe(200);
+    expect(sortedRes.body.data.length).toBeGreaterThanOrEqual(1);
+    expect(sortedRes.body.data[0]._id).toBe(staffId);
+  });
 });

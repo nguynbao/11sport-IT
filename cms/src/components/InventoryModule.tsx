@@ -1371,9 +1371,9 @@ export default function InventoryModule() {
       { text: p.categoryName, weight: 0.9 },
       ...(Array.isArray(p.variants)
         ? p.variants.map((v) => ({
-            text: `${v.variantCode || generateVariantProductCode(p.code, v.color, v.size)} ${v.color || ""} ${v.size || ""}`,
-            weight: 1.4,
-          }))
+          text: `${v.variantCode || generateVariantProductCode(p.code, v.color, v.size)} ${v.color || ""} ${v.size || ""}`,
+          weight: 1.4,
+        }))
         : []),
     ]);
   }, [products, transferDirection, debouncedTransferSearch]);
@@ -1581,11 +1581,11 @@ export default function InventoryModule() {
       return prev.map((i) =>
         getTransferItemKey(i.productId, i.color, i.size) === itemKey
           ? {
-              ...i,
-              color: cleanColor,
-              size: cleanSize,
-              quantity: Math.min(maxAvail, i.quantity),
-            }
+            ...i,
+            color: cleanColor,
+            size: cleanSize,
+            quantity: Math.min(maxAvail, i.quantity),
+          }
           : i
       );
     });
@@ -1633,13 +1633,13 @@ export default function InventoryModule() {
         ? transferItems
         : activeProdId && Number(transferQty) > 0
           ? [
-              {
-                productId: activeProdId,
-                color: fallbackColor,
-                size: fallbackSize,
-                quantity: Math.round(Number(transferQty)),
-              },
-            ]
+            {
+              productId: activeProdId,
+              color: fallbackColor,
+              size: fallbackSize,
+              quantity: Math.round(Number(transferQty)),
+            },
+          ]
           : [];
 
     if (finalItems.length === 0) {
@@ -3416,12 +3416,11 @@ export default function InventoryModule() {
                                 <button
                                   type="button"
                                   onClick={() => handleOpenSetLinkModal(p)}
-                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-extrabold transition cursor-pointer ${
-                                    (p.parentSetProductId && (p.packSize || 0) > 0) ||
-                                    (Array.isArray(p.linkedRetailProducts) && p.linkedRetailProducts.length > 0)
+                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-extrabold transition cursor-pointer ${(p.parentSetProductId && (p.packSize || 0) > 0) ||
+                                      (Array.isArray(p.linkedRetailProducts) && p.linkedRetailProducts.length > 0)
                                       ? "bg-amber-100 hover:bg-amber-200 text-amber-950 border-amber-400"
                                       : "bg-slate-100 hover:bg-amber-50 text-slate-700 hover:text-amber-800 border-slate-300"
-                                  }`}
+                                    }`}
                                   title="Cấu hình liên kết tự động tách từ Sản phẩm Bộ/Hộp sang Sản phẩm Lẻ"
                                 >
                                   <span>
@@ -3430,8 +3429,8 @@ export default function InventoryModule() {
                                       ? `SP Lẻ (1 ${p.parentSetUnit || "Bộ"} = ${p.packSize} ${p.unit})`
                                       : Array.isArray(p.linkedRetailProducts) &&
                                         p.linkedRetailProducts.length > 0
-                                      ? `SP Bộ (${p.linkedRetailProducts.length} SP lẻ)`
-                                      : "Gắn Bộ ↔ Lẻ"}
+                                        ? `SP Bộ (${p.linkedRetailProducts.length} SP lẻ)`
+                                        : "Gắn Bộ ↔ Lẻ"}
                                   </span>
                                 </button>
                               </div>
@@ -3845,172 +3844,172 @@ export default function InventoryModule() {
                                               .includes(q);
                                           })
                                           .map(({ v, vIdx }) => {
-                                          const childCode = generateVariantProductCode(
-                                            p.code,
-                                            v.color,
-                                            v.size
-                                          );
-                                          const vScanned =
-                                            scannedVariantCounts[p._id]?.[childCode] || 0;
-                                          return (
-                                            <tr
-                                              key={vIdx}
-                                              className={`hover:bg-slate-50 ${lastScannedVariantCode === childCode
-                                                ? "bg-emerald-50"
-                                                : ""
-                                                }`}
-                                            >
-                                              <td className="py-1.5 px-2.5 text-center font-mono text-slate-400">
-                                                {vIdx + 1}
-                                              </td>
-                                              <td className="py-1.5 px-2.5">
-                                                <span className="font-mono font-extrabold text-indigo-800 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">
-                                                  {childCode}
-                                                </span>
-                                                {vScanned > 0 && (
-                                                  <span className="ml-1.5 px-1.5 py-0.5 rounded bg-emerald-600 text-white font-mono text-[10px] font-bold">
-                                                    Quét: {vScanned}
+                                            const childCode = generateVariantProductCode(
+                                              p.code,
+                                              v.color,
+                                              v.size
+                                            );
+                                            const vScanned =
+                                              scannedVariantCounts[p._id]?.[childCode] || 0;
+                                            return (
+                                              <tr
+                                                key={vIdx}
+                                                className={`hover:bg-slate-50 ${lastScannedVariantCode === childCode
+                                                  ? "bg-emerald-50"
+                                                  : ""
+                                                  }`}
+                                              >
+                                                <td className="py-1.5 px-2.5 text-center font-mono text-slate-400">
+                                                  {vIdx + 1}
+                                                </td>
+                                                <td className="py-1.5 px-2.5">
+                                                  <span className="font-mono font-extrabold text-indigo-800 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">
+                                                    {childCode}
                                                   </span>
-                                                )}
-                                              </td>
-                                              <td className="py-1.5 px-2.5">
-                                                <ColorInputWithPicker
-                                                  compact
-                                                  listId="cms-color-suggestions"
-                                                  value={v.color}
-                                                  colorHexes={v.colorHexes}
-                                                  onChange={(nextColor, nextHexes) => {
-                                                    const next = prodVariants.map((item, idx) => {
-                                                      if (idx === vIdx) {
-                                                        return {
-                                                          ...item,
-                                                          color: nextColor,
-                                                          colorHexes: nextHexes,
-                                                        };
-                                                      }
-                                                      const cleanC = String(nextColor || "")
-                                                        .trim()
-                                                        .toLowerCase();
-                                                      if (
-                                                        cleanC &&
-                                                        nextHexes.length > 0 &&
-                                                        String(item.color || "")
+                                                  {vScanned > 0 && (
+                                                    <span className="ml-1.5 px-1.5 py-0.5 rounded bg-emerald-600 text-white font-mono text-[10px] font-bold">
+                                                      Quét: {vScanned}
+                                                    </span>
+                                                  )}
+                                                </td>
+                                                <td className="py-1.5 px-2.5">
+                                                  <ColorInputWithPicker
+                                                    compact
+                                                    listId="cms-color-suggestions"
+                                                    value={v.color}
+                                                    colorHexes={v.colorHexes}
+                                                    onChange={(nextColor, nextHexes) => {
+                                                      const next = prodVariants.map((item, idx) => {
+                                                        if (idx === vIdx) {
+                                                          return {
+                                                            ...item,
+                                                            color: nextColor,
+                                                            colorHexes: nextHexes,
+                                                          };
+                                                        }
+                                                        const cleanC = String(nextColor || "")
                                                           .trim()
-                                                          .toLowerCase() === cleanC
-                                                      ) {
-                                                        return { ...item, colorHexes: nextHexes };
-                                                      }
-                                                      return item;
-                                                    });
-                                                    setEditingVariants((prev) => ({
-                                                      ...prev,
-                                                      [p._id]: next,
-                                                    }));
-                                                  }}
-                                                  placeholder="VD: Đỏ, Trắng..."
-                                                  className="w-44"
-                                                />
-                                              </td>
-                                              <td className="py-1.5 px-2.5">
-                                                <input
-                                                  type="text"
-                                                  list="cms-size-suggestions"
-                                                  value={v.size}
-                                                  onChange={(e) => {
-                                                    const next = [...prodVariants];
-                                                    next[vIdx] = {
-                                                      ...next[vIdx],
-                                                      size: e.target.value.toUpperCase(),
-                                                    };
-                                                    setEditingVariants((prev) => ({
-                                                      ...prev,
-                                                      [p._id]: next,
-                                                    }));
-                                                  }}
-                                                  placeholder="M, L, XL, 42..."
-                                                  className="w-24 px-2 py-1 rounded border border-slate-300 font-mono font-bold uppercase text-center"
-                                                />
-                                              </td>
-                                              <td className="py-1.5 px-2.5 text-right">
-                                                <input
-                                                  type="number"
-                                                  min={0}
-                                                  value={v.stockFloor1}
-                                                  onChange={(e) => {
-                                                    const nextF1 = Math.max(
-                                                      0,
-                                                      Math.round(Number(e.target.value) || 0)
-                                                    );
-                                                    const next = [...prodVariants];
-                                                    next[vIdx] = {
-                                                      ...next[vIdx],
-                                                      stockFloor1: nextF1,
-                                                      stock: nextF1 + (Number(next[vIdx].stockFloor2) || 0),
-                                                    };
-                                                    setEditingVariants((prev) => ({
-                                                      ...prev,
-                                                      [p._id]: next,
-                                                    }));
-                                                  }}
-                                                  className="w-24 px-2 py-1 rounded border border-emerald-300 font-mono font-bold text-right text-emerald-800"
-                                                />
-                                              </td>
-                                              <td className="py-1.5 px-2.5 text-right">
-                                                <input
-                                                  type="number"
-                                                  min={0}
-                                                  value={v.stockFloor2}
-                                                  onChange={(e) => {
-                                                    const nextF2 = Math.max(
-                                                      0,
-                                                      Math.round(Number(e.target.value) || 0)
-                                                    );
-                                                    const next = [...prodVariants];
-                                                    next[vIdx] = {
-                                                      ...next[vIdx],
-                                                      stockFloor2: nextF2,
-                                                      stock: (Number(next[vIdx].stockFloor1) || 0) + nextF2,
-                                                    };
-                                                    setEditingVariants((prev) => ({
-                                                      ...prev,
-                                                      [p._id]: next,
-                                                    }));
-                                                  }}
-                                                  className="w-24 px-2 py-1 rounded border border-purple-300 font-mono font-bold text-right text-purple-800"
-                                                />
-                                              </td>
-                                              <td className="py-1.5 px-2.5 text-right font-mono font-extrabold text-slate-900">
-                                                {(Number(v.stockFloor1) || 0) + (Number(v.stockFloor2) || 0)}
-                                              </td>
-                                              <td className="py-1.5 px-2.5 text-center">
-                                                <button
-                                                  type="button"
-                                                  onClick={() => handleOpenPrintLabelForProduct(p, v)}
-                                                  className="inline-flex items-center gap-1 px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-bold"
-                                                  title={`In tem mã con ${childCode}`}
-                                                >
-                                                  <Printer className="w-3 h-3" /> In tem
-                                                </button>
-                                              </td>
-                                              <td className="py-1.5 px-2.5 text-center">
-                                                <button
-                                                  type="button"
-                                                  onClick={() => {
-                                                    const next = prodVariants.filter((_, i) => i !== vIdx);
-                                                    setEditingVariants((prev) => ({
-                                                      ...prev,
-                                                      [p._id]: next,
-                                                    }));
-                                                  }}
-                                                  className="p-1 text-red-500 hover:bg-red-50 rounded"
-                                                  title="Xóa phân loại này"
-                                                >
-                                                  <Trash2 className="w-3.5 h-3.5" />
-                                                </button>
-                                              </td>
-                                            </tr>
-                                          );
-                                        })
+                                                          .toLowerCase();
+                                                        if (
+                                                          cleanC &&
+                                                          nextHexes.length > 0 &&
+                                                          String(item.color || "")
+                                                            .trim()
+                                                            .toLowerCase() === cleanC
+                                                        ) {
+                                                          return { ...item, colorHexes: nextHexes };
+                                                        }
+                                                        return item;
+                                                      });
+                                                      setEditingVariants((prev) => ({
+                                                        ...prev,
+                                                        [p._id]: next,
+                                                      }));
+                                                    }}
+                                                    placeholder="VD: Đỏ, Trắng..."
+                                                    className="w-44"
+                                                  />
+                                                </td>
+                                                <td className="py-1.5 px-2.5">
+                                                  <input
+                                                    type="text"
+                                                    list="cms-size-suggestions"
+                                                    value={v.size}
+                                                    onChange={(e) => {
+                                                      const next = [...prodVariants];
+                                                      next[vIdx] = {
+                                                        ...next[vIdx],
+                                                        size: e.target.value.toUpperCase(),
+                                                      };
+                                                      setEditingVariants((prev) => ({
+                                                        ...prev,
+                                                        [p._id]: next,
+                                                      }));
+                                                    }}
+                                                    placeholder="M, L, XL, 42..."
+                                                    className="w-24 px-2 py-1 rounded border border-slate-300 font-mono font-bold uppercase text-center"
+                                                  />
+                                                </td>
+                                                <td className="py-1.5 px-2.5 text-right">
+                                                  <input
+                                                    type="number"
+                                                    min={0}
+                                                    value={v.stockFloor1}
+                                                    onChange={(e) => {
+                                                      const nextF1 = Math.max(
+                                                        0,
+                                                        Math.round(Number(e.target.value) || 0)
+                                                      );
+                                                      const next = [...prodVariants];
+                                                      next[vIdx] = {
+                                                        ...next[vIdx],
+                                                        stockFloor1: nextF1,
+                                                        stock: nextF1 + (Number(next[vIdx].stockFloor2) || 0),
+                                                      };
+                                                      setEditingVariants((prev) => ({
+                                                        ...prev,
+                                                        [p._id]: next,
+                                                      }));
+                                                    }}
+                                                    className="w-24 px-2 py-1 rounded border border-emerald-300 font-mono font-bold text-right text-emerald-800"
+                                                  />
+                                                </td>
+                                                <td className="py-1.5 px-2.5 text-right">
+                                                  <input
+                                                    type="number"
+                                                    min={0}
+                                                    value={v.stockFloor2}
+                                                    onChange={(e) => {
+                                                      const nextF2 = Math.max(
+                                                        0,
+                                                        Math.round(Number(e.target.value) || 0)
+                                                      );
+                                                      const next = [...prodVariants];
+                                                      next[vIdx] = {
+                                                        ...next[vIdx],
+                                                        stockFloor2: nextF2,
+                                                        stock: (Number(next[vIdx].stockFloor1) || 0) + nextF2,
+                                                      };
+                                                      setEditingVariants((prev) => ({
+                                                        ...prev,
+                                                        [p._id]: next,
+                                                      }));
+                                                    }}
+                                                    className="w-24 px-2 py-1 rounded border border-purple-300 font-mono font-bold text-right text-purple-800"
+                                                  />
+                                                </td>
+                                                <td className="py-1.5 px-2.5 text-right font-mono font-extrabold text-slate-900">
+                                                  {(Number(v.stockFloor1) || 0) + (Number(v.stockFloor2) || 0)}
+                                                </td>
+                                                <td className="py-1.5 px-2.5 text-center">
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => handleOpenPrintLabelForProduct(p, v)}
+                                                    className="inline-flex items-center gap-1 px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-bold"
+                                                    title={`In tem mã con ${childCode}`}
+                                                  >
+                                                    <Printer className="w-3 h-3" /> In tem
+                                                  </button>
+                                                </td>
+                                                <td className="py-1.5 px-2.5 text-center">
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      const next = prodVariants.filter((_, i) => i !== vIdx);
+                                                      setEditingVariants((prev) => ({
+                                                        ...prev,
+                                                        [p._id]: next,
+                                                      }));
+                                                    }}
+                                                    className="p-1 text-red-500 hover:bg-red-50 rounded"
+                                                    title="Xóa phân loại này"
+                                                  >
+                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                  </button>
+                                                </td>
+                                              </tr>
+                                            );
+                                          })
                                       )}
                                     </tbody>
                                   </table>
@@ -4543,7 +4542,7 @@ export default function InventoryModule() {
               </p>
             </div>
             <ExportExcelButton
-              label="Xuất Excel (kèm chi tiết hàng)"
+              label="Xuất Excel"
               onExport={() => exportImports(importsList)}
               disabled={importsList.length === 0}
             />
@@ -5112,10 +5111,10 @@ export default function InventoryModule() {
                       String(effectiveColor || "").trim().toLowerCase()
                   ).length > 0
                     ? availVars.filter(
-                        (v) =>
-                          String(v.color || "").trim().toLowerCase() ===
-                          String(effectiveColor || "").trim().toLowerCase()
-                      )
+                      (v) =>
+                        String(v.color || "").trim().toLowerCase() ===
+                        String(effectiveColor || "").trim().toLowerCase()
+                    )
                     : availVars;
 
                 return (
@@ -5308,9 +5307,9 @@ export default function InventoryModule() {
                           const vStock = getVariantSourceFloorStock(v);
                           const isSelectedVar =
                             String(v.color || "").trim().toLowerCase() ===
-                              String(effectiveColor || "").trim().toLowerCase() &&
+                            String(effectiveColor || "").trim().toLowerCase() &&
                             String(v.size || "").trim().toUpperCase() ===
-                              String(effectiveSize || "").trim().toUpperCase();
+                            String(effectiveSize || "").trim().toUpperCase();
                           const hexes = resolveVariantColorHexes(
                             v.color,
                             v.colorHexes
@@ -5328,11 +5327,10 @@ export default function InventoryModule() {
                                 isSelectedVar ? "#eef2ff" : "#ffffff",
                                 2
                               )}
-                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-bold transition ${
-                                isSelectedVar
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-bold transition ${isSelectedVar
                                   ? "ring-2 ring-indigo-600 text-indigo-950 shadow-xs"
                                   : "border-slate-200 text-slate-800 hover:bg-slate-100"
-                              }`}
+                                }`}
                             >
                               <ColorSwatchBadge
                                 hexes={v.colorHexes}
@@ -5374,11 +5372,10 @@ export default function InventoryModule() {
                       return (
                         <div
                           key={p._id}
-                          className={`p-2.5 rounded-lg border text-left transition flex flex-col justify-between gap-2 text-xs ${
-                            totalSelectedForProd > 0
+                          className={`p-2.5 rounded-lg border text-left transition flex flex-col justify-between gap-2 text-xs ${totalSelectedForProd > 0
                               ? "border-indigo-500 bg-indigo-50/50"
                               : "border-slate-200 hover:border-indigo-300 bg-white"
-                          }`}
+                            }`}
                         >
                           <div
                             onClick={() => {
@@ -5461,14 +5458,12 @@ export default function InventoryModule() {
                                       inCartVar ? "#e0e7ff" : "#ffffff",
                                       2
                                     )}
-                                    title={`Bấm để thêm +1 Màu ${v.color || "Mặc định"}${
-                                      v.size?.trim() ? ` - Size ${v.size.trim()}` : ""
-                                    }`}
-                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-bold transition ${
-                                      inCartVar
+                                    title={`Bấm để thêm +1 Màu ${v.color || "Mặc định"}${v.size?.trim() ? ` - Size ${v.size.trim()}` : ""
+                                      }`}
+                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-bold transition ${inCartVar
                                         ? "ring-1 ring-indigo-600 text-indigo-950"
                                         : "border-slate-200 text-slate-800 hover:bg-indigo-50"
-                                    }`}
+                                      }`}
                                   >
                                     <ColorSwatchBadge
                                       hexes={v.colorHexes}
@@ -5568,18 +5563,18 @@ export default function InventoryModule() {
                               String(item.color || "").trim().toLowerCase()
                           ).length > 0
                             ? prodVars.filter(
-                                (v) =>
-                                  String(v.color || "").trim().toLowerCase() ===
-                                  String(item.color || "").trim().toLowerCase()
-                              )
+                              (v) =>
+                                String(v.color || "").trim().toLowerCase() ===
+                                String(item.color || "").trim().toLowerCase()
+                            )
                             : prodVars;
 
                         const matchedVar = (prod.variants || []).find(
                           (v) =>
                             String(v.color || "").trim().toLowerCase() ===
-                              String(item.color || "").trim().toLowerCase() &&
+                            String(item.color || "").trim().toLowerCase() &&
                             String(v.size || "").trim().toUpperCase() ===
-                              String(item.size || "").trim().toUpperCase()
+                            String(item.size || "").trim().toUpperCase()
                         );
                         const maxAvail = getSourceVariantFloorStock(
                           prod,
@@ -5589,10 +5584,10 @@ export default function InventoryModule() {
                         const childCode =
                           item.color || item.size
                             ? generateVariantProductCode(
-                                prod.code,
-                                item.color,
-                                item.size
-                              )
+                              prod.code,
+                              item.color,
+                              item.size
+                            )
                             : prod.code;
                         const hexes = resolveVariantColorHexes(
                           item.color,
@@ -5730,11 +5725,11 @@ export default function InventoryModule() {
                                         >
                                           {sz
                                             ? `Size ${sz} (Tồn: ${getVariantSourceFloorStock(
-                                                v
-                                              )})`
+                                              v
+                                            )})`
                                             : `Không size (Tồn: ${getVariantSourceFloorStock(
-                                                v
-                                              )})`}
+                                              v
+                                            )})`}
                                         </option>
                                       );
                                     })}
@@ -5967,15 +5962,15 @@ export default function InventoryModule() {
                                         const childCode =
                                           itColor || itSize
                                             ? generateVariantProductCode(
-                                                it.productCode,
-                                                itColor,
-                                                itSize
-                                              )
+                                              it.productCode,
+                                              itColor,
+                                              itSize
+                                            )
                                             : it.productCode;
                                         const matchedVar = (prod?.variants || []).find(
                                           (v) =>
                                             String(v.color || "").trim().toLowerCase() ===
-                                              itColor.toLowerCase()
+                                            itColor.toLowerCase()
                                         );
                                         const hexes = resolveVariantColorHexes(
                                           itColor,
@@ -7049,11 +7044,10 @@ export default function InventoryModule() {
                 <button
                   type="button"
                   onClick={() => setSetLinkMode("AS_RETAIL")}
-                  className={`p-3 rounded-xl border-2 text-left transition cursor-pointer ${
-                    setLinkMode === "AS_RETAIL"
+                  className={`p-3 rounded-xl border-2 text-left transition cursor-pointer ${setLinkMode === "AS_RETAIL"
                       ? "border-amber-500 bg-amber-50 text-amber-950 shadow-xs"
                       : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                  }`}
+                    }`}
                 >
                   <div className="font-extrabold text-xs">
                     🔹 Sản phẩm này là SẢN PHẨM LẺ
@@ -7066,11 +7060,10 @@ export default function InventoryModule() {
                 <button
                   type="button"
                   onClick={() => setSetLinkMode("AS_SET")}
-                  className={`p-3 rounded-xl border-2 text-left transition cursor-pointer ${
-                    setLinkMode === "AS_SET"
+                  className={`p-3 rounded-xl border-2 text-left transition cursor-pointer ${setLinkMode === "AS_SET"
                       ? "border-teal-600 bg-teal-50 text-teal-950 shadow-xs"
                       : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                  }`}
+                    }`}
                 >
                   <div className="font-extrabold text-xs">
                     📦 Sản phẩm này là SẢN PHẨM BỘ / HỘP
@@ -7172,22 +7165,20 @@ export default function InventoryModule() {
                     <button
                       type="button"
                       onClick={() => setSetChildMode("CREATE_NEW_RETAIL")}
-                      className={`px-3 py-1.5 rounded-lg font-extrabold text-xs transition cursor-pointer ${
-                        setChildMode === "CREATE_NEW_RETAIL"
+                      className={`px-3 py-1.5 rounded-lg font-extrabold text-xs transition cursor-pointer ${setChildMode === "CREATE_NEW_RETAIL"
                           ? "bg-teal-700 text-white"
                           : "bg-white border border-slate-300 text-slate-700"
-                      }`}
+                        }`}
                     >
                       ✨ Tạo nhanh Sản phẩm Lẻ mới từ Bộ này
                     </button>
                     <button
                       type="button"
                       onClick={() => setSetChildMode("EXISTING_RETAIL")}
-                      className={`px-3 py-1.5 rounded-lg font-extrabold text-xs transition cursor-pointer ${
-                        setChildMode === "EXISTING_RETAIL"
+                      className={`px-3 py-1.5 rounded-lg font-extrabold text-xs transition cursor-pointer ${setChildMode === "EXISTING_RETAIL"
                           ? "bg-teal-700 text-white"
                           : "bg-white border border-slate-300 text-slate-700"
-                      }`}
+                        }`}
                     >
                       🔗 Chọn Sản phẩm Lẻ đã có sẵn trong kho
                     </button>
@@ -7266,7 +7257,7 @@ export default function InventoryModule() {
                             {formatVND(
                               Math.round(
                                 (Number(setLinkModalProduct.costPrice) || 0) /
-                                  Math.max(1, packSizeInput)
+                                Math.max(1, packSizeInput)
                               )
                             )}
                           </b>
@@ -7335,78 +7326,78 @@ export default function InventoryModule() {
                 (setLinkModalProduct.packSize || 0) > 0) ||
                 (Array.isArray(setLinkModalProduct.linkedRetailProducts) &&
                   setLinkModalProduct.linkedRetailProducts.length > 0)) && (
-                <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 space-y-2.5">
-                  <div className="font-extrabold text-amber-950 flex items-center justify-between">
-                    <span>⚡ Tách Bộ Sang Lẻ Ngay Lập Tức (Chủ động bày kệ)</span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <select
-                      value={modalUnpackWarehouse}
-                      onChange={(e) =>
-                        setModalUnpackWarehouse(e.target.value as WarehouseFloor)
-                      }
-                      className="px-2.5 py-1.5 rounded-lg border border-amber-300 bg-white font-bold text-slate-800"
-                    >
-                      <option value="FLOOR_1">🏢 Tách tại Kho Tầng 1</option>
-                      <option value="FLOOR_2">🏬 Tách tại Kho Tầng 2</option>
-                    </select>
-                    <div className="flex items-center gap-1.5">
-                      <span>Số bộ tách:</span>
-                      <input
-                        type="number"
-                        min={1}
-                        step={1}
-                        value={modalUnpackCount}
-                        onChange={(e) =>
-                          setModalUnpackCount(
-                            Math.max(1, Math.round(Number(e.target.value) || 1))
-                          )
-                        }
-                        className="w-20 px-2 py-1.5 rounded-lg border border-amber-300 bg-white font-mono font-extrabold text-center"
-                      />
+                  <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 space-y-2.5">
+                    <div className="font-extrabold text-amber-950 flex items-center justify-between">
+                      <span>⚡ Tách Bộ Sang Lẻ Ngay Lập Tức (Chủ động bày kệ)</span>
                     </div>
-                    {setLinkModalProduct.parentSetProductId &&
-                      (setLinkModalProduct.packSize || 0) > 0 && (
-                        <button
-                          type="button"
-                          disabled={unpackingLoadingId === setLinkModalProduct._id}
-                          onClick={() =>
-                            handleQuickUnpackSet(
-                              setLinkModalProduct._id,
-                              modalUnpackCount,
-                              modalUnpackWarehouse
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        value={modalUnpackWarehouse}
+                        onChange={(e) =>
+                          setModalUnpackWarehouse(e.target.value as WarehouseFloor)
+                        }
+                        className="px-2.5 py-1.5 rounded-lg border border-amber-300 bg-white font-bold text-slate-800"
+                      >
+                        <option value="FLOOR_1">🏢 Tách tại Kho Tầng 1</option>
+                        <option value="FLOOR_2">🏬 Tách tại Kho Tầng 2</option>
+                      </select>
+                      <div className="flex items-center gap-1.5">
+                        <span>Số bộ tách:</span>
+                        <input
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={modalUnpackCount}
+                          onChange={(e) =>
+                            setModalUnpackCount(
+                              Math.max(1, Math.round(Number(e.target.value) || 1))
                             )
                           }
-                          className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold cursor-pointer"
-                        >
-                          ⚡ Tách {modalUnpackCount}{" "}
-                          {setLinkModalProduct.parentSetUnit || "Bộ"} → +
-                          {modalUnpackCount * (setLinkModalProduct.packSize || 1)}{" "}
-                          {setLinkModalProduct.unit}
-                        </button>
-                      )}
-                    {Array.isArray(setLinkModalProduct.linkedRetailProducts) &&
-                      setLinkModalProduct.linkedRetailProducts.map((ret) => (
-                        <button
-                          key={ret._id}
-                          type="button"
-                          disabled={unpackingLoadingId === ret._id}
-                          onClick={() =>
-                            handleQuickUnpackSet(
-                              ret._id,
-                              modalUnpackCount,
-                              modalUnpackWarehouse
-                            )
-                          }
-                          className="px-3.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-extrabold cursor-pointer"
-                        >
-                          ⚡ Tách {modalUnpackCount} {setLinkModalProduct.unit} → +
-                          {modalUnpackCount * ret.packSize} {ret.unit} ({ret.code})
-                        </button>
-                      ))}
+                          className="w-20 px-2 py-1.5 rounded-lg border border-amber-300 bg-white font-mono font-extrabold text-center"
+                        />
+                      </div>
+                      {setLinkModalProduct.parentSetProductId &&
+                        (setLinkModalProduct.packSize || 0) > 0 && (
+                          <button
+                            type="button"
+                            disabled={unpackingLoadingId === setLinkModalProduct._id}
+                            onClick={() =>
+                              handleQuickUnpackSet(
+                                setLinkModalProduct._id,
+                                modalUnpackCount,
+                                modalUnpackWarehouse
+                              )
+                            }
+                            className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold cursor-pointer"
+                          >
+                            ⚡ Tách {modalUnpackCount}{" "}
+                            {setLinkModalProduct.parentSetUnit || "Bộ"} → +
+                            {modalUnpackCount * (setLinkModalProduct.packSize || 1)}{" "}
+                            {setLinkModalProduct.unit}
+                          </button>
+                        )}
+                      {Array.isArray(setLinkModalProduct.linkedRetailProducts) &&
+                        setLinkModalProduct.linkedRetailProducts.map((ret) => (
+                          <button
+                            key={ret._id}
+                            type="button"
+                            disabled={unpackingLoadingId === ret._id}
+                            onClick={() =>
+                              handleQuickUnpackSet(
+                                ret._id,
+                                modalUnpackCount,
+                                modalUnpackWarehouse
+                              )
+                            }
+                            className="px-3.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-extrabold cursor-pointer"
+                          >
+                            ⚡ Tách {modalUnpackCount} {setLinkModalProduct.unit} → +
+                            {modalUnpackCount * ret.packSize} {ret.unit} ({ret.code})
+                          </button>
+                        ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
               <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
                 <button
