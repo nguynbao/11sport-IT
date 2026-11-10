@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import VersionChecker from "@/components/VersionChecker";
 
 export const metadata: Metadata = {
   title: "11Sport POS & Kho Vận — Hệ thống Quản lý Bán hàng & Kiểm kho",
@@ -31,6 +32,7 @@ export default function RootLayout({
     <html lang="vi">
       <body className="min-h-screen antialiased font-sans overflow-x-hidden">
         {children}
+        <VersionChecker />
       </body>
     </html>
   );
