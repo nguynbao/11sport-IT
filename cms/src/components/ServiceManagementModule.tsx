@@ -415,6 +415,19 @@ export default function ServiceManagementModule() {
     e.preventDefault();
     if (!editingOrder) return;
     setErrorMsg("");
+
+    const newTotal = editItems.reduce(
+      (sum, it) => sum + Math.max(0, Number(it.unitPrice) || 0) * Math.max(1, Number(it.quantity) || 1),
+      0
+    );
+    const currentPaid = Number(editingOrder.paidAmount) || 0;
+    if (newTotal < currentPaid) {
+      setErrorMsg(
+        `Tổng tiền mới (${formatVND(newTotal)}) không được nhỏ hơn số tiền khách đã thanh toán (${formatVND(currentPaid)}).`
+      );
+      return;
+    }
+
     setSavingOrderEdit(true);
     try {
       await apiRequest(`/service-orders/${editingOrder._id}`, {
@@ -1411,6 +1424,41 @@ export default function ServiceManagementModule() {
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg"
                 />
               </div>
+
+              {(() => {
+                const newTotal = editItems.reduce(
+                  (sum, it) =>
+                    sum +
+                    Math.max(0, Number(it.unitPrice) || 0) *
+                      Math.max(1, Number(it.quantity) || 1),
+                  0
+                );
+                const paid = Number(editingOrder.paidAmount) || 0;
+                const belowPaid = newTotal < paid;
+                return (
+                  <div
+                    className={`p-2.5 rounded-xl border text-xs flex flex-wrap items-center justify-between gap-2 ${
+                      belowPaid
+                        ? "bg-red-50 border-red-300 text-red-700"
+                        : "bg-slate-50 border-slate-200 text-slate-700"
+                    }`}
+                  >
+                    <div>
+                      Tổng mới:{" "}
+                      <strong className="font-mono">{formatVND(newTotal)}</strong>{" "}
+                      • Đã thu:{" "}
+                      <strong className="font-mono text-emerald-700">
+                        {formatVND(paid)}
+                      </strong>
+                    </div>
+                    {belowPaid && (
+                      <span className="font-extrabold text-red-600">
+                        ⚠️ Không được giảm tổng thấp hơn số tiền đã thu!
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
 
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button

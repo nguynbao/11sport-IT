@@ -1306,16 +1306,14 @@ export interface AttendanceData {
   totalWorkHours: number;
 }
 
-export async function checkInApi(params: {
-  latitude?: number;
-  longitude?: number;
+export async function checkInApi(params?: {
   shiftCode?: "SHIFT_1" | "SHIFT_2" | "BOTH";
 }): Promise<{ attendance: AttendanceData; isWfh: boolean; message: string }> {
   const res = await apiRequest<{ attendance: AttendanceData; isWfh: boolean; message: string }>(
     "/attendance/check-in",
     {
       method: "POST",
-      body: JSON.stringify(params),
+      body: JSON.stringify(params || {}),
     }
   );
   return res.data;
@@ -1325,8 +1323,6 @@ export async function checkOutApi(params?: {
   forceEarly?: boolean;
   earlyReason?: string;
   lateCheckoutReason?: string;
-  latitude?: number;
-  longitude?: number;
 }): Promise<{ attendance: AttendanceData; message: string }> {
   const res = await apiRequest<{ attendance: AttendanceData; message: string }>(
     "/attendance/check-out",

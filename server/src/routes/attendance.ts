@@ -1,4 +1,7 @@
 import { Router, Request } from 'express';
+import fs from 'fs';
+import path from 'path';
+import dotenv from 'dotenv';
 import {
   attendanceRepo,
   attendanceConfigRepo,
@@ -12,17 +15,60 @@ import { ShiftCode } from '../models/Attendance';
 
 export const attendanceRouter = Router();
 
-// Tọa độ mặc định Cơ sở 1 & Cơ sở 2 11Sport (89 Lê Thanh Nghị, Hòa Cường, Đà Nẵng)
-const DEFAULT_SHOWROOM_LAT = 16.0352;
-const DEFAULT_SHOWROOM_LNG = 108.2185;
-const DEFAULT_SHOWROOM_2_LAT = 16.0414246;
-const DEFAULT_SHOWROOM_2_LNG = 108.2179426;
-const DEFAULT_MAX_DISTANCE_METERS = 50;
+function isTestEnv(): boolean {
+  return Boolean(
+    process.env.VITEST ||
+      process.env.NODE_ENV === 'test' ||
+      process.env.FORCE_MEMORY_DB === 'true'
+  );
+}
+
+function isLoopbackOrPrivateIp(value: string): boolean {
+  const ip = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^::ffff:/, '');
+  if (!ip) return true;
+  if (ip === 'localhost' || ip === '::1' || ip.startsWith('127.')) return true;
+  if (ip.startsWith('10.') || ip.startsWith('192.168.')) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return true;
+  if (ip.startsWith('fc00:') || ip.startsWith('fd00:') || ip.startsWith('fe80:')) return true;
+  return false;
+}
+
+function readAttendanceEnv(): Record<string, string | undefined> {
+  if (isTestEnv()) {
+    return process.env;
+  }
+  const candidates = [
+    path.resolve(process.cwd(), '.env'),
+    path.resolve(__dirname, '../../.env'),
+  ];
+  for (const envFile of candidates) {
+    try {
+      if (fs.existsSync(envFile)) {
+        const parsed = dotenv.parse(fs.readFileSync(envFile, 'utf8'));
+        return { ...process.env, ...parsed };
+      }
+    } catch {
+      // ignore read errors and fallback to process.env
+    }
+  }
+  return process.env;
+}
 
 function extractClientIp(req: Request, bodyIp?: string): string {
+  // Bảo mật: trên production tuyệt đối không nhận bodyIp từ client; chỉ cho phép trong unit test
+  const allowBodyIp = isTestEnv() && process.env.NODE_ENV !== 'production';
+  const cfIp = req.headers['cf-connecting-ip'];
+  const trueClientIp = req.headers['true-client-ip'];
+  const realIp = req.headers['x-real-ip'];
   const forwarded = req.headers['x-forwarded-for'];
   const raw =
-    (bodyIp && String(bodyIp).trim()) ||
+    (allowBodyIp && bodyIp && String(bodyIp).trim()) ||
+    (typeof cfIp === 'string' ? cfIp.trim() : '') ||
+    (typeof trueClientIp === 'string' ? trueClientIp.trim() : '') ||
+    (typeof realIp === 'string' ? realIp.trim() : '') ||
     (typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : '') ||
     req.socket?.remoteAddress ||
     req.ip ||
@@ -33,174 +79,152 @@ function extractClientIp(req: Request, bodyIp?: string): string {
   return raw.replace(/^::ffff:/, '');
 }
 
+/**
+ * Khi chạy trên localhost / mạng LAN nội bộ, socket IP chỉ là 127.0.0.1 hoặc 192.168.x.x
+ * nên không phản ánh đúng mạng Wi-Fi đang kết nối. Hàm này tự động lấy IP Public (WAN IP)
+ * thực tế của kết nối mạng hiện tại để kiểm tra chính xác khi đổi Wi-Fi / phát 4G.
+ */
+async function fetchCurrentPublicWanIp(): Promise<string | null> {
+  const endpoints = [
+    'https://api.ipify.org',
+    'https://checkip.amazonaws.com',
+    'https://icanhazip.com',
+  ];
+
+  for (const url of endpoints) {
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: { 'Cache-Control': 'no-cache' },
+        signal: AbortSignal.timeout(2500),
+      });
+      if (!res.ok) continue;
+      const ip = (await res.text()).trim();
+      if (ip && ip.length <= 64 && !isLoopbackOrPrivateIp(ip)) {
+        return ip;
+      }
+    } catch {
+      // thử endpoint tiếp theo
+    }
+  }
+  return null;
+}
+
+async function resolveEffectiveClientIp(req: Request, bodyIp?: string): Promise<string> {
+  const rawIp = extractClientIp(req, bodyIp);
+  if (isTestEnv()) {
+    return rawIp;
+  }
+  if (!isLoopbackOrPrivateIp(rawIp)) {
+    return rawIp;
+  }
+  const publicWanIp = await fetchCurrentPublicWanIp();
+  return publicWanIp || rawIp;
+}
+
+function sanitizeAllowedIps(rawList: string[]): string[] {
+  const cleaned = rawList.map((ip) => ip.trim()).filter(Boolean);
+  if (isTestEnv()) {
+    return cleaned;
+  }
+  // Loại bỏ hoàn toàn localhost / 127.0.0.1 / ::1 / 192.168.x.x / 10.x.x.x để bắt buộc khớp đúng IP Public Wi-Fi công ty
+  return cleaned.filter((ip) => !isLoopbackOrPrivateIp(ip));
+}
+
 function getEnvAttendanceConfig() {
-  // --- Cơ sở 1 (Location 1 + Mạng 1) ---
+  const env = readAttendanceEnv();
+
+  // --- Cơ sở 1 (Mạng Wi-Fi 1) ---
   const officeName =
-    process.env.ATTENDANCE_OFFICE_NAME ||
-    process.env.ATTENDANCE_OFFICE_1_NAME ||
+    env.ATTENDANCE_OFFICE_NAME ||
+    env.ATTENDANCE_OFFICE_1_NAME ||
     'Cơ sở 1: Showroom 11Sport - 24 Tố Hữu, Hoà Cường, Đà Nẵng';
-  const officeLat = Number(
-    process.env.ATTENDANCE_OFFICE_LAT ??
-    process.env.ATTENDANCE_OFFICE_1_LAT ??
-    DEFAULT_SHOWROOM_LAT
-  );
-  const officeLng = Number(
-    process.env.ATTENDANCE_OFFICE_LNG ??
-    process.env.ATTENDANCE_OFFICE_1_LNG ??
-    DEFAULT_SHOWROOM_LNG
-  );
-  const allowedIps = (
-    process.env.ATTENDANCE_ALLOWED_IPS ||
-    process.env.ATTENDANCE_OFFICE_1_ALLOWED_IPS ||
-    '127.0.0.1,::1,localhost,192.168.1.'
-  )
-    .split(',')
-    .map((ip) => ip.trim())
-    .filter(Boolean);
+  const rawAllowedIps = (
+    env.ATTENDANCE_ALLOWED_IPS ||
+    env.ATTENDANCE_OFFICE_1_ALLOWED_IPS ||
+    (isTestEnv() ? '127.0.0.1,::1,localhost,192.168.1.' : '113.22.236.6')
+  ).split(',');
+  const allowedIps = sanitizeAllowedIps(rawAllowedIps);
 
-  // --- Cơ sở 2 (Location 2 + Mạng 2) ---
+  // --- Cơ sở 2 (Mạng Wi-Fi 2) ---
   const office2Name =
-    process.env.ATTENDANCE_OFFICE_2_NAME ||
+    env.ATTENDANCE_OFFICE_2_NAME ||
     'Cơ sở 2: Văn phòng 11Sport - 89 Lê Thanh Nghị, Hòa Cường, Đà Nẵng';
-  const office2Lat = Number(
-    process.env.ATTENDANCE_OFFICE_2_LAT ?? DEFAULT_SHOWROOM_2_LAT
-  );
-  const office2Lng = Number(
-    process.env.ATTENDANCE_OFFICE_2_LNG ?? DEFAULT_SHOWROOM_2_LNG
-  );
-  const allowedIps2 = (
-    process.env.ATTENDANCE_ALLOWED_IPS_2 ||
-    process.env.ATTENDANCE_OFFICE_2_ALLOWED_IPS ||
-    '116.110.151.140,192.168.2.207,192.168.2.,127.0.0.1,::1,localhost'
-  )
-    .split(',')
-    .map((ip) => ip.trim())
-    .filter(Boolean);
+  const rawAllowedIps2 = (
+    env.ATTENDANCE_ALLOWED_IPS_2 ||
+    env.ATTENDANCE_OFFICE_2_ALLOWED_IPS ||
+    (isTestEnv() ? '116.110.151.140,192.168.2.,127.0.0.1,::1,localhost' : '116.110.151.140')
+  ).split(',');
+  const allowedIps2 = sanitizeAllowedIps(rawAllowedIps2);
 
-  const maxDistanceMeters = Number(
-    process.env.ATTENDANCE_MAX_DISTANCE_METERS ?? DEFAULT_MAX_DISTANCE_METERS
-  );
-  const requireGps = process.env.ATTENDANCE_REQUIRE_GPS !== 'false';
-  const requireIp = process.env.ATTENDANCE_REQUIRE_IP === 'true';
+  // Luôn bật kiểm tra IP mạng trên Dev & Production (chỉ cho phép tắt trong unit test nếu test cấu hình rõ)
+  const requireIp = isTestEnv() ? env.ATTENDANCE_REQUIRE_IP !== 'false' : true;
 
   const branches = [
     {
       id: 1,
       name: officeName,
-      lat: officeLat,
-      lng: officeLng,
       allowedIps,
     },
     {
       id: 2,
       name: office2Name,
-      lat: office2Lat,
-      lng: office2Lng,
       allowedIps: allowedIps2,
     },
   ];
 
   return {
     officeName,
-    officeLat,
-    officeLng,
     allowedIps,
     office2Name,
-    office2Lat,
-    office2Lng,
     allowedIps2,
-    maxDistanceMeters,
-    requireGps,
+    requireGps: false,
     requireIp,
     branches,
   };
 }
 
 function isIpAllowed(clientIp: string, allowedIps: string[]): boolean {
-  if (!allowedIps || allowedIps.length === 0) return true;
+  if (!allowedIps || allowedIps.length === 0) return false;
   const normalized = clientIp.trim();
+  if (!normalized) return false;
+  if (!isTestEnv() && isLoopbackOrPrivateIp(normalized)) {
+    return false;
+  }
   return allowedIps.some((rule) => {
     const cleanRule = String(rule || '').trim();
     if (!cleanRule) return false;
     if (cleanRule === normalized) return true;
-    // Cho phép khớp theo prefix dải mạng LAN/Wi-Fi (VD: "192.168.1." hoặc "113.160.")
+    // Cho phép khớp theo prefix dải IP Public nếu có (VD: "113.22.236.")
     if (cleanRule.endsWith('.') && normalized.startsWith(cleanRule)) return true;
     if (cleanRule.endsWith('*') && normalized.startsWith(cleanRule.slice(0, -1))) return true;
     return false;
   });
 }
 
-function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371e3; // metres
-  const phi1 = (lat1 * Math.PI) / 180;
-  const phi2 = (lat2 * Math.PI) / 180;
-  const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
-  const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
-
-  const a =
-    Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
-    Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-  return R * c;
-}
-
 /**
- * Kiểm tra cặp (Location 1 + Mạng 1) hoặc (Location 2 + Mạng 2).
- * Nhân viên phải đứng ở Cơ sở 1 và dùng Mạng 1, HOẶC đứng ở Cơ sở 2 và dùng Mạng 2.
+ * Kiểm tra IP mạng của nhân viên thuộc Mạng Cơ sở 1 hoặc Mạng Cơ sở 2.
+ * (Đã loại bỏ hoàn toàn kiểm tra tọa độ GPS do sai số thiết bị).
  */
-function verifyBranchLocationAndNetwork(
-  latitude: unknown,
-  longitude: unknown,
+function verifyBranchNetwork(
   detectedIp: string,
   config: ReturnType<typeof getEnvAttendanceConfig>
 ) {
-  const maxDist = Number(config.maxDistanceMeters ?? DEFAULT_MAX_DISTANCE_METERS);
-
-  if (config.requireGps && (latitude === undefined || longitude === undefined || latitude === null || longitude === null)) {
-    throw new ApiError(400, 'LOCATION_REQUIRED', 'Vui lòng bật định vị GPS để chấm công');
+  if (!config.requireIp) {
+    return config.branches[0];
   }
 
-  const hasCoords = latitude !== undefined && longitude !== undefined && latitude !== null && longitude !== null;
-  const latNum = Number(latitude);
-  const lngNum = Number(longitude);
-
-  const evaluations = config.branches.map((branch) => {
-    const dist = hasCoords
-      ? calculateDistanceMeters(latNum, lngNum, Number(branch.lat), Number(branch.lng))
-      : 0;
-    const gpsOk = !config.requireGps || (hasCoords && dist <= maxDist);
-    const ipOk = !config.requireIp || isIpAllowed(detectedIp, branch.allowedIps || []);
-    return {
-      branch,
-      dist,
-      gpsOk,
-      ipOk,
-      matchedBoth: gpsOk && ipOk,
-    };
-  });
-
-  // Thành công nếu khớp trọn vẹn cặp (Location + Mạng) của Cơ sở 1 hoặc Cơ sở 2
-  const matched = evaluations.find((e) => e.matchedBoth);
+  const matched = config.branches.find((branch) =>
+    isIpAllowed(detectedIp, branch.allowedIps || [])
+  );
   if (matched) {
-    return matched.branch;
+    return matched;
   }
 
-  // Nếu có cơ sở khớp GPS nhưng không khớp IP mạng của chính cơ sở đó (VD: đứng ở Location 1 nhưng nối Mạng 2)
-  const gpsMatched = evaluations.find((e) => e.gpsOk);
-  if (gpsMatched && !gpsMatched.ipOk) {
-    throw new ApiError(
-      400,
-      'WIFI_IP_NOT_ALLOWED',
-      `Bạn đang ở ${gpsMatched.branch.name} nhưng IP mạng hiện tại (${detectedIp}) không thuộc mạng Wi-Fi của cơ sở này (Location 1 phải đi với Mạng 1, Location 2 phải đi với Mạng 2)`
-    );
-  }
-
-  // Không khớp vị trí GPS của cả 2 cơ sở
   throw new ApiError(
     400,
-    'LOCATION_OUT_OF_RANGE',
-    'Vị trí của bạn không thuộc Cơ sở 1 hay Cơ sở 2 của công ty'
+    'WIFI_IP_NOT_ALLOWED',
+    `IP mạng hiện tại (${detectedIp}) không thuộc mạng Wi-Fi công ty (Cơ sở 1 hoặc Cơ sở 2). Vui lòng kết nối đúng Wi-Fi công ty để chấm công!`
   );
 }
 
@@ -229,7 +253,7 @@ attendanceRouter.post('/attendance/check-in', async (req, res, next) => {
       throw new ApiError(400, 'ALREADY_CHECKED_IN', 'Hôm nay bạn đã chấm công check-in rồi');
     }
 
-    const { latitude, longitude, clientIp, shiftCode } = req.body || {};
+    const { clientIp, shiftCode } = req.body || {};
 
     // 1. Kiểm tra đơn WFH đã duyệt hôm nay (Áp dụng cho cả khối OFFICE và SALES) — xác minh hoàn toàn phía server
     const approvedWfh = await leaveRequestRepo.findOne({
@@ -241,11 +265,11 @@ attendanceRouter.post('/attendance/check-in', async (req, res, next) => {
 
     const isWfh = Boolean(approvedWfh);
     const config = getEnvAttendanceConfig();
-    const detectedIp = extractClientIp(req, clientIp);
+    const detectedIp = await resolveEffectiveClientIp(req, clientIp);
 
-    // 2. Nếu không phải WFH (đã xác minh server-side) -> Kiểm tra cặp (Location 1 + Mạng 1) hoặc (Location 2 + Mạng 2)
+    // 2. Nếu không phải WFH (đã xác minh server-side) -> Kiểm tra IP mạng thuộc Cơ sở 1 hoặc Cơ sở 2
     if (!isWfh) {
-      verifyBranchLocationAndNetwork(latitude, longitude, detectedIp, config);
+      verifyBranchNetwork(detectedIp, config);
     }
 
     const now = new Date();
@@ -335,9 +359,7 @@ attendanceRouter.post('/attendance/check-in', async (req, res, next) => {
       checkInTime: now,
       workStartTime,
       checkInType: isWfh ? 'WFH' : 'STANDARD',
-      latitude: latitude ? Number(latitude) : undefined,
-      longitude: longitude ? Number(longitude) : undefined,
-      clientIp: clientIp || req.ip || '',
+      clientIp: detectedIp,
       status,
       lateMinutes,
       earlyMinutes: 0,
@@ -377,12 +399,10 @@ attendanceRouter.post('/attendance/check-out', async (req, res, next) => {
       forceEarly = false,
       earlyReason = '',
       lateCheckoutReason = '',
-      latitude,
-      longitude,
       clientIp,
     } = req.body || {};
 
-    // Kiểm tra vị trí & mạng (Location 1 đi với Mạng 1, Location 2 đi với Mạng 2) nếu không phải ca WFH (xác minh server-side)
+    // Kiểm tra IP mạng (Cơ sở 1 hoặc Cơ sở 2) nếu không phải ca WFH (xác minh server-side)
     const approvedWfh = await leaveRequestRepo.findOne({
       staffId: user.userId,
       date: todayStr,
@@ -392,10 +412,8 @@ attendanceRouter.post('/attendance/check-out', async (req, res, next) => {
     const isWfh = attendance.checkInType === 'WFH' || Boolean(approvedWfh);
     if (!isWfh) {
       const config = getEnvAttendanceConfig();
-      const detectedIp = extractClientIp(req, clientIp);
-      const checkLat = latitude !== undefined ? latitude : attendance.latitude;
-      const checkLng = longitude !== undefined ? longitude : attendance.longitude;
-      verifyBranchLocationAndNetwork(checkLat, checkLng, detectedIp, config);
+      const detectedIp = await resolveEffectiveClientIp(req, clientIp);
+      verifyBranchNetwork(detectedIp, config);
     }
 
     const assignedShift =
@@ -642,11 +660,15 @@ attendanceRouter.get('/attendance/history', async (req, res, next) => {
 attendanceRouter.get('/attendance/config', async (req, res, next) => {
   try {
     const config = getEnvAttendanceConfig();
-    const detectedClientIp = extractClientIp(req);
+    const detectedClientIp = await resolveEffectiveClientIp(req);
+    const isCurrentIpAllowed =
+      !config.requireIp ||
+      config.branches.some((branch) => isIpAllowed(detectedClientIp, branch.allowedIps || []));
     res.json({
       data: {
         config,
         detectedClientIp,
+        isCurrentIpAllowed,
       },
       meta: {},
     });
@@ -661,7 +683,7 @@ attendanceRouter.put('/attendance/config', async (_req, _res, next) => {
     new ApiError(
       403,
       'CONFIG_MANAGED_BY_ENV',
-      'Cấu hình vị trí GPS và IP Wi-Fi chỉ được thiết lập trong file .env của Server, không cho phép chỉnh sửa trên hệ thống'
+      'Cấu hình IP Wi-Fi chấm công chỉ được thiết lập trong file .env của Server, không cho phép chỉnh sửa trên hệ thống'
     )
   );
 });

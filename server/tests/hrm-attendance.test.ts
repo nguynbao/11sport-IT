@@ -68,26 +68,23 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
     expect(mktRev.status).toBe(403);
   });
 
-  it('2. Chấm công GPS: chặn khi cách chi nhánh > 50m; thành công khi trong bán kính 50m', async () => {
-    // Tọa độ giả định cách xa (Hà Nội / HCM)
-    const outOfRangeRes = await request(app)
+  it('2. Chấm công theo IP mạng (không cần GPS): chặn khi IP ngoài mạng công ty; thành công khi đúng IP mạng', async () => {
+    // IP ngoài mạng công ty (VD: dùng 4G / mạng lạ) -> bị chặn 400 WIFI_IP_NOT_ALLOWED
+    const wrongIpRes = await request(app)
       .post('/api/v1/attendance/check-in')
       .set('Authorization', `Bearer ${salesToken}`)
       .send({
-        latitude: 21.0285, // Hà Nội
-        longitude: 105.8542,
+        clientIp: '203.0.113.99',
         shiftCode: 'SHIFT_1',
       });
-    expect(outOfRangeRes.status).toBe(400);
-    expect(outOfRangeRes.body.code).toBe('LOCATION_OUT_OF_RANGE');
+    expect(wrongIpRes.status).toBe(400);
+    expect(wrongIpRes.body.code).toBe('WIFI_IP_NOT_ALLOWED');
 
-    // Tọa độ hợp lệ tại Showroom 11Sport (24 Tố Hữu, Đà Nẵng)
+    // Không cần truyền tọa độ GPS, chỉ cần IP thuộc mạng công ty (mặc định 127.0.0.1 / 192.168.1.) -> Thành công 201
     const validCheckIn = await request(app)
       .post('/api/v1/attendance/check-in')
       .set('Authorization', `Bearer ${salesToken}`)
       .send({
-        latitude: 16.0352,
-        longitude: 108.2185,
         shiftCode: 'SHIFT_1',
       });
     expect(validCheckIn.status).toBe(201);
@@ -233,12 +230,13 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
     expect(delHol.body.data.success).toBe(true);
   });
 
-  it('6. Cấu hình Vị trí GPS & IP Wi-Fi qua .env: chặn HR sửa qua API, chặn Admin chấm công, và kiểm tra IP từ .env', async () => {
+  it('6. Cấu hình IP Wi-Fi qua .env: chặn HR sửa qua API, chặn Admin chấm công, và kiểm tra IP từ .env', async () => {
     const getCfg = await request(app)
       .get('/api/v1/attendance/config')
       .set('Authorization', `Bearer ${hrToken}`);
     expect(getCfg.status).toBe(200);
-    expect(getCfg.body.data.config.officeLat).toBeDefined();
+    expect(getCfg.body.data.config.requireGps).toBe(false);
+    expect(getCfg.body.data.config.requireIp).toBe(true);
 
     // HR hoặc Admin gọi PUT /attendance/config -> bị chặn 403 CONFIG_MANAGED_BY_ENV
     const updateCfg = await request(app)
@@ -252,33 +250,30 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
     const adminCheckIn = await request(app)
       .post('/api/v1/attendance/check-in')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ latitude: 16.0352, longitude: 108.2185 });
+      .send({});
     expect(adminCheckIn.status).toBe(400);
     expect(adminCheckIn.body.code).toBe('ADMIN_NO_ATTENDANCE');
 
     // Thiết lập biến môi trường .env cho IP Wi-Fi
     process.env.ATTENDANCE_REQUIRE_IP = 'true';
     process.env.ATTENDANCE_ALLOWED_IPS = '113.160.22.10,192.168.1.';
+    process.env.ATTENDANCE_ALLOWED_IPS_2 = '116.110.151.140,192.168.2.';
 
-    // Accountant check-in đúng GPS nhưng sai IP (10.0.0.5) -> bị chặn 400 WIFI_IP_NOT_ALLOWED
+    // Accountant check-in sai IP (10.0.0.5) -> bị chặn 400 WIFI_IP_NOT_ALLOWED
     const wrongIpRes = await request(app)
       .post('/api/v1/attendance/check-in')
       .set('Authorization', `Bearer ${accountantToken}`)
       .send({
-        latitude: 16.0352,
-        longitude: 108.2185,
         clientIp: '10.0.0.5',
       });
     expect(wrongIpRes.status).toBe(400);
     expect(wrongIpRes.body.code).toBe('WIFI_IP_NOT_ALLOWED');
 
-    // Accountant check-in đúng GPS và đúng dải IP LAN (192.168.1.55) -> thành công 201
+    // Accountant check-in đúng dải IP LAN (192.168.1.55) không cần GPS -> thành công 201
     const rightIpRes = await request(app)
       .post('/api/v1/attendance/check-in')
       .set('Authorization', `Bearer ${accountantToken}`)
       .send({
-        latitude: 16.0352,
-        longitude: 108.2185,
         clientIp: '192.168.1.55',
       });
     expect(rightIpRes.status).toBe(201);
@@ -286,17 +281,9 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
     process.env.ATTENDANCE_REQUIRE_IP = 'false';
   });
 
-  it('7. Logic 2 Cơ sở: Location 1 đi với Mạng 1, Location 2 đi với Mạng 2 (cả Check-in & Check-out)', async () => {
-    // Cấu hình 2 cơ sở trong .env
-    process.env.ATTENDANCE_REQUIRE_GPS = 'true';
+  it('7. Logic 2 Cơ sở theo IP mạng: Mạng Cơ sở 1 hoặc Mạng Cơ sở 2 đều chấm công hợp lệ (cả Check-in & Check-out)', async () => {
     process.env.ATTENDANCE_REQUIRE_IP = 'true';
-    // Cơ sở 1 (Đà Nẵng) + Mạng 1 (192.168.1.)
-    process.env.ATTENDANCE_OFFICE_LAT = '16.0352';
-    process.env.ATTENDANCE_OFFICE_LNG = '108.2185';
     process.env.ATTENDANCE_ALLOWED_IPS = '192.168.1.';
-    // Cơ sở 2 (Hải Châu) + Mạng 2 (192.168.2.)
-    process.env.ATTENDANCE_OFFICE_2_LAT = '16.0678';
-    process.env.ATTENDANCE_OFFICE_2_LNG = '108.2208';
     process.env.ATTENDANCE_OFFICE_2_NAME = 'Showroom 11Sport - Cơ sở 2';
     process.env.ATTENDANCE_ALLOWED_IPS_2 = '192.168.2.';
 
@@ -318,64 +305,44 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
       .send({ username: 'office_branch2', password: 'password123' });
     const branch2Token = loginB2.body.data.token;
 
-    // 7.1 Đứng ở Location 1 (16.0352, 108.2185) nhưng dùng Mạng 2 (192.168.2.50) -> BỊ CHẶN 400 WIFI_IP_NOT_ALLOWED
-    const loc1Net2 = await request(app)
+    // 7.1 Dùng mạng ngoài cả 2 cơ sở (10.10.10.50) -> BỊ CHẶN 400 WIFI_IP_NOT_ALLOWED
+    const outsiderNet = await request(app)
       .post('/api/v1/attendance/check-in')
       .set('Authorization', `Bearer ${branch2Token}`)
       .send({
-        latitude: 16.0352,
-        longitude: 108.2185,
+        clientIp: '10.10.10.50',
+      });
+    expect(outsiderNet.status).toBe(400);
+    expect(outsiderNet.body.code).toBe('WIFI_IP_NOT_ALLOWED');
+
+    // 7.2 Dùng đúng Mạng Cơ sở 2 (192.168.2.50) không cần GPS -> CHECK-IN THÀNH CÔNG 201
+    const net2CheckIn = await request(app)
+      .post('/api/v1/attendance/check-in')
+      .set('Authorization', `Bearer ${branch2Token}`)
+      .send({
         clientIp: '192.168.2.50',
       });
-    expect(loc1Net2.status).toBe(400);
-    expect(loc1Net2.body.code).toBe('WIFI_IP_NOT_ALLOWED');
+    expect(net2CheckIn.status).toBe(201);
 
-    // 7.2 Đứng ở Location 2 (16.0678, 108.2208) nhưng dùng Mạng 1 (192.168.1.50) -> BỊ CHẶN 400 WIFI_IP_NOT_ALLOWED
-    const loc2Net1 = await request(app)
-      .post('/api/v1/attendance/check-in')
-      .set('Authorization', `Bearer ${branch2Token}`)
-      .send({
-        latitude: 16.0678,
-        longitude: 108.2208,
-        clientIp: '192.168.1.50',
-      });
-    expect(loc2Net1.status).toBe(400);
-    expect(loc2Net1.body.code).toBe('WIFI_IP_NOT_ALLOWED');
-
-    // 7.3 Đứng ở Location 2 (16.0678, 108.2208) và dùng đúng Mạng 2 (192.168.2.50) -> CHECK-IN THÀNH CÔNG 201
-    const loc2Net2CheckIn = await request(app)
-      .post('/api/v1/attendance/check-in')
-      .set('Authorization', `Bearer ${branch2Token}`)
-      .send({
-        latitude: 16.0678,
-        longitude: 108.2208,
-        clientIp: '192.168.2.50',
-      });
-    expect(loc2Net2CheckIn.status).toBe(201);
-
-    // 7.4 Khi Check-out: Đứng ở Location 2 nhưng dùng Mạng 1 -> BỊ CHẶN 400 WIFI_IP_NOT_ALLOWED
-    const checkoutMismatch = await request(app)
+    // 7.3 Khi Check-out: Dùng mạng ngoài công ty (10.10.10.50) -> BỊ CHẶN 400 WIFI_IP_NOT_ALLOWED
+    const checkoutWrongIp = await request(app)
       .post('/api/v1/attendance/check-out')
       .set('Authorization', `Bearer ${branch2Token}`)
       .send({
         forceEarly: true,
         earlyReason: 'Test checkout',
-        latitude: 16.0678,
-        longitude: 108.2208,
-        clientIp: '192.168.1.50',
+        clientIp: '10.10.10.50',
       });
-    expect(checkoutMismatch.status).toBe(400);
-    expect(checkoutMismatch.body.code).toBe('WIFI_IP_NOT_ALLOWED');
+    expect(checkoutWrongIp.status).toBe(400);
+    expect(checkoutWrongIp.body.code).toBe('WIFI_IP_NOT_ALLOWED');
 
-    // 7.5 Khi Check-out: Đứng ở Location 1 và dùng đúng Mạng 1 -> CHECK-OUT THÀNH CÔNG 200
+    // 7.4 Khi Check-out: Dùng đúng Mạng Cơ sở 1 (192.168.1.88) -> CHECK-OUT THÀNH CÔNG 200
     const checkoutMatchBranch1 = await request(app)
       .post('/api/v1/attendance/check-out')
       .set('Authorization', `Bearer ${branch2Token}`)
       .send({
         forceEarly: true,
         earlyReason: 'Test checkout tại Cơ sở 1',
-        latitude: 16.0352,
-        longitude: 108.2185,
         clientIp: '192.168.1.88',
       });
     expect(checkoutMatchBranch1.status).toBe(200);
@@ -404,12 +371,11 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
     }
   });
 
-  it('9. Bảo mật Địa điểm/Mạng: client gửi bypassNetwork: true không thể bỏ qua kiểm tra GPS & IP khi chưa có đơn WFH đã duyệt', async () => {
-    process.env.ATTENDANCE_REQUIRE_GPS = 'true';
+  it('9. Bảo mật Mạng IP: client gửi bypassNetwork: true hoặc giả mạo body.clientIp trên production đều không thể bỏ qua kiểm tra IP', async () => {
+    const prevNodeEnv = process.env.NODE_ENV;
     process.env.ATTENDANCE_REQUIRE_IP = 'true';
-    process.env.ATTENDANCE_OFFICE_LAT = '16.0352';
-    process.env.ATTENDANCE_OFFICE_LNG = '108.2185';
     process.env.ATTENDANCE_ALLOWED_IPS = '192.168.1.';
+    process.env.ATTENDANCE_ALLOWED_IPS_2 = '192.168.2.';
 
     try {
       const staffNoWfh = await request(app)
@@ -429,26 +395,35 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
         .send({ username: 'office_no_wfh_bypass', password: 'password123' });
       const token = loginRes.body.data.token;
 
-      // Client cố tình gửi bypassNetwork: true khi đứng xa cơ sở -> vẫn bị chặn 400 LOCATION_OUT_OF_RANGE
+      // Client cố tình gửi bypassNetwork: true khi IP ngoài cơ sở -> bị chặn 400 WIFI_IP_NOT_ALLOWED
       const fakeBypassCheckIn = await request(app)
         .post('/api/v1/attendance/check-in')
         .set('Authorization', `Bearer ${token}`)
         .send({
-          latitude: 10.7626,
-          longitude: 106.6602,
           clientIp: '10.0.0.1',
           bypassNetwork: true,
         });
       expect(fakeBypassCheckIn.status).toBe(400);
-      expect(fakeBypassCheckIn.body.code).toBe('LOCATION_OUT_OF_RANGE');
+      expect(fakeBypassCheckIn.body.code).toBe('WIFI_IP_NOT_ALLOWED');
 
-      // Check-in hợp lệ tại cơ sở, sau đó cố gửi bypassNetwork: true khi check-out ở vị trí/mạng ngoài -> vẫn bị chặn 400
+      // Trên production: client cố tình giả mạo body.clientIp = 192.168.1.99 khi IP thật từ header là 203.0.113.5 -> bị chặn!
+      process.env.NODE_ENV = 'production';
+      const spoofedBodyIp = await request(app)
+        .post('/api/v1/attendance/check-in')
+        .set('Authorization', `Bearer ${token}`)
+        .set('X-Forwarded-For', '203.0.113.5')
+        .send({
+          clientIp: '192.168.1.99',
+        });
+      expect(spoofedBodyIp.status).toBe(400);
+      expect(spoofedBodyIp.body.code).toBe('WIFI_IP_NOT_ALLOWED');
+      process.env.NODE_ENV = prevNodeEnv;
+
+      // Check-in hợp lệ qua IP công ty, sau đó cố gửi bypassNetwork: true khi check-out ở mạng ngoài -> vẫn bị chặn 400
       const validCheckIn = await request(app)
         .post('/api/v1/attendance/check-in')
         .set('Authorization', `Bearer ${token}`)
         .send({
-          latitude: 16.0352,
-          longitude: 108.2185,
           clientIp: '192.168.1.99',
         });
       expect(validCheckIn.status).toBe(201);
@@ -459,14 +434,13 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
         .send({
           forceEarly: true,
           earlyReason: 'Test',
-          latitude: 10.7626,
-          longitude: 106.6602,
           clientIp: '10.0.0.1',
           bypassNetwork: true,
         });
       expect(fakeBypassCheckOut.status).toBe(400);
-      expect(fakeBypassCheckOut.body.code).toBe('LOCATION_OUT_OF_RANGE');
+      expect(fakeBypassCheckOut.body.code).toBe('WIFI_IP_NOT_ALLOWED');
     } finally {
+      process.env.NODE_ENV = prevNodeEnv;
       process.env.ATTENDANCE_REQUIRE_IP = 'false';
     }
   });
