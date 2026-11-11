@@ -911,3 +911,92 @@
 - `GET /api/version` (Next.js App Router endpoint trên `web/` và `cms/`, header `Cache-Control: no-store, no-cache, must-revalidate`)
   - Response: `{ "buildId": "string", "timestamp": "ISO-8601" }`
   - Dùng cho `<VersionChecker />` trên thiết bị di động & máy trạm kiểm tra khi `visibilitychange` / `focus` hoặc định kỳ để hiển thị thanh thông báo cập nhật phiên bản mới.
+
+---
+
+### 2.10 Quản lý Loại Dịch Vụ & Đơn Dịch Vụ (`/service-types`, `/service-orders`)
+
+#### A. Danh mục Loại Dịch Vụ (`/service-types`)
+- `GET /api/v1/service-types`
+  - Query: `?status=ACTIVE|INACTIVE` (tùy chọn), `?search=...`
+  - Response: Danh sách các loại dịch vụ kèm `orderCount` (số đơn dịch vụ đã sử dụng loại dịch vụ này).
+  - Cấu trúc `ServiceType`:
+    ```json
+    {
+      "_id": "...",
+      "code": "DV_DAN_VOT",
+      "name": "Đan vợt / Căng vợt cầu lông",
+      "defaultPrice": 40000,
+      "unit": "Cây",
+      "description": "Công đan vợt tiêu chuẩn",
+      "status": "ACTIVE | INACTIVE",
+      "orderCount": 5,
+      "createdAt": "...",
+      "updatedAt": "..."
+    }
+    ```
+- `POST /api/v1/service-types` (Role `ADMIN` hoặc `ACCOUNTANT`)
+  - Body: `{ "code"?: "string", "name": "string", "defaultPrice": 40000, "unit"?: "Cây | Đôi | Lần", "description"?: "string", "status"?: "ACTIVE | INACTIVE" }`
+  - Nếu không truyền `code`, hệ thống tự sinh mã in hoa từ `name` (VD: `DV_DAN_VOT`).
+- `PATCH /api/v1/service-types/:id` (Role `ADMIN` hoặc `ACCOUNTANT`)
+  - Body: `{ "name"?: "string", "defaultPrice"?: number, "unit"?: "string", "description"?: "string", "status"?: "ACTIVE | INACTIVE" }`
+- `DELETE /api/v1/service-types/:id` (Role `ADMIN` hoặc `ACCOUNTANT`)
+  - Quy tắc: Nếu `orderCount > 0` trả về `400 SERVICE_TYPE_IN_USE` ("Không thể xóa loại dịch vụ đã phát sinh đơn; chỉ được chuyển sang Ngừng sử dụng").
+
+#### B. Quản lý Đơn Dịch Vụ (`/service-orders`)
+- **Trạng thái xử lý (`status`)**:
+  - `RECEIVED`: Đã nhận đồ
+  - `IN_PROGRESS`: Đang xử lý
+  - `READY`: Đã xong (Chờ khách lấy)
+  - `RETURNED`: Đã trả khách
+  - `CANCELLED`: Đã hủy
+- **Trạng thái thanh toán (`paymentStatus`)**:
+  - `UNPAID`: Chưa thanh toán (thu lúc khách nhận đồ)
+  - `PARTIAL`: Đã đặt cọc / thanh toán một phần
+  - `PAID`: Đã thanh toán đủ
+- `GET /api/v1/service-orders`
+  - Query: `?status=RECEIVED|IN_PROGRESS|READY|RETURNED|CANCELLED&paymentStatus=UNPAID|PARTIAL|PAID&overdueOnly=true|false&search=...&from=YYYY-MM-DD&to=YYYY-MM-DD&dueFrom=YYYY-MM-DD&dueTo=YYYY-MM-DD`
+  - Response:
+    - `data`: Danh sách `ServiceOrder` (sắp xếp mới nhất trước), mỗi đơn kèm cờ `isOverdue: boolean` (`true` khi `status` thuộc `RECEIVED | IN_PROGRESS | READY` và thời gian hiện tại vượt quá `dueAt`).
+    - `meta`: `{ "totalOrders", "receivedCount", "inProgressCount", "readyCount", "returnedCount", "overdueCount", "unpaidCount", "totalRevenue", "totalPaid", "totalRemaining" }`.
+- `GET /api/v1/service-orders/:id`
+  - Chi tiết một đơn dịch vụ.
+- `POST /api/v1/service-orders`
+  - Tạo phiếu dịch vụ mới từ màn hình Bán hàng POS (`SALES`, `ADMIN`) hoặc CMS (`ADMIN`, `ACCOUNTANT`).
+  - Body:
+    ```json
+    {
+      "customerName": "Nguyễn Văn A",
+      "customerPhone": "0909123456",
+      "receivedAt": "2026-11-11T10:00:00.000Z",
+      "dueAt": "2026-11-12T17:00:00.000Z",
+      "items": [
+        {
+          "serviceTypeId": "...",
+          "serviceCode": "DV_DAN_VOT",
+          "serviceName": "Đan vợt / Căng vợt cầu lông",
+          "unit": "Cây",
+          "defaultPrice": 40000,
+          "unitPrice": 50000,
+          "quantity": 1,
+          "itemNote": "Vợt Yonex Astrox 88D, căng 11kg"
+        }
+      ],
+      "paidAmount": 0,
+      "paymentMethod": "CASH | BANKING | CARD",
+      "note": "Khách hẹn chiều mai ghé lấy"
+    }
+    ```
+  - Quy tắc:
+    - Bắt buộc nhập `customerName`, `customerPhone`, `dueAt` (Ngày hẹn trả) và ít nhất 1 dòng `items`.
+    - `unitPrice` mặc định lấy từ `defaultPrice` của `ServiceType` nhưng cho phép nhân viên bán hàng chỉnh sửa trực tiếp trên đơn thực tế (`unitPrice >= 0`).
+    - Hỗ trợ thu đủ tiền ngay lúc gửi (`paidAmount = totalAmount`), đặt cọc một phần (`0 < paidAmount < totalAmount`), hoặc thu tiền lúc khách nhận đồ (`paidAmount = 0`).
+    - Tự động tạo mới hoặc cập nhật tên khách hàng trong bảng `Customer` theo `customerPhone`.
+- `PATCH /api/v1/service-orders/:id`
+  - Cập nhật thông tin đơn dịch vụ (`customerName`, `customerPhone`, `receivedAt`, `dueAt`, `items`, `note`, `status`). Tự động tính lại `totalAmount`, `remainingAmount` và `paymentStatus`.
+- `PATCH /api/v1/service-orders/:id/status`
+  - Chuyển nhanh trạng thái xử lý: `{ "status": "RECEIVED | IN_PROGRESS | READY | RETURNED | CANCELLED", "collectAmount"?: number, "paymentMethod"?: "CASH | BANKING | CARD", "paymentNote"?: "string" }`.
+  - Khi chuyển sang `RETURNED`, hệ thống tự động gán `returnedAt = new Date()`. Nếu truyền kèm `collectAmount > 0` (VD: thu nốt tiền khi trả đồ cho khách), hệ thống ghi nhận luôn khoản thanh toán vào `payments`, cộng `paidAmount`, giảm `remainingAmount` và cập nhật `paymentStatus`.
+- `POST /api/v1/service-orders/:id/payments`
+  - Thu thêm tiền cọc hoặc tất toán phần tiền còn lại của đơn dịch vụ:
+  - Body: `{ "amount": 50000, "method": "CASH | BANKING | CARD", "note"?: "Thu tiền khi khách nhận đồ" }`.

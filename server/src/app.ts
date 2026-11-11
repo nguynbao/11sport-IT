@@ -20,6 +20,7 @@ import { attendanceTimesheetRouter } from './routes/attendanceTimesheet';
 import { leaveRequestsRouter } from './routes/leaveRequests';
 import { shiftsRouter } from './routes/shifts';
 import { holidaysRouter } from './routes/holidays';
+import { servicesRouter } from './routes/services';
 
 export function createApp() {
   const app = express();
@@ -119,6 +120,7 @@ export function createApp() {
   app.use('/api/v1', leaveRequestsRouter);
   app.use('/api/v1', shiftsRouter);
   app.use('/api/v1', holidaysRouter);
+  app.use('/api/v1', servicesRouter);
 
   // 404 Not Found
   app.use((req, res) => {
