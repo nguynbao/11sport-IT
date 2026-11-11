@@ -313,7 +313,10 @@
       "note": "Đổi size XL",
       "returnItems": [
         {
+          "lineIndex": 0,
           "productId": "...",
+          "color": "Tím hồng 82",
+          "size": "",
           "quantity": 1,
           "condition": "GOOD | DAMAGED"
         }
@@ -321,17 +324,20 @@
       "exchangeItems": [
         {
           "productId": "...",
+          "color": "Đỏ",
+          "size": "XL",
           "quantity": 1
         }
       ]
     }
     ```
   - Nghiệp vụ:
-    - Kiểm tra số lượng trả không vượt quá `purchasedQty - alreadyReturnedQty`.
-    - Hàng trả có `condition === "GOOD"` được cộng lại vào tồn kho (`+quantity`), ghi `StockMovement` loại `RETURN` / `EXCHANGE_IN`. Hàng `DAMAGED` không cộng tồn kho bán.
-    - Hàng đổi mới (`exchangeItems`) kiểm tra tồn kho, trừ tồn kho (`-quantity`), ghi `StockMovement` loại `EXCHANGE_OUT`.
+    - Khớp chính xác từng dòng hàng trong `order.items` theo `lineIndex` (ưu tiên nếu truyền và khớp `productId`), hoặc theo `productId + (color, size)` còn hạn mức trả; nếu client không truyền `color`/`size`/`lineIndex` khi đơn có nhiều biến thể cùng `productId`, hệ thống tự động phân bổ vào các dòng cùng `productId` còn hạn mức trả thay vì cộng dồn vào dòng đầu tiên.
+    - Kiểm tra số lượng trả của từng dòng không vượt quá `purchasedQty - alreadyReturnedQty`.
+    - Hàng trả có `condition === "GOOD"` được cộng lại vào tồn Kho Tầng 1 đúng biến thể `(color, size)` (`+quantity`), ghi `StockMovement` loại `RETURN` / `EXCHANGE_IN`. Hàng `DAMAGED` không cộng tồn kho bán.
+    - Hàng đổi mới (`exchangeItems`) kiểm tra tồn Kho Tầng 1 theo sản phẩm và biến thể `(color, size)`, trừ tồn kho (`-quantity`), ghi `StockMovement` loại `EXCHANGE_OUT`.
     - Tính `returnTotal`, `exchangeTotal`, `netDifference = exchangeTotal - returnTotal` (dương: khách trả thêm, âm: cửa hàng hoàn tiền).
-    - Cập nhật trạng thái đơn hàng gốc (`PARTIALLY_RETURNED` hoặc `FULLY_RETURNED`).
+    - Cập nhật `returnedQuantity` theo đúng chỉ số dòng đơn gốc và chuyển trạng thái đơn hàng gốc (`PARTIALLY_RETURNED` hoặc `FULLY_RETURNED`).
 
 ### 2.7 Báo cáo hoạt động nhân viên (`/reports/staff-activity`) *(v1.4)*
 - `GET /api/v1/reports/staff-activity?from=YYYY-MM-DD&to=YYYY-MM-DD&staffId=...`
