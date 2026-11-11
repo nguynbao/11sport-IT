@@ -21,6 +21,7 @@ import DebtManagementModule from "@/components/DebtManagementModule";
 import HrmAttendanceModule from "@/components/HrmAttendanceModule";
 import MarketingPushProductsModule from "@/components/MarketingPushProductsModule";
 import AccountProfileModule from "@/components/AccountProfileModule";
+import ServiceManagementModule from "@/components/ServiceManagementModule";
 import HeaderAttendanceBar from "@/components/HeaderAttendanceBar";
 import InvoicePdfModal from "@/components/InvoicePdfModal";
 import {
@@ -45,6 +46,7 @@ import {
   X,
   CalendarCheck,
   Rocket,
+  Wrench,
 } from "lucide-react";
 
 type CmsModuleType =
@@ -52,6 +54,7 @@ type CmsModuleType =
   | "REVENUE"
   | "CATEGORIES"
   | "ORDERS"
+  | "SERVICES"
   | "STAFF"
   | "ACTIVITY"
   | "PROMOTIONS"
@@ -98,6 +101,12 @@ const CMS_MENU_ITEMS: {
       icon: ShoppingBag,
     },
     {
+      id: "SERVICES",
+      label: "Quản lý Dịch vụ & Đơn Dịch vụ",
+      desc: "Tạo loại dịch vụ (giá mặc định) & theo dõi đơn dịch vụ khách gửi / hẹn trả",
+      icon: Wrench,
+    },
+    {
       id: "STAFF",
       label: "Quản lý Nhân sự & Khóa Tài khoản",
       desc: "Danh sách nhân viên và khóa / mở khóa tài khoản",
@@ -130,8 +139,8 @@ const CMS_MENU_ITEMS: {
   ];
 
 const ROLE_ALLOWED_MODULES: Record<string, CmsModuleType[]> = {
-  ADMIN: ["REVENUE", "INVENTORY", "CATEGORIES", "ORDERS", "STAFF", "ACTIVITY", "PROMOTIONS", "DEBTS", "PROFILE"],
-  ACCOUNTANT: ["REVENUE", "INVENTORY", "CATEGORIES", "ORDERS", "DEBTS", "PROFILE"],
+  ADMIN: ["REVENUE", "INVENTORY", "CATEGORIES", "ORDERS", "SERVICES", "STAFF", "ACTIVITY", "PROMOTIONS", "DEBTS", "PROFILE"],
+  ACCOUNTANT: ["REVENUE", "INVENTORY", "CATEGORIES", "ORDERS", "SERVICES", "DEBTS", "PROFILE"],
   HR: ["HRM", "PROFILE"],
   MARKETING: ["PUSH_PRODUCTS", "PROFILE"],
 };
@@ -635,6 +644,7 @@ export default function CmsDashboardPage() {
         {effectiveModule === "ORDERS" && (
           <OrdersReturnsModule onOpenInvoice={(ord) => setInvoiceOrder(ord)} />
         )}
+        {effectiveModule === "SERVICES" && <ServiceManagementModule />}
         {effectiveModule === "STAFF" && <StaffModule mode="ADMIN_LOCK_ONLY" />}
         {effectiveModule === "HRM" && <HrmAttendanceModule currentUser={adminUser} />}
         {effectiveModule === "ACTIVITY" && <StaffActivityModule />}
