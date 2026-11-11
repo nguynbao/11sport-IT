@@ -1,17 +1,17 @@
 # Graph Report - 11sport-IT  (2026-11-11)
 
 ## Corpus Check
-- 162 files · ~355,402 words
+- 162 files · ~359,095 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 11 file(s) not represented in the graph (top: (none) 3, .example 3, .css 2)
 
 ## Summary
-- 1600 nodes · 3865 edges · 88 communities (78 shown, 10 thin omitted)
-- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 39 edges (avg confidence: 0.93)
+- 1600 nodes · 3868 edges · 88 communities (78 shown, 10 thin omitted)
+- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 40 edges (avg confidence: 0.93)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `7bd34348`
+- Built from commit: `55557405`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -448,17 +448,17 @@ Nodes (3): 4.1 Điểm kiểm tra (Endpoints), 4.2 Cảnh báo & Giám sát khuy
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `IProductVariant` connect `Product.ts` to `productsInventory.ts`, `2. Danh sách Endpoints`, `PosTab.tsx`?**
-  _High betweenness centrality (0.220) - this node is a cross-community bridge._
+- **Why does `StockMovement` connect `StockMovement` to `Tài liệu Triển khai & Vận hành (Deployment & Runbook) - 11Sport v1.0`, `web/src/lib/barcodeScanner.ts`, `InventoryModule.tsx`, `cms/src/lib/api.ts`, `ref_react`, `PosTab.tsx`, `3. Quy tắc Nghiệp vụ đã chốt (Business Rules)`, `4. Kiểm tra Sức khỏe Hệ thống (Healthcheck & Giám sát)`?**
+  _High betweenness centrality (0.193) - this node is a cross-community bridge._
 - **Are the 4 inferred relationships involving `ImportTab()` (e.g. with `2.14 Mã Con Theo Thuộc Tính Biến Thể (`variantCode`) — In Tem & Quét Kiểm Kho / Bán Hàng POS *(v3.2)*` and `Tiến độ dự án 11 Sport`) actually correct?**
   _`ImportTab()` has 4 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `PATH` to the rest of the system?**
   _1 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `productCode.ts` be split into smaller, more focused modules?**
   _Cohesion score 0.05518394648829431 - nodes in this community are weakly interconnected._
-- **Why does `2.14 Mã Con Theo Thuộc Tính Biến Thể (`variantCode`) — In Tem & Quét Kiểm Kho / Bán Hàng POS *(v3.2)*` connect `PosTab.tsx` to `2. Danh sách Endpoints`, `web/src/lib/barcodeScanner.ts`, `Product.ts`?**
-  _High betweenness centrality (0.214) - this node is a cross-community bridge._
+- **Why does `2.6 Trả / Đổi hàng (`/returns`)` connect `StockMovement` to `productsInventory.ts`, `2. Danh sách Endpoints`?**
+  _High betweenness centrality (0.173) - this node is a cross-community bridge._
 - **Should `cms/src/app/page.tsx` be split into smaller, more focused modules?**
   _Cohesion score 0.11688311688311688 - nodes in this community are weakly interconnected._
-- **Why does `ImportTab()` connect `web/src/lib/barcodeScanner.ts` to `web/src/app/page.tsx`, `apiRequest`, `PosTab.tsx`, `web/src/lib/api.ts`, `2. Danh sách Lỗi đã Phát hiện & Đã Xác minh Sửa lỗi (Resolved)`, `MarketingPushProductsTab.tsx`, `CameraScannerModal.tsx`?**
-  _High betweenness centrality (0.117) - this node is a cross-community bridge._
+- **Why does `executeUnpackSetToRetail()` connect `productsInventory.ts` to `returns.ts`, `ordersCustomers.ts`, `ApiError`, `StockMovement`?**
+  _High betweenness centrality (0.171) - this node is a cross-community bridge._

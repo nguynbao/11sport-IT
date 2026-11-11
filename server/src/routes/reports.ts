@@ -824,6 +824,9 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
       const diff = filterCatId ? rExTotal - rRetTotal : Number(r.netDifference) || 0;
       returnTotal += filterCatId ? rRetTotal : Number(r.returnTotal) || 0;
       exchangeTotal += filterCatId ? rExTotal : Number(r.exchangeTotal) || 0;
+      if (!filterCatId && Number(r.refundedCardFee) > 0) {
+        cardFeeTotal = Math.max(0, cardFeeTotal - (Number(r.refundedCardFee) || 0));
+      }
       netReturnImpact += diff;
       estimatedCogs = Math.max(0, estimatedCogs + rCogsImpact);
 

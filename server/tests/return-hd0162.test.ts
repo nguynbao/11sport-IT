@@ -190,8 +190,12 @@ describe('Regression Test: Hoàn trả đơn HD-0162 (nhiều biến thể cùng
         ],
       });
 
+    const expectedFirstFeeRefund = Math.round((3000000 / 17720000) * 696000); // 117.833 VND
     expect(res.status).toBe(201);
-    expect(res.body.data.returnExchange.refundAmount).toBe(3000000);
+    expect(res.body.data.returnExchange.returnSubtotal).toBe(3000000);
+    expect(res.body.data.returnExchange.refundedCardFee).toBe(expectedFirstFeeRefund);
+    expect(res.body.data.returnExchange.returnTotal).toBe(3000000 + expectedFirstFeeRefund);
+    expect(res.body.data.returnExchange.refundAmount).toBe(3000000 + expectedFirstFeeRefund);
     expect(res.body.data.order.status).toBe('PARTIALLY_RETURNED');
     // Dòng 1 (Dauntless) vẫn chưa trả, dòng 2 (Era Power) đã trả 1
     expect(res.body.data.order.items[1].returnedQuantity).toBe(0);
@@ -228,10 +232,16 @@ describe('Regression Test: Hoàn trả đơn HD-0162 (nhiều biến thể cùng
         ],
       });
 
+    const expectedFirstFeeRefund = Math.round((3000000 / 17720000) * 696000); // 117.833 VND
+    const expectedRemainingFeeRefund = 696000 - expectedFirstFeeRefund; // 578.167 VND (Tổng 2 lần = đúng 696.000 VND!)
+    const remainingItemsSubtotal = 2300000 + 3000000 + 4500000 + 4500000 + 420000;
+
     expect(res.status).toBe(201);
     expect(res.body.data.order.status).toBe('FULLY_RETURNED');
+    expect(res.body.data.returnExchange.returnSubtotal).toBe(remainingItemsSubtotal);
+    expect(res.body.data.returnExchange.refundedCardFee).toBe(expectedRemainingFeeRefund);
     expect(res.body.data.returnExchange.refundAmount).toBe(
-      2300000 + 3000000 + 4500000 + 4500000 + 420000
+      remainingItemsSubtotal + expectedRemainingFeeRefund
     );
 
     const prodsRes = await request(app).get('/api/v1/products').set('x-user-id', 'admin');
@@ -357,7 +367,196 @@ describe('Regression Test: Hoàn trả đơn HD-0162 (nhiều biến thể cùng
       });
     expect(exRes.status).toBe(201);
     expect(exRes.body.data.returnExchange.code).toMatch(/^DH-/);
+    expect(exRes.body.data.returnExchange.refundedCardFee).toBe(0);
     expect(exRes.body.data.returnExchange.additionalCharge).toBe(1500000);
     expect(exRes.body.data.order.status).toBe('PARTIALLY_RETURNED');
+  });
+
+  it('5. Hoàn trả & Đổi hàng trên đơn quẹt thẻ tốn phí (1.8% / 4%) -> back lại đúng số phí thẻ cho khách hàng', async () => {
+    // 5a. Đơn quẹt thẻ tốn phí 4%: mua 1 cây SYPIK Hồng (4.500.000 + phí 4% = 180.000 => Tổng 4.680.000)
+    const cardOrderRes = await request(app)
+      .post('/api/v1/orders')
+      .set('x-user-id', 'sales1')
+      .send({
+        customerName: 'Khách Thẻ Hoàn Phí',
+        customerPhone: '0977111222',
+        paymentMethod: 'CARD',
+        hasCardFee: true,
+        cardFeePercent: 4,
+        items: [{ productId: sypikProdId, color: 'Hồng', quantity: 1 }],
+      });
+    expect(cardOrderRes.status).toBe(201);
+    expect(cardOrderRes.body.data.cardFee).toBe(180000);
+    expect(cardOrderRes.body.data.totalAmount).toBe(4680000);
+
+    // Tính thử qua /returns/calculate
+    const calcRes = await request(app)
+      .post('/api/v1/returns/calculate')
+      .set('x-user-id', 'sales1')
+      .send({
+        orderId: cardOrderRes.body.data._id,
+        returnItems: [{ lineIndex: 0, productId: sypikProdId, color: 'Hồng', quantity: 1 }],
+      });
+    expect(calcRes.status).toBe(200);
+    expect(calcRes.body.data.returnSubtotal).toBe(4500000);
+    expect(calcRes.body.data.refundedCardFee).toBe(180000);
+    expect(calcRes.body.data.returnTotal).toBe(4680000);
+    expect(calcRes.body.data.refundAmount).toBe(4680000);
+
+    // Thực hiện hoàn trả -> khách nhận lại trọn vẹn 4.680.000 (gồm 180.000 phí thẻ)
+    const retCardRes = await request(app)
+      .post('/api/v1/returns')
+      .set('x-user-id', 'sales1')
+      .send({
+        orderId: cardOrderRes.body.data._id,
+        type: 'RETURN',
+        refundMethod: 'BANKING',
+        returnItems: [
+          { lineIndex: 0, productId: sypikProdId, color: 'Hồng', quantity: 1, condition: 'GOOD' },
+        ],
+      });
+    expect(retCardRes.status).toBe(201);
+    expect(retCardRes.body.data.returnExchange.refundedCardFee).toBe(180000);
+    expect(retCardRes.body.data.returnExchange.refundAmount).toBe(4680000);
+    expect(retCardRes.body.data.order.status).toBe('FULLY_RETURNED');
+  });
+
+  it('6. Đổi hàng nâng cao: khách lẻ không SĐT + phí thẻ khấu trừ vào chênh lệch + tra mã variantCode + tự động tách Bộ sang Lẻ khi xuất đổi', async () => {
+    // Tạo sản phẩm Bộ (Hộp quấn cán 10 cái) và sản phẩm Lẻ (1 cái quấn cán, stockFloor1 = 0)
+    const setRes = await request(app)
+      .post('/api/v1/products')
+      .set('x-user-id', 'admin')
+      .send({
+        code: 'PYONEX881100',
+        name: 'Hộp quấn cán Yonex 10 cái',
+        categoryId,
+        unit: 'Hộp',
+        quantity: 2,
+        targetWarehouse: 'FLOOR_1',
+        sellingPrice: 300000,
+        costPrice: 200000,
+      });
+    expect(setRes.status).toBe(201);
+    const setProdId = setRes.body.data._id;
+
+    const retailRes = await request(app)
+      .post('/api/v1/products')
+      .set('x-user-id', 'admin')
+      .send({
+        code: 'PYONEX881101',
+        name: 'Quấn cán Yonex lẻ',
+        categoryId,
+        unit: 'Cái',
+        quantity: 0,
+        targetWarehouse: 'FLOOR_1',
+        sellingPrice: 35000,
+        costPrice: 20000,
+        parentSetProductId: setProdId,
+        packSize: 10,
+      });
+    expect(retailRes.status).toBe(201);
+    const retailProdId = retailRes.body.data._id;
+
+    // Tạo đơn khách lẻ thanh toán thẻ 1.8%, sau đó mô phỏng bản ghi DB cũ có customerPhone rỗng ""
+    const walkInOrd = await request(app)
+      .post('/api/v1/orders')
+      .set('x-user-id', 'sales1')
+      .send({
+        customerName: 'Khách lẻ',
+        customerPhone: '0000',
+        paymentMethod: 'CARD',
+        hasCardFee: true,
+        cardFeePercent: 1.8,
+        items: [{ productId: kamitoProdId, color: 'Đỏ tím 12', quantity: 1 }],
+      });
+    expect(walkInOrd.status).toBe(201);
+    await orderRepo.updateById(walkInOrd.body.data._id, { customerPhone: '' });
+    const expectedFee = Math.round(2300000 * 0.018); // 41.400 VND
+    expect(walkInOrd.body.data.cardFee).toBe(expectedFee);
+
+    // Chặn type = EXCHANGE nhưng không chọn sản phẩm đổi mới
+    const emptyExRes = await request(app)
+      .post('/api/v1/returns')
+      .set('x-user-id', 'sales1')
+      .send({
+        orderId: walkInOrd.body.data._id,
+        type: 'EXCHANGE',
+        returnItems: [{ lineIndex: 0, productId: kamitoProdId, color: 'Đỏ tím 12', quantity: 1 }],
+        exchangeItems: [],
+      });
+    expect(emptyExRes.status).toBe(400);
+    expect(emptyExRes.body.code).toBe('EMPTY_EXCHANGE_ITEMS');
+
+    // Chặn sản phẩm đổi có nhiều biến thể đang còn hàng nhưng không truyền color/size
+    const missingVarRes = await request(app)
+      .post('/api/v1/returns')
+      .set('x-user-id', 'sales1')
+      .send({
+        orderId: walkInOrd.body.data._id,
+        type: 'EXCHANGE',
+        returnItems: [{ lineIndex: 0, productId: kamitoProdId, color: 'Đỏ tím 12', quantity: 1 }],
+        exchangeItems: [{ productId: sypikProdId, quantity: 1 }],
+      });
+    expect(missingVarRes.status).toBe(400);
+    expect(missingVarRes.body.code).toBe('EXCHANGE_VARIANT_REQUIRED');
+
+    // Chặn truyền phân loại không tồn tại
+    const wrongVarRes = await request(app)
+      .post('/api/v1/returns')
+      .set('x-user-id', 'sales1')
+      .send({
+        orderId: walkInOrd.body.data._id,
+        type: 'EXCHANGE',
+        returnItems: [{ lineIndex: 0, productId: kamitoProdId, color: 'Đỏ tím 12', quantity: 1 }],
+        exchangeItems: [{ productId: sypikProdId, color: 'Vàng Neon Không Tồn Tại', quantity: 1 }],
+      });
+    expect(wrongVarRes.status).toBe(400);
+    expect(wrongVarRes.body.code).toBe('EXCHANGE_VARIANT_NOT_FOUND');
+
+    // Lấy variantCode của SYPIK Triton 5 màu Xanh Dương để test đổi bằng mã vạch con + kèm đổi sang sản phẩm lẻ tự tách hộp
+    const prodsBefore = await request(app).get('/api/v1/products?onlySellable=true').set('x-user-id', 'sales1');
+    const sypikProd = prodsBefore.body.data.find((p: any) => p._id === sypikProdId);
+    const xanhVariant = sypikProd.variants.find((v: any) => v.color === 'Xanh Dương');
+    expect(xanhVariant?.variantCode).toBeTruthy();
+
+    // Đổi 1 Kamito (2.300.000 + phí thẻ 41.400 = 2.341.400) sang:
+    //   1 SYPIK Xanh Dương (4.500.000, truyền bằng variantCode) + 2 Quấn cán Yonex lẻ (70.000, tự động tách 1 hộp)
+    //   Tổng hàng đổi = 4.570.000 => Khách trả thêm: 4.570.000 - 2.341.400 = 2.228.600 VND
+    const okExRes = await request(app)
+      .post('/api/v1/returns')
+      .set('x-user-id', 'sales1')
+      .send({
+        orderId: walkInOrd.body.data._id,
+        type: 'EXCHANGE',
+        refundMethod: 'CASH',
+        returnItems: [
+          {
+            lineIndex: 0,
+            productId: kamitoProdId,
+            color: 'Đỏ tím 12',
+            quantity: 1,
+            condition: 'GOOD',
+          },
+        ],
+        exchangeItems: [
+          { productId: xanhVariant.variantCode, quantity: 1 },
+          { productId: retailProdId, quantity: 2 },
+        ],
+      });
+
+    expect(okExRes.status).toBe(201);
+    expect(okExRes.body.data.returnExchange.code).toMatch(/^DH-/);
+    expect(okExRes.body.data.returnExchange.returnSubtotal).toBe(2300000);
+    expect(okExRes.body.data.returnExchange.refundedCardFee).toBe(expectedFee);
+    expect(okExRes.body.data.returnExchange.returnTotal).toBe(2300000 + expectedFee);
+    expect(okExRes.body.data.returnExchange.exchangeTotal).toBe(4570000);
+    expect(okExRes.body.data.returnExchange.additionalCharge).toBe(4570000 - (2300000 + expectedFee));
+
+    // Kiểm tra tồn kho sau đổi: hộp quấn cán giảm từ 2 -> 1, quấn cán lẻ từ 0 tách +10 xuất -2 còn 8
+    const prodsAfter = await request(app).get('/api/v1/products').set('x-user-id', 'admin');
+    const setAfter = prodsAfter.body.data.find((p: any) => p._id === setProdId);
+    const retailAfter = prodsAfter.body.data.find((p: any) => p._id === retailProdId);
+    expect(setAfter.stockFloor1).toBe(1);
+    expect(retailAfter.stockFloor1).toBe(8);
   });
 });

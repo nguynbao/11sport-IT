@@ -289,6 +289,8 @@ export interface ReturnReceipt {
     quantity: number;
     lineTotal: number;
   }[];
+  returnSubtotal?: number;
+  refundedCardFee?: number;
   returnTotal: number;
   exchangeTotal: number;
   netDifference: number;

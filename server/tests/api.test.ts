@@ -444,10 +444,12 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
           { productId: sellableProd._id, quantity: 1, condition: 'GOOD' },
         ],
       });
+    const expectedCardFeeRefund4 = Math.round(sellableProd.sellingPrice * 0.04);
     expect(fullReturnRes.status).toBe(201);
     expect(fullReturnRes.body.data.order.status).toBe('FULLY_RETURNED');
+    expect(fullReturnRes.body.data.returnExchange.refundedCardFee).toBe(expectedCardFeeRefund4);
     expect(fullReturnRes.body.data.returnExchange.refundAmount).toBe(
-      sellableProd.sellingPrice
+      sellableProd.sellingPrice + expectedCardFeeRefund4
     );
   });
 });

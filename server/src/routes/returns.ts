@@ -15,6 +15,7 @@ import {
   getVariantFloorStocks,
   formatProductWithVariant,
 } from '../utils/warehouseFloor';
+import { executeUnpackSetToRetail } from '../utils/unpackSet';
 import { buildVariantKey } from '../utils/productCode';
 import { filterAndRankBySearch } from '../utils/search';
 
@@ -187,20 +188,80 @@ async function prepareReturnExchangeCalculation(body: any) {
     }
   }
 
+  // Bảng cộng dồn hàng trả về còn bán được (GOOD) theo sản phẩm & biến thể — lượng này sẽ được cộng vào Kho Tầng 1 trước khi xuất đổi
+  const restockedByProdId = new Map<string, number>();
+  const restockedByVariant = new Map<string, number>();
+  for (const rItem of preparedReturnItems) {
+    if (rItem.condition === 'GOOD') {
+      const rProdKey = String(rItem.productId);
+      restockedByProdId.set(rProdKey, (restockedByProdId.get(rProdKey) || 0) + rItem.quantity);
+      const rVarKey = `${rProdKey}__${buildVariantKey(rItem.color, rItem.size)}`;
+      restockedByVariant.set(rVarKey, (restockedByVariant.get(rVarKey) || 0) + rItem.quantity);
+    }
+  }
+
+  if (
+    String(body?.type || '').toUpperCase() === 'EXCHANGE' &&
+    (!Array.isArray(exchangeItems) || exchangeItems.length === 0)
+  ) {
+    throw new ApiError(
+      400,
+      'EMPTY_EXCHANGE_ITEMS',
+      'Bạn đang chọn chế độ ĐỔI HÀNG. Vui lòng chọn ít nhất 1 sản phẩm mới muốn đổi sang'
+    );
+  }
+
   const preparedExchangeItems: IExchangeItem[] = [];
+  const exchangeProductUpdates: { product: any; qty: number; color: string; size: string }[] = [];
   const cumulativeExchangeByProdId = new Map<string, number>();
   const cumulativeExchangeByVariant = new Map<string, number>();
+  const autoUnpackPlans: {
+    retailProduct: any;
+    parentProduct: any;
+    setsToUnpack: number;
+    color: string;
+    size: string;
+  }[] = [];
 
   if (Array.isArray(exchangeItems) && exchangeItems.length > 0) {
+    let cachedAllProducts: any[] | null = null;
+
     for (const eItem of exchangeItems) {
       const qty = Math.round(Number(eItem.quantity));
       if (!eItem.productId || isNaN(qty) || qty <= 0) {
         throw new ApiError(400, 'INVALID_EXCHANGE_QUANTITY', 'Số lượng sản phẩm đổi mới phải lớn hơn 0');
       }
 
-      const product =
-        (await productRepo.findById(String(eItem.productId))) ||
-        (await productRepo.findOne({ code: String(eItem.productId).toUpperCase() }));
+      const rawLookup = String(eItem.productId).trim();
+      const upperLookup = rawLookup.toUpperCase();
+      let product =
+        (await productRepo.findById(rawLookup)) ||
+        (await productRepo.findOne({ code: upperLookup }));
+      let matchedChildVariant: { color: string; size: string } | null = null;
+
+      // Cho phép tra cứu sản phẩm đổi theo cả barcode hoặc mã biến thể con (variantCode)
+      if (!product) {
+        if (!cachedAllProducts) {
+          cachedAllProducts = await productRepo.find({});
+        }
+        for (const p of cachedAllProducts) {
+          if (String(p.barcode || '').trim().toUpperCase() === upperLookup) {
+            product = p;
+            break;
+          }
+          const pFloors = getFloorStocks(p);
+          const childVar = pFloors.variants.find(
+            (v) =>
+              String(v.variantCode || '').trim().toUpperCase() === upperLookup ||
+              String(v.barcode || '').trim().toUpperCase() === upperLookup
+          );
+          if (childVar) {
+            product = p;
+            matchedChildVariant = { color: childVar.color || '', size: childVar.size || '' };
+            break;
+          }
+        }
+      }
 
       if (!product) {
         throw new ApiError(404, 'EXCHANGE_PRODUCT_NOT_FOUND', `Không tìm thấy sản phẩm đổi mới: ${eItem.productId}`);
@@ -214,11 +275,65 @@ async function prepareReturnExchangeCalculation(body: any) {
         );
       }
 
-      const eColor = eItem.color ? String(eItem.color).trim() : '';
-      const eSize = eItem.size ? String(eItem.size).trim().toUpperCase() : '';
+      const exKey = String(product._id);
+      const exFloors = getFloorStocks(product);
+      const rawColor = eItem.color
+        ? String(eItem.color).trim()
+        : matchedChildVariant?.color || '';
+      const rawSize = eItem.size
+        ? String(eItem.size).trim()
+        : matchedChildVariant?.size || '';
+
+      let eColor = rawColor;
+      let eSize = rawSize;
+
+      if (exFloors.variants.length > 0) {
+        if (rawColor || rawSize) {
+          const targetVarKey = buildVariantKey(rawColor, rawSize);
+          const matchedVar = exFloors.variants.find((v) => v.variantKey === targetVarKey);
+          if (matchedVar) {
+            eColor = String(matchedVar.color || '').trim();
+            eSize = String(matchedVar.size || '').trim();
+          } else if (
+            exFloors.variants.length === 1 &&
+            exFloors.variants[0].variantKey === 'DEFAULT'
+          ) {
+            eColor = '';
+            eSize = '';
+          } else {
+            throw new ApiError(
+              400,
+              'EXCHANGE_VARIANT_NOT_FOUND',
+              `Phân loại "${[rawColor, rawSize].filter(Boolean).join(' - ')}" của sản phẩm đổi mới "${product.name}" không tồn tại trong kho`
+            );
+          }
+        } else {
+          // Client không truyền color/size cho sản phẩm có biến thể
+          const availVariants = exFloors.variants.filter((v) => {
+            const vRestocked = restockedByVariant.get(`${exKey}__${v.variantKey}`) || 0;
+            return v.stockFloor1 + vRestocked > 0;
+          });
+          if (exFloors.variants.length === 1) {
+            eColor = String(exFloors.variants[0].color || '').trim();
+            eSize = String(exFloors.variants[0].size || '').trim();
+          } else if (availVariants.length === 1) {
+            eColor = String(availVariants[0].color || '').trim();
+            eSize = String(availVariants[0].size || '').trim();
+          } else if (availVariants.length > 1) {
+            throw new ApiError(
+              400,
+              'EXCHANGE_VARIANT_REQUIRED',
+              `Sản phẩm đổi mới "${product.name}" có nhiều phân loại Màu sắc / Size đang còn hàng. Vui lòng chọn cụ thể phân loại muốn đổi!`
+            );
+          } else {
+            eColor = String(exFloors.variants[0].color || '').trim();
+            eSize = String(exFloors.variants[0].size || '').trim();
+          }
+        }
+      }
+
       const displayExName = formatProductWithVariant(product.name, eColor, eSize);
 
-      const exKey = String(product._id);
       const totalExchanging = (cumulativeExchangeByProdId.get(exKey) || 0) + qty;
       cumulativeExchangeByProdId.set(exKey, totalExchanging);
 
@@ -226,25 +341,12 @@ async function prepareReturnExchangeCalculation(body: any) {
       const totalExchangingVariant = (cumulativeExchangeByVariant.get(exVariantKey) || 0) + qty;
       cumulativeExchangeByVariant.set(exVariantKey, totalExchangingVariant);
 
-      const exFloors = getFloorStocks(product);
-      if (exFloors.stockFloor1 < totalExchanging) {
-        throw new ApiError(
-          400,
-          'INSUFFICIENT_EXCHANGE_STOCK',
-          `Sản phẩm đổi mới "${product.name}" không đủ tồn tại Kho Tầng 1 (Tồn Tầng 1: ${exFloors.stockFloor1}, Cần: ${totalExchanging})`
-        );
-      }
-
-      if ((eColor || eSize) && exFloors.variants.length > 0) {
-        const vFloors = getVariantFloorStocks(product, eColor, eSize);
-        if (vFloors.stockFloor1 < totalExchangingVariant) {
-          throw new ApiError(
-            400,
-            'INSUFFICIENT_EXCHANGE_STOCK',
-            `Sản phẩm đổi mới "${displayExName}" không đủ tồn tại Kho Tầng 1 (Tồn Tầng 1: ${vFloors.stockFloor1}, Cần: ${totalExchangingVariant})`
-          );
-        }
-      }
+      exchangeProductUpdates.push({
+        product,
+        qty,
+        color: eColor,
+        size: eSize,
+      });
 
       preparedExchangeItems.push({
         productId: product._id,
@@ -252,15 +354,149 @@ async function prepareReturnExchangeCalculation(body: any) {
         productName: displayExName,
         color: eColor,
         size: eSize,
-        unit: product.unit,
+        unit: product.unit || 'Cái',
         unitPrice: product.sellingPrice,
         quantity: qty,
         lineTotal: product.sellingPrice * qty,
       });
     }
+
+    // Kiểm tra tồn Kho Tầng 1 (bao gồm hàng GOOD vừa nhận lại & hỗ trợ tự động tách Bộ -> Lẻ tại Tầng 1)
+    const checkedKeys = new Set<string>();
+    const plannedSetsBySetId = new Map<string, number>();
+
+    for (const upd of exchangeProductUpdates) {
+      const { product, color: eColor, size: eSize } = upd;
+      const prodKey = String(product._id);
+      const exFloors = getFloorStocks(product);
+      const hasVariant = Boolean((eColor || eSize) && exFloors.variants.length > 0);
+      const checkKey = hasVariant
+        ? `${prodKey}__${buildVariantKey(eColor, eSize)}`
+        : prodKey;
+
+      if (checkedKeys.has(checkKey)) continue;
+      checkedKeys.add(checkKey);
+
+      const displayExName = formatProductWithVariant(product.name, eColor, eSize);
+      const vStocks = hasVariant ? getVariantFloorStocks(product, eColor, eSize) : exFloors;
+      const goodRestocked = hasVariant
+        ? restockedByVariant.get(`${prodKey}__${buildVariantKey(eColor, eSize)}`) || 0
+        : restockedByProdId.get(prodKey) || 0;
+      const currentRetailFloor1 = vStocks.stockFloor1 + goodRestocked;
+      const neededQty = hasVariant
+        ? cumulativeExchangeByVariant.get(`${prodKey}__${buildVariantKey(eColor, eSize)}`) || 0
+        : cumulativeExchangeByProdId.get(prodKey) || 0;
+
+      if (currentRetailFloor1 < neededQty) {
+        const parentSetId = String(product.parentSetProductId || '').trim();
+        const packSize = Math.max(0, Math.round(Number(product.packSize) || 0));
+        const parentProduct =
+          parentSetId && packSize > 0 && parentSetId !== prodKey
+            ? await productRepo.findById(parentSetId)
+            : null;
+
+        if (parentProduct && packSize > 0) {
+          const shortage = neededQty - currentRetailFloor1;
+          const setsNeeded = Math.ceil(shortage / packSize);
+          const parentId = String(parentProduct._id);
+          const parentFloors = getFloorStocks(parentProduct);
+          const parentHasVariants =
+            parentFloors.variants.length > 0 && Boolean(eColor || eSize);
+          const parentTargetStocks = parentHasVariants
+            ? getVariantFloorStocks(parentProduct, eColor, eSize)
+            : parentFloors;
+
+          const parentGoodRestocked = parentHasVariants
+            ? restockedByVariant.get(`${parentId}__${buildVariantKey(eColor, eSize)}`) || 0
+            : restockedByProdId.get(parentId) || 0;
+          const directSetExchanging = cumulativeExchangeByProdId.get(parentId) || 0;
+          const alreadyPlannedSets = plannedSetsBySetId.get(parentId) || 0;
+          const parentAvailFloor1 = Math.max(
+            0,
+            parentTargetStocks.stockFloor1 +
+              parentGoodRestocked -
+              directSetExchanging -
+              alreadyPlannedSets
+          );
+          const parentAvailFloor2 = parentTargetStocks.stockFloor2;
+
+          if (parentAvailFloor1 < setsNeeded) {
+            if (parentAvailFloor2 >= setsNeeded) {
+              throw new ApiError(
+                400,
+                'INSUFFICIENT_SET_FLOOR1_NEED_TRANSFER',
+                `Sản phẩm lẻ "${displayExName}" không đủ tại Kho Tầng 1 (còn ${currentRetailFloor1} ${product.unit || 'Cái'}, cần ${neededQty}) và Sản phẩm bộ "${parentProduct.name}" (${parentProduct.code}) đang còn ${parentAvailFloor2} ${parentProduct.unit || 'Bộ'} ở Kho Tầng 2. Vui lòng chuyển tầng Sản phẩm bộ xuống Kho Tầng 1 trước khi đổi hàng!`,
+                {
+                  productId: prodKey,
+                  stockFloor1: String(currentRetailFloor1),
+                  parentSetProductId: parentId,
+                  parentSetStockFloor2: String(parentAvailFloor2),
+                }
+              );
+            }
+
+            throw new ApiError(
+              400,
+              'INSUFFICIENT_EXCHANGE_STOCK',
+              `Sản phẩm đổi mới "${displayExName}" không đủ tồn tại Kho Tầng 1 (Tồn lẻ Tầng 1: ${currentRetailFloor1}, Sản phẩm bộ "${parentProduct.name}" ở Tầng 1 còn: ${parentAvailFloor1} ${parentProduct.unit || 'Bộ'} = +${parentAvailFloor1 * packSize} ${product.unit || 'Cái'}, Cần: ${neededQty})`
+            );
+          }
+
+          plannedSetsBySetId.set(parentId, alreadyPlannedSets + setsNeeded);
+          autoUnpackPlans.push({
+            retailProduct: product,
+            parentProduct,
+            setsToUnpack: setsNeeded,
+            color: eColor,
+            size: eSize,
+          });
+        } else {
+          const floor2Hint =
+            (vStocks.stockFloor2 || 0) >= neededQty - currentRetailFloor1
+              ? ` (Kho Tầng 2 đang còn ${vStocks.stockFloor2} — vui lòng chuyển tầng xuống Kho Tầng 1 trước)`
+              : '';
+          throw new ApiError(
+            400,
+            'INSUFFICIENT_EXCHANGE_STOCK',
+            `Sản phẩm đổi mới "${hasVariant ? displayExName : product.name}" không đủ tồn tại Kho Tầng 1 (Tồn Tầng 1: ${currentRetailFloor1}, Cần: ${neededQty})${floor2Hint}`
+          );
+        }
+      }
+    }
   }
 
-  const returnTotal = preparedReturnItems.reduce((sum, i) => sum + i.lineTotal, 0);
+  const returnSubtotal = preparedReturnItems.reduce((sum, i) => sum + i.lineTotal, 0);
+
+  // Nếu đơn gốc thanh toán thẻ có thu phí (order.cardFee > 0), hoàn lại số phí thẻ tương ứng cho khách
+  const orderCardFee = Math.max(0, Math.round(Number(order.cardFee) || 0));
+  let refundedCardFee = 0;
+  if (orderCardFee > 0 && returnSubtotal > 0) {
+    const prevReturns = await returnExchangeRepo.find({ orderId: order._id });
+    const alreadyRefundedCardFee = prevReturns.reduce(
+      (sum, r) => sum + Math.max(0, Math.round(Number(r.refundedCardFee) || 0)),
+      0
+    );
+    const remainingCardFee = Math.max(0, orderCardFee - alreadyRefundedCardFee);
+
+    const allPaidLinesReturned = order.items.every(
+      (item, idx) =>
+        (Number(item.lineTotal) || 0) <= 0 ||
+        (Number(item.returnedQuantity) || 0) + (allocatedByIdx.get(idx) || 0) >=
+          Number(item.quantity || 0)
+    );
+
+    if (allPaidLinesReturned) {
+      refundedCardFee = remainingCardFee;
+    } else {
+      const orderSubtotal = Math.max(0, Number(order.subtotal) || 0);
+      refundedCardFee =
+        orderSubtotal > 0
+          ? Math.min(remainingCardFee, Math.round((returnSubtotal / orderSubtotal) * orderCardFee))
+          : remainingCardFee;
+    }
+  }
+
+  const returnTotal = returnSubtotal + refundedCardFee;
   const exchangeTotal = preparedExchangeItems.reduce((sum, i) => sum + i.lineTotal, 0);
   const netDifference = exchangeTotal - returnTotal;
   const refundAmount = netDifference < 0 ? Math.abs(netDifference) : 0;
@@ -269,8 +505,11 @@ async function prepareReturnExchangeCalculation(body: any) {
   return {
     order,
     allocatedByIdx,
+    autoUnpackPlans,
     preparedReturnItems,
     preparedExchangeItems,
+    returnSubtotal,
+    refundedCardFee,
     returnTotal,
     exchangeTotal,
     netDifference,
@@ -331,6 +570,8 @@ returnsRouter.post('/returns/calculate', async (req, res, next) => {
         orderCode: calc.order.orderCode,
         returnItems: calc.preparedReturnItems,
         exchangeItems: calc.preparedExchangeItems,
+        returnSubtotal: calc.returnSubtotal,
+        refundedCardFee: calc.refundedCardFee,
         returnTotal: calc.returnTotal,
         exchangeTotal: calc.exchangeTotal,
         netDifference: calc.netDifference,
@@ -352,6 +593,8 @@ returnsRouter.post('/returns', async (req, res, next) => {
       order,
       preparedReturnItems,
       preparedExchangeItems,
+      returnSubtotal,
+      refundedCardFee,
       returnTotal,
       exchangeTotal,
       netDifference,
@@ -379,6 +622,8 @@ returnsRouter.post('/returns', async (req, res, next) => {
       type: recordType,
       returnItems: preparedReturnItems,
       exchangeItems: preparedExchangeItems,
+      returnSubtotal,
+      refundedCardFee,
       returnTotal,
       exchangeTotal,
       netDifference,
@@ -419,8 +664,8 @@ returnsRouter.post('/returns', async (req, res, next) => {
             productName: formatProductWithVariant(product.name, rItem.color, rItem.size),
             color: rItem.color || '',
             size: rItem.size || '',
-            categoryId: product.categoryId,
-            unit: product.unit,
+            categoryId: product.categoryId || '',
+            unit: product.unit || 'Cái',
             quantityChange: rItem.quantity,
             balanceBefore,
             balanceAfter,
@@ -433,6 +678,23 @@ returnsRouter.post('/returns', async (req, res, next) => {
             note: `Nhận lại hàng (${rItem.condition}) từ đơn ${order.orderCode}`,
           });
         }
+      }
+    }
+
+    // 1.5. Thực hiện tự động tách Bộ -> Lẻ tại Kho Tầng 1 trước khi xuất hàng đổi mới (nếu có)
+    if (Array.isArray(calc.autoUnpackPlans) && calc.autoUnpackPlans.length > 0) {
+      for (const plan of calc.autoUnpackPlans) {
+        await executeUnpackSetToRetail({
+          retailProductId: String(plan.retailProduct._id),
+          setsToUnpack: plan.setsToUnpack,
+          warehouse: 'FLOOR_1',
+          color: plan.color,
+          size: plan.size,
+          reason: `Tự động tách bộ khi đổi hàng phiếu ${createdRecord.code} (đơn gốc ${order.orderCode})`,
+          actorId: req.user?.userId || 'SALES',
+          actorName: req.user?.fullName || 'Nhân viên bán hàng',
+          actorRole: req.user?.role || 'SALES',
+        });
       }
     }
 
@@ -458,11 +720,12 @@ returnsRouter.post('/returns', async (req, res, next) => {
           productName: formatProductWithVariant(product.name, eItem.color, eItem.size),
           color: eItem.color || '',
           size: eItem.size || '',
-          categoryId: product.categoryId,
-          unit: product.unit,
+          categoryId: product.categoryId || '',
+          unit: product.unit || 'Cái',
           quantityChange: -eItem.quantity,
           balanceBefore,
           balanceAfter,
+          warehouseLocation: 'FLOOR_1',
           referenceType: 'RETURN_EXCHANGE',
           referenceId: createdRecord._id,
           referenceCode: createdRecord.code,
