@@ -20,6 +20,19 @@ import { filterAndRankBySearch } from '../utils/search';
 
 export const returnsRouter = Router();
 
+async function generateNextReturnExchangeCode(isExchange: boolean): Promise<string> {
+  const all = await returnExchangeRepo.find({});
+  let maxNum = all.length;
+  for (const r of all) {
+    const m = /^(?:TH|DH)-(\d+)$/i.exec(String(r.code || ''));
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (!isNaN(n) && n > maxNum) maxNum = n;
+    }
+  }
+  return `${isExchange ? 'DH' : 'TH'}-${String(maxNum + 1).padStart(4, '0')}`;
+}
+
 async function prepareReturnExchangeCalculation(body: any) {
   const { orderId, orderCode, returnItems = [], exchangeItems = [] } = body || {};
 
@@ -43,8 +56,14 @@ async function prepareReturnExchangeCalculation(body: any) {
     throw new ApiError(400, 'EMPTY_RETURN_ITEMS', 'Phải chọn ít nhất 1 sản phẩm trả lại');
   }
 
+  const maxReturnableByIdx = order.items.map((it) =>
+    Math.max(0, Number(it.quantity || 0) - Number(it.returnedQuantity || 0))
+  );
+  const allocatedByIdx = new Map<number, number>();
+  const getRemainingForIdx = (idx: number) =>
+    Math.max(0, (maxReturnableByIdx[idx] || 0) - (allocatedByIdx.get(idx) || 0));
+
   const preparedReturnItems: IReturnItem[] = [];
-  const cumulativeReturnByLineKey = new Map<string, number>();
   for (const rItem of returnItems) {
     const qty = Math.round(Number(rItem.quantity));
     if (!rItem.productId || isNaN(qty) || qty <= 0) {
@@ -53,22 +72,18 @@ async function prepareReturnExchangeCalculation(body: any) {
 
     const rColor = rItem.color ? String(rItem.color).trim() : '';
     const rSize = rItem.size ? String(rItem.size).trim().toUpperCase() : '';
+    const hasExplicitVariant = Boolean(rColor || rSize);
+    const rVariantKey = buildVariantKey(rColor, rSize);
 
-    // Tìm dòng khớp theo productId + (color, size) nếu có, hoặc fallback theo productId
-    const originalLine =
-      order.items.find(
-        (i) =>
-          (String(i.productId) === String(rItem.productId) ||
-            i.productCode === String(rItem.productId).toUpperCase()) &&
-          buildVariantKey(i.color, i.size) === buildVariantKey(rColor, rSize)
-      ) ||
-      order.items.find(
-        (i) =>
-          String(i.productId) === String(rItem.productId) ||
-          i.productCode === String(rItem.productId).toUpperCase()
+    const matchingProdEntries = order.items
+      .map((item, idx) => ({ item, idx }))
+      .filter(
+        ({ item }) =>
+          String(item.productId) === String(rItem.productId) ||
+          item.productCode === String(rItem.productId).toUpperCase()
       );
 
-    if (!originalLine) {
+    if (matchingProdEntries.length === 0) {
       throw new ApiError(
         400,
         'ITEM_NOT_IN_ORDER',
@@ -76,36 +91,100 @@ async function prepareReturnExchangeCalculation(body: any) {
       );
     }
 
-    const lineKey = `${String(originalLine.productId)}__${buildVariantKey(originalLine.color, originalLine.size)}`;
-    const totalReturning = (cumulativeReturnByLineKey.get(lineKey) || 0) + qty;
-    cumulativeReturnByLineKey.set(lineKey, totalReturning);
-
-    const maxReturnable = originalLine.quantity - (originalLine.returnedQuantity || 0);
-    if (totalReturning > maxReturnable) {
-      throw new ApiError(
-        400,
-        'EXCEED_RETURNABLE_QUANTITY',
-        `Số lượng trả của "${originalLine.productName}" (${totalReturning}) vượt quá số lượng có thể trả (${maxReturnable})`,
-        { productId: originalLine.productId }
-      );
-    }
-
     const condition: ReturnCondition =
       rItem.condition === 'DAMAGED' ? 'DAMAGED' : 'GOOD';
 
-    preparedReturnItems.push({
-      productId: originalLine.productId,
-      productCode: originalLine.productCode,
-      productName: originalLine.productName,
-      color: originalLine.color || rColor,
-      size: originalLine.size || rSize,
-      unit: originalLine.unit,
-      unitPrice: originalLine.unitPrice,
-      quantity: qty,
-      condition,
-      restocked: condition === 'GOOD',
-      lineTotal: originalLine.unitPrice * qty,
-    });
+    const rawLineIndex =
+      rItem.lineIndex !== undefined && rItem.lineIndex !== null && rItem.lineIndex !== ''
+        ? Number(rItem.lineIndex)
+        : NaN;
+    const explicitEntry = Number.isInteger(rawLineIndex)
+      ? matchingProdEntries.find(({ idx, item }) => {
+          if (idx !== rawLineIndex) return false;
+          if (!hasExplicitVariant) return true;
+          return buildVariantKey(item.color, item.size) === rVariantKey;
+        })
+      : undefined;
+
+    let candidateEntries = matchingProdEntries;
+    if (explicitEntry) {
+      candidateEntries = [explicitEntry];
+    } else if (hasExplicitVariant) {
+      const exactVariantEntries = matchingProdEntries.filter(
+        ({ item }) => buildVariantKey(item.color, item.size) === rVariantKey
+      );
+      if (exactVariantEntries.length > 0) {
+        candidateEntries = exactVariantEntries;
+      } else {
+        const onlyDefaultInOrder = matchingProdEntries.every(
+          ({ item }) => buildVariantKey(item.color, item.size) === 'DEFAULT'
+        );
+        if (!onlyDefaultInOrder) {
+          throw new ApiError(
+            400,
+            'ITEM_NOT_IN_ORDER',
+            `Phân loại "${[rColor, rSize].filter(Boolean).join(' - ')}" của sản phẩm "${rItem.productId}" không thuộc đơn hàng gốc ${order.orderCode}`
+          );
+        }
+      }
+    } else {
+      // Client không truyền color/size: ưu tiên dòng không phân loại (DEFAULT) nếu đủ số lượng,
+      // nếu không có hoặc không đủ thì tự động phân bổ sang các dòng biến thể cùng productId còn hạn mức trả.
+      const defaultVariantEntries = matchingProdEntries.filter(
+        ({ item }) => buildVariantKey(item.color, item.size) === 'DEFAULT'
+      );
+      const defaultRemaining = defaultVariantEntries.reduce(
+        (sum, { idx }) => sum + getRemainingForIdx(idx),
+        0
+      );
+      if (defaultVariantEntries.length > 0 && defaultRemaining >= qty) {
+        candidateEntries = defaultVariantEntries;
+      }
+    }
+
+    const totalCandidateMax = candidateEntries.reduce(
+      (sum, { idx }) => sum + (maxReturnableByIdx[idx] || 0),
+      0
+    );
+    const totalCandidateAlreadyAllocated = candidateEntries.reduce(
+      (sum, { idx }) => sum + (allocatedByIdx.get(idx) || 0),
+      0
+    );
+    const totalCandidateRemaining = Math.max(0, totalCandidateMax - totalCandidateAlreadyAllocated);
+
+    if (qty > totalCandidateRemaining) {
+      const refLine = candidateEntries[0].item;
+      throw new ApiError(
+        400,
+        'EXCEED_RETURNABLE_QUANTITY',
+        `Số lượng trả của "${refLine.productName}" (${totalCandidateAlreadyAllocated + qty}) vượt quá số lượng có thể trả (${totalCandidateMax})`,
+        { productId: refLine.productId }
+      );
+    }
+
+    let leftToAllocate = qty;
+    for (const { item: originalLine, idx } of candidateEntries) {
+      if (leftToAllocate <= 0) break;
+      const avail = getRemainingForIdx(idx);
+      if (avail <= 0) continue;
+      const take = Math.min(avail, leftToAllocate);
+      allocatedByIdx.set(idx, (allocatedByIdx.get(idx) || 0) + take);
+      leftToAllocate -= take;
+
+      preparedReturnItems.push({
+        productId: originalLine.productId,
+        productCode: originalLine.productCode,
+        productName: originalLine.productName,
+        color: originalLine.color || rColor,
+        size: originalLine.size || rSize,
+        unit: originalLine.unit,
+        unitPrice: originalLine.unitPrice,
+        quantity: take,
+        condition,
+        restocked: condition === 'GOOD',
+        lineTotal: originalLine.unitPrice * take,
+      });
+    }
   }
 
   const preparedExchangeItems: IExchangeItem[] = [];
@@ -189,6 +268,7 @@ async function prepareReturnExchangeCalculation(body: any) {
 
   return {
     order,
+    allocatedByIdx,
     preparedReturnItems,
     preparedExchangeItems,
     returnTotal,
@@ -288,15 +368,14 @@ returnsRouter.post('/returns', async (req, res, next) => {
       ? req.body.refundMethod
       : 'CASH';
 
-    const count = await returnExchangeRepo.countDocuments({});
-    const code = `${isExchange ? 'DH' : 'TH'}-${String(count + 1).padStart(4, '0')}`;
+    const code = await generateNextReturnExchangeCode(isExchange);
 
     const createdRecord = await returnExchangeRepo.create({
       code,
       orderId: order._id,
       orderCode: order.orderCode,
-      customerName: order.customerName,
-      customerPhone: order.customerPhone,
+      customerName: order.customerName || 'Khách lẻ',
+      customerPhone: order.customerPhone || '',
       type: recordType,
       returnItems: preparedReturnItems,
       exchangeItems: preparedExchangeItems,
@@ -394,18 +473,12 @@ returnsRouter.post('/returns', async (req, res, next) => {
       }
     }
 
-    // 3. Cập nhật returnedQuantity và trạng thái đơn gốc
-    const updatedOrderItems = order.items.map((item) => {
-      const returnedInThisTx = preparedReturnItems
-        .filter(
-          (r) =>
-            String(r.productId) === String(item.productId) &&
-            buildVariantKey(r.color, r.size) === buildVariantKey(item.color, item.size)
-        )
-        .reduce((sum, r) => sum + r.quantity, 0);
+    // 3. Cập nhật returnedQuantity chính xác theo chỉ số dòng (lineIndex) và trạng thái đơn gốc
+    const updatedOrderItems = order.items.map((item, idx) => {
+      const returnedInThisTx = calc.allocatedByIdx.get(idx) || 0;
       return {
         ...item,
-        returnedQuantity: (item.returnedQuantity || 0) + returnedInThisTx,
+        returnedQuantity: (Number(item.returnedQuantity) || 0) + returnedInThisTx,
       };
     });
 

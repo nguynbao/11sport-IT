@@ -28,8 +28,18 @@ const SHIFT_RULES: Record<ShiftCode, { start: number; end: number; label: string
   BOTH: { start: 8 * 60 + 30, end: 21 * 60, label: 'Ca 1 + Ca 2 (08:30-21:00)' },
 };
 
-const LATE_TOLERANCE_MINUTES = 5;
+const OFFICE_LATE_TOLERANCE_MINUTES = 5;
+const SALES_LATE_TOLERANCE_MINUTES = 0;
 const OFFICE_LUNCH_HOURS = 1;
+
+/**
+ * Số phút du di khi check-in theo khối:
+ * - Khối Bán hàng (SALES): 0 phút (phải check-in đúng giờ 08:30 Ca 1 / 12:00 Ca 2, không du di).
+ * - Khối Văn phòng (OFFICE): 5 phút (trễ quá 5 phút mới tính đi trễ).
+ */
+export function getLateToleranceMinutes(department?: string | null): number {
+  return department === 'SALES' ? SALES_LATE_TOLERANCE_MINUTES : OFFICE_LATE_TOLERANCE_MINUTES;
+}
 
 export function getStandardHours(department: string): number {
   // OFFICE: 08:30-12:00 & 13:00-17:30 (nghỉ trưa 1h = 8h) ; SALES: ca 9h
@@ -90,9 +100,11 @@ export function computeAttendanceMetrics(params: {
   const workStartMinutes = Math.max(params.checkInMinutes, rule.start);
   const workStartTime = combineDateAndMinutes(params.date, workStartMinutes);
 
-  const lateMinutes = Math.max(0, params.checkInMinutes - rule.start);
+  const rawLateMinutes = Math.max(0, params.checkInMinutes - rule.start);
+  const isLate = rawLateMinutes > getLateToleranceMinutes(params.department);
+  const lateMinutes = isLate ? rawLateMinutes : 0;
   let status: 'ON_TIME' | 'LATE' | 'EARLY_LEAVE' | 'COMPLETED' =
-    lateMinutes > LATE_TOLERANCE_MINUTES ? 'LATE' : 'ON_TIME';
+    isLate ? 'LATE' : 'ON_TIME';
 
   let checkOutTime: Date | undefined;
   let earlyMinutes = 0;
@@ -348,7 +360,10 @@ export async function buildTimesheet(params: {
         if (att) {
           const isOpen = !att.checkOutTime;
           const isPastDay = date < todayStr;
-          const late = Number(att.lateMinutes || 0) > LATE_TOLERANCE_MINUTES;
+          const lateTolerance = getLateToleranceMinutes(department);
+          const rawAttLate = Number(att.lateMinutes || 0);
+          const late = rawAttLate > lateTolerance;
+          const effectiveLateMinutes = late ? rawAttLate : 0;
           const early = Number(att.earlyMinutes || 0) > 0 && !isOpen;
           let code: string;
           if (isOpen && isPastDay) code = 'MISSING_OUT';
@@ -407,7 +422,7 @@ export async function buildTimesheet(params: {
           }
           if (late) {
             summary.lateCount += 1;
-            summary.lateMinutes += Number(att.lateMinutes || 0);
+            summary.lateMinutes += effectiveLateMinutes;
           }
           if (early) {
             summary.earlyCount += 1;
@@ -433,7 +448,7 @@ export async function buildTimesheet(params: {
             checkIn: toHHmm(att.checkInTime),
             checkOut: toHHmm(att.checkOutTime),
             hours,
-            lateMinutes: Number(att.lateMinutes || 0),
+            lateMinutes: effectiveLateMinutes,
             earlyMinutes: Number(att.earlyMinutes || 0),
             lateCheckoutMinutes: effectiveShift === 'BOTH' ? 0 : rawLateOut,
             lateCheckoutReason: effectiveShift === 'BOTH' ? '' : (att.lateCheckoutReason || ''),
@@ -602,6 +617,8 @@ attendanceTimesheetRouter.get('/attendance/my-calendar', async (req, res, next) 
     const { month, year } = parseMonthYear(req.query);
     const data = await buildTimesheet({ month, year, staffIdFilter: String(user.userId) });
     const row = data.rows[0] || null;
+    const effectiveDepartment =
+      row?.department || (user.role === 'SALES' ? 'SALES' : 'OFFICE');
     res.json({
       data: {
         month: data.month,
@@ -614,7 +631,7 @@ attendanceTimesheetRouter.get('/attendance/my-calendar', async (req, res, next) 
             SHIFT_2: SHIFT_RULES.SHIFT_2.label,
             BOTH: SHIFT_RULES.BOTH.label,
           },
-          lateToleranceMinutes: LATE_TOLERANCE_MINUTES,
+          lateToleranceMinutes: getLateToleranceMinutes(effectiveDepartment),
           overtimeMinMinutes: getOvertimeMinMinutes(),
           holidayWorkPayMultiplier: 4,
         },

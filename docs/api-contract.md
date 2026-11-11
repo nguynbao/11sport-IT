@@ -313,7 +313,10 @@
       "note": "Đổi size XL",
       "returnItems": [
         {
+          "lineIndex": 0,
           "productId": "...",
+          "color": "Tím hồng 82",
+          "size": "",
           "quantity": 1,
           "condition": "GOOD | DAMAGED"
         }
@@ -321,17 +324,20 @@
       "exchangeItems": [
         {
           "productId": "...",
+          "color": "Đỏ",
+          "size": "XL",
           "quantity": 1
         }
       ]
     }
     ```
   - Nghiệp vụ:
-    - Kiểm tra số lượng trả không vượt quá `purchasedQty - alreadyReturnedQty`.
-    - Hàng trả có `condition === "GOOD"` được cộng lại vào tồn kho (`+quantity`), ghi `StockMovement` loại `RETURN` / `EXCHANGE_IN`. Hàng `DAMAGED` không cộng tồn kho bán.
-    - Hàng đổi mới (`exchangeItems`) kiểm tra tồn kho, trừ tồn kho (`-quantity`), ghi `StockMovement` loại `EXCHANGE_OUT`.
+    - Khớp chính xác từng dòng hàng trong `order.items` theo `lineIndex` (ưu tiên nếu truyền và khớp `productId`), hoặc theo `productId + (color, size)` còn hạn mức trả; nếu client không truyền `color`/`size`/`lineIndex` khi đơn có nhiều biến thể cùng `productId`, hệ thống tự động phân bổ vào các dòng cùng `productId` còn hạn mức trả thay vì cộng dồn vào dòng đầu tiên.
+    - Kiểm tra số lượng trả của từng dòng không vượt quá `purchasedQty - alreadyReturnedQty`.
+    - Hàng trả có `condition === "GOOD"` được cộng lại vào tồn Kho Tầng 1 đúng biến thể `(color, size)` (`+quantity`), ghi `StockMovement` loại `RETURN` / `EXCHANGE_IN`. Hàng `DAMAGED` không cộng tồn kho bán.
+    - Hàng đổi mới (`exchangeItems`) kiểm tra tồn Kho Tầng 1 theo sản phẩm và biến thể `(color, size)`, trừ tồn kho (`-quantity`), ghi `StockMovement` loại `EXCHANGE_OUT`.
     - Tính `returnTotal`, `exchangeTotal`, `netDifference = exchangeTotal - returnTotal` (dương: khách trả thêm, âm: cửa hàng hoàn tiền).
-    - Cập nhật trạng thái đơn hàng gốc (`PARTIALLY_RETURNED` hoặc `FULLY_RETURNED`).
+    - Cập nhật `returnedQuantity` theo đúng chỉ số dòng đơn gốc và chuyển trạng thái đơn hàng gốc (`PARTIALLY_RETURNED` hoặc `FULLY_RETURNED`).
 
 ### 2.7 Báo cáo hoạt động nhân viên (`/reports/staff-activity`) *(v1.4)*
 - `GET /api/v1/reports/staff-activity?from=YYYY-MM-DD&to=YYYY-MM-DD&staffId=...`
@@ -775,7 +781,10 @@
       - Chỉ chấp nhận **IP Public (WAN IP)** của đường truyền Internet tại **Cơ sở 1 (`ATTENDANCE_ALLOWED_IPS`)** hoặc **Cơ sở 2 (`ATTENDANCE_ALLOWED_IPS_2`)**; hệ thống tự động loại bỏ các IP nội bộ/loopback (`127.0.0.1`, `::1`, `localhost`, `192.168.x.x`, `10.x.x.x`, `172.16-31.x.x`) để tránh lọt chấm công khi chạy local hoặc qua dải LAN phổ thông.
       - Khi truy cập qua Production (Render/Cloudflare), server lấy IP Public thực của thiết bị từ reverse proxy header (`cf-connecting-ip` / `x-real-ip` / `x-forwarded-for`, bỏ qua `body.clientIp`). Khi chạy trên môi trường Local (`localhost` / LAN), server tự động kiểm tra IP Public (WAN IP) thực tế của kết nối Wi-Fi hiện tại để chặn ngay nếu đổi sang Wi-Fi khác / 4G.
       - Nếu IP Public hiện tại không khớp Cơ sở 1 hay Cơ sở 2 -> Trả lỗi `400 WIFI_IP_NOT_ALLOWED`.
-    - Làm tròn check-in sớm: Nếu check-in trước giờ bắt đầu ca (`08:30` đối với `SHIFT_1` / `BOTH`, hoặc `12:00` đối với `SHIFT_2`), mốc tính công `workStartTime` tự động quy về `08:30` hoặc `12:00`.
+    - Làm tròn check-in sớm / đúng giờ: Nếu check-in trước hoặc đúng giờ bắt đầu ca (`08:30` đối với `SHIFT_1` / `BOTH`, hoặc `12:00` đối với `SHIFT_2`), mốc tính công `workStartTime` tự động quy về `08:30:00` hoặc `12:00:00`.
+    - **Quy tắc tính đi trễ khi Check-in theo khối**:
+      - **Khối Bán hàng (`SALES`)**: **Không có du di (`0` phút)** — bắt buộc check-in đúng giờ (`<= 08:30` cho `SHIFT_1` / `BOTH`, `<= 12:00` cho `SHIFT_2`). Check-in trễ từ 1 phút trở lên (`lateMinutes > 0`, tức từ `08:31` hoặc `12:01`) ghi nhận `status: "LATE"` kèm `lateMinutes`.
+      - **Khối Văn phòng (`OFFICE`)**: Du di tối đa **5 phút** (`<= 08:35`); check-in trễ quá 5 phút (`lateMinutes > 5`, từ `08:36` trở đi) mới ghi nhận `status: "LATE"`.
   - Response: `{ "data": { "attendance": { "id": "...", "date": "2026-11-05", "shiftCode": "SHIFT_1 | SHIFT_2 | BOTH", "checkInTime": "...", "workStartTime": "...", "status": "ON_TIME | LATE", "lateMinutes": 0, "checkInType": "STANDARD | WFH" } } }`
 
 - `POST /api/v1/attendance/check-out`
@@ -820,7 +829,7 @@
 
 - `GET /api/v1/attendance/my-calendar` (Mọi nhân viên trừ `ADMIN`) — **Lịch công tháng của chính mình** (Web)
   - Query: `?month=11&year=2026`.
-  - Response: `{ "data": { month, year, days[], row (cùng cấu trúc 1 dòng của /attendance/timesheet), rules: { shifts, lateToleranceMinutes, overtimeMinMinutes, holidayWorkPayMultiplier: 4 } } }`
+  - Response: `{ "data": { month, year, days[], row (cùng cấu trúc 1 dòng của /attendance/timesheet), rules: { shifts, lateToleranceMinutes (0 với khối SALES, 5 với khối OFFICE), overtimeMinMinutes, holidayWorkPayMultiplier: 4 } } }`
   - Bổ sung cho mỗi `Cell` (cả ở `/attendance/timesheet`): `overtimeMinutes` (số phút tăng ca đã được HR duyệt; ca `BOTH` không tính tăng ca; `SALES` 1 ca chỉ tính khi HR duyệt phần check-out trễ > 5p; `OFFICE` chỉ tính khi được HR yêu cầu), `overtimeStatus` (`NONE | PENDING | APPROVED | REJECTED`), `overtimeApprovedMinutes`, `lateCheckoutMinutes`, `lateCheckoutReason`, `earlyApproved`, `lateApproved` (có đơn xin về sớm / đi trễ đã duyệt), `leaveRequests[]` (`{ id, type, status, reason, reviewNote }` mọi trạng thái).
   - Bổ sung `summary`: `overtimeDays`, `overtimeMinutes`, `pendingRequests`, `paidLeaveEntitled` (tổng số ngày phép có lương khả dụng tích lũy đến tháng đang xem = phép thử việc được cộng + phép các tháng chính thức - phép đã dùng các tháng trước), `paidLeaveFromProbation` (số ngày phép tích lũy từ giai đoạn thử việc: `0 | 1 | 2`), `paidLeaveTotalEarned` (tổng ngày phép tích lũy từ đầu), `paidLeaveUsedTotal` (tổng ngày phép đã dùng từ đầu), `paidLeaveUsed` (số ngày phép dùng trong tháng), `paidLeaveRemaining` (số ngày phép còn lại để dành sang tháng sau), `paidLeaveForfeited` (`0` vì ngày phép được cộng dồn để dành, không bị mất khi qua tháng mới), `salesOffEntitled` (`4` với khối `SALES`, `0` với khối `OFFICE`), `salesOffUsed`, `salesOffRemaining`.
   - `Cell.code = "PAID_LEAVE"`: nghỉ phép có lương đã duyệt → **+1 công/ngày** (cộng toàn bộ `paidLeaveUsed` trong tháng vào `paidUnits`).

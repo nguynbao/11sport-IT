@@ -23,17 +23,35 @@ import {
 } from "lucide-react";
 
 interface ReturnItemForm {
+  lineIndex: number;
   productId: string;
   productCode: string;
   productName: string;
+  color: string;
+  size: string;
+  isGift: boolean;
   unitPrice: number;
   maxReturnable: number;
   quantity: number;
   condition: "GOOD" | "DAMAGED";
 }
 
-interface ExchangeItemForm {
+interface ExchangeOption {
+  optionKey: string;
   product: Product;
+  color: string;
+  size: string;
+  displayName: string;
+  stockFloor1: number;
+}
+
+interface ExchangeItemForm {
+  optionKey: string;
+  product: Product;
+  color: string;
+  size: string;
+  displayName: string;
+  stockFloor1: number;
   quantity: number;
 }
 
@@ -50,12 +68,53 @@ export default function ReturnExchangeTab() {
   const [note, setNote] = useState("");
   const [returnRows, setReturnRows] = useState<ReturnItemForm[]>([]);
   const [exchangeRows, setExchangeRows] = useState<ExchangeItemForm[]>([]);
-  const [selectedExchangeProductId, setSelectedExchangeProductId] = useState("");
+  const [selectedExchangeOptionKey, setSelectedExchangeOptionKey] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+
+  // Danh sách tùy chọn sản phẩm đổi mới (trải phẳng theo từng phân loại Màu/Size có tồn Kho Tầng 1 > 0)
+  const exchangeOptions: ExchangeOption[] = useMemo(() => {
+    const opts: ExchangeOption[] = [];
+    for (const p of sellableProducts) {
+      const activeVariants = Array.isArray(p.variants)
+        ? p.variants.filter((v) => (Number(v.stockFloor1) || 0) > 0)
+        : [];
+      if (activeVariants.length > 0) {
+        for (const v of activeVariants) {
+          const c = String(v.color || "").trim();
+          const s = String(v.size || "").trim();
+          const parts: string[] = [];
+          if (c) parts.push(`Màu: ${c}`);
+          if (s) parts.push(`Size: ${s}`);
+          const displayName = parts.length > 0 ? `${p.name} (${parts.join(" - ")})` : p.name;
+          opts.push({
+            optionKey: `${p._id}__${c}__${s}`,
+            product: p,
+            color: c,
+            size: s,
+            displayName,
+            stockFloor1: Number(v.stockFloor1) || 0,
+          });
+        }
+      } else {
+        const f1 = Number(p.stockFloor1 ?? p.stock) || 0;
+        if (f1 > 0) {
+          opts.push({
+            optionKey: `${p._id}____`,
+            product: p,
+            color: "",
+            size: "",
+            displayName: p.name,
+            stockFloor1: f1,
+          });
+        }
+      }
+    }
+    return opts;
+  }, [sellableProducts]);
 
   // Debounce từ khóa tìm kiếm đơn hàng gốc (350ms) để gợi ý thông minh theo mã đơn / SĐT / tên khách
   const debouncedOrderQuery = useDebounce(orderCodeInput, 350);
@@ -87,7 +146,6 @@ export default function ReturnExchangeTab() {
           )
         : [];
       setSellableProducts(prods);
-      if (prods.length > 0) setSelectedExchangeProductId(prods[0]._id);
       setRecentReturns(Array.isArray(retRes.data) ? retRes.data : []);
     } catch {
       // ignore
@@ -98,19 +156,32 @@ export default function ReturnExchangeTab() {
     loadInitialLists();
   }, []);
 
+  useEffect(() => {
+    if (
+      exchangeOptions.length > 0 &&
+      !exchangeOptions.some((o) => o.optionKey === selectedExchangeOptionKey)
+    ) {
+      setSelectedExchangeOptionKey(exchangeOptions[0].optionKey);
+    }
+  }, [exchangeOptions, selectedExchangeOptionKey]);
+
   const prepareOrderForReturn = (ord: Order) => {
     setSelectedOrder(ord);
     setOrderCodeInput(ord.orderCode || ord.code || "");
     setErrorMsg("");
     setSuccessMsg("");
 
-    const rows: ReturnItemForm[] = (ord.items || []).map((it) => {
+    const rows: ReturnItemForm[] = (ord.items || []).map((it, idx) => {
       const alreadyReturned = Number(it.returnedQuantity || 0);
       const maxReturnable = Math.max(0, Number(it.quantity) - alreadyReturned);
       return {
+        lineIndex: idx,
         productId: it.productId,
         productCode: it.productCode,
         productName: it.productName,
+        color: String(it.color || "").trim(),
+        size: String(it.size || "").trim(),
+        isGift: Boolean(it.isGift) || it.discountType === "GIFT",
         unitPrice: Number(it.unitPrice),
         maxReturnable,
         quantity: 0,
@@ -166,20 +237,30 @@ export default function ReturnExchangeTab() {
   };
 
   const handleAddExchangeProduct = () => {
-    if (!selectedExchangeProductId) return;
-    const prod = sellableProducts.find((p) => p._id === selectedExchangeProductId);
-    if (!prod) return;
-    const floor1Stock = Number(prod.stockFloor1 ?? prod.stock) || 0;
+    if (!selectedExchangeOptionKey) return;
+    const opt = exchangeOptions.find((o) => o.optionKey === selectedExchangeOptionKey);
+    if (!opt) return;
 
     setExchangeRows((prev) => {
-      const existing = prev.find((r) => r.product._id === prod._id);
+      const existing = prev.find((r) => r.optionKey === opt.optionKey);
       if (existing) {
-        if (existing.quantity + 1 > floor1Stock) return prev;
+        if (existing.quantity + 1 > opt.stockFloor1) return prev;
         return prev.map((r) =>
-          r.product._id === prod._id ? { ...r, quantity: r.quantity + 1 } : r
+          r.optionKey === opt.optionKey ? { ...r, quantity: r.quantity + 1 } : r
         );
       }
-      return [...prev, { product: prod, quantity: 1 }];
+      return [
+        ...prev,
+        {
+          optionKey: opt.optionKey,
+          product: opt.product,
+          color: opt.color,
+          size: opt.size,
+          displayName: opt.displayName,
+          stockFloor1: opt.stockFloor1,
+          quantity: 1,
+        },
+      ];
     });
   };
 
@@ -226,7 +307,10 @@ export default function ReturnExchangeTab() {
           note.trim() ||
           (mode === "EXCHANGE" ? "Khách đổi hàng tại quầy" : "Khách trả hàng tại quầy"),
         returnItems: activeReturns.map((r) => ({
+          lineIndex: r.lineIndex,
           productId: r.productId,
+          color: r.color,
+          size: r.size,
           quantity: r.quantity,
           condition: r.condition,
         })),
@@ -234,6 +318,8 @@ export default function ReturnExchangeTab() {
           mode === "EXCHANGE"
             ? exchangeRows.map((ex) => ({
                 productId: ex.product._id,
+                color: ex.color,
+                size: ex.size,
                 quantity: ex.quantity,
               }))
             : [],
@@ -382,9 +468,35 @@ export default function ReturnExchangeTab() {
 
           {/* 1. Bảng chọn sản phẩm trả lại & tình trạng hàng */}
           <div className="space-y-2">
-            <h3 className="font-bold text-slate-900 text-sm">
-              1. Chọn sản phẩm khách trả lại & Tình trạng hàng (GOOD / DAMAGED):
-            </h3>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="font-bold text-slate-900 text-sm">
+                1. Chọn sản phẩm khách trả lại & Tình trạng hàng (GOOD / DAMAGED):
+              </h3>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setReturnRows((prev) =>
+                      prev.map((r) => ({ ...r, quantity: r.maxReturnable }))
+                    )
+                  }
+                  disabled={returnRows.every((r) => r.maxReturnable === 0)}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold disabled:opacity-50"
+                >
+                  Chọn trả toàn bộ đơn
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setReturnRows((prev) => prev.map((r) => ({ ...r, quantity: 0 })))
+                  }
+                  disabled={returnRows.every((r) => r.quantity === 0)}
+                  className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold disabled:opacity-50"
+                >
+                  Đặt lại về 0
+                </button>
+              </div>
+            </div>
             <div className="overflow-x-auto border border-slate-200 rounded-xl max-w-full">
               <table className="w-full min-w-[820px] text-xs text-left">
                 <thead className="bg-slate-900 text-white uppercase">
@@ -399,11 +511,31 @@ export default function ReturnExchangeTab() {
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {returnRows.map((row, idx) => (
-                    <tr key={row.productId} className="hover:bg-slate-50">
+                    <tr
+                      key={`${row.lineIndex}-${row.productId}-${row.color}-${row.size}`}
+                      className="hover:bg-slate-50"
+                    >
                       <td className="py-3 px-3">
-                        <div className="font-bold text-slate-900">{row.productName}</div>
-                        <div className="font-mono text-[11px] text-slate-500">
-                          {row.productCode}
+                        <div className="font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
+                          <span>{row.productName}</span>
+                          {row.isGift && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                              🎁 Hàng tặng
+                            </span>
+                          )}
+                        </div>
+                        <div className="font-mono text-[11px] text-slate-500 flex items-center gap-2 flex-wrap">
+                          <span>{row.productCode}</span>
+                          {(row.color || row.size) && (
+                            <span className="font-sans text-[11px] font-semibold text-emerald-700">
+                              {[
+                                row.color ? `Màu: ${row.color}` : "",
+                                row.size ? `Size: ${row.size}` : "",
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="py-3 px-3 text-right font-mono font-semibold">
@@ -473,17 +605,18 @@ export default function ReturnExchangeTab() {
           {mode === "EXCHANGE" && (
             <div className="space-y-3 bg-emerald-50/50 p-3 sm:p-4 rounded-xl border border-emerald-200">
               <h3 className="font-bold text-slate-900 text-sm">
-                2. Chọn sản phẩm mới xuất kho đổi cho khách:
+                2. Chọn sản phẩm mới xuất kho đổi cho khách (Kho Tầng 1):
               </h3>
               <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                 <select
-                  value={selectedExchangeProductId}
-                  onChange={(e) => setSelectedExchangeProductId(e.target.value)}
+                  value={selectedExchangeOptionKey}
+                  onChange={(e) => setSelectedExchangeOptionKey(e.target.value)}
                   className="w-full sm:flex-1 min-w-0 min-h-[40px] px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white font-semibold"
                 >
-                  {sellableProducts.map((p) => (
-                    <option key={p._id} value={p._id}>
-                      {p.name} — Giá: {formatVND(p.sellingPrice)} (Tồn: {p.stock})
+                  {exchangeOptions.map((opt) => (
+                    <option key={opt.optionKey} value={opt.optionKey}>
+                      {opt.displayName} — Giá: {formatVND(opt.product.sellingPrice)} (Tồn T1:{" "}
+                      {opt.stockFloor1})
                     </option>
                   ))}
                 </select>
@@ -510,9 +643,9 @@ export default function ReturnExchangeTab() {
                     </thead>
                     <tbody className="divide-y divide-slate-200">
                       {exchangeRows.map((ex, i) => (
-                        <tr key={ex.product._id}>
+                        <tr key={ex.optionKey}>
                           <td className="py-2 px-3 font-semibold">
-                            {ex.product.name}{" "}
+                            {ex.displayName}{" "}
                             <span className="font-mono text-slate-500">
                               ({ex.product.code})
                             </span>
@@ -524,11 +657,11 @@ export default function ReturnExchangeTab() {
                             <input
                               type="number"
                               min={1}
-                              max={ex.product.stock}
+                              max={ex.stockFloor1}
                               value={ex.quantity}
                               onChange={(e) => {
                                 const val = Math.min(
-                                  ex.product.stock,
+                                  ex.stockFloor1,
                                   Math.max(1, Number(e.target.value))
                                 );
                                 setExchangeRows((prev) =>
