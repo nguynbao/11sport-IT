@@ -8,6 +8,7 @@ import {
   Order,
   Promotion,
   DiscountType,
+  ServiceOrdersMeta,
   apiRequest,
   formatVND,
   formatNumberDots,
@@ -48,7 +49,9 @@ import {
   Zap,
   ChevronDown,
   ChevronUp,
+  Wrench,
 } from "lucide-react";
+import PosServiceSection from "./PosServiceSection";
 import {
   cleanBarcodeCode,
   findProductAndVariantByScannedBarcode,
@@ -171,6 +174,8 @@ const isDraftEmpty = (d: DraftOrderData) =>
 const INITIAL_DRAFT_ID = "draft_initial";
 
 export default function PosTab({ onOpenInvoice }: PosTabProps) {
+  const [posMode, setPosMode] = useState<"PRODUCTS" | "SERVICES">("PRODUCTS");
+  const [serviceMeta, setServiceMeta] = useState<ServiceOrdersMeta | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [allCatalogProducts, setAllCatalogProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -630,6 +635,11 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
   useEffect(() => {
     fetchCategories();
     fetchActivePromotions();
+    apiRequest("/service-orders")
+      .then((res) => {
+        if (res.meta) setServiceMeta(res.meta as unknown as ServiceOrdersMeta);
+      })
+      .catch(() => {});
   }, [fetchCategories, fetchActivePromotions]);
 
   const fetchSavedDraftOrders = useCallback(async () => {
@@ -1381,7 +1391,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
 
   // Lắng nghe máy quét mã vạch toàn cục (không cần đặt chuột vào ô input vẫn quét bán hàng được)
   useHardwareBarcodeScanner({
-    enabled: scannerEnabled && !showGiftModal,
+    enabled: scannerEnabled && !showGiftModal && posMode === "PRODUCTS",
     onScan: (scannedCode) => {
       handleBarcodeScanForPos(scannedCode);
     },
@@ -2355,7 +2365,71 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6">
+    <div className="space-y-4">
+      {/* Thanh chuyển đổi chế độ Bán sản phẩm / Làm dịch vụ */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setPosMode("PRODUCTS")}
+            className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-extrabold flex items-center gap-2 transition ${
+              posMode === "PRODUCTS"
+                ? "bg-emerald-600 text-white shadow-sm"
+                : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+            }`}
+          >
+            <ShoppingCart className="w-4 h-4" />
+            <span>Mua sản phẩm</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setPosMode("SERVICES")}
+            className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-extrabold flex items-center gap-2 transition ${
+              posMode === "SERVICES"
+                ? "bg-indigo-600 text-white shadow-sm"
+                : "bg-slate-100 text-slate-700 hover:bg-indigo-50 hover:text-indigo-700"
+            }`}
+          >
+            <Wrench className="w-4 h-4" />
+            <span>Làm dịch vụ (Nhận đồ & Hẹn trả)</span>
+            {serviceMeta &&
+              serviceMeta.receivedCount +
+                serviceMeta.inProgressCount +
+                serviceMeta.readyCount >
+                0 && (
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[11px] font-mono font-bold ${
+                    posMode === "SERVICES"
+                      ? "bg-white/20 text-white"
+                      : "bg-indigo-100 text-indigo-800"
+                  }`}
+                >
+                  {serviceMeta.receivedCount +
+                    serviceMeta.inProgressCount +
+                    serviceMeta.readyCount}{" "}
+                  đơn chờ
+                </span>
+              )}
+            {serviceMeta && serviceMeta.overdueCount > 0 && (
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-600 text-white">
+                ⚠️ {serviceMeta.overdueCount} quá hạn
+              </span>
+            )}
+          </button>
+        </div>
+
+        <div className="text-xs text-slate-500 hidden md:block pr-2">
+          {posMode === "PRODUCTS"
+            ? "Bán hàng trực tiếp từ Kho Tầng 1 • Hỗ trợ quét mã vạch & tách đơn nháp"
+            : "Nhận đồ khách gửi làm dịch vụ (đan vợt, hàn vợt, vệ sinh...) • Hẹn ngày trả & theo dõi tiến độ"}
+        </div>
+      </div>
+
+      {posMode === "SERVICES" ? (
+        <PosServiceSection onMetaChange={setServiceMeta} />
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6">
       {/* Thanh tab: Nhiều đơn hàng song song */}
       <div className="lg:col-span-12 bg-white rounded-xl shadow-sm border border-slate-200 p-2.5 md:p-3">
         <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
@@ -4483,6 +4557,8 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
               </button>
             </div>
           </div>
+        </div>
+      )}
         </div>
       )}
     </div>

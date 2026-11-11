@@ -303,12 +303,12 @@ authStaffRouter.post('/staff', async (req, res, next) => {
         }
         resolvedProbMonths = diffDays <= 35 ? 1 : 2;
       } else {
-        // Mặc định thử việc tối đa 2 tháng (1 hoặc 2 tháng)
-        resolvedProbMonths = 1;
+        // Mặc định thử việc là 2 tháng (tối đa 2 tháng, có thể ký chính thức sau 1 tháng)
+        resolvedProbMonths = 2;
       }
       if (parsedStart && !parsedEnd) {
         const autoEnd = new Date(parsedStart);
-        autoEnd.setMonth(autoEnd.getMonth() + (probationMonths ? resolvedProbMonths : 2));
+        autoEnd.setMonth(autoEnd.getMonth() + resolvedProbMonths);
         parsedEnd = autoEnd;
       } else if (parsedStart && parsedEnd) {
         const diffDays = Math.round((parsedEnd.getTime() - parsedStart.getTime()) / 86400000);
@@ -524,32 +524,52 @@ authStaffRouter.patch('/staff/:id', async (req, res, next) => {
             'Thời gian thử việc mặc định tối đa 2 tháng (có thể ký chính thức sau 1 tháng)'
           );
         }
+        if (
+          updateData.probationMonths === undefined &&
+          (contractStartDate !== undefined || contractEndDate !== undefined)
+        ) {
+          updateData.probationMonths = diffDays <= 35 ? 1 : 2;
+        }
+      }
+      if (updateData.probationMonths === undefined && !(staff as any).probationMonths) {
+        updateData.probationMonths = 2;
       }
       if (pStart && !updateData.probationStartDate && !(staff as any).probationStartDate) {
         updateData.probationStartDate = new Date(pStart);
       }
     } else if (staff.contractType === 'PROBATION' && contractType === 'FULLTIME') {
       // Khi chuyển từ hợp đồng Thử việc lên hợp đồng Chính thức:
-      // Bảo lưu ngày phép giai đoạn thử việc (1 hoặc 2 tháng, tối đa 2 tháng)
+      // Bảo lưu ngày phép giai đoạn thử việc (1 hoặc 2 tháng, mặc định 2 tháng)
       const prevProbStart =
         updateData.probationStartDate || (staff as any).probationStartDate || staff.contractStartDate;
       if (prevProbStart) {
         updateData.probationStartDate = new Date(prevProbStart);
       }
+      const prevProbEnd = updateData.contractEndDate ?? staff.contractEndDate;
       const nextFtStart =
         updateData.fulltimeStartDate ||
         (contractStartDate ? new Date(contractStartDate) : undefined);
 
       if (updateData.probationMonths === undefined) {
-        if (prevProbStart && nextFtStart) {
+        const existingProbMonths = Number((staff as any).probationMonths || 0);
+        if (prevProbStart && nextFtStart && new Date(nextFtStart) > new Date(prevProbStart)) {
           const mDiff =
             (new Date(nextFtStart).getFullYear() - new Date(prevProbStart).getFullYear()) * 12 +
             (new Date(nextFtStart).getMonth() - new Date(prevProbStart).getMonth());
-          updateData.probationMonths = Math.min(2, Math.max(1, mDiff || 1));
-        } else {
-          const existingProbMonths = Number((staff as any).probationMonths || 0);
           updateData.probationMonths =
-            existingProbMonths >= 1 && existingProbMonths <= 2 ? existingProbMonths : 1;
+            mDiff >= 1
+              ? Math.min(2, Math.max(1, mDiff))
+              : existingProbMonths >= 1 && existingProbMonths <= 2
+                ? existingProbMonths
+                : 2;
+        } else if (prevProbStart && prevProbEnd && new Date(prevProbEnd) > new Date(prevProbStart)) {
+          const diffDays = Math.round(
+            (new Date(prevProbEnd).getTime() - new Date(prevProbStart).getTime()) / 86400000
+          );
+          updateData.probationMonths = diffDays <= 35 ? 1 : 2;
+        } else {
+          updateData.probationMonths =
+            existingProbMonths >= 1 && existingProbMonths <= 2 ? existingProbMonths : 2;
         }
       }
 
@@ -557,7 +577,7 @@ authStaffRouter.patch('/staff/:id', async (req, res, next) => {
         updateData.fulltimeStartDate = new Date(nextFtStart);
       } else if (prevProbStart) {
         const autoFt = new Date(prevProbStart);
-        autoFt.setMonth(autoFt.getMonth() + Number(updateData.probationMonths || 1));
+        autoFt.setMonth(autoFt.getMonth() + Number(updateData.probationMonths || 2));
         const now = new Date();
         updateData.fulltimeStartDate = autoFt > now ? now : autoFt;
       }

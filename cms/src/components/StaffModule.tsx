@@ -208,7 +208,9 @@ export default function StaffModule({
     setEditDepartment(st.department === "OFFICE" ? "OFFICE" : "SALES");
     setEditContractType(st.contractType || "PROBATION");
     setEditProbationMonths(
-      st.probationMonths !== undefined && st.probationMonths !== null
+      st.probationMonths !== undefined &&
+        st.probationMonths !== null &&
+        !(st.contractType === "PROBATION" && Number(st.probationMonths) === 0)
         ? Math.min(2, Math.max(0, Number(st.probationMonths)))
         : st.contractType === "PROBATION"
           ? 2

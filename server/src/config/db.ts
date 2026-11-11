@@ -14,6 +14,8 @@ import { ShiftAssignmentModel, IShiftAssignment } from '../models/ShiftAssignmen
 import { ShiftHandoverModel, IShiftHandover } from '../models/ShiftHandover';
 import { HolidayModel, IHoliday } from '../models/Holiday';
 import { AttendanceConfigModel, IAttendanceConfig } from '../models/AttendanceConfig';
+import { ServiceTypeModel, IServiceType } from '../models/ServiceType';
+import { ServiceOrderModel, IServiceOrder } from '../models/ServiceOrder';
 import { Repository, memoryStore } from './repository';
 
 export const staffRepo = new Repository<IStaff>(StaffModel, 'staffs');
@@ -31,6 +33,8 @@ export const shiftAssignmentRepo = new Repository<IShiftAssignment>(ShiftAssignm
 export const shiftHandoverRepo = new Repository<IShiftHandover>(ShiftHandoverModel, 'shift_handovers');
 export const holidayRepo = new Repository<IHoliday>(HolidayModel, 'holidays');
 export const attendanceConfigRepo = new Repository<IAttendanceConfig>(AttendanceConfigModel, 'attendance_configs');
+export const serviceTypeRepo = new Repository<IServiceType>(ServiceTypeModel, 'service_types');
+export const serviceOrderRepo = new Repository<IServiceOrder>(ServiceOrderModel, 'service_orders');
 
 let dbMode: 'mongodb' | 'memory' = 'memory';
 let mongoMemoryServerInstance: any = null;
