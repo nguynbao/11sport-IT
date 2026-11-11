@@ -10,6 +10,7 @@ import { getMergedHolidayMap } from './holidays';
 import {
   assertPaidLeaveQuota,
   assertSalesUnpaidOffQuota,
+  computePaidLeaveBalanceForStaff,
   SALES_MAX_UNPAID_OFF_PER_MONTH,
 } from './leaveRequests';
 
@@ -196,12 +197,15 @@ export async function buildTimesheet(params: {
       if (!attByStaff.has(key)) attByStaff.set(key, new Map());
       attByStaff.get(key)!.set(a.date, a);
     }
-    // Đơn từ theo nhân viên/ngày: leaveByStaff = đơn OFF/khác ĐÃ DUYỆT (ưu tiên OFF); allLeavesByStaff = mọi trạng thái
+    // Đơn từ theo nhân viên/ngày: leaveByStaff = đơn OFF/khác ĐÃ DUYỆT (ưu tiên OFF); allLeavesByStaff = mọi trạng thái trong tháng; allHistoryLeavesByStaff = mọi đơn các tháng
     const leaveByStaff = new Map<string, Map<string, any>>();
     const allLeavesByStaff = new Map<string, Map<string, any[]>>();
+    const allHistoryLeavesByStaff = new Map<string, any[]>();
     for (const l of allLeaves as any[]) {
-      if (!String(l.date || '').startsWith(monthPrefix)) continue;
       const key = String(l.staffId);
+      if (!allHistoryLeavesByStaff.has(key)) allHistoryLeavesByStaff.set(key, []);
+      allHistoryLeavesByStaff.get(key)!.push(l);
+      if (!String(l.date || '').startsWith(monthPrefix)) continue;
       if (!allLeavesByStaff.has(key)) allLeavesByStaff.set(key, new Map());
       const dayList = allLeavesByStaff.get(key)!.get(l.date) || [];
       dayList.push(l);
@@ -263,17 +267,29 @@ export async function buildTimesheet(params: {
         overtimeMinutes: 0,
         pendingRequests: 0,
         paidLeaveEntitled: 0,
+        paidLeaveFromProbation: 0,
+        paidLeaveTotalEarned: 0,
+        paidLeaveUsedTotal: 0,
         paidLeaveUsed: 0,
+        paidLeaveRemaining: 0,
         paidLeaveForfeited: 0,
         salesOffEntitled: department === 'SALES' ? SALES_MAX_UNPAID_OFF_PER_MONTH : 0,
         salesOffUsed: 0,
         salesOffRemaining: department === 'SALES' ? SALES_MAX_UNPAID_OFF_PER_MONTH : 0,
       };
-      // Không suy diễn mặc định: chỉ HĐ được ghi rõ FULLTIME mới có ngày phép có lương
+      // Không suy diễn mặc định: chỉ HĐ được ghi rõ FULLTIME mới được dùng ngày phép có lương.
+      // Khi lên Chính thức: cộng số ngày phép tương đương số tháng thử việc (tối đa 2 ngày) + 1 ngày phép mỗi tháng chính thức, cộng dồn qua các tháng.
       const contractType = staff.contractType || 'UNKNOWN';
-      const monthLastDate = days[days.length - 1]?.date || `${monthPrefix}31`;
-      // Hợp đồng Chính thức: 1 ngày nghỉ phép có lương/tháng (nếu đã vào làm trong tháng)
-      if (contractType === 'FULLTIME' && joinedStr <= monthLastDate) summary.paidLeaveEntitled = 1;
+      const staffAllHistoryLeaves = allHistoryLeavesByStaff.get(staffId) || [];
+      const paidLeaveBalance = computePaidLeaveBalanceForStaff(
+        staff,
+        staffAllHistoryLeaves,
+        `${year}-${pad(month)}`,
+        { approvedOnly: true }
+      );
+      summary.paidLeaveEntitled = paidLeaveBalance.entitledInMonth;
+      summary.paidLeaveFromProbation = paidLeaveBalance.probationLeaveDays;
+      summary.paidLeaveTotalEarned = paidLeaveBalance.totalEarnedUpToMonth;
       const salesUnpaidOffDates = new Set<string>();
 
       const cells: Record<string, any> = {};
@@ -491,13 +507,13 @@ export async function buildTimesheet(params: {
 
       summary.workUnits = Number(summary.workUnits.toFixed(2));
       summary.holidayWorkHours = Number(summary.holidayWorkHours.toFixed(2));
-      // Không dùng ngày phép có lương trong tháng (tháng đã kết thúc) -> mất quyền lợi
-      if (summary.paidLeaveEntitled > 0 && summary.paidLeaveUsed === 0 && monthLastDate < todayStr) {
-        summary.paidLeaveForfeited = 1;
-      }
-      // Tổng công tính lương = công đi làm + công lễ hưởng lương (Văn phòng) + ngày phép có lương
+      // Ngày nghỉ phép có lương được để dành lại và cộng dồn qua các tháng tiếp theo (không bị mất khi hết tháng)
+      summary.paidLeaveUsedTotal = paidLeaveBalance.usedBeforeMonth + summary.paidLeaveUsed;
+      summary.paidLeaveRemaining = Math.max(0, summary.paidLeaveEntitled - summary.paidLeaveUsed);
+      summary.paidLeaveForfeited = 0;
+      // Tổng công tính lương = công đi làm + công lễ hưởng lương (Văn phòng) + số ngày phép có lương đã dùng trong tháng
       summary.paidUnits = Number(
-        (summary.workUnits + summary.holidayPaidDays + Math.min(summary.paidLeaveUsed, 1)).toFixed(2)
+        (summary.workUnits + summary.holidayPaidDays + summary.paidLeaveUsed).toFixed(2)
       );
       summary.totalHours = Number(summary.totalHours.toFixed(2));
 

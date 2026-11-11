@@ -56,6 +56,9 @@ authStaffRouter.post('/auth/login', async (req, res, next) => {
           address: staff.address || '',
           contractStartDate: staff.contractStartDate,
           contractEndDate: staff.contractEndDate,
+          probationStartDate: (staff as any).probationStartDate,
+          probationMonths: Number((staff as any).probationMonths ?? (staff.contractType === 'PROBATION' ? 2 : 0)),
+          fulltimeStartDate: (staff as any).fulltimeStartDate,
           contractFileUrl: staff.contractFileUrl || '',
           contractFileName: staff.contractFileName || '',
           baseSalary: Number(staff.baseSalary || 0),
@@ -237,6 +240,9 @@ authStaffRouter.post('/staff', async (req, res, next) => {
       address,
       contractStartDate,
       contractEndDate,
+      probationStartDate,
+      probationMonths,
+      fulltimeStartDate,
       contractFileUrl,
       contractFileName,
       baseSalary,
@@ -263,6 +269,69 @@ authStaffRouter.post('/staff', async (req, res, next) => {
 
     if (!VALID_CONTRACT_TYPES.includes(contractType)) {
       throw new ApiError(400, 'INVALID_CONTRACT_TYPE', 'Loại hợp đồng phải là Thực tập, Thử việc hoặc Chính thức');
+    }
+
+    if (probationMonths !== undefined && probationMonths !== null && probationMonths !== '') {
+      const pm = Number(probationMonths);
+      if (!Number.isFinite(pm) || pm < 0 || pm > 2) {
+        throw new ApiError(
+          400,
+          'PROBATION_MAX_2_MONTHS',
+          'Thời gian thử việc mặc định tối đa 2 tháng (có thể ký chính thức sau 1 tháng)'
+        );
+      }
+    }
+
+    const parsedStart = contractStartDate ? new Date(contractStartDate) : undefined;
+    let parsedEnd = contractEndDate ? new Date(contractEndDate) : undefined;
+    let parsedProbStart = probationStartDate ? new Date(probationStartDate) : undefined;
+    let parsedFulltimeStart = fulltimeStartDate ? new Date(fulltimeStartDate) : undefined;
+    let resolvedProbMonths = 0;
+
+    if (contractType === 'PROBATION') {
+      parsedProbStart = parsedProbStart || parsedStart;
+      if (probationMonths !== undefined && probationMonths !== null && probationMonths !== '') {
+        resolvedProbMonths = Math.min(2, Math.max(1, Math.round(Number(probationMonths))));
+      } else if (parsedStart && parsedEnd) {
+        const diffDays = Math.round((parsedEnd.getTime() - parsedStart.getTime()) / 86400000);
+        if (diffDays > 65) {
+          throw new ApiError(
+            400,
+            'PROBATION_MAX_2_MONTHS',
+            'Thời gian thử việc mặc định tối đa 2 tháng (có thể ký chính thức sau 1 tháng)'
+          );
+        }
+        resolvedProbMonths = diffDays <= 35 ? 1 : 2;
+      } else {
+        // Mặc định thử việc tối đa 2 tháng (1 hoặc 2 tháng)
+        resolvedProbMonths = 1;
+      }
+      if (parsedStart && !parsedEnd) {
+        const autoEnd = new Date(parsedStart);
+        autoEnd.setMonth(autoEnd.getMonth() + (probationMonths ? resolvedProbMonths : 2));
+        parsedEnd = autoEnd;
+      } else if (parsedStart && parsedEnd) {
+        const diffDays = Math.round((parsedEnd.getTime() - parsedStart.getTime()) / 86400000);
+        if (diffDays > 65) {
+          throw new ApiError(
+            400,
+            'PROBATION_MAX_2_MONTHS',
+            'Thời gian thử việc mặc định tối đa 2 tháng (có thể ký chính thức sau 1 tháng)'
+          );
+        }
+      }
+    } else if (contractType === 'FULLTIME') {
+      parsedFulltimeStart = parsedFulltimeStart || parsedStart;
+      if (probationMonths !== undefined && probationMonths !== null && probationMonths !== '') {
+        resolvedProbMonths = Math.min(2, Math.max(0, Math.round(Number(probationMonths))));
+      } else if (parsedProbStart && parsedFulltimeStart && parsedFulltimeStart > parsedProbStart) {
+        const mDiff =
+          (parsedFulltimeStart.getFullYear() - parsedProbStart.getFullYear()) * 12 +
+          (parsedFulltimeStart.getMonth() - parsedProbStart.getMonth());
+        resolvedProbMonths = Math.min(2, Math.max(1, mDiff || 1));
+      } else {
+        resolvedProbMonths = 0;
+      }
     }
 
     const validRoles = ['SALES', 'WAREHOUSE', 'ADMIN', 'HR', 'ACCOUNTANT', 'MARKETING'];
@@ -306,8 +375,11 @@ authStaffRouter.post('/staff', async (req, res, next) => {
       contractType,
       citizenId: citizenId ? String(citizenId).trim() : '',
       address: address ? String(address).trim() : '',
-      contractStartDate: contractStartDate ? new Date(contractStartDate) : undefined,
-      contractEndDate: contractEndDate ? new Date(contractEndDate) : undefined,
+      contractStartDate: parsedStart,
+      contractEndDate: parsedEnd,
+      probationStartDate: parsedProbStart,
+      probationMonths: resolvedProbMonths,
+      fulltimeStartDate: parsedFulltimeStart,
       contractFileUrl: contractFileUrl ? String(contractFileUrl) : '',
       contractFileName: contractFileName ? String(contractFileName).trim() : '',
       baseSalary: baseSalary !== undefined ? parseSalaryField(baseSalary, 'Lương cơ bản') : 0,
@@ -348,6 +420,9 @@ authStaffRouter.patch('/staff/:id', async (req, res, next) => {
       address,
       contractStartDate,
       contractEndDate,
+      probationStartDate,
+      probationMonths,
+      fulltimeStartDate,
       contractFileUrl,
       contractFileName,
       baseSalary,
@@ -358,6 +433,18 @@ authStaffRouter.patch('/staff/:id', async (req, res, next) => {
       password,
     } = req.body || {};
     const updateData: Record<string, any> = {};
+
+    if (probationMonths !== undefined && probationMonths !== null && probationMonths !== '') {
+      const pm = Number(probationMonths);
+      if (!Number.isFinite(pm) || pm < 0 || pm > 2) {
+        throw new ApiError(
+          400,
+          'PROBATION_MAX_2_MONTHS',
+          'Thời gian thử việc mặc định tối đa 2 tháng (có thể ký chính thức sau 1 tháng)'
+        );
+      }
+      updateData.probationMonths = Math.min(2, Math.max(0, Math.round(pm)));
+    }
 
     const hasSalaryFields =
       baseSalary !== undefined ||
@@ -421,6 +508,62 @@ authStaffRouter.patch('/staff/:id', async (req, res, next) => {
     if (address !== undefined) updateData.address = String(address).trim();
     if (contractStartDate !== undefined) updateData.contractStartDate = contractStartDate ? new Date(contractStartDate) : undefined;
     if (contractEndDate !== undefined) updateData.contractEndDate = contractEndDate ? new Date(contractEndDate) : undefined;
+    if (probationStartDate !== undefined) updateData.probationStartDate = probationStartDate ? new Date(probationStartDate) : undefined;
+    if (fulltimeStartDate !== undefined) updateData.fulltimeStartDate = fulltimeStartDate ? new Date(fulltimeStartDate) : undefined;
+
+    const nextContractType = contractType ?? staff.contractType;
+    if (nextContractType === 'PROBATION') {
+      const pStart = updateData.contractStartDate ?? staff.contractStartDate;
+      const pEnd = updateData.contractEndDate ?? staff.contractEndDate;
+      if (pStart && pEnd) {
+        const diffDays = Math.round((new Date(pEnd).getTime() - new Date(pStart).getTime()) / 86400000);
+        if (diffDays > 65) {
+          throw new ApiError(
+            400,
+            'PROBATION_MAX_2_MONTHS',
+            'Thời gian thử việc mặc định tối đa 2 tháng (có thể ký chính thức sau 1 tháng)'
+          );
+        }
+      }
+      if (pStart && !updateData.probationStartDate && !(staff as any).probationStartDate) {
+        updateData.probationStartDate = new Date(pStart);
+      }
+    } else if (staff.contractType === 'PROBATION' && contractType === 'FULLTIME') {
+      // Khi chuyển từ hợp đồng Thử việc lên hợp đồng Chính thức:
+      // Bảo lưu ngày phép giai đoạn thử việc (1 hoặc 2 tháng, tối đa 2 tháng)
+      const prevProbStart =
+        updateData.probationStartDate || (staff as any).probationStartDate || staff.contractStartDate;
+      if (prevProbStart) {
+        updateData.probationStartDate = new Date(prevProbStart);
+      }
+      const nextFtStart =
+        updateData.fulltimeStartDate ||
+        (contractStartDate ? new Date(contractStartDate) : undefined);
+
+      if (updateData.probationMonths === undefined) {
+        if (prevProbStart && nextFtStart) {
+          const mDiff =
+            (new Date(nextFtStart).getFullYear() - new Date(prevProbStart).getFullYear()) * 12 +
+            (new Date(nextFtStart).getMonth() - new Date(prevProbStart).getMonth());
+          updateData.probationMonths = Math.min(2, Math.max(1, mDiff || 1));
+        } else {
+          const existingProbMonths = Number((staff as any).probationMonths || 0);
+          updateData.probationMonths =
+            existingProbMonths >= 1 && existingProbMonths <= 2 ? existingProbMonths : 1;
+        }
+      }
+
+      if (nextFtStart) {
+        updateData.fulltimeStartDate = new Date(nextFtStart);
+      } else if (prevProbStart) {
+        const autoFt = new Date(prevProbStart);
+        autoFt.setMonth(autoFt.getMonth() + Number(updateData.probationMonths || 1));
+        const now = new Date();
+        updateData.fulltimeStartDate = autoFt > now ? now : autoFt;
+      }
+    } else if (nextContractType === 'FULLTIME' && contractStartDate !== undefined && fulltimeStartDate === undefined) {
+      updateData.fulltimeStartDate = contractStartDate ? new Date(contractStartDate) : undefined;
+    }
     if (contractFileUrl !== undefined || contractFileName !== undefined) {
       if (req.user && !['HR', 'ADMIN'].includes(req.user.role)) {
         throw new ApiError(

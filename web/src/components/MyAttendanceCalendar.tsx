@@ -497,35 +497,42 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
 
           {s && (
             <div
-              className={`px-3 py-2 rounded-xl border text-xs font-semibold flex flex-wrap items-center justify-between gap-2 ${!s.paidLeaveEntitled
-                ? "bg-slate-50 border-slate-200 text-slate-500"
-                : s.paidLeaveUsed
-                  ? "bg-teal-50 border-teal-200 text-teal-800"
-                  : s.paidLeaveForfeited
-                    ? "bg-slate-100 border-slate-300 text-slate-600"
-                    : "bg-amber-50 border-amber-200 text-amber-800"
+              className={`px-3 py-2 rounded-xl border text-xs font-semibold flex flex-wrap items-center justify-between gap-2 ${data?.row?.contractType !== "FULLTIME"
+                  ? "bg-slate-50 border-slate-200 text-slate-600"
+                  : (s.paidLeaveRemaining ?? Math.max(0, s.paidLeaveEntitled - s.paidLeaveUsed)) > 0
+                    ? "bg-teal-50 border-teal-200 text-teal-900"
+                    : "bg-slate-100 border-slate-300 text-slate-700"
                 }`}
             >
               <span>
-                Ngày nghỉ phép có lương tháng {month}/{year}:{" "}
-                {!s.paidLeaveEntitled
-                  ? `không áp dụng – chỉ dành cho nhân viên Chính thức (HĐ của bạn: ${CONTRACT_LABEL[data?.row?.contractType || ""] || "Chưa cập nhật"
-                  })`
-                  : s.paidLeaveUsed
-                    ? "đã dùng 1/1 ngày ✓"
-                    : s.paidLeaveForfeited
-                      ? "không sử dụng – đã mất quyền lợi"
-                      : "còn 1 ngày – hãy đăng ký trước khi hết tháng, không dùng sẽ mất quyền lợi"}
+                <b>Quỹ nghỉ phép có lương (tích lũy đến tháng {month}/{year}):</b>{" "}
+                {data?.row?.contractType !== "FULLTIME" ? (
+                  <>
+                    Đang ở giai đoạn{" "}
+                    <b>{CONTRACT_LABEL[data?.row?.contractType || ""] || "Chưa cập nhật"}</b>
+                    {data?.row?.contractType === "PROBATION" && (s.paidLeaveFromProbation ?? 0) > 0
+                      ? ` • Đã tích lũy ${s.paidLeaveFromProbation} ngày phép thử việc – sẽ được cộng vào quỹ phép ngay khi ký HĐ Chính thức.`
+                      : " – khi lên HĐ Chính thức sẽ được cộng số ngày phép tương ứng tháng thử việc (tối đa 2 ngày) + 1 ngày phép mỗi tháng chính thức."}
+                  </>
+                ) : (
+                  <>
+                    Có thể dùng <b>{s.paidLeaveEntitled} ngày</b>
+                    {(s.paidLeaveFromProbation ?? 0) > 0 ? ` (gồm +${s.paidLeaveFromProbation} ngày từ thử việc)` : ""} • Đã dùng trong tháng:{" "}
+                    <b>{s.paidLeaveUsed} ngày</b> • Còn để dành cộng dồn:{" "}
+                    <b>{s.paidLeaveRemaining ?? Math.max(0, s.paidLeaveEntitled - s.paidLeaveUsed)} ngày</b> (dùng liên tiếp tối đa 1 tuần; từ 2 ngày phép trở đi phải tạo đơn trước 3 tuần).
+                  </>
+                )}
               </span>
-              {!!s.paidLeaveEntitled && !s.paidLeaveUsed && !s.paidLeaveForfeited && (
-                <button
-                  type="button"
-                  onClick={() => setLeaveModal({ type: "PAID_LEAVE" })}
-                  className="px-2.5 py-1 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-[11px] font-bold"
-                >
-                  Đăng ký nghỉ phép
-                </button>
-              )}
+              {data?.row?.contractType === "FULLTIME" &&
+                (s.paidLeaveRemaining ?? Math.max(0, s.paidLeaveEntitled - s.paidLeaveUsed)) > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setLeaveModal({ type: "PAID_LEAVE" })}
+                    className="px-2.5 py-1 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-[11px] font-bold"
+                  >
+                    Đăng ký nghỉ phép
+                  </button>
+                )}
             </div>
           )}
 
@@ -536,7 +543,7 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
                 <b>
                   Đã dùng {s.salesOffUsed ?? s.leaveDays}/{s.salesOffEntitled ?? 4} ngày
                 </b>{" "}
-                (Còn lại: <b>{s.salesOffRemaining ?? Math.max(0, 4 - (s.salesOffUsed ?? s.leaveDays))} ngày</b> — Có thể đăng ký nghỉ gộp tối đa 4 ngày trong 1 tuần; khi dùng hết 4 ngày thì các tuần sau không được nghỉ thêm, phải qua tháng mới).
+                (Còn lại: <b>{s.salesOffRemaining ?? Math.max(0, 4 - (s.salesOffUsed ?? s.leaveDays))} ngày</b> — Đăng ký ca tuần mặc định tối đa 2 ngày nghỉ/tuần gồm 1 ngày OFF + 1 ngày phép; từ 3 ngày trở đi phải tạo đơn trước 3 tuần).
               </span>
             </div>
           )}
@@ -557,13 +564,12 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
 
             return (
               <div
-                className={`bg-white rounded-2xl border p-3.5 sm:p-4 shadow-sm space-y-3 ${
-                  myShiftSchedule.isConfirmedByHr
+                className={`bg-white rounded-2xl border p-3.5 sm:p-4 shadow-sm space-y-3 ${myShiftSchedule.isConfirmedByHr
                     ? "border-emerald-300 ring-1 ring-emerald-200"
                     : myShiftSchedule.isRegistered
-                    ? "border-indigo-200"
-                    : "border-amber-200"
-                }`}
+                      ? "border-indigo-200"
+                      : "border-amber-200"
+                  }`}
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
@@ -600,8 +606,8 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
                     {myShiftSchedule.isConfirmedByHr
                       ? "Xem đăng ký"
                       : myShiftSchedule.isRegistered
-                      ? "Sửa đăng ký ca"
-                      : "Đăng ký ngay"}
+                        ? "Sửa đăng ký ca"
+                        : "Đăng ký ngay"}
                   </button>
                 </div>
 
@@ -619,11 +625,10 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
                       return (
                         <div
                           key={dStr}
-                          className={`rounded-xl border p-2 text-center space-y-1 ${
-                            code === "SHIFT_1" || code === "SHIFT_2" || code === "BOTH"
+                          className={`rounded-xl border p-2 text-center space-y-1 ${code === "SHIFT_1" || code === "SHIFT_2" || code === "BOTH"
                               ? "bg-indigo-50/70 border-indigo-300 text-indigo-900"
                               : "bg-rose-50/60 border-rose-200 text-rose-700"
-                          }`}
+                            }`}
                         >
                           <div className="text-[11px] font-extrabold">{SHIFT_WEEK_DAY_NAMES[i]}</div>
                           <div className="text-[10px] font-mono opacity-75">
@@ -633,21 +638,21 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
                             {code === "BOTH"
                               ? "Ca 1 + Ca 2"
                               : code === "SHIFT_1"
-                              ? "Ca 1"
-                              : code === "SHIFT_2"
-                              ? "Ca 2"
-                              : code === "OFF"
-                              ? "Nghỉ OFF"
-                              : "Chưa xếp"}
+                                ? "Ca 1"
+                                : code === "SHIFT_2"
+                                  ? "Ca 2"
+                                  : code === "OFF"
+                                    ? "Nghỉ OFF"
+                                    : "Chưa xếp"}
                           </div>
                           <div className="text-[9px] font-mono opacity-80">
                             {code === "BOTH"
                               ? "08:30–21:00"
                               : code === "SHIFT_1"
-                              ? "08:30–17:30"
-                              : code === "SHIFT_2"
-                              ? "12:00–21:00"
-                              : "Ngày nghỉ"}
+                                ? "08:30–17:30"
+                                : code === "SHIFT_2"
+                                  ? "12:00–21:00"
+                                  : "Ngày nghỉ"}
                           </div>
                           {item?.preferenceShift === "BOTH" &&
                             (code === "SHIFT_1" || code === "SHIFT_2") &&
@@ -937,10 +942,10 @@ function DayCell({
     cell.shiftCode === "BOTH"
       ? "Ca 1 + Ca 2"
       : cell.shiftCode === "SHIFT_2"
-      ? "Ca 2"
-      : cell.shiftCode === "SHIFT_1"
-      ? "Ca 1"
-      : null;
+        ? "Ca 2"
+        : cell.shiftCode === "SHIFT_1"
+          ? "Ca 1"
+          : null;
 
   let statusText = st.short;
   if (cell.code === "EARLY" || cell.code === "LATE_EARLY") {
@@ -1124,8 +1129,8 @@ function DayDetailModal({
                   cell.shiftCode === "BOTH"
                     ? "Ca 1 + Ca 2 (08:30 – 21:00)"
                     : cell.shiftCode === "SHIFT_2"
-                    ? "Ca 2 (12:00 – 21:00)"
-                    : "Ca 1 (08:30 – 17:30)"
+                      ? "Ca 2 (12:00 – 21:00)"
+                      : "Ca 1 (08:30 – 17:30)"
                 }
               />
             )}
@@ -1150,17 +1155,15 @@ function DayDetailModal({
             {!cell.overtimeMinutes && cell.overtimeStatus === "PENDING" && !!cell.lateCheckoutMinutes && (
               <Row
                 icon={<Timer className="w-3.5 h-3.5 text-amber-600" />}
-                text={`Check-out trễ ${cell.lateCheckoutMinutes} phút – Đang chờ HR xem xét tính tăng ca${
-                  cell.lateCheckoutReason ? ` (Lý do: ${cell.lateCheckoutReason})` : ""
-                }`}
+                text={`Check-out trễ ${cell.lateCheckoutMinutes} phút – Đang chờ HR xem xét tính tăng ca${cell.lateCheckoutReason ? ` (Lý do: ${cell.lateCheckoutReason})` : ""
+                  }`}
               />
             )}
             {!cell.overtimeMinutes && cell.overtimeStatus === "REJECTED" && !!cell.lateCheckoutMinutes && (
               <Row
                 icon={<Timer className="w-3.5 h-3.5 text-slate-500" />}
-                text={`Check-out trễ ${cell.lateCheckoutMinutes} phút – HR xác nhận không tính tăng ca${
-                  cell.lateCheckoutReason ? ` (Lý do: ${cell.lateCheckoutReason})` : ""
-                }`}
+                text={`Check-out trễ ${cell.lateCheckoutMinutes} phút – HR xác nhận không tính tăng ca${cell.lateCheckoutReason ? ` (Lý do: ${cell.lateCheckoutReason})` : ""
+                  }`}
               />
             )}
             {cell.isHolidayWork && (
@@ -1237,10 +1240,10 @@ function DayDetailModal({
                       onClick={() => !locked && setType(t)}
                       title={locked ? "Chỉ nhân viên hợp đồng Chính thức mới được dùng" : undefined}
                       className={`px-2 py-1.5 rounded-lg border text-xs font-semibold ${locked
-                          ? "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed line-through"
-                          : type === t
-                            ? "bg-emerald-600 border-emerald-600 text-white"
-                            : "bg-white border-slate-200 text-slate-600"
+                        ? "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed line-through"
+                        : type === t
+                          ? "bg-emerald-600 border-emerald-600 text-white"
+                          : "bg-white border-slate-200 text-slate-600"
                         }`}
                     >
                       {LEAVE_TYPE_LABEL[t]}
