@@ -1158,14 +1158,35 @@ function SummaryView({ rows }: { rows: TimesheetRow[] }) {
                 </td>
                 <td className="px-2 py-2 text-center">{s.leaveDays || <span className="text-slate-300">—</span>}</td>
                 <td className="px-2 py-2 text-center">
-                  {!s.paidLeaveEntitled ? (
-                    <span className="text-[10px] text-slate-300" title="Chỉ áp dụng HĐ Chính thức">Không áp dụng</span>
-                  ) : s.paidLeaveUsed ? (
-                    <span className="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-bold">Đã dùng 1/1</span>
-                  ) : s.paidLeaveForfeited ? (
-                    <span className="px-2 py-0.5 rounded bg-slate-200 text-slate-600 font-bold">Mất quyền lợi</span>
+                  {r.contractType !== "FULLTIME" ? (
+                    <span
+                      className="text-[10px] text-slate-400"
+                      title="Chỉ nhân viên HĐ Chính thức được dùng phép có lương; phép thử việc được cộng khi lên Chính thức"
+                    >
+                      {r.contractType === "PROBATION" && (s.paidLeaveFromProbation || 0) > 0
+                        ? `Tích lũy +${s.paidLeaveFromProbation} (TV)`
+                        : "Không áp dụng"}
+                    </span>
                   ) : (
-                    <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-bold">Còn 1 ngày</span>
+                    <div className="inline-flex flex-col items-center gap-0.5">
+                      <span
+                        className={`px-2 py-0.5 rounded font-bold ${
+                          (s.paidLeaveUsed || 0) > 0
+                            ? "bg-teal-100 text-teal-800"
+                            : (s.paidLeaveRemaining ?? (s.paidLeaveEntitled || 0)) > 0
+                            ? "bg-amber-100 text-amber-800"
+                            : "bg-slate-100 text-slate-600"
+                        }`}
+                      >
+                        Dùng {s.paidLeaveUsed || 0}/{s.paidLeaveEntitled || 0} • Còn{" "}
+                        {s.paidLeaveRemaining ?? Math.max(0, (s.paidLeaveEntitled || 0) - (s.paidLeaveUsed || 0))}
+                      </span>
+                      {(s.paidLeaveFromProbation || 0) > 0 && (
+                        <span className="text-[9px] text-teal-600 font-semibold">
+                          (Gồm +{s.paidLeaveFromProbation} ngày TV)
+                        </span>
+                      )}
+                    </div>
                   )}
                 </td>
                 <td className="px-2 py-2 text-center">{s.wfhDays || <span className="text-slate-300">—</span>}</td>

@@ -6,6 +6,7 @@ import {
   StaffUser,
   ShiftChange,
   StaffMonthlyOffStats,
+  StaffPaidLeaveStats,
   fetchShiftSchedule,
   saveShiftChangesApi,
 } from "@/lib/api";
@@ -93,6 +94,7 @@ export default function ShiftScheduleModule({ onScheduleUpdated }: { onScheduleU
   const [assignments, setAssignments] = useState<ShiftAssignment[]>([]);
   const [staffList, setStaffList] = useState<StaffUser[]>([]);
   const [monthlyOffByStaff, setMonthlyOffByStaff] = useState<Record<string, StaffMonthlyOffStats>>({});
+  const [paidLeaveByStaff, setPaidLeaveByStaff] = useState<Record<string, StaffPaidLeaveStats>>({});
   const [nextWeekPendingStaffCount, setNextWeekPendingStaffCount] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -128,6 +130,7 @@ export default function ShiftScheduleModule({ onScheduleUpdated }: { onScheduleU
       setAssignments(res.assignments);
       setStaffList(res.staffList.filter((s) => s.role === "SALES" || s.department === "SALES"));
       setMonthlyOffByStaff(res.monthlyOffByStaff || {});
+      setPaidLeaveByStaff(res.paidLeaveByStaff || {});
       refreshNextWeekBadge();
     } catch (e: any) {
       showToast("err", e?.message || "Lỗi tải lịch ca");
@@ -249,23 +252,35 @@ export default function ShiftScheduleModule({ onScheduleUpdated }: { onScheduleU
     return list;
   }, [days, staffList, effectiveCode]);
 
-  // Quy định: Khối Bán hàng xếp đủ 7 ngày/tuần, tối đa 4 ngày nghỉ không lương (OFF)/tháng (có thể gộp 4 ngày trong 1 tuần, hết 4 ngày thì các tuần sau trong tháng không nghỉ thêm)
+  // Quy định: Khối Bán hàng xếp đủ 7 ngày/tuần, tối đa 4 ngày nghỉ không lương (OFF)/tháng (đăng ký ca tối đa 2 ngày nghỉ/tuần gồm 1 OFF + 1 phép; từ 3 ngày phải tạo đơn trước 3 tuần)
   const weekCheck = useMemo(() => {
     const result = new Map<
       string,
-      { assigned: number; off: number; ok: boolean; message: string; monthUsedAfterWeek: number; monthLimit: number }
+      {
+        assigned: number;
+        off: number;
+        unpaidOff: number;
+        paidLeaveOff: number;
+        ok: boolean;
+        message: string;
+        monthUsedAfterWeek: number;
+        monthLimit: number;
+      }
     >();
     const monthsInWeek = Array.from(new Set(days.map((d) => d.date.slice(0, 7))));
     for (const st of staffList) {
       const codes = days.map((d) => effectiveCode(st._id, d.date));
+      const paidDatesSet = new Set(paidLeaveByStaff[st._id]?.paidLeaveDatesInWeek || []);
       const assigned = codes.filter((c) => c !== null).length;
       const off = codes.filter((c) => c === "OFF").length;
+      const paidLeaveOff = days.filter((d, idx) => codes[idx] === "OFF" && paidDatesSet.has(d.date)).length;
+      const unpaidOff = Math.max(0, off - paidLeaveOff);
       const stats = monthlyOffByStaff[st._id];
       const limit = stats?.limit ?? 4;
       const primaryOutside = stats?.usedOutsideWeek ?? 0;
       const primaryMonth = stats?.primaryMonth || weekStart.slice(0, 7);
       const offInPrimaryMonthThisWeek = days.filter(
-        (d, idx) => d.date.startsWith(`${primaryMonth}-`) && codes[idx] === "OFF"
+        (d, idx) => d.date.startsWith(`${primaryMonth}-`) && codes[idx] === "OFF" && !paidDatesSet.has(d.date)
       ).length;
       const monthUsedAfterWeek = primaryOutside + offInPrimaryMonthThisWeek;
 
@@ -275,11 +290,13 @@ export default function ShiftScheduleModule({ onScheduleUpdated }: { onScheduleU
       else {
         const problems: string[] = [];
         if (assigned < 7) problems.push(`còn ${7 - assigned} ngày chưa xếp`);
-        if (off > limit) problems.push(`đang nghỉ ${off} ngày/tuần (tối đa ${limit} ngày/tháng)`);
+        if (unpaidOff > limit) problems.push(`đang nghỉ không lương ${unpaidOff} ngày/tuần (tối đa ${limit} ngày OFF/tháng)`);
         for (const ym of monthsInWeek) {
           const mStats = stats?.byMonth?.[ym];
           const usedOutside = mStats?.usedOutsideWeek ?? (ym === primaryMonth ? primaryOutside : 0);
-          const offInMonth = days.filter((d, idx) => d.date.startsWith(`${ym}-`) && codes[idx] === "OFF").length;
+          const offInMonth = days.filter(
+            (d, idx) => d.date.startsWith(`${ym}-`) && codes[idx] === "OFF" && !paidDatesSet.has(d.date)
+          ).length;
           if (usedOutside + offInMonth > limit) {
             monthQuotaExceeded = true;
             const rem = Math.max(0, limit - usedOutside);
@@ -295,14 +312,16 @@ export default function ShiftScheduleModule({ onScheduleUpdated }: { onScheduleU
       result.set(st._id, {
         assigned,
         off,
-        ok: assigned === 7 && off >= 0 && off <= limit && !monthQuotaExceeded,
+        unpaidOff,
+        paidLeaveOff,
+        ok: assigned === 7 && unpaidOff >= 0 && unpaidOff <= limit && !monthQuotaExceeded,
         message,
         monthUsedAfterWeek,
         monthLimit: limit,
       });
     }
     return result;
-  }, [staffList, days, effectiveCode, monthlyOffByStaff, weekStart]);
+  }, [staffList, days, effectiveCode, monthlyOffByStaff, paidLeaveByStaff, weekStart]);
 
   const blockingViolations = staffList.filter((st) => {
     const c = weekCheck.get(st._id);

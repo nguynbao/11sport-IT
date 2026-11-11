@@ -303,7 +303,7 @@ describe('Bảng công tháng (Timesheet), Điều chỉnh giờ công & Chấm 
     expect(list.body.data.some((l: any) => l._id === c1.body.data._id)).toBe(false);
   });
 
-  it('8. Nghỉ phép có lương: chỉ HĐ Chính thức, 1 ngày/tháng, duyệt -> +1 công; tháng không dùng -> mất quyền lợi', async () => {
+  it('8. Nghỉ phép có lương: chỉ HĐ Chính thức, để dành cộng dồn qua các tháng (không mất quyền lợi cuối tháng), duyệt -> +1 công', async () => {
     const mktLogin = await request(app).post('/api/v1/auth/login').send({ username: 'marketing1', password: '123456' });
     const mktToken = mktLogin.body.data.token;
     await staffRepo.updateById(marketingId, { contractType: 'FULLTIME', createdAt: new Date(2020, 0, 1) } as any);
@@ -318,9 +318,10 @@ describe('Bảng công tháng (Timesheet), Điều chỉnh giờ công & Chấm 
       .get(`/api/v1/attendance/timesheet?month=${m}&year=${yr}&department=OFFICE`)
       .set('Authorization', `Bearer ${hrToken}`);
     const row0 = ts0.body.data.rows.find((r: any) => r.staffId === marketingId);
-    // Tháng đã qua, chưa dùng phép -> mất quyền lợi
+    // Tháng đã qua, chưa dùng phép -> được để dành cộng dồn (paidLeaveForfeited = 0)
     expect(row0.summary.paidLeaveEntitled).toBe(1);
-    expect(row0.summary.paidLeaveForfeited).toBe(1);
+    expect(row0.summary.paidLeaveForfeited).toBe(0);
+    expect(row0.summary.paidLeaveRemaining).toBe(1);
 
     const free = ts0.body.data.days.filter(
       (d: any) => d.weekday !== 0 && !d.holiday && row0.cells[d.date].code === 'ABSENT'
@@ -334,7 +335,7 @@ describe('Bảng công tháng (Timesheet), Điều chỉnh giờ công & Chấm 
       .send({ type: 'PAID_LEAVE', date: d1, reason: 'Nghỉ phép tháng' });
     expect(r1.status).toBe(201);
 
-    // Ngày thứ 2 trong cùng tháng -> vượt hạn mức
+    // Ngày thứ 2 trong cùng tháng (khi chỉ có 1 ngày phép tích lũy) -> vượt hạn mức
     const r2 = await request(app)
       .post('/api/v1/leave-requests')
       .set('Authorization', `Bearer ${mktToken}`)
@@ -356,10 +357,11 @@ describe('Bảng công tháng (Timesheet), Điều chỉnh giờ công & Chấm 
     expect(row1.cells[d1].code).toBe('PAID_LEAVE');
     expect(row1.summary.paidLeaveUsed).toBe(1);
     expect(row1.summary.paidLeaveForfeited).toBe(0);
+    expect(row1.summary.paidLeaveRemaining).toBe(0);
     expect(row1.summary.absentDays).toBe(row0.summary.absentDays - 1);
     expect(row1.summary.paidUnits).toBeCloseTo(row0.summary.paidUnits + 1, 2);
 
-    // Hợp đồng Thử việc không được dùng
+    // Hợp đồng Thử việc không được dùng trực tiếp khi chưa lên Chính thức
     await staffRepo.updateById(marketingId, { contractType: 'PROBATION' } as any);
     const r3 = await request(app)
       .post('/api/v1/leave-requests')
@@ -632,5 +634,144 @@ describe('Bảng công tháng (Timesheet), Điều chỉnh giờ công & Chấm 
     const octRow = octTs.body.data.rows.find((r: any) => r.staffId === newStaffId);
     expect(octRow).toBeDefined();
     expect(octRow.summary.paidLeaveEntitled).toBe(1);
+  });
+
+  it('16. Thử việc lên Chính thức được cộng ngày phép thử việc + cộng dồn 1 ngày/tháng chính thức; dùng liên tiếp 1 tuần khi tạo đơn trước 3 tuần', async () => {
+    // 1. Chặn tạo HĐ Thử việc quá 2 tháng (> 65 ngày)
+    const exceedProb = await request(app)
+      .post('/api/v1/staff')
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({
+        username: 'prob_exceed',
+        password: '123456',
+        fullName: 'Thử việc 3 tháng',
+        role: 'SALES',
+        department: 'SALES',
+        contractType: 'PROBATION',
+        contractStartDate: '2026-06-01',
+        contractEndDate: '2026-09-01',
+      });
+    expect(exceedProb.status).toBe(400);
+    expect(exceedProb.body.code).toBe('PROBATION_MAX_2_MONTHS');
+
+    // 2. Tạo nhân viên Thử việc 2 tháng (01/06/2026 -> 31/07/2026) rồi ký Chính thức từ 01/08/2026
+    const probCreate = await request(app)
+      .post('/api/v1/staff')
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({
+        username: 'nv_prob_to_ft',
+        password: '123456',
+        fullName: 'Nhân Viên Thử Việc Lên Chính Thức',
+        role: 'SALES',
+        department: 'SALES',
+        contractType: 'PROBATION',
+        contractStartDate: '2026-06-01',
+        contractEndDate: '2026-07-31',
+      });
+    expect(probCreate.status).toBe(201);
+    const staffId = probCreate.body.data._id;
+
+    // Lên Chính thức từ 01/08/2026 -> được cộng 2 ngày phép từ 2 tháng thử việc (tháng 6 & 7)
+    const promoteRes = await request(app)
+      .patch(`/api/v1/staff/${staffId}`)
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({
+        contractType: 'FULLTIME',
+        contractStartDate: '2026-08-01',
+      });
+    expect(promoteRes.status).toBe(200);
+    expect(promoteRes.body.data.probationMonths).toBe(2);
+
+    // Kiểm tra bảng công tháng 8/2026 (tháng chính thức thứ 1): 2 ngày phép thử việc + 1 ngày phép tháng 8 = 3 ngày phép
+    const tsAug = await request(app)
+      .get('/api/v1/attendance/timesheet?month=8&year=2026&department=SALES')
+      .set('Authorization', `Bearer ${hrToken}`);
+    const rowAug = tsAug.body.data.rows.find((r: any) => r.staffId === staffId);
+    expect(rowAug.summary.paidLeaveFromProbation).toBe(2);
+    expect(rowAug.summary.paidLeaveEntitled).toBe(3);
+
+    // Kiểm tra bảng công tháng 12/2026 (5 tháng chính thức T8..T12 + 2 tháng thử việc = 7 ngày phép tích lũy)
+    const tsDec = await request(app)
+      .get('/api/v1/attendance/timesheet?month=12&year=2026&department=SALES')
+      .set('Authorization', `Bearer ${hrToken}`);
+    const rowDec = tsDec.body.data.rows.find((r: any) => r.staffId === staffId);
+    expect(rowDec.summary.paidLeaveEntitled).toBe(7);
+
+    const loginRes = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ username: 'nv_prob_to_ft', password: '123456' });
+    const staffToken = loginRes.body.data.token;
+
+    // 3. Thử dùng 2 ngày phép liên tiếp nhưng cách hôm nay < 21 ngày -> bị chặn ADVANCE_NOTICE_REQUIRED
+    const near1 = new Date();
+    near1.setDate(near1.getDate() + 5);
+    const near2 = new Date();
+    near2.setDate(near2.getDate() + 6);
+    const nearStr1 = `${near1.getFullYear()}-${pad(near1.getMonth() + 1)}-${pad(near1.getDate())}`;
+    const nearStr2 = `${near2.getFullYear()}-${pad(near2.getMonth() + 1)}-${pad(near2.getDate())}`;
+
+    const leaveNear1 = await request(app)
+      .post('/api/v1/leave-requests')
+      .set('Authorization', `Bearer ${staffToken}`)
+      .send({ type: 'PAID_LEAVE', date: nearStr1, reason: 'Nghỉ 1 ngày phép' });
+    expect(leaveNear1.status).toBe(201);
+
+    // Ngày phép thứ 2 cách hôm nay < 3 tuần -> bị chặn ADVANCE_NOTICE_REQUIRED
+    const leaveNear2 = await request(app)
+      .post('/api/v1/leave-requests')
+      .set('Authorization', `Bearer ${staffToken}`)
+      .send({ type: 'PAID_LEAVE', date: nearStr2, reason: 'Nghỉ ngày phép thứ 2' });
+    expect(leaveNear2.status).toBe(400);
+    expect(leaveNear2.body.code).toBe('ADVANCE_NOTICE_REQUIRED');
+
+    // Hủy đơn near1 để test tiếp chuỗi 7 ngày phép liên tiếp tạo trước > 3 tuần
+    await request(app)
+      .delete(`/api/v1/leave-requests/${leaveNear1.body.data._id}`)
+      .set('Authorization', `Bearer ${staffToken}`);
+
+    // 4. Tạo đơn nghỉ phép liên tiếp 1 tuần (7 ngày) trước > 3 tuần (30 ngày tới) -> hợp lệ!
+    const baseFuture = new Date();
+    baseFuture.setDate(baseFuture.getDate() + 30);
+    // Đảm bảo cả 8 ngày liên tiếp dùng để test đều nằm trong cùng 1 tháng (dịch về ngày 10 của tháng kế tiếp nếu cần)
+    const futureMonthStart = new Date(baseFuture.getFullYear(), baseFuture.getMonth() + 1, 10);
+    const futureDates: string[] = [];
+    for (let i = 0; i < 8; i++) {
+      const dt = new Date(
+        futureMonthStart.getFullYear(),
+        futureMonthStart.getMonth(),
+        futureMonthStart.getDate() + i
+      );
+      futureDates.push(`${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`);
+    }
+
+    for (let i = 0; i < 7; i++) {
+      const res7 = await request(app)
+        .post('/api/v1/leave-requests')
+        .set('Authorization', `Bearer ${staffToken}`)
+        .send({ type: 'PAID_LEAVE', date: futureDates[i], reason: 'Nghỉ phép 1 tuần cộng dồn' });
+      expect(res7.status).toBe(201);
+      await request(app)
+        .patch(`/api/v1/leave-requests/${res7.body.data._id}`)
+        .set('Authorization', `Bearer ${hrToken}`)
+        .send({ status: 'APPROVED' });
+    }
+
+    // Ngày thứ 8 liên tiếp -> bị chặn PAID_LEAVE_WEEK_LIMIT_EXCEEDED (tối đa 7 ngày liên tiếp)
+    const res8 = await request(app)
+      .post('/api/v1/leave-requests')
+      .set('Authorization', `Bearer ${staffToken}`)
+      .send({ type: 'PAID_LEAVE', date: futureDates[7], reason: 'Vượt 1 tuần liên tiếp' });
+    expect(res8.status).toBe(400);
+    expect(res8.body.code).toBe('PAID_LEAVE_WEEK_LIMIT_EXCEEDED');
+
+    // Kiểm tra bảng công tháng đó: cả 7 ngày phép được duyệt đều tính đủ +7 công vào paidUnits
+    const fMonth = futureMonthStart.getMonth() + 1;
+    const fYear = futureMonthStart.getFullYear();
+    const tsFuture = await request(app)
+      .get(`/api/v1/attendance/timesheet?month=${fMonth}&year=${fYear}&department=SALES`)
+      .set('Authorization', `Bearer ${hrToken}`);
+    const rowFuture = tsFuture.body.data.rows.find((r: any) => r.staffId === staffId);
+    expect(rowFuture.summary.paidLeaveUsed).toBe(7);
+    expect(rowFuture.summary.paidUnits).toBe(7);
   });
 });

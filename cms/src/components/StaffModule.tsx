@@ -100,6 +100,7 @@ export default function StaffModule({
   const [editAddress, setEditAddress] = useState("");
   const [editDepartment, setEditDepartment] = useState<"OFFICE" | "SALES">("SALES");
   const [editContractType, setEditContractType] = useState<ContractType>("PROBATION");
+  const [editProbationMonths, setEditProbationMonths] = useState<number>(2);
   const [editContractStart, setEditContractStart] = useState("");
   const [editContractEnd, setEditContractEnd] = useState("");
   const [editContractFileUrl, setEditContractFileUrl] = useState("");
@@ -206,6 +207,13 @@ export default function StaffModule({
     setEditAddress(st.address || "");
     setEditDepartment(st.department === "OFFICE" ? "OFFICE" : "SALES");
     setEditContractType(st.contractType || "PROBATION");
+    setEditProbationMonths(
+      st.probationMonths !== undefined && st.probationMonths !== null
+        ? Math.min(2, Math.max(0, Number(st.probationMonths)))
+        : st.contractType === "PROBATION"
+          ? 2
+          : 0
+    );
     setEditContractStart(
       st.contractStartDate ? String(st.contractStartDate).slice(0, 10) : ""
     );
@@ -237,6 +245,10 @@ export default function StaffModule({
           address: editAddress.trim(),
           department: editDepartment,
           contractType: editContractType,
+          probationMonths:
+            editContractType === "INTERN"
+              ? 0
+              : Math.min(2, Math.max(0, Number(editProbationMonths) || 0)),
           contractStartDate: editContractStart || null,
           contractEndDate: editContractEnd || null,
           contractFileUrl: editContractFileUrl,
@@ -924,13 +936,13 @@ export default function StaffModule({
               onChange={(e) =>
                 setSortBy(
                   e.target.value as
-                    | "code"
-                    | "fullName"
-                    | "baseSalary"
-                    | "allowance"
-                    | "bonus"
-                    | "insurance"
-                    | "createdAt"
+                  | "code"
+                  | "fullName"
+                  | "baseSalary"
+                  | "allowance"
+                  | "bonus"
+                  | "insurance"
+                  | "createdAt"
                 )
               }
               className="bg-transparent font-bold text-slate-800 outline-none cursor-pointer"
@@ -1140,58 +1152,58 @@ export default function StaffModule({
                         </span>
                       </td>
                       <td className="py-3 px-3.5 text-right whitespace-nowrap">
-                      <div className="inline-flex items-center gap-2">
-                        {!isAdminView ? (
-                          !isTargetAdmin ? (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => handleOpenProfileModal(st)}
-                                className="py-1.5 px-3 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs transition"
-                              >
-                                Sửa hồ sơ
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleOpenResetPassword(st)}
-                                className="px-3 py-1.5 rounded-lg font-bold inline-flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200"
-                              >
-                                <KeyRound className="w-3.5 h-3.5" /> Đổi mật khẩu
-                              </button>
-                            </>
-                          ) : (
-                            <span className="text-[11px] text-slate-400 italic">Tài khoản Quản lý</span>
-                          )
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleUpdateStaff(st, {
-                                status: st.status === "ACTIVE" ? "LOCKED" : "ACTIVE",
-                              })
-                            }
-                            className={`px-3 py-1.5 rounded-lg font-bold inline-flex items-center gap-1 ${st.status === "ACTIVE"
-                              ? "bg-red-50 hover:bg-red-100 text-red-600"
-                              : "bg-emerald-50 hover:bg-emerald-100 text-emerald-700"
-                              }`}
-                          >
-                            {st.status === "ACTIVE" ? (
+                        <div className="inline-flex items-center gap-2">
+                          {!isAdminView ? (
+                            !isTargetAdmin ? (
                               <>
-                                <Lock className="w-3.5 h-3.5" /> Khóa TK
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenProfileModal(st)}
+                                  className="py-1.5 px-3 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs transition"
+                                >
+                                  Sửa hồ sơ
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenResetPassword(st)}
+                                  className="px-3 py-1.5 rounded-lg font-bold inline-flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200"
+                                >
+                                  <KeyRound className="w-3.5 h-3.5" /> Đổi mật khẩu
+                                </button>
                               </>
                             ) : (
-                              <>
-                                <Unlock className="w-3.5 h-3.5" /> Mở khóa
-                              </>
-                            )}
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
+                              <span className="text-[11px] text-slate-400 italic">Tài khoản Quản lý</span>
+                            )
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleUpdateStaff(st, {
+                                  status: st.status === "ACTIVE" ? "LOCKED" : "ACTIVE",
+                                })
+                              }
+                              className={`px-3 py-1.5 rounded-lg font-bold inline-flex items-center gap-1 ${st.status === "ACTIVE"
+                                ? "bg-red-50 hover:bg-red-100 text-red-600"
+                                : "bg-emerald-50 hover:bg-emerald-100 text-emerald-700"
+                                }`}
+                            >
+                              {st.status === "ACTIVE" ? (
+                                <>
+                                  <Lock className="w-3.5 h-3.5" /> Khóa TK
+                                </>
+                              ) : (
+                                <>
+                                  <Unlock className="w-3.5 h-3.5" /> Mở khóa
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
@@ -1395,7 +1407,17 @@ export default function StaffModule({
                   </label>
                   <select
                     value={editContractType}
-                    onChange={(e) => setEditContractType(e.target.value as ContractType)}
+                    onChange={(e) => {
+                      const nextType = e.target.value as ContractType;
+                      setEditContractType(nextType);
+                      if (
+                        nextType === "FULLTIME" &&
+                        selectedStaffProfile?.contractType === "PROBATION" &&
+                        editProbationMonths === 0
+                      ) {
+                        setEditProbationMonths(2);
+                      }
+                    }}
                     className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white font-bold text-xs"
                   >
                     {CONTRACT_TYPE_OPTIONS.map((o) => (
@@ -1408,6 +1430,23 @@ export default function StaffModule({
                     )}
                   </select>
                 </div>
+
+                {(editContractType === "PROBATION" || editContractType === "FULLTIME") && (
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      Số tháng thử việc
+                    </label>
+                    <select
+                      value={editProbationMonths}
+                      onChange={(e) => setEditProbationMonths(Number(e.target.value))}
+                      className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white font-bold text-xs"
+                    >
+                      <option value={0}>0 tháng (Vào thẳng chính thức)</option>
+                      <option value={1}>1 tháng thử việc (+1 ngày phép khi lên Chính thức)</option>
+                      <option value={2}>2 tháng thử việc (+2 ngày phép khi lên Chính thức)</option>
+                    </select>
+                  </div>
+                )}
 
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
@@ -1491,7 +1530,7 @@ export default function StaffModule({
 
                 <div className="sm:col-span-2 p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
                   <label className="block font-bold text-slate-800">
-                    File hợp đồng lao động (Tải lên / Chỉnh sửa / Xóa)
+                    File hợp đồng lao động
                   </label>
                   <div className="flex flex-wrap items-center gap-2">
                     <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition">

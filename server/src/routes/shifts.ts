@@ -1,8 +1,19 @@
 import { Router } from 'express';
-import { shiftAssignmentRepo, shiftHandoverRepo, staffRepo } from '../config/db';
+import { leaveRequestRepo, shiftAssignmentRepo, shiftHandoverRepo, staffRepo } from '../config/db';
 import { ApiError } from '../utils/errors';
 import { ShiftType } from '../models/ShiftAssignment';
-import { getSalesMonthlyUnpaidOffDates, SALES_MAX_UNPAID_OFF_PER_MONTH } from './leaveRequests';
+import {
+  ADVANCE_NOTICE_DAYS_REQUIRED,
+  assertPaidLeaveQuota,
+  getSalesMonthlyUnpaidOffDates,
+  getStaffPaidLeaveBalance,
+  SALES_MAX_OFF_PER_WEEK_SHIFT_REG,
+  SALES_MAX_PAID_LEAVE_PER_WEEK_SHIFT_REG,
+  SALES_MAX_UNPAID_OFF_PER_MONTH,
+  SALES_MAX_UNPAID_OFF_PER_WEEK_SHIFT_REG,
+} from './leaveRequests';
+
+const SHIFT_REG_PAID_LEAVE_REASON = 'Đăng ký nghỉ phép trong lịch đăng ký ca tuần';
 
 export const shiftsRouter = Router();
 
@@ -93,43 +104,8 @@ shiftsRouter.post('/shifts/preferences', async (req, res, next) => {
       throw new ApiError(
         400,
         'WEEKLY_OFF_REQUIRED',
-        `Vui lòng đăng ký đủ 7 ngày trong tuần (tối đa ${SALES_MAX_UNPAID_OFF_PER_MONTH} ngày nghỉ không lương OFF/tháng)`
+        `Vui lòng đăng ký đủ 7 ngày trong tuần (mặc định tối đa ${SALES_MAX_OFF_PER_WEEK_SHIFT_REG} ngày nghỉ/tuần gồm ${SALES_MAX_UNPAID_OFF_PER_WEEK_SHIFT_REG} ngày OFF không lương và ${SALES_MAX_PAID_LEAVE_PER_WEEK_SHIFT_REG} ngày phép có lương)`
       );
-    }
-
-    const offItems = preferences.filter(
-      (item: any) => Boolean(item?.isOffRequested) || item?.preferenceShift === 'OFF'
-    );
-    const offCount = offItems.length;
-    if (offCount > SALES_MAX_UNPAID_OFF_PER_MONTH) {
-      throw new ApiError(
-        400,
-        'WEEKLY_OFF_REQUIRED',
-        `Quy định khối Bán hàng: mỗi tháng chỉ được nghỉ không lương tối đa ${SALES_MAX_UNPAID_OFF_PER_MONTH} ngày (hiện chọn ${offCount} ngày OFF trong tuần)`
-      );
-    }
-
-    const weekDateSet = new Set<string>(preferences.map((item: any) => String(item?.date || '')));
-    const monthsInWeek = Array.from(new Set(Array.from(weekDateSet).map((d) => d.slice(0, 7))));
-    for (const ym of monthsInWeek) {
-      const usedOutsideWeek = await getSalesMonthlyUnpaidOffDates(String(staff._id), ym, {
-        excludeShiftDates: weekDateSet,
-        includePendingLeave: true,
-      });
-      const offDatesInMonthThisWeek = offItems
-        .map((item: any) => String(item.date))
-        .filter((d: string) => d.startsWith(`${ym}-`) && !usedOutsideWeek.has(d));
-      const totalInMonth = usedOutsideWeek.size + offDatesInMonthThisWeek.length;
-      if (totalInMonth > SALES_MAX_UNPAID_OFF_PER_MONTH) {
-        const remaining = Math.max(0, SALES_MAX_UNPAID_OFF_PER_MONTH - usedOutsideWeek.size);
-        throw new ApiError(
-          400,
-          'SALES_OFF_QUOTA_EXCEEDED',
-          remaining === 0
-            ? `Tháng ${ym.slice(5, 7)}/${ym.slice(0, 4)} bạn đã dùng hết ${SALES_MAX_UNPAID_OFF_PER_MONTH}/${SALES_MAX_UNPAID_OFF_PER_MONTH} ngày nghỉ không lương (OFF). Các tuần còn lại trong tháng không được đăng ký OFF thêm, phải qua tháng mới!`
-            : `Tháng ${ym.slice(5, 7)}/${ym.slice(0, 4)} chỉ còn ${remaining}/${SALES_MAX_UNPAID_OFF_PER_MONTH} ngày nghỉ không lương (đã dùng ${usedOutsideWeek.size} ngày ở tuần khác), nhưng tuần này bạn đang chọn ${offDatesInMonthThisWeek.length} ngày OFF.`
-        );
-      }
     }
 
     // Kiểm tra nếu tuần này đã được HR chốt lịch thì không cho tự ghi đè
@@ -142,6 +118,179 @@ shiftsRouter.post('/shifts/preferences', async (req, res, next) => {
         'SCHEDULE_ALREADY_CONFIRMED',
         'Lịch ca tuần này đã được HR xác nhận. Vui lòng liên hệ HR nếu cần điều chỉnh!'
       );
+    }
+
+    const weekDateSet = new Set<string>(preferences.map((item: any) => String(item?.date || '')));
+    const allStaffLeaves = await leaveRequestRepo.find({ staffId: staff._id });
+    const activeWeekLeaves = (allStaffLeaves as any[]).filter(
+      (l) =>
+        weekDateSet.has(String(l.date || '')) &&
+        (l.type === 'OFF' || l.type === 'PAID_LEAVE') &&
+        (l.status === 'PENDING' || l.status === 'APPROVED')
+    );
+
+    const formalLeaveByDate = new Map<string, any>();
+    const shiftRegPaidLeaveByDate = new Map<string, any>();
+    for (const l of activeWeekLeaves) {
+      const d = String(l.date);
+      if (l.reason === SHIFT_REG_PAID_LEAVE_REASON && l.type === 'PAID_LEAVE') {
+        shiftRegPaidLeaveByDate.set(d, l);
+      } else {
+        formalLeaveByDate.set(d, l);
+      }
+    }
+
+    const offItems = preferences.filter(
+      (item: any) => Boolean(item?.isOffRequested) || item?.preferenceShift === 'OFF'
+    );
+    const offCount = offItems.length;
+
+    // Những ngày nghỉ được chọn trực tiếp trong mục Đăng ký ca (chưa có đơn xin nghỉ tạo trước từ mục Tạo đơn)
+    const regOffItems = offItems.filter((item: any) => !formalLeaveByDate.has(String(item.date)));
+
+    // Ràng buộc 1: Trong mục đăng ký ca của nhân viên Bán hàng không cho nghỉ quá 2 ngày trong 1 tuần
+    // Từ 3 ngày trở đi bắt buộc phải tạo đơn (tối thiểu trước 3 tuần = 21 ngày)
+    if (offCount > SALES_MAX_OFF_PER_WEEK_SHIFT_REG && regOffItems.length > 0) {
+      throw new ApiError(
+        400,
+        'WEEKLY_OFF_REQUIRED',
+        `Trong mục Đăng ký ca tuần, nhân viên Bán hàng không được nghỉ quá ${SALES_MAX_OFF_PER_WEEK_SHIFT_REG} ngày/tuần (mặc định tối đa ${SALES_MAX_UNPAID_OFF_PER_WEEK_SHIFT_REG} ngày OFF không lương và ${SALES_MAX_PAID_LEAVE_PER_WEEK_SHIFT_REG} ngày phép có lương). Nếu muốn nghỉ từ 3 ngày trở đi trong tuần, bắt buộc phải Tạo đơn trước tối thiểu 3 tuần (${ADVANCE_NOTICE_DAYS_REQUIRED} ngày)!`
+      );
+    }
+
+    // Ràng buộc 2: Trong các ngày nghỉ đăng ký ca (tối đa 2 ngày), mặc định chỉ được 1 ngày OFF (không lương) và 1 ngày phép (PAID_LEAVE)
+    let explicitUnpaidCount = 0;
+    let explicitPaidLeaveCount = 0;
+    const regItemResolvedType = new Map<string, 'OFF' | 'PAID_LEAVE'>();
+
+    if (regOffItems.length > 0) {
+      for (const item of offItems) {
+        const d = String(item.date);
+        const formal = formalLeaveByDate.get(d);
+        if (!formal) continue;
+        if (formal.type === 'PAID_LEAVE') explicitPaidLeaveCount++;
+        else if (formal.type === 'OFF') explicitUnpaidCount++;
+      }
+    }
+
+    for (const item of regOffItems) {
+      const d = String(item.date);
+      if (item.leaveType === 'PAID_LEAVE') {
+        regItemResolvedType.set(d, 'PAID_LEAVE');
+        explicitPaidLeaveCount++;
+      } else if (item.leaveType === 'OFF') {
+        regItemResolvedType.set(d, 'OFF');
+        explicitUnpaidCount++;
+      } else if (shiftRegPaidLeaveByDate.has(d)) {
+        regItemResolvedType.set(d, 'PAID_LEAVE');
+        explicitPaidLeaveCount++;
+      }
+    }
+
+    // Gán mặc định cho các ngày chưa truyền leaveType: tối đa 1 ngày OFF không lương + 1 ngày phép có lương
+    for (const item of regOffItems) {
+      const d = String(item.date);
+      if (regItemResolvedType.has(d)) continue;
+      if (explicitUnpaidCount < SALES_MAX_UNPAID_OFF_PER_WEEK_SHIFT_REG) {
+        regItemResolvedType.set(d, 'OFF');
+        explicitUnpaidCount++;
+      } else {
+        regItemResolvedType.set(d, 'PAID_LEAVE');
+        explicitPaidLeaveCount++;
+      }
+    }
+
+    if (explicitUnpaidCount > SALES_MAX_UNPAID_OFF_PER_WEEK_SHIFT_REG) {
+      throw new ApiError(
+        400,
+        'WEEKLY_OFF_REQUIRED',
+        `Đăng ký ca tuần mặc định chỉ được tối đa ${SALES_MAX_UNPAID_OFF_PER_WEEK_SHIFT_REG} ngày OFF không lương và ${SALES_MAX_PAID_LEAVE_PER_WEEK_SHIFT_REG} ngày phép có lương. Không thể chọn ${explicitUnpaidCount} ngày OFF không lương trong mục Đăng ký ca!`
+      );
+    }
+
+    if (explicitPaidLeaveCount > SALES_MAX_PAID_LEAVE_PER_WEEK_SHIFT_REG) {
+      throw new ApiError(
+        400,
+        'WEEKLY_OFF_REQUIRED',
+        `Đăng ký ca tuần mặc định chỉ được chọn tối đa ${SALES_MAX_PAID_LEAVE_PER_WEEK_SHIFT_REG} ngày phép có lương. Từ 2 ngày phép trở đi bắt buộc phải Tạo đơn trước tối thiểu 3 tuần (${ADVANCE_NOTICE_DAYS_REQUIRED} ngày)!`
+      );
+    }
+
+    // Kiểm tra điều kiện & hạn mức ngày phép tích lũy nếu có chọn 1 ngày phép trong đăng ký ca
+    const selectedRegPaidLeaveDates = Array.from(regItemResolvedType.entries())
+      .filter(([, t]) => t === 'PAID_LEAVE')
+      .map(([d]) => d);
+
+    for (const paidDate of selectedRegPaidLeaveDates) {
+      if ((staff as any).contractType !== 'FULLTIME') {
+        throw new ApiError(
+          400,
+          'WEEKLY_OFF_REQUIRED',
+          `Đăng ký ca tuần mặc định chỉ được ${SALES_MAX_UNPAID_OFF_PER_WEEK_SHIFT_REG} ngày OFF không lương và ${SALES_MAX_PAID_LEAVE_PER_WEEK_SHIFT_REG} ngày phép có lương (dành cho HĐ Chính thức). Nhân viên Thử việc chưa thể dùng ngày phép trong đăng ký ca!`
+        );
+      }
+      const existingAutoLeave = shiftRegPaidLeaveByDate.get(paidDate);
+      await assertPaidLeaveQuota(
+        String(staff._id),
+        paidDate,
+        existingAutoLeave ? String(existingAutoLeave._id) : undefined,
+        false
+      );
+    }
+
+    // Kiểm tra hạn mức nghỉ không lương tháng (tối đa 4 ngày OFF không lương/tháng)
+    const unpaidOffDatesInWeek = offItems
+      .map((item: any) => String(item.date))
+      .filter((d) => {
+        const formal = formalLeaveByDate.get(d);
+        if (formal) return formal.type === 'OFF';
+        return regItemResolvedType.get(d) !== 'PAID_LEAVE';
+      });
+
+    const monthsInWeek = Array.from(new Set(Array.from(weekDateSet).map((d) => d.slice(0, 7))));
+    for (const ym of monthsInWeek) {
+      const usedOutsideWeek = await getSalesMonthlyUnpaidOffDates(String(staff._id), ym, {
+        excludeShiftDates: weekDateSet,
+        includePendingLeave: true,
+      });
+      const offDatesInMonthThisWeek = unpaidOffDatesInWeek.filter(
+        (d: string) => d.startsWith(`${ym}-`) && !usedOutsideWeek.has(d)
+      );
+      const totalInMonth = usedOutsideWeek.size + offDatesInMonthThisWeek.length;
+      if (totalInMonth > SALES_MAX_UNPAID_OFF_PER_MONTH) {
+        const remaining = Math.max(0, SALES_MAX_UNPAID_OFF_PER_MONTH - usedOutsideWeek.size);
+        throw new ApiError(
+          400,
+          'SALES_OFF_QUOTA_EXCEEDED',
+          remaining === 0
+            ? `Tháng ${ym.slice(5, 7)}/${ym.slice(0, 4)} bạn đã dùng hết ${SALES_MAX_UNPAID_OFF_PER_MONTH}/${SALES_MAX_UNPAID_OFF_PER_MONTH} ngày nghỉ không lương (OFF). Các tuần còn lại trong tháng không được đăng ký OFF không lương thêm (bạn vẫn có thể dùng 1 ngày phép tích lũy nếu còn)!`
+            : `Tháng ${ym.slice(5, 7)}/${ym.slice(0, 4)} chỉ còn ${remaining}/${SALES_MAX_UNPAID_OFF_PER_MONTH} ngày nghỉ không lương (đã dùng ${usedOutsideWeek.size} ngày ở tuần khác), nhưng tuần này bạn đang chọn ${offDatesInMonthThisWeek.length} ngày OFF không lương.`
+        );
+      }
+    }
+
+    // Đồng bộ đơn PAID_LEAVE tự sinh từ đăng ký ca tuần:
+    // - Xóa các đơn PAID_LEAVE tự sinh (PENDING) của tuần này không còn được chọn
+    for (const [oldDate, oldLeave] of shiftRegPaidLeaveByDate.entries()) {
+      if (!selectedRegPaidLeaveDates.includes(oldDate) && oldLeave.status === 'PENDING') {
+        await leaveRequestRepo.deleteById(String(oldLeave._id));
+      }
+    }
+    // - Tạo đơn PAID_LEAVE (PENDING) cho ngày phép được chọn trong đăng ký ca nếu chưa có
+    const department = (staff as any).department || (staff.role === 'SALES' ? 'SALES' : 'OFFICE');
+    for (const paidDate of selectedRegPaidLeaveDates) {
+      if (!shiftRegPaidLeaveByDate.has(paidDate)) {
+        await leaveRequestRepo.create({
+          staffId: staff._id,
+          staffCode: staff.code,
+          staffName: staff.fullName,
+          department,
+          type: 'PAID_LEAVE',
+          date: paidDate,
+          reason: SHIFT_REG_PAID_LEAVE_REASON,
+          status: 'PENDING',
+        });
+      }
     }
 
     const createdRecords = [];
@@ -274,6 +423,26 @@ shiftsRouter.get('/shifts/my-schedule', async (req, res, next) => {
       usedDatesOutsideWeek: [],
     };
 
+    const [paidLeaveBalance, staffLeaves] = await Promise.all([
+      getStaffPaidLeaveBalance(String(user.userId), primaryMonth, { approvedOnly: false }),
+      leaveRequestRepo.find({ staffId: user.userId }),
+    ]);
+
+    const activeWeekLeaves = (staffLeaves as any[]).filter(
+      (l) =>
+        weekDateSet.has(String(l.date || '')) &&
+        (l.type === 'OFF' || l.type === 'PAID_LEAVE') &&
+        (l.status === 'PENDING' || l.status === 'APPROVED')
+    );
+    const paidLeaveDatesInWeek = activeWeekLeaves
+      .filter((l) => l.type === 'PAID_LEAVE')
+      .map((l) => String(l.date))
+      .sort();
+    const formalLeaveDatesInWeek = activeWeekLeaves
+      .filter((l) => l.reason !== SHIFT_REG_PAID_LEAVE_REASON)
+      .map((l) => String(l.date))
+      .sort();
+
     res.json({
       data: {
         weekStart: targetWeekStart,
@@ -288,6 +457,17 @@ shiftsRouter.get('/shifts/my-schedule', async (req, res, next) => {
         isConfirmedByHr,
         unseenConfirmedCount: unseenConfirmed.length,
         hasUnseenConfirmedSchedule: unseenConfirmed.length > 0,
+        weeklyOffRules: {
+          maxOffPerWeek: SALES_MAX_OFF_PER_WEEK_SHIFT_REG,
+          maxUnpaidOffPerWeek: SALES_MAX_UNPAID_OFF_PER_WEEK_SHIFT_REG,
+          maxPaidLeavePerWeek: SALES_MAX_PAID_LEAVE_PER_WEEK_SHIFT_REG,
+          advanceNoticeDays: ADVANCE_NOTICE_DAYS_REQUIRED,
+        },
+        paidLeaveQuota: {
+          ...paidLeaveBalance,
+          paidLeaveDatesInWeek,
+          formalLeaveDatesInWeek,
+        },
         monthlyOffQuota: {
           limit: SALES_MAX_UNPAID_OFF_PER_MONTH,
           primaryMonth,
@@ -358,6 +538,18 @@ shiftsRouter.get('/shifts/schedule', async (req, res, next) => {
       }
     > = {};
 
+    const allLeaves = await leaveRequestRepo.find({});
+    const paidLeaveByStaff: Record<
+      string,
+      {
+        eligible: boolean;
+        entitledInMonth: number;
+        remainingAfterMonth: number;
+        paidLeaveDatesInWeek: string[];
+        formalLeaveDatesInWeek: string[];
+      }
+    > = {};
+
     for (const s of allStaff as any[]) {
       const dept = s.department || (s.role === 'SALES' ? 'SALES' : 'OFFICE');
       if (dept !== 'SALES') continue;
@@ -392,6 +584,28 @@ shiftsRouter.get('/shifts/schedule', async (req, res, next) => {
         remainingForWeek: pStats.remainingForWeek,
         byMonth,
       };
+
+      const pBalance = await getStaffPaidLeaveBalance(sid, primaryMonth, { approvedOnly: false });
+      const stWeekLeaves = (allLeaves as any[]).filter(
+        (l) =>
+          String(l.staffId) === sid &&
+          weekDateSet.has(String(l.date || '')) &&
+          (l.type === 'OFF' || l.type === 'PAID_LEAVE') &&
+          (l.status === 'PENDING' || l.status === 'APPROVED')
+      );
+      paidLeaveByStaff[sid] = {
+        eligible: pBalance.eligible,
+        entitledInMonth: pBalance.entitledInMonth,
+        remainingAfterMonth: pBalance.remainingAfterMonth,
+        paidLeaveDatesInWeek: stWeekLeaves
+          .filter((l) => l.type === 'PAID_LEAVE')
+          .map((l) => String(l.date))
+          .sort(),
+        formalLeaveDatesInWeek: stWeekLeaves
+          .filter((l) => l.reason !== SHIFT_REG_PAID_LEAVE_REASON)
+          .map((l) => String(l.date))
+          .sort(),
+      };
     }
 
     res.json({
@@ -403,8 +617,10 @@ shiftsRouter.get('/shifts/schedule', async (req, res, next) => {
           fullName: s.fullName,
           role: s.role,
           department: s.department,
+          contractType: (s as any).contractType,
         })),
         monthlyOffByStaff,
+        paidLeaveByStaff,
       },
       meta: { total: assignments.length },
     });
@@ -461,6 +677,7 @@ shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
       if (c.shiftCode === null) finalPlan.get(sid)!.delete(String(c.date));
       else finalPlan.get(sid)!.set(String(c.date), c.shiftCode);
     }
+    const allLeaves = await leaveRequestRepo.find({});
     const violations: Record<string, string> = {};
     for (const [sid, plan] of finalPlan) {
       if (plan.size === 0) continue;
@@ -468,22 +685,34 @@ shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
       if (!st) continue;
       const dept = st.department || (st.role === 'SALES' ? 'SALES' : 'OFFICE');
       if (dept !== 'SALES') continue;
+      const paidLeaveDatesInWeek = new Set<string>(
+        (allLeaves as any[])
+          .filter(
+            (l) =>
+              String(l.staffId) === sid &&
+              weekDateSet.has(String(l.date || '')) &&
+              l.type === 'PAID_LEAVE' &&
+              (l.status === 'PENDING' || l.status === 'APPROVED')
+          )
+          .map((l) => String(l.date))
+      );
       const offDatesInWeek = Array.from(plan.entries())
         .filter(([, v]) => v === 'OFF')
         .map(([d]) => d);
-      const offCount = offDatesInWeek.length;
+      const unpaidOffDatesInWeek = offDatesInWeek.filter((d) => !paidLeaveDatesInWeek.has(d));
+      const unpaidOffCount = unpaidOffDatesInWeek.length;
       const missing = 7 - plan.size;
       const problems: string[] = [];
       if (missing > 0) problems.push(`còn ${missing} ngày chưa xếp`);
-      if (offCount > SALES_MAX_UNPAID_OFF_PER_MONTH) {
-        problems.push(`đang nghỉ ${offCount} ngày trong tuần (tối đa ${SALES_MAX_UNPAID_OFF_PER_MONTH} ngày/tháng)`);
+      if (unpaidOffCount > SALES_MAX_UNPAID_OFF_PER_MONTH) {
+        problems.push(`đang nghỉ không lương ${unpaidOffCount} ngày trong tuần (tối đa ${SALES_MAX_UNPAID_OFF_PER_MONTH} ngày OFF không lương/tháng)`);
       }
       for (const ym of monthsInWeek) {
         const usedOutside = await getSalesMonthlyUnpaidOffDates(sid, ym, {
           excludeShiftDates: weekDateSet,
           includePendingLeave: true,
         });
-        const offInMonthThisWeek = offDatesInWeek.filter((d) => d.startsWith(`${ym}-`) && !usedOutside.has(d));
+        const offInMonthThisWeek = unpaidOffDatesInWeek.filter((d) => d.startsWith(`${ym}-`) && !usedOutside.has(d));
         const totalInMonth = usedOutside.size + offInMonthThisWeek.length;
         if (totalInMonth > SALES_MAX_UNPAID_OFF_PER_MONTH) {
           const remaining = Math.max(0, SALES_MAX_UNPAID_OFF_PER_MONTH - usedOutside.size);
@@ -576,6 +805,7 @@ shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
     let confirmed = 0;
     if (confirmWeek) {
       const remainingAssign = await shiftAssignmentRepo.find({});
+      const weekOffKeys = new Set<string>();
       for (const a of remainingAssign as any[]) {
         if (!weekDates.includes(a.date)) continue;
         await shiftAssignmentRepo.updateById(a._id, {
@@ -583,7 +813,28 @@ shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
           confirmedAt: now,
           seenByStaff: false,
         });
+        if (a.shiftCode === 'OFF') {
+          weekOffKeys.add(`${String(a.staffId)}_${String(a.date)}`);
+        }
         confirmed++;
+      }
+
+      // Đồng bộ đơn PAID_LEAVE đang PENDING trong tuần khi HR xác nhận lịch ca:
+      const currentLeaves = await leaveRequestRepo.find({});
+      for (const l of currentLeaves as any[]) {
+        const d = String(l.date || '');
+        if (!weekDateSet.has(d) || l.type !== 'PAID_LEAVE' || l.status !== 'PENDING') continue;
+        const key = `${String(l.staffId)}_${d}`;
+        if (weekOffKeys.has(key)) {
+          await leaveRequestRepo.updateById(String(l._id), {
+            status: 'APPROVED',
+            reviewNote: 'HR xác nhận lịch phân ca tuần',
+            reviewedBy: user.fullName || user.username || 'HR',
+            reviewedAt: now,
+          });
+        } else if (l.reason === SHIFT_REG_PAID_LEAVE_REASON) {
+          await leaveRequestRepo.deleteById(String(l._id));
+        }
       }
     }
 

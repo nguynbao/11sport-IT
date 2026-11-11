@@ -43,7 +43,7 @@ export const LEAVE_TYPE_META: Record<
 > = {
   PAID_LEAVE: {
     label: "Nghỉ phép có lương",
-    desc: "HĐ Chính thức • 1 ngày/tháng",
+    desc: "Cộng dồn phép • Hưởng nguyên lương",
     cls: "bg-teal-100 text-teal-800 border-teal-300",
     icon: <BadgeCheck className="w-4 h-4" />,
   },
@@ -132,7 +132,7 @@ export function LeaveRequestModal({
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const allowRange = type === "OFF" || type === "WFH";
+  const allowRange = type === "PAID_LEAVE" || type === "OFF" || type === "WFH";
 
   const dates = useMemo(() => {
     if (!allowRange) return [fromDate];
@@ -161,6 +161,29 @@ export function LeaveRequestModal({
     if (dates.length === 0) {
       setErr("Khoảng ngày chọn không có ngày làm việc nào (đã bỏ Chủ nhật).");
       return;
+    }
+    if (type === "PAID_LEAVE" && dates.length > 7) {
+      setErr("Chỉ được sử dụng ngày nghỉ phép cộng dồn tối đa 1 tuần (7 ngày) liên tiếp.");
+      return;
+    }
+    // Kiểm tra thông báo trước 3 tuần (21 ngày) khi dùng từ 2 ngày phép trở đi hoặc Sales nghỉ từ 3 ngày/tuần trở đi
+    const needAdvanceNotice =
+      (type === "PAID_LEAVE" && dates.length >= 2) ||
+      (department === "SALES" && (type === "OFF" || type === "PAID_LEAVE") && dates.length >= 3);
+    if (needAdvanceNotice) {
+      const [ty, tm, td] = today.split("-").map(Number);
+      const [fy, fm, fd] = dates[0].split("-").map(Number);
+      const diffDays = Math.round(
+        (new Date(fy, fm - 1, fd).getTime() - new Date(ty, tm - 1, td).getTime()) / (24 * 60 * 60 * 1000)
+      );
+      if (diffDays < 21) {
+        setErr(
+          type === "PAID_LEAVE" && dates.length >= 2
+            ? `Sử dụng từ 2 ngày nghỉ phép trở đi bắt buộc phải tạo đơn trước tối thiểu 3 tuần (21 ngày). Ngày ${fmtDate(dates[0])} chỉ cách hôm nay ${diffDays} ngày.`
+            : `Nhân viên Bán hàng nghỉ từ 3 ngày trở đi trong tuần bắt buộc phải tạo đơn trước tối thiểu 3 tuần (21 ngày). Ngày ${fmtDate(dates[0])} chỉ cách hôm nay ${diffDays} ngày.`
+        );
+        return;
+      }
     }
     setSending(true);
     setErr(null);
@@ -226,14 +249,12 @@ export function LeaveRequestModal({
           </div>
           {type === "PAID_LEAVE" && (
             <p className="text-[11px] text-teal-700 bg-teal-50 border border-teal-200 rounded-lg px-2.5 py-1.5">
-              Hợp đồng Chính thức được 1 ngày nghỉ phép có lương mỗi tháng (vẫn tính 1 công). Không dùng trong tháng sẽ mất quyền
-              lợi, không cộng dồn sang tháng sau.
+              <b>Quy định cộng dồn phép:</b> Thử việc lên Chính thức được cộng số ngày phép tương ứng tháng thử việc (1–2 ngày) + mỗi tháng Chính thức có thêm <b>1 ngày phép</b> (hưởng nguyên lương). Ngày phép được <b>để dành cộng dồn</b> và dùng liên tiếp tối đa <b>1 tuần (7 ngày)</b> với điều kiện <b>từ 2 ngày phép trở đi phải tạo đơn trước tối thiểu 3 tuần (21 ngày)</b>.
             </p>
           )}
           {type === "OFF" && department === "SALES" && (
             <p className="text-[11px] text-purple-800 bg-purple-50 border border-purple-200 rounded-lg px-2.5 py-1.5">
-              Nhân viên Sales có tối đa <b>4 ngày nghỉ không lương (OFF)/tháng</b> (có thể dùng gộp tối đa 4 ngày trong 1 tuần; khi
-              đã dùng hết 4 ngày trong tháng thì các tuần còn lại trong tháng không được dùng thêm, phải qua tháng mới).
+              Nhân viên Sales có tối đa <b>4 ngày nghỉ không lương (OFF)/tháng</b>. Khi đăng ký ca tuần mặc định chỉ được nghỉ tối đa <b>2 ngày/tuần</b> (1 ngày OFF + 1 ngày phép); nếu muốn nghỉ <b>từ 3 ngày trở đi trong 1 tuần</b> thì bắt buộc phải <b>tạo đơn trước tối thiểu 3 tuần (21 ngày)</b>.
             </p>
           )}
 
@@ -282,9 +303,8 @@ export function LeaveRequestModal({
               className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
             />
             <span
-              className={`block text-right text-[10px] mt-0.5 ${
-                reason.length >= LEAVE_REASON_MAX ? "text-rose-600 font-bold" : "text-slate-400"
-              }`}
+              className={`block text-right text-[10px] mt-0.5 ${reason.length >= LEAVE_REASON_MAX ? "text-rose-600 font-bold" : "text-slate-400"
+                }`}
             >
               {reason.length}/{LEAVE_REASON_MAX} ký tự
             </span>
@@ -402,9 +422,8 @@ export function MyLeaveRequestsPanel({
               key={k}
               type="button"
               onClick={() => setFilter(k)}
-              className={`px-1 py-1 rounded-md truncate ${
-                filter === k ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"
-              }`}
+              className={`px-1 py-1 rounded-md truncate ${filter === k ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"
+                }`}
             >
               {label} ({counts[k]})
             </button>
@@ -433,9 +452,8 @@ export function MyLeaveRequestsPanel({
                   <button
                     type="button"
                     onClick={() => setOpenId(open ? null : l._id)}
-                    className={`w-full px-3 py-2 flex items-center gap-2 text-left transition ${
-                      open ? "bg-slate-50" : "hover:bg-slate-50"
-                    }`}
+                    className={`w-full px-3 py-2 flex items-center gap-2 text-left transition ${open ? "bg-slate-50" : "hover:bg-slate-50"
+                      }`}
                   >
                     <span
                       className={`shrink-0 w-7 h-7 rounded-lg border flex items-center justify-center ${meta.cls}`}

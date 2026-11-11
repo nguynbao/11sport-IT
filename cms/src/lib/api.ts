@@ -23,8 +23,8 @@ export type ContractType = "INTERN" | "PROBATION" | "FULLTIME" | "PARTTIME";
 
 export const CONTRACT_TYPE_OPTIONS: { value: ContractType; label: string; desc: string }[] = [
   { value: "INTERN", label: "Thực tập (Intern)", desc: "Không có ngày phép có lương" },
-  { value: "PROBATION", label: "Thử việc", desc: "Không có ngày phép có lương" },
-  { value: "FULLTIME", label: "Chính thức", desc: "1 ngày nghỉ phép có lương/tháng" },
+  { value: "PROBATION", label: "Thử việc", desc: "Tích lũy 1 ngày phép/tháng thử việc (cộng khi lên Chính thức)" },
+  { value: "FULLTIME", label: "Chính thức", desc: "Cộng phép thử việc (1-2 ngày) + 1 ngày phép/tháng chính thức (cộng dồn)" },
 ];
 
 export function contractTypeLabel(t?: string | null): string {
@@ -48,6 +48,9 @@ export interface StaffUser {
   role: UserRole;
   department?: Department;
   contractType?: ContractType;
+  probationStartDate?: string;
+  probationMonths?: number;
+  fulltimeStartDate?: string;
   contractStartDate?: string;
   contractEndDate?: string;
   contractFileUrl?: string;
@@ -1535,16 +1538,26 @@ export interface StaffMonthlyOffStats {
   >;
 }
 
+export interface StaffPaidLeaveStats {
+  eligible: boolean;
+  entitledInMonth: number;
+  remainingAfterMonth: number;
+  paidLeaveDatesInWeek: string[];
+  formalLeaveDatesInWeek: string[];
+}
+
 export async function fetchShiftSchedule(weekStart?: string): Promise<{
   assignments: ShiftAssignment[];
   staffList: StaffUser[];
   monthlyOffByStaff?: Record<string, StaffMonthlyOffStats>;
+  paidLeaveByStaff?: Record<string, StaffPaidLeaveStats>;
 }> {
   const query = weekStart ? `?weekStart=${weekStart}` : "";
   const res = await apiRequest<{
     assignments: ShiftAssignment[];
     staffList: StaffUser[];
     monthlyOffByStaff?: Record<string, StaffMonthlyOffStats>;
+    paidLeaveByStaff?: Record<string, StaffPaidLeaveStats>;
   }>(`/shifts/schedule${query}`);
   return res.data;
 }
@@ -1672,10 +1685,13 @@ export interface TimesheetSummary {
   overtimeDays?: number;
   overtimeMinutes?: number;
   pendingRequests?: number;
-  /** HĐ Chính thức: 1 ngày nghỉ phép có lương/tháng */
+  /** Quỹ ngày nghỉ phép có lương tích lũy đến tháng đang xem */
   paidLeaveEntitled?: number;
+  paidLeaveFromProbation?: number;
+  paidLeaveTotalEarned?: number;
+  paidLeaveUsedTotal?: number;
   paidLeaveUsed?: number;
-  /** 1 = tháng đã qua mà không dùng -> mất quyền lợi */
+  paidLeaveRemaining?: number;
   paidLeaveForfeited?: number;
   /** Khối SALES: tối đa 4 ngày nghỉ không lương/tháng */
   salesOffEntitled?: number;

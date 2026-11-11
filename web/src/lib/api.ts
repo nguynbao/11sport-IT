@@ -37,6 +37,9 @@ export interface StaffUser {
   role: UserRole;
   department?: Department;
   contractType?: ContractType;
+  probationStartDate?: string;
+  probationMonths?: number;
+  fulltimeStartDate?: string;
   contractStartDate?: string;
   contractEndDate?: string;
   contractFileUrl?: string;
@@ -1292,7 +1295,13 @@ export async function confirmHandoverApi(id: string, accept: boolean, note?: str
 
 export async function submitShiftPreferencesApi(data: {
   weekStart: string;
-  preferences: Array<{ date: string; dayOfWeek: number; isOffRequested: boolean; preferenceShift: string }>;
+  preferences: Array<{
+    date: string;
+    dayOfWeek: number;
+    isOffRequested: boolean;
+    preferenceShift: string;
+    leaveType?: "OFF" | "PAID_LEAVE";
+  }>;
 }): Promise<any> {
   const res = await apiRequest("/shifts/preferences", {
     method: "POST",
@@ -1330,6 +1339,25 @@ export interface MyShiftScheduleData {
   isConfirmedByHr: boolean;
   unseenConfirmedCount: number;
   hasUnseenConfirmedSchedule: boolean;
+  weeklyOffRules?: {
+    maxOffPerWeek: number;
+    maxUnpaidOffPerWeek: number;
+    maxPaidLeavePerWeek: number;
+    advanceNoticeDays: number;
+  };
+  paidLeaveQuota?: {
+    eligible: boolean;
+    contractType: string;
+    probationLeaveDays: number;
+    fulltimeMonths: number;
+    totalEarnedUpToMonth: number;
+    usedBeforeMonth: number;
+    usedInMonth: number;
+    entitledInMonth: number;
+    remainingAfterMonth: number;
+    paidLeaveDatesInWeek: string[];
+    formalLeaveDatesInWeek: string[];
+  };
   monthlyOffQuota?: {
     limit: number;
     primaryMonth: string;
@@ -1440,7 +1468,11 @@ export interface MyCalendarSummary {
   overtimeMinutes: number;
   pendingRequests: number;
   paidLeaveEntitled: number;
+  paidLeaveFromProbation?: number;
+  paidLeaveTotalEarned?: number;
+  paidLeaveUsedTotal?: number;
   paidLeaveUsed: number;
+  paidLeaveRemaining?: number;
   paidLeaveForfeited: number;
   salesOffEntitled?: number;
   salesOffUsed?: number;
