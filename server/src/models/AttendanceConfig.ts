@@ -29,8 +29,8 @@ const AttendanceConfigSchema = new Schema<IAttendanceConfig>(
       type: [String],
       default: ['127.0.0.1', '::1', 'localhost'],
     },
-    requireGps: { type: Boolean, default: true },
-    requireIp: { type: Boolean, default: false },
+    requireGps: { type: Boolean, default: false },
+    requireIp: { type: Boolean, default: true },
     updatedBy: { type: String, default: '' },
   },
   { timestamps: true }

@@ -13,8 +13,6 @@ import {
 import { Play, Pause, CheckCircle2, AlertTriangle, Home, Clock } from "lucide-react";
 import ShiftHandoverModal from "./ShiftHandoverModal";
 import FridayShiftRegistrationModal from "./FridayShiftRegistrationModal";
-import { useGpsGate } from "./GpsPermissionModal";
-import type { GeoCoords } from "@/lib/geolocation";
 
 /** Ngày hiện tại theo giờ máy (YYYY-MM-DD) */
 function localDateStr(d = new Date()): string {
@@ -36,9 +34,6 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
   const [elapsedText, setElapsedText] = useState<string>("00:00:00");
   const [isLunchPaused, setIsLunchPaused] = useState<boolean>(false);
   const [feedback, setFeedback] = useState<{ type: "ok" | "err"; text: string } | null>(null);
-
-  // GPS bắt buộc: lấy vị trí tươi ngay lúc bấm Check-in/Check-out (không dùng tọa độ thay thế)
-  const { withGps, locating, gpsModal } = useGpsGate();
 
   // Bàn giao ca cho Sales (chỉ hiện khi cần thiết)
   const [showHandoverModal, setShowHandoverModal] = useState(false);
@@ -172,15 +167,13 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
     }
   }, [attendance, currentUser]);
 
-  // Ca WFH đã được HR duyệt: server bỏ qua GPS/IP nên không bắt buộc định vị
-  const skipGps = isWfhToday || attendance?.checkInType === "WFH";
-
-  // Bấm nút PLAY -> Check-in trực tiếp trên Header (Tự động nhận diện Ca 1 / Ca 2 theo giờ bấm)
-  const submitCheckIn = async (gps: GeoCoords | null) => {
+  // Bấm nút PLAY -> Check-in trực tiếp trên Header (Kiểm tra theo IP mạng Wi-Fi phía server)
+  const handlePlayCheckIn = async () => {
+    if (actionLoading) return;
     setActionLoading(true);
     setFeedback(null);
     try {
-      const res = await checkInApi(gps ? { latitude: gps.lat, longitude: gps.lng } : {});
+      const res = await checkInApi({});
       setAttendance(res.attendance);
       showNotice("ok", "Đã bắt đầu tính giờ ca làm việc!");
     } catch (err: any) {
@@ -190,20 +183,13 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
     }
   };
 
-  const handlePlayCheckIn = async () => {
-    if (actionLoading || locating) return;
-    if (skipGps) return submitCheckIn(null);
-    // Lấy GPS ngay tại thời điểm bấm; chưa bật GPS -> hiện popup yêu cầu bật
-    return withGps(submitCheckIn);
-  };
-
   // Bấm nút PAUSE -> Check-out trực tiếp trên Header
   const handlePauseCheckOut = async (
     forceEarly = false,
     earlyReason = "",
     lateCheckoutReason = ""
   ) => {
-    if (actionLoading || locating) return;
+    if (actionLoading) return;
 
     // Kiểm tra đã đủ giờ kết thúc ca chưa (Ca 1: 17:30, Ca 2 & Ca 1+2 BOTH: 21:00)
     const now = new Date();
@@ -234,42 +220,35 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
       return;
     }
 
-    const submitCheckOut = async (gps: GeoCoords | null) => {
-      setActionLoading(true);
-      setFeedback(null);
-      try {
-        const res = await checkOutApi({
-          forceEarly: forceEarly || isEarlyApprovedToday,
-          earlyReason: earlyReason || (isEarlyApprovedToday ? "Đã được HR duyệt về sớm" : ""),
-          lateCheckoutReason: lateCheckoutReason.trim() || undefined,
-          ...(gps ? { latitude: gps.lat, longitude: gps.lng } : {}),
-        });
-        setAttendance(res.attendance);
-        setLateCheckoutModal(null);
-        setLateCheckoutReasonInput("");
-        showNotice("ok", `Đã kết thúc ca (${res.attendance.totalWorkHours}h)!`);
+    setActionLoading(true);
+    setFeedback(null);
+    try {
+      const res = await checkOutApi({
+        forceEarly: forceEarly || isEarlyApprovedToday,
+        earlyReason: earlyReason || (isEarlyApprovedToday ? "Đã được HR duyệt về sớm" : ""),
+        lateCheckoutReason: lateCheckoutReason.trim() || undefined,
+      });
+      setAttendance(res.attendance);
+      setLateCheckoutModal(null);
+      setLateCheckoutReasonInput("");
+      showNotice("ok", `Đã kết thúc ca (${res.attendance.totalWorkHours}h)!`);
 
-        const today = new Date();
-        if (today.getDay() === 5 && currentUser?.role === "SALES") {
-          setShowFridayModal(true);
-        }
-      } catch (err: any) {
-        if (err.code === "HANDOVER_REQUIRED") {
-          setShowHandoverModal(true);
-        } else if (err.code === "LATE_CHECKOUT_REASON_REQUIRED") {
-          const lateMins = Number(err.fields?.lateCheckoutMinutes || diffLateOut || 6);
-          setLateCheckoutModal({ lateMinutes: lateMins });
-        } else {
-          showNotice("err", err?.message || "Không thể kết ca");
-        }
-      } finally {
-        setActionLoading(false);
+      const today = new Date();
+      if (today.getDay() === 5 && currentUser?.role === "SALES") {
+        setShowFridayModal(true);
       }
-    };
-
-    if (skipGps) return submitCheckOut(null);
-    // Lấy GPS ngay tại thời điểm bấm Check-out; chưa bật GPS -> hiện popup yêu cầu bật
-    return withGps(submitCheckOut);
+    } catch (err: any) {
+      if (err.code === "HANDOVER_REQUIRED") {
+        setShowHandoverModal(true);
+      } else if (err.code === "LATE_CHECKOUT_REASON_REQUIRED") {
+        const lateMins = Number(err.fields?.lateCheckoutMinutes || diffLateOut || 6);
+        setLateCheckoutModal({ lateMinutes: lateMins });
+      } else {
+        showNotice("err", err?.message || "Không thể kết ca");
+      }
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const handleConfirmIncomingHandover = async (accept: boolean) => {
@@ -307,7 +286,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
           <button
             type="button"
             onClick={handlePlayCheckIn}
-            disabled={actionLoading || locating}
+            disabled={actionLoading}
             title="Bấm Play để bắt đầu tính giờ chấm công"
             className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-extrabold text-xs flex items-center gap-2 shadow-md transition cursor-pointer"
           >
@@ -322,7 +301,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
             <button
               type="button"
               onClick={() => handlePauseCheckOut(false)}
-              disabled={actionLoading || locating}
+              disabled={actionLoading}
               title="Bấm Pause để kết thúc ca (Check-out)"
               className="p-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-extrabold text-xs flex items-center justify-center shadow-md transition cursor-pointer"
             >
@@ -443,8 +422,6 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
           </div>
         </div>
       )}
-
-      {gpsModal}
 
       {showFridayModal && (
         <FridayShiftRegistrationModal

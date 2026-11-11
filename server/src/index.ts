@@ -1,7 +1,7 @@
 process.env.TZ = process.env.TZ || 'Asia/Ho_Chi_Minh';
 
 import dotenv from 'dotenv';
-dotenv.config();
+dotenv.config({ override: true });
 
 import { createApp } from './app';
 import { connectDatabase } from './config/db';

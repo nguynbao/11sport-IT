@@ -1,6 +1,7 @@
-import { Router } from 'express';
-import { customerRepo, serviceOrderRepo, serviceTypeRepo } from '../config/db';
+import { Router, Request } from 'express';
+import { customerRepo, serviceOrderRepo, serviceTypeRepo, staffRepo } from '../config/db';
 import { ApiError } from '../utils/errors';
+import { verifyToken, TokenPayload } from '../utils/auth';
 import { filterAndRankBySearch, normalizePhoneDigits } from '../utils/search';
 import {
   IServiceOrderItem,
@@ -11,6 +12,81 @@ import {
 } from '../models/ServiceOrder';
 
 export const servicesRouter = Router();
+
+const SERVICE_ORDER_ALLOWED_ROLES = ['ADMIN', 'ACCOUNTANT', 'SALES'];
+const SERVICE_TYPE_MANAGE_ROLES = ['ADMIN', 'ACCOUNTANT'];
+
+async function requireServiceRoles(
+  req: Request,
+  allowedRoles: string[]
+): Promise<TokenPayload> {
+  const authHeader = req.headers.authorization;
+  const userIdHeader = req.headers['x-user-id'] as string | undefined;
+
+  const hasBearer = Boolean(authHeader && authHeader.startsWith('Bearer '));
+  const hasUserIdHeader = Boolean(userIdHeader && String(userIdHeader).trim());
+
+  if (!hasBearer && !hasUserIdHeader) {
+    throw new ApiError(401, 'UNAUTHORIZED', 'Vui lòng đăng nhập để thực hiện thao tác này');
+  }
+
+  let resolvedUser: TokenPayload | undefined;
+
+  if (hasBearer) {
+    const token = authHeader!.slice(7).trim();
+    const payload = verifyToken(token);
+    if (!payload) {
+      throw new ApiError(401, 'UNAUTHORIZED', 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn');
+    }
+    resolvedUser = payload;
+  } else if (hasUserIdHeader) {
+    const rawId = String(userIdHeader).trim();
+    const staff =
+      (await staffRepo.findById(rawId)) ||
+      (await staffRepo.findOne({ username: rawId.toLowerCase() })) ||
+      (await staffRepo.findOne({ code: rawId.toUpperCase() }));
+    if (!staff) {
+      throw new ApiError(401, 'UNAUTHORIZED', 'Không tìm thấy thông tin người dùng xác thực');
+    }
+    if (staff.status === 'LOCKED') {
+      throw new ApiError(403, 'ACCOUNT_LOCKED', 'Tài khoản nhân viên đã bị khóa');
+    }
+    resolvedUser = {
+      userId: staff._id,
+      username: staff.username,
+      fullName: staff.fullName,
+      role: staff.role,
+      department: staff.department,
+      code: staff.code,
+    };
+  }
+
+  if (!resolvedUser) {
+    throw new ApiError(401, 'UNAUTHORIZED', 'Vui lòng đăng nhập để thực hiện thao tác này');
+  }
+
+  const dbStaff = await staffRepo.findById(resolvedUser.userId);
+  if (dbStaff && dbStaff.status === 'LOCKED') {
+    throw new ApiError(403, 'ACCOUNT_LOCKED', 'Tài khoản nhân viên đã bị khóa');
+  }
+
+  const effectiveRole = dbStaff?.role || resolvedUser.role;
+  if (!allowedRoles.includes(effectiveRole)) {
+    throw new ApiError(
+      403,
+      'FORBIDDEN',
+      `Tài khoản vai trò "${effectiveRole}" không có quyền thực hiện thao tác này`
+    );
+  }
+
+  const finalUser: TokenPayload = {
+    ...resolvedUser,
+    role: effectiveRole,
+    fullName: dbStaff?.fullName || resolvedUser.fullName,
+  };
+  req.user = finalUser;
+  return finalUser;
+}
 
 function normalizeServiceCode(input: string): string {
   return String(input || '')
@@ -105,6 +181,7 @@ async function upsertCustomerFromServiceOrder(
 // GET /api/v1/service-types
 servicesRouter.get('/service-types', async (req, res, next) => {
   try {
+    await requireServiceRoles(req, SERVICE_ORDER_ALLOWED_ROLES);
     const { status, search } = req.query;
     const filter: Record<string, any> = {};
     if (status) {
@@ -148,6 +225,7 @@ servicesRouter.get('/service-types', async (req, res, next) => {
 // POST /api/v1/service-types
 servicesRouter.post('/service-types', async (req, res, next) => {
   try {
+    await requireServiceRoles(req, SERVICE_TYPE_MANAGE_ROLES);
     const { code, name, defaultPrice, unit, description, status } = req.body || {};
     if (!name || !String(name).trim()) {
       throw new ApiError(400, 'VALIDATION_ERROR', 'Tên loại dịch vụ là bắt buộc', {
@@ -194,6 +272,7 @@ servicesRouter.post('/service-types', async (req, res, next) => {
 // PATCH /api/v1/service-types/:id
 servicesRouter.patch('/service-types/:id', async (req, res, next) => {
   try {
+    await requireServiceRoles(req, SERVICE_TYPE_MANAGE_ROLES);
     const { id } = req.params;
     const serviceType = await serviceTypeRepo.findById(id);
     if (!serviceType) {
@@ -251,6 +330,7 @@ servicesRouter.patch('/service-types/:id', async (req, res, next) => {
 // DELETE /api/v1/service-types/:id
 servicesRouter.delete('/service-types/:id', async (req, res, next) => {
   try {
+    await requireServiceRoles(req, SERVICE_TYPE_MANAGE_ROLES);
     const { id } = req.params;
     const serviceType = await serviceTypeRepo.findById(id);
     if (!serviceType) {
@@ -292,6 +372,7 @@ servicesRouter.delete('/service-types/:id', async (req, res, next) => {
 // GET /api/v1/service-orders
 servicesRouter.get('/service-orders', async (req, res, next) => {
   try {
+    await requireServiceRoles(req, SERVICE_ORDER_ALLOWED_ROLES);
     const {
       status,
       paymentStatus,
@@ -396,6 +477,7 @@ servicesRouter.get('/service-orders', async (req, res, next) => {
 // GET /api/v1/service-orders/:id
 servicesRouter.get('/service-orders/:id', async (req, res, next) => {
   try {
+    await requireServiceRoles(req, SERVICE_ORDER_ALLOWED_ROLES);
     const order = await serviceOrderRepo.findById(req.params.id);
     if (!order) {
       throw new ApiError(404, 'SERVICE_ORDER_NOT_FOUND', 'Không tìm thấy đơn dịch vụ');
@@ -412,6 +494,7 @@ servicesRouter.get('/service-orders/:id', async (req, res, next) => {
 // POST /api/v1/service-orders
 servicesRouter.post('/service-orders', async (req, res, next) => {
   try {
+    const actor = await requireServiceRoles(req, SERVICE_ORDER_ALLOWED_ROLES);
     const {
       customerName,
       customerPhone,
@@ -511,8 +594,8 @@ servicesRouter.post('/service-orders', async (req, res, next) => {
     const remainingAmount = Math.max(0, totalAmount - finalPaid);
     const paymentStatus = computePaymentStatus(totalAmount, finalPaid);
 
-    const actorId = req.user?.userId || 'system';
-    const actorName = req.user?.fullName || 'Nhân viên 11Sport';
+    const actorId = actor.userId;
+    const actorName = actor.fullName;
 
     const payments: IServicePaymentRecord[] = [];
     if (finalPaid > 0) {
@@ -565,6 +648,7 @@ servicesRouter.post('/service-orders', async (req, res, next) => {
 // PATCH /api/v1/service-orders/:id
 servicesRouter.patch('/service-orders/:id', async (req, res, next) => {
   try {
+    const actor = await requireServiceRoles(req, SERVICE_ORDER_ALLOWED_ROLES);
     const { id } = req.params;
     const existing = await serviceOrderRepo.findById(id);
     if (!existing) {
@@ -681,6 +765,16 @@ servicesRouter.patch('/service-orders/:id', async (req, res, next) => {
       }
 
       const currentPaid = Number(existing.paidAmount) || 0;
+      if (totalAmount < currentPaid) {
+        throw new ApiError(
+          400,
+          'TOTAL_BELOW_PAID_AMOUNT',
+          `Tổng tiền mới (${totalAmount.toLocaleString('vi-VN')} VND) không được nhỏ hơn số tiền khách đã thanh toán (${currentPaid.toLocaleString('vi-VN')} VND)`,
+          {
+            totalAmount: 'Không được nhỏ hơn số tiền đã thu',
+          }
+        );
+      }
       const remainingAmount = Math.max(0, totalAmount - currentPaid);
       updateData.items = normalizedItems;
       updateData.totalAmount = totalAmount;
@@ -688,8 +782,8 @@ servicesRouter.patch('/service-orders/:id', async (req, res, next) => {
       updateData.paymentStatus = computePaymentStatus(totalAmount, currentPaid);
     }
 
-    updateData.updatedBy = req.user?.userId || 'system';
-    updateData.updatedByName = req.user?.fullName || 'Nhân viên 11Sport';
+    updateData.updatedBy = actor.userId;
+    updateData.updatedByName = actor.fullName;
 
     const updated = await serviceOrderRepo.updateById(id, updateData);
     res.json({
@@ -704,6 +798,7 @@ servicesRouter.patch('/service-orders/:id', async (req, res, next) => {
 // PATCH /api/v1/service-orders/:id/status
 servicesRouter.patch('/service-orders/:id/status', async (req, res, next) => {
   try {
+    const actor = await requireServiceRoles(req, SERVICE_ORDER_ALLOWED_ROLES);
     const { id } = req.params;
     const existing = await serviceOrderRepo.findById(id);
     if (!existing) {
@@ -722,8 +817,8 @@ servicesRouter.patch('/service-orders/:id/status', async (req, res, next) => {
       throw new ApiError(400, 'INVALID_STATUS', 'Trạng thái xử lý không hợp lệ');
     }
 
-    const actorId = req.user?.userId || 'system';
-    const actorName = req.user?.fullName || 'Nhân viên 11Sport';
+    const actorId = actor.userId;
+    const actorName = actor.fullName;
 
     const updateData: Record<string, any> = {
       status,
@@ -780,6 +875,7 @@ servicesRouter.patch('/service-orders/:id/status', async (req, res, next) => {
 // POST /api/v1/service-orders/:id/payments
 servicesRouter.post('/service-orders/:id/payments', async (req, res, next) => {
   try {
+    const actor = await requireServiceRoles(req, SERVICE_ORDER_ALLOWED_ROLES);
     const { id } = req.params;
     const existing = await serviceOrderRepo.findById(id);
     if (!existing) {
@@ -802,8 +898,8 @@ servicesRouter.post('/service-orders/:id/payments', async (req, res, next) => {
       ? method
       : 'CASH';
 
-    const actorId = req.user?.userId || 'system';
-    const actorName = req.user?.fullName || 'Nhân viên 11Sport';
+    const actorId = actor.userId;
+    const actorName = actor.fullName;
 
     const nextPaid = (Number(existing.paidAmount) || 0) + collectAmount;
     const totalAmount = Number(existing.totalAmount) || 0;
