@@ -21,6 +21,9 @@ export interface IStaff extends Document {
   contractType?: ContractType;
   contractStartDate?: Date;
   contractEndDate?: Date;
+  probationStartDate?: Date;
+  probationMonths?: number;
+  fulltimeStartDate?: Date;
   contractFileUrl?: string;
   contractFileName?: string;
   baseSalary?: number;
@@ -63,6 +66,9 @@ const StaffSchema = new Schema<IStaff>(
     },
     contractStartDate: { type: Date },
     contractEndDate: { type: Date },
+    probationStartDate: { type: Date },
+    probationMonths: { type: Number, default: 0, min: 0, max: 2 },
+    fulltimeStartDate: { type: Date },
     contractFileUrl: { type: String, default: '' },
     contractFileName: { type: String, default: '', trim: true },
     baseSalary: { type: Number, default: 0, min: 0 },
