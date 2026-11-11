@@ -24,6 +24,7 @@ import { servicesRouter } from './routes/services';
 
 export function createApp() {
   const app = express();
+  app.set('trust proxy', true);
 
   const defaultOrigins = [
     'https://11sport-it.vercel.app',

@@ -761,7 +761,7 @@
 
 #### A. Chấm công (`/attendance`)
 - `POST /api/v1/attendance/check-in`
-  - Body: `{ "latitude": number, "longitude": number, "clientIp"?: string, "shiftCode"?: "SHIFT_1 | SHIFT_2 | BOTH" }`
+  - Body: `{ "shiftCode"?: "SHIFT_1 | SHIFT_2 | BOTH" }`
   - Headers: `Authorization: Bearer <token>`
   - Logic xác thực:
     - **Đối chiếu lịch phân ca (`ShiftAssignment`) theo ngày**:
@@ -769,17 +769,19 @@
         - Nếu `shiftCode === "OFF"` (ngày nghỉ theo lịch xếp ca) -> Chặn check-in với lỗi `400 SCHEDULED_DAY_OFF`.
         - Nếu `shiftCode` là `"SHIFT_1"`, `"SHIFT_2"`, hoặc `"BOTH"` (`Ca 1 + Ca 2: 08:30–21:00`): Bắt buộc áp dụng đúng ca đã được phân công (`selectedShift = assignedShift.shiftCode`); nếu client truyền `shiftCode` khác với ca đã xếp -> Trả lỗi `400 SHIFT_MISMATCH`.
       - Chỉ khi chưa có lịch phân ca cho ngày đó: Tự động nhận diện ca làm việc theo giờ bấm Check-in (với `SALES`, nếu không truyền `shiftCode`, gán `SHIFT_1` nếu trước `11:30`, `SHIFT_2` nếu từ `11:30` trở đi; khối `OFFICE` mặc định `SHIFT_1`).
-    - Nếu nhân viên (cả khối `OFFICE` và `SALES`) có đơn `WFH` được `HR` duyệt trong ngày hôm nay (kiểm tra hoàn toàn phía server qua `approvedWfh`): Bỏ qua kiểm tra GPS & IP (ghi nhận `checkInType: "WFH"`). Server tuyệt đối không nhận cờ `bypassNetwork` từ client.
-    - **Kiểm tra 2 Cơ sở theo cặp (`Location 1 đi với Mạng 1`, `Location 2 đi với Mạng 2`)**:
-      - Nếu không có đơn WFH: Vị trí GPS và IP Wi-Fi của nhân viên phải đồng thời khớp với **Cơ sở 1 (`ATTENDANCE_OFFICE_LAT/LNG` + `ATTENDANCE_ALLOWED_IPS`)** HOẶC đồng thời khớp với **Cơ sở 2 (`ATTENDANCE_OFFICE_2_LAT/LNG` + `ATTENDANCE_ALLOWED_IPS_2`)**.
-      - Nếu đứng ở Location 1 nhưng dùng Mạng 2 (hoặc ngược lại đứng ở Location 2 nhưng dùng Mạng 1) -> Trả lỗi `400 WIFI_IP_NOT_ALLOWED`. Nếu nằm ngoài bán kính của cả 2 cơ sở -> Trả lỗi `400 LOCATION_OUT_OF_RANGE`.
+    - Nếu nhân viên (cả khối `OFFICE` và `SALES`) có đơn `WFH` được `HR` duyệt trong ngày hôm nay (kiểm tra hoàn toàn phía server qua `approvedWfh`): Bỏ qua kiểm tra IP mạng (ghi nhận `checkInType: "WFH"`). Server tuyệt đối không nhận cờ `bypassNetwork` từ client.
+    - **Kiểm tra IP mạng Wi-Fi của 2 Cơ sở (không dùng định vị GPS)**:
+      - Luôn bật kiểm tra IP mạng (`requireIp: true`) đối với mọi nhân viên không có đơn `WFH` đã duyệt trong ngày.
+      - Chỉ chấp nhận **IP Public (WAN IP)** của đường truyền Internet tại **Cơ sở 1 (`ATTENDANCE_ALLOWED_IPS`)** hoặc **Cơ sở 2 (`ATTENDANCE_ALLOWED_IPS_2`)**; hệ thống tự động loại bỏ các IP nội bộ/loopback (`127.0.0.1`, `::1`, `localhost`, `192.168.x.x`, `10.x.x.x`, `172.16-31.x.x`) để tránh lọt chấm công khi chạy local hoặc qua dải LAN phổ thông.
+      - Khi truy cập qua Production (Render/Cloudflare), server lấy IP Public thực của thiết bị từ reverse proxy header (`cf-connecting-ip` / `x-real-ip` / `x-forwarded-for`, bỏ qua `body.clientIp`). Khi chạy trên môi trường Local (`localhost` / LAN), server tự động kiểm tra IP Public (WAN IP) thực tế của kết nối Wi-Fi hiện tại để chặn ngay nếu đổi sang Wi-Fi khác / 4G.
+      - Nếu IP Public hiện tại không khớp Cơ sở 1 hay Cơ sở 2 -> Trả lỗi `400 WIFI_IP_NOT_ALLOWED`.
     - Làm tròn check-in sớm: Nếu check-in trước giờ bắt đầu ca (`08:30` đối với `SHIFT_1` / `BOTH`, hoặc `12:00` đối với `SHIFT_2`), mốc tính công `workStartTime` tự động quy về `08:30` hoặc `12:00`.
   - Response: `{ "data": { "attendance": { "id": "...", "date": "2026-11-05", "shiftCode": "SHIFT_1 | SHIFT_2 | BOTH", "checkInTime": "...", "workStartTime": "...", "status": "ON_TIME | LATE", "lateMinutes": 0, "checkInType": "STANDARD | WFH" } } }`
 
 - `POST /api/v1/attendance/check-out`
-  - Body: `{ "forceEarly"?: boolean, "earlyReason"?: string, "lateCheckoutReason"?: string, "latitude"?: number, "longitude"?: number, "clientIp"?: string }`
+  - Body: `{ "forceEarly"?: boolean, "earlyReason"?: string, "lateCheckoutReason"?: string }`
   - Logic xác thực:
-    - Kiểm tra vị trí & mạng 2 cơ sở (`Location 1 + Mạng 1` hoặc `Location 2 + Mạng 2`) tương tự lúc Check-in đối với nhân viên làm việc tại cơ sở (`checkInType !== "WFH"` và không có đơn `WFH` đã duyệt trong ngày; không chấp nhận cờ `bypassNetwork` từ client).
+    - Kiểm tra IP mạng Wi-Fi 2 cơ sở (`ATTENDANCE_ALLOWED_IPS` hoặc `ATTENDANCE_ALLOWED_IPS_2`) tương tự lúc Check-in đối với nhân viên làm việc tại cơ sở (`checkInType !== "WFH"` và không có đơn `WFH` đã duyệt trong ngày; không chấp nhận cờ `bypassNetwork` từ client; không kiểm tra tọa độ GPS).
     - Chặn bấm Check-out & Bàn giao ca khi chưa đủ giờ làm việc của ca (`17:30` đối với `SHIFT_1`, `21:00` đối với `SHIFT_2` và `BOTH` `08:30–21:00`), trừ khi nhân viên có đơn xin về sớm (`type: "EARLY"`) đã được `HR` duyệt trong ngày hoặc xác nhận về sớm (`forceEarly = true`).
     - **Kiểm tra Check-out trễ & Tăng ca**:
       - **Làm 2 ca (`BOTH`: `08:30–21:00`)**: Là ca đã ghi trong bảng xếp ca, **không tính là tăng ca** (`overtimeMinutes = 0`).
@@ -835,8 +837,8 @@
   - Lỗi: `400 ALREADY_CHECKED_IN` nếu ngày đó đã có bản ghi chấm công và `shiftCode !== "OFF"` (dùng PATCH để sửa).
 
 - `GET /api/v1/attendance/config`
-  - Trả về cấu hình vị trí GPS và danh sách IP Wi-Fi/LAN công ty (chỉ đọc từ biến môi trường `.env` trên Server: `ATTENDANCE_OFFICE_NAME`, `ATTENDANCE_OFFICE_LAT`, `ATTENDANCE_OFFICE_LNG`, `ATTENDANCE_MAX_DISTANCE_METERS`, `ATTENDANCE_REQUIRE_GPS`, `ATTENDANCE_REQUIRE_IP`, `ATTENDANCE_ALLOWED_IPS`), kèm `detectedClientIp`. Không cho phép chỉnh sửa qua UI/API (HR và Admin đều không được sửa trên giao diện).
-  - Response: `{ "data": { "config": { "officeName": "...", "officeLat": 16.0352, "officeLng": 108.2185, "maxDistanceMeters": 50, "allowedIps": ["127.0.0.1", "::1"], "requireGps": true, "requireIp": false }, "detectedClientIp": "127.0.0.1" } }`
+  - Trả về cấu hình danh sách IP Wi-Fi/LAN của các cơ sở công ty (chỉ đọc từ biến môi trường `.env` trên Server: `ATTENDANCE_OFFICE_NAME`, `ATTENDANCE_OFFICE_2_NAME`, `ATTENDANCE_REQUIRE_IP`, `ATTENDANCE_ALLOWED_IPS`, `ATTENDANCE_ALLOWED_IPS_2`), kèm `detectedClientIp` và `isCurrentIpAllowed`. Không cho phép chỉnh sửa qua UI/API (HR và Admin đều không được sửa trên giao diện).
+  - Response: `{ "data": { "config": { "officeName": "...", "office2Name": "...", "allowedIps": ["127.0.0.1", "::1"], "allowedIps2": ["..."], "requireIp": true, "branches": [...] }, "detectedClientIp": "127.0.0.1", "isCurrentIpAllowed": true } }`
 
 #### B. Đơn từ & Phê duyệt WFH / Nghỉ phép (`/leave-requests`)
 - **Quy trình làm việc & Cơ chế Tích lũy / Cộng dồn Ngày phép (`PAID_LEAVE`)**:
@@ -916,8 +918,12 @@
 
 ### 2.10 Quản lý Loại Dịch Vụ & Đơn Dịch Vụ (`/service-types`, `/service-orders`)
 
+- **Quy tắc xác thực & phân quyền chung cho mục 2.10**:
+  - Mọi request tới `/service-types` và `/service-orders` bắt buộc phải có thông tin xác thực hợp lệ (`Authorization: Bearer <token>` hoặc `x-user-id` của tài khoản đang `ACTIVE`). Nếu thiếu hoặc không hợp lệ → trả về `401 UNAUTHORIZED`. Nếu tài khoản bị khóa → trả về `403 ACCOUNT_LOCKED`.
+  - Nếu vai trò (`role`) của người gọi không nằm trong danh sách cho phép của từng endpoint → trả về `403 FORBIDDEN`.
+
 #### A. Danh mục Loại Dịch Vụ (`/service-types`)
-- `GET /api/v1/service-types`
+- `GET /api/v1/service-types` (Role `ADMIN`, `ACCOUNTANT`, `SALES`)
   - Query: `?status=ACTIVE|INACTIVE` (tùy chọn), `?search=...`
   - Response: Danh sách các loại dịch vụ kèm `orderCount` (số đơn dịch vụ đã sử dụng loại dịch vụ này).
   - Cấu trúc `ServiceType`:
@@ -954,14 +960,14 @@
   - `UNPAID`: Chưa thanh toán (thu lúc khách nhận đồ)
   - `PARTIAL`: Đã đặt cọc / thanh toán một phần
   - `PAID`: Đã thanh toán đủ
-- `GET /api/v1/service-orders`
+- `GET /api/v1/service-orders` (Role `ADMIN`, `ACCOUNTANT`, `SALES`)
   - Query: `?status=RECEIVED|IN_PROGRESS|READY|RETURNED|CANCELLED&paymentStatus=UNPAID|PARTIAL|PAID&overdueOnly=true|false&search=...&from=YYYY-MM-DD&to=YYYY-MM-DD&dueFrom=YYYY-MM-DD&dueTo=YYYY-MM-DD`
   - Response:
     - `data`: Danh sách `ServiceOrder` (sắp xếp mới nhất trước), mỗi đơn kèm cờ `isOverdue: boolean` (`true` khi `status` thuộc `RECEIVED | IN_PROGRESS | READY` và thời gian hiện tại vượt quá `dueAt`).
     - `meta`: `{ "totalOrders", "receivedCount", "inProgressCount", "readyCount", "returnedCount", "overdueCount", "unpaidCount", "totalRevenue", "totalPaid", "totalRemaining" }`.
-- `GET /api/v1/service-orders/:id`
+- `GET /api/v1/service-orders/:id` (Role `ADMIN`, `ACCOUNTANT`, `SALES`)
   - Chi tiết một đơn dịch vụ.
-- `POST /api/v1/service-orders`
+- `POST /api/v1/service-orders` (Role `ADMIN`, `ACCOUNTANT`, `SALES`)
   - Tạo phiếu dịch vụ mới từ màn hình Bán hàng POS (`SALES`, `ADMIN`) hoặc CMS (`ADMIN`, `ACCOUNTANT`).
   - Body:
     ```json
@@ -992,11 +998,12 @@
     - `unitPrice` mặc định lấy từ `defaultPrice` của `ServiceType` nhưng cho phép nhân viên bán hàng chỉnh sửa trực tiếp trên đơn thực tế (`unitPrice >= 0`).
     - Hỗ trợ thu đủ tiền ngay lúc gửi (`paidAmount = totalAmount`), đặt cọc một phần (`0 < paidAmount < totalAmount`), hoặc thu tiền lúc khách nhận đồ (`paidAmount = 0`).
     - Tự động tạo mới hoặc cập nhật tên khách hàng trong bảng `Customer` theo `customerPhone`.
-- `PATCH /api/v1/service-orders/:id`
+- `PATCH /api/v1/service-orders/:id` (Role `ADMIN`, `ACCOUNTANT`, `SALES`)
   - Cập nhật thông tin đơn dịch vụ (`customerName`, `customerPhone`, `receivedAt`, `dueAt`, `items`, `note`, `status`). Tự động tính lại `totalAmount`, `remainingAmount` và `paymentStatus`.
-- `PATCH /api/v1/service-orders/:id/status`
+  - **Ràng buộc nhất quán tiền đã thu**: Nếu cập nhật `items` làm tổng tiền mới thấp hơn số tiền khách đã thanh toán (`totalAmount < existing.paidAmount`), hệ thống chặn và trả lỗi `400 TOTAL_BELOW_PAID_AMOUNT` ("Tổng tiền mới không được nhỏ hơn số tiền khách đã thanh toán") để không làm lệch báo cáo doanh thu và thực thu.
+- `PATCH /api/v1/service-orders/:id/status` (Role `ADMIN`, `ACCOUNTANT`, `SALES`)
   - Chuyển nhanh trạng thái xử lý: `{ "status": "RECEIVED | IN_PROGRESS | READY | RETURNED | CANCELLED", "collectAmount"?: number, "paymentMethod"?: "CASH | BANKING | CARD", "paymentNote"?: "string" }`.
   - Khi chuyển sang `RETURNED`, hệ thống tự động gán `returnedAt = new Date()`. Nếu truyền kèm `collectAmount > 0` (VD: thu nốt tiền khi trả đồ cho khách), hệ thống ghi nhận luôn khoản thanh toán vào `payments`, cộng `paidAmount`, giảm `remainingAmount` và cập nhật `paymentStatus`.
-- `POST /api/v1/service-orders/:id/payments`
+- `POST /api/v1/service-orders/:id/payments` (Role `ADMIN`, `ACCOUNTANT`, `SALES`)
   - Thu thêm tiền cọc hoặc tất toán phần tiền còn lại của đơn dịch vụ:
   - Body: `{ "amount": 50000, "method": "CASH | BANKING | CARD", "note"?: "Thu tiền khi khách nhận đồ" }`.

@@ -54,6 +54,7 @@ Trạng thái: `Backlog` | `Đang làm` | `Chờ review` | `Đang test` | `Xong`
 | FE-33 | CMS Phân quyền 5 vai trò, Module Quản lý Nhân sự & Hợp đồng, Module Duyệt đơn WFH/phép, Lịch lễ, Drag & Drop xếp ca | cms | Frontend | Xong | BE-25 | `HrmAttendanceModule.tsx`, `StaffModule.tsx`, build PASS |
 | FE-34 | Web Showroom: Chấm công GPS + WiFi LAN, Pop-up đăng ký ca T6, Biên bản kết ca & Bàn giao Kho Tầng 1 (Khóa/Mở Check-out) | web | Frontend | Xong | BE-25 | `AttendanceModal.tsx`, `ShiftHandoverModal.tsx`, `FridayShiftRegistrationModal.tsx`, build PASS |
 | QA-02 | Viết Integration Tests & Kiểm thử toàn diện các luồng Chấm công, Duyệt WFH, Bàn giao ca | docs/test / server | Tester | Xong | FE-33, FE-34 | `server/tests/hrm-attendance.test.ts` (5/5 PASS), Next.js build PASS |
+| BE-26 / FE-35 | Xoá kiểm tra định vị GPS & các popup yêu cầu bật GPS khi Check-in / Check-out trên Web & CMS; chuyển sang chỉ kiểm tra IP mạng Wi-Fi công ty (Cơ sở 1 & Cơ sở 2) kèm chống giả mạo `clientIp` trên production | server / web / cms / docs | Backend + Frontend + Tester | Xong | BE-25, FE-34 | Xoá `GpsPermissionModal.tsx` & `geolocation.ts` trên `web` và `cms`, cập nhật `attendance.ts`, `docs/api-contract.md`, PASS 13/13 `hrm-attendance.test.ts` |
 
 
 

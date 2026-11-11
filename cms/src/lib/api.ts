@@ -1670,11 +1670,13 @@ export interface AttendanceConfig {
   _id?: string;
   key?: string;
   officeName: string;
-  officeLat: number;
-  officeLng: number;
-  maxDistanceMeters: number;
+  office2Name?: string;
+  officeLat?: number;
+  officeLng?: number;
+  maxDistanceMeters?: number;
   allowedIps: string[];
-  requireGps: boolean;
+  allowedIps2?: string[];
+  requireGps?: boolean;
   requireIp: boolean;
   updatedBy?: string;
   updatedAt?: string;
@@ -1683,8 +1685,13 @@ export interface AttendanceConfig {
 export async function fetchAttendanceConfig(): Promise<{
   config: AttendanceConfig;
   detectedClientIp: string;
+  isCurrentIpAllowed?: boolean;
 }> {
-  const res = await apiRequest<{ config: AttendanceConfig; detectedClientIp: string }>("/attendance/config");
+  const res = await apiRequest<{
+    config: AttendanceConfig;
+    detectedClientIp: string;
+    isCurrentIpAllowed?: boolean;
+  }>("/attendance/config");
   return res.data;
 }
 

@@ -12,7 +12,6 @@ import {
 } from "@/lib/api";
 import {
   Clock,
-  MapPin,
   Wifi,
   Home,
   CheckCircle2,
@@ -20,13 +19,9 @@ import {
   X,
   LogOut,
   LogIn,
-  ShieldCheck,
-  Calendar,
 } from "lucide-react";
 import ShiftHandoverModal from "./ShiftHandoverModal";
 import FridayShiftRegistrationModal from "./FridayShiftRegistrationModal";
-import { useGpsGate } from "./GpsPermissionModal";
-import { getFreshPosition, type GeoCoords } from "@/lib/geolocation";
 
 interface Props {
   currentUser: StaffUser | null;
@@ -40,10 +35,8 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
   const [actionLoading, setActionLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  // Time & Location
+  // Time & Shift
   const [currentTime, setCurrentTime] = useState<string>("");
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [distanceMeters, setDistanceMeters] = useState<number | null>(null);
   const [selectedShift, setSelectedShift] = useState<"SHIFT_1" | "SHIFT_2" | "BOTH">("SHIFT_1");
 
   // Modals phụ
@@ -51,16 +44,11 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
   const [showFridayModal, setShowFridayModal] = useState(false);
   const [pendingHandoverToConfirm, setPendingHandoverToConfirm] = useState<any | null>(null);
 
-  // Showroom 11Sport: lấy từ cấu hình /attendance/config (2 cơ sở cấu hình trong .env của server)
+  // Thông tin mạng IP Wi-Fi chấm công lấy từ /attendance/config
   const [officeName, setOfficeName] = useState<string>("11Sport Showroom & Văn phòng");
-  const [branches, setBranches] = useState<{ name: string; lat: number; lng: number }[]>([]);
-  const [nearestBranchName, setNearestBranchName] = useState<string>("");
-  const [maxRadius, setMaxRadius] = useState<number>(50);
   const [detectedClientIp, setDetectedClientIp] = useState<string>("127.0.0.1");
-  const [requireIp, setRequireIp] = useState<boolean>(false);
-
-  // GPS bắt buộc: lấy vị trí tươi ngay lúc bấm Check-in/Check-out (không dùng tọa độ thay thế)
-  const { withGps, locating, gpsModal } = useGpsGate();
+  const [requireIp, setRequireIp] = useState<boolean>(true);
+  const [isCurrentIpAllowed, setIsCurrentIpAllowed] = useState<boolean>(true);
 
   useEffect(() => {
     // Cập nhật đồng hồ thời gian thực mỗi giây
@@ -84,7 +72,7 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
     try {
       const [data, cfgRes] = await Promise.all([
         getTodayAttendanceApi(),
-        apiRequest<{ config: any; detectedClientIp: string }>("/attendance/config").catch(() => null),
+        apiRequest<{ config: any; detectedClientIp: string; isCurrentIpAllowed?: boolean }>("/attendance/config").catch(() => null),
       ]);
       setAttendance(data.attendance);
       setIsWfhToday(data.isWfhToday);
@@ -96,30 +84,20 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
         setSelectedShift(data.assignedShift);
       }
 
-      let targetBranches: { name: string; lat: number; lng: number }[] = [];
       if (cfgRes?.data?.config) {
         const cfg = cfgRes.data.config;
         setOfficeName(cfg.officeName || "11Sport Showroom & Văn phòng");
-        targetBranches = Array.isArray(cfg.branches)
-          ? cfg.branches
-              .map((b: any) => ({ name: String(b.name || ""), lat: Number(b.lat), lng: Number(b.lng) }))
-              .filter((b: { lat: number; lng: number }) => Number.isFinite(b.lat) && Number.isFinite(b.lng))
-          : [];
-        setBranches(targetBranches);
-        setMaxRadius(Number(cfg.maxDistanceMeters ?? 50));
-        setRequireIp(Boolean(cfg.requireIp));
+        setRequireIp(cfg.requireIp !== false);
         setDetectedClientIp(cfgRes.data.detectedClientIp || "127.0.0.1");
+        setIsCurrentIpAllowed(cfgRes.data.isCurrentIpAllowed !== false);
       }
-
-      // Chỉ để hiển thị khoảng cách tham khảo; khi bấm chấm công sẽ lấy lại GPS mới
-      previewLocation(targetBranches);
 
       // Nếu là Sales Ca 2 vừa check-in: kiểm tra có bàn giao ca nào đang chờ nhận không
       if (data.attendance && currentUser?.role === "SALES") {
         checkPendingHandover();
       }
     } catch {
-      previewLocation(branches);
+      // ignore
     } finally {
       setLoading(false);
     }
@@ -138,58 +116,12 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
     }
   };
 
-  /** Cập nhật khoảng cách hiển thị tới cơ sở gần nhất (Cơ sở 1 / Cơ sở 2) */
-  const updateDistance = (
-    gps: { lat: number; lng: number },
-    targetBranches: { name: string; lat: number; lng: number }[] = branches
-  ) => {
-    setCoords({ lat: gps.lat, lng: gps.lng });
-    if (targetBranches.length === 0) {
-      setDistanceMeters(null);
-      setNearestBranchName("");
-      return;
-    }
-    let nearest = targetBranches[0];
-    let best = calculateDistance(gps.lat, gps.lng, nearest.lat, nearest.lng);
-    for (const b of targetBranches.slice(1)) {
-      const d = calculateDistance(gps.lat, gps.lng, b.lat, b.lng);
-      if (d < best) {
-        best = d;
-        nearest = b;
-      }
-    }
-    setDistanceMeters(Math.round(best));
-    setNearestBranchName(nearest.name);
-  };
-
-  const previewLocation = (targetBranches: { name: string; lat: number; lng: number }[]) => {
-    getFreshPosition(10000)
-      .then((gps) => updateDistance(gps, targetBranches))
-      .catch(() => setDistanceMeters(null));
-  };
-
-  function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-    const R = 6371e3;
-    const phi1 = (lat1 * Math.PI) / 180;
-    const phi2 = (lat2 * Math.PI) / 180;
-    const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
-    const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
-    const a =
-      Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
-      Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  }
-
-  // Ca WFH đã được HR duyệt: server bỏ qua GPS/IP nên không bắt buộc định vị
-  const skipGps = isWfhToday || attendance?.checkInType === "WFH";
-
-  const submitCheckIn = async (gps: GeoCoords | null) => {
+  const handleCheckIn = async () => {
+    if (actionLoading) return;
     setStatusMsg(null);
     setActionLoading(true);
     try {
-      if (gps) updateDistance(gps);
       const res = await checkInApi({
-        ...(gps ? { latitude: gps.lat, longitude: gps.lng } : {}),
         shiftCode: selectedShift,
       });
 
@@ -207,42 +139,19 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
     }
   };
 
-  const handleCheckIn = async () => {
-    if (actionLoading || locating) return;
-    setStatusMsg(null);
-    if (skipGps) return submitCheckIn(null);
-    // Lấy GPS ngay tại thời điểm bấm; chưa bật GPS -> hiện popup yêu cầu bật
-    return withGps(submitCheckIn);
-  };
-
   const handleCheckOut = async (
     forceEarly = false,
     earlyReason = "",
     lateCheckoutReason = ""
   ) => {
-    if (actionLoading || locating) return;
-    setStatusMsg(null);
-    const submit = (gps: GeoCoords | null) => submitCheckOut(gps, forceEarly, earlyReason, lateCheckoutReason);
-    if (skipGps) return submit(null);
-    // Lấy GPS ngay tại thời điểm bấm Check-out; chưa bật GPS -> hiện popup yêu cầu bật
-    return withGps(submit);
-  };
-
-  const submitCheckOut = async (
-    gps: GeoCoords | null,
-    forceEarly = false,
-    earlyReason = "",
-    lateCheckoutReason = ""
-  ) => {
+    if (actionLoading) return;
     setStatusMsg(null);
     setActionLoading(true);
     try {
-      if (gps) updateDistance(gps);
       const res = await checkOutApi({
         forceEarly,
         earlyReason,
         lateCheckoutReason,
-        ...(gps ? { latitude: gps.lat, longitude: gps.lng } : {}),
       });
       setStatusMsg({ type: "success", text: res.message });
       setAttendance(res.attendance);
@@ -293,8 +202,6 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
       alert(err.message || "Lỗi xác nhận");
     }
   };
-
-  const isLocationValid = isWfhToday || (distanceMeters !== null && distanceMeters <= maxRadius);
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
@@ -381,37 +288,19 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
             </div>
           </div>
 
-          {/* Thông tin vị trí & mạng */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center gap-2.5">
-              <MapPin
-                className={`w-4 h-4 shrink-0 ${
-                  isWfhToday || (distanceMeters !== null && distanceMeters <= maxRadius)
-                    ? "text-emerald-600"
-                    : "text-rose-500"
-                }`}
-              />
-              <div>
-                <div className="font-bold text-slate-800">Vị trí GPS (≤{maxRadius}m)</div>
-                <div className="text-[11px] text-slate-500 font-mono">
-                  {isWfhToday
-                    ? "Bỏ qua (WFH)"
-                    : distanceMeters !== null
-                      ? `Cách ~${distanceMeters}m${nearestBranchName ? ` • ${nearestBranchName.split(":")[0]}` : ""}`
-                      : "Chưa có vị trí"}
-                </div>
+          {/* Thông tin mạng Wi-Fi chấm công */}
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center gap-2.5">
+            <Wifi
+              className={`w-4 h-4 shrink-0 ${
+                isWfhToday || isCurrentIpAllowed ? "text-emerald-600" : "text-rose-500"
+              }`}
+            />
+            <div>
+              <div className="font-bold text-slate-800">
+                Mạng Wi-Fi chấm công {requireIp ? "(Kiểm tra IP mạng)" : ""}
               </div>
-            </div>
-
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center gap-2.5">
-              <Wifi className="w-4 h-4 text-emerald-600 shrink-0" />
-              <div>
-                <div className="font-bold text-slate-800">
-                  Mạng Wi-Fi {requireIp ? "(Bắt buộc IP)" : ""}
-                </div>
-                <div className="text-[11px] text-slate-500 font-mono">
-                  {isWfhToday ? "Internet tự do" : `IP: ${detectedClientIp}`}
-                </div>
+              <div className="text-[11px] text-slate-500 font-mono">
+                {isWfhToday ? "Internet tự do (WFH)" : `IP: ${detectedClientIp}`}
               </div>
             </div>
           </div>
@@ -521,21 +410,21 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
               <button
                 type="button"
                 onClick={handleCheckIn}
-                disabled={actionLoading || locating}
+                disabled={actionLoading}
                 className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-2xl font-bold text-sm shadow-xl transition flex items-center justify-center gap-2 cursor-pointer"
               >
                 <LogIn className="w-5 h-5" />
-                {locating ? "Đang lấy vị trí GPS..." : actionLoading ? "Đang xác thực vị trí..." : "BẤM CHECK-IN VÀO CA"}
+                {actionLoading ? "Đang xác thực mạng Wi-Fi..." : "BẤM CHECK-IN VÀO CA"}
               </button>
             ) : !attendance.checkOutTime ? (
               <button
                 type="button"
                 onClick={() => handleCheckOut()}
-                disabled={actionLoading || locating}
+                disabled={actionLoading}
                 className="w-full py-4 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white rounded-2xl font-bold text-sm shadow-xl transition flex items-center justify-center gap-2 cursor-pointer"
               >
                 <LogOut className="w-5 h-5" />
-                {locating ? "Đang lấy vị trí GPS..." : actionLoading ? "Đang xử lý..." : "KẾT CA & BẤM CHECK-OUT"}
+                {actionLoading ? "Đang xử lý..." : "KẾT CA & BẤM CHECK-OUT"}
               </button>
             ) : (
               <div className="text-center py-3 bg-slate-100 rounded-2xl font-bold text-slate-500">
@@ -557,8 +446,6 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
           }}
         />
       )}
-
-      {gpsModal}
 
       {/* Modal Đăng Ký Ca Thứ 6 */}
       {showFridayModal && (
