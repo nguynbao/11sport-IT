@@ -12,6 +12,7 @@ import {
 } from '../config/db';
 import { ApiError } from '../utils/errors';
 import { ShiftCode } from '../models/Attendance';
+import { getLateToleranceMinutes } from './attendanceTimesheet';
 
 export const attendanceRouter = Router();
 
@@ -318,6 +319,7 @@ attendanceRouter.post('/attendance/check-in', async (req, res, next) => {
     // Ca 1 + Ca 2 (BOTH): 08:30 (510 phút) -> 21:00 (1260 phút)
     // Ưu tiên lấy theo lịch phân ca đã lưu; chỉ khi chưa xếp ca mới tự nhận diện theo shiftCode hoặc giờ hiện tại
     const isSalesStaff = staff.department === 'SALES' || staff.role === 'SALES';
+    const effectiveDepartment = isSalesStaff ? 'SALES' : staff.department || 'OFFICE';
     const selectedShift: ShiftCode =
       assignedShift &&
       (assignedShift.shiftCode === 'SHIFT_1' ||
@@ -332,20 +334,22 @@ attendanceRouter.post('/attendance/check-in', async (req, res, next) => {
               ? 'SHIFT_2'
               : 'SHIFT_1';
     const shiftStartMinutes = selectedShift === 'SHIFT_2' ? 12 * 60 : 8 * 60 + 30;
+    const lateToleranceMinutes = getLateToleranceMinutes(effectiveDepartment);
 
     let lateMinutes = 0;
     let status: 'ON_TIME' | 'LATE' = 'ON_TIME';
     const workStartTime = new Date(now);
 
-    if (totalMinutesNow < shiftStartMinutes) {
-      // Check-in sớm: Quy mốc tính công về đúng giờ bắt đầu ca
+    if (totalMinutesNow <= shiftStartMinutes) {
+      // Check-in sớm hoặc đúng giờ bắt đầu ca: Quy mốc tính công về đúng giờ bắt đầu ca
       const [targetH, targetM] = selectedShift === 'SHIFT_2' ? [12, 0] : [8, 30];
       workStartTime.setHours(targetH, targetM, 0, 0);
     } else {
-      // Đi trễ
-      lateMinutes = totalMinutesNow - shiftStartMinutes;
-      if (lateMinutes > 5) {
+      // Đi trễ: Khối Bán hàng không có du di (0p); Khối Văn phòng du di 5p
+      const diffLate = totalMinutesNow - shiftStartMinutes;
+      if (diffLate > lateToleranceMinutes) {
         status = 'LATE';
+        lateMinutes = diffLate;
       }
     }
 
@@ -353,7 +357,7 @@ attendanceRouter.post('/attendance/check-in', async (req, res, next) => {
       staffId: staff._id,
       staffCode: staff.code,
       staffName: staff.fullName,
-      department: staff.department || 'OFFICE',
+      department: effectiveDepartment,
       date: todayStr,
       shiftCode: selectedShift,
       checkInTime: now,

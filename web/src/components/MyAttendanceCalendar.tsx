@@ -498,10 +498,10 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
           {s && (
             <div
               className={`px-3 py-2 rounded-xl border text-xs font-semibold flex flex-wrap items-center justify-between gap-2 ${data?.row?.contractType !== "FULLTIME"
-                  ? "bg-slate-50 border-slate-200 text-slate-600"
-                  : (s.paidLeaveRemaining ?? Math.max(0, s.paidLeaveEntitled - s.paidLeaveUsed)) > 0
-                    ? "bg-teal-50 border-teal-200 text-teal-900"
-                    : "bg-slate-100 border-slate-300 text-slate-700"
+                ? "bg-slate-50 border-slate-200 text-slate-600"
+                : (s.paidLeaveRemaining ?? Math.max(0, s.paidLeaveEntitled - s.paidLeaveUsed)) > 0
+                  ? "bg-teal-50 border-teal-200 text-teal-900"
+                  : "bg-slate-100 border-slate-300 text-slate-700"
                 }`}
             >
               <span>
@@ -565,10 +565,10 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
             return (
               <div
                 className={`bg-white rounded-2xl border p-3.5 sm:p-4 shadow-sm space-y-3 ${myShiftSchedule.isConfirmedByHr
-                    ? "border-emerald-300 ring-1 ring-emerald-200"
-                    : myShiftSchedule.isRegistered
-                      ? "border-indigo-200"
-                      : "border-amber-200"
+                  ? "border-emerald-300 ring-1 ring-emerald-200"
+                  : myShiftSchedule.isRegistered
+                    ? "border-indigo-200"
+                    : "border-amber-200"
                   }`}
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -626,8 +626,8 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
                         <div
                           key={dStr}
                           className={`rounded-xl border p-2 text-center space-y-1 ${code === "SHIFT_1" || code === "SHIFT_2" || code === "BOTH"
-                              ? "bg-indigo-50/70 border-indigo-300 text-indigo-900"
-                              : "bg-rose-50/60 border-rose-200 text-rose-700"
+                            ? "bg-indigo-50/70 border-indigo-300 text-indigo-900"
+                            : "bg-rose-50/60 border-rose-200 text-rose-700"
                             }`}
                         >
                           <div className="text-[11px] font-extrabold">{SHIFT_WEEK_DAY_NAMES[i]}</div>
@@ -827,7 +827,10 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
                   • {data.rules.shifts.SHIFT_1}; {data.rules.shifts.SHIFT_2}. Làm 2 ca (Ca 1 + Ca 2) theo bảng xếp ca không tính là tăng ca.
                 </p>
                 <p>
-                  • Trễ quá {data.rules.lateToleranceMinutes}p tính đi trễ.{" "}
+                  •{" "}
+                  {data.row?.department === "SALES" || data.rules.lateToleranceMinutes <= 0
+                    ? "Check-in đúng giờ (Ca 1: 08:30; Ca 2: 12:00)"
+                    : `Trễ quá ${data.rules.lateToleranceMinutes}p tính đi trễ.`}{" "}
                   {data.row?.department === "SALES"
                     ? "Khối Bán hàng (1 ca): check-out trễ tối đa 5p; sau 5p phải nhập lý do để HR xem xét có tính tăng ca hay không."
                     : "Khối Văn phòng: chỉ tính tăng ca khi được HR yêu cầu."}
