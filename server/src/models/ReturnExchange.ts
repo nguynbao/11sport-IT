@@ -39,6 +39,8 @@ export interface IReturnExchange extends Document {
   type: ReturnType;
   returnItems: IReturnItem[];
   exchangeItems: IExchangeItem[];
+  returnSubtotal: number;
+  refundedCardFee: number;
   returnTotal: number;
   exchangeTotal: number;
   netDifference: number; // > 0: khách trả thêm, < 0: hoàn khách |netDifference|
@@ -94,6 +96,8 @@ const ReturnExchangeSchema = new Schema<IReturnExchange>(
     type: { type: String, enum: ['RETURN', 'EXCHANGE'], required: true },
     returnItems: { type: [ReturnItemSchema], default: [] },
     exchangeItems: { type: [ExchangeItemSchema], default: [] },
+    returnSubtotal: { type: Number, default: 0 },
+    refundedCardFee: { type: Number, default: 0 },
     returnTotal: { type: Number, required: true },
     exchangeTotal: { type: Number, required: true },
     netDifference: { type: Number, required: true },

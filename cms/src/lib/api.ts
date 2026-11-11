@@ -416,6 +416,8 @@ export interface ReturnReceipt {
   refundMethod: "CASH" | "BANKING" | "CARD";
   returnItems: any[];
   exchangeItems: any[];
+  returnSubtotal?: number;
+  refundedCardFee?: number;
   returnTotal: number;
   exchangeTotal: number;
   netDifference: number;

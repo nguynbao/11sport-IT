@@ -335,8 +335,15 @@
     - Khớp chính xác từng dòng hàng trong `order.items` theo `lineIndex` (ưu tiên nếu truyền và khớp `productId`), hoặc theo `productId + (color, size)` còn hạn mức trả; nếu client không truyền `color`/`size`/`lineIndex` khi đơn có nhiều biến thể cùng `productId`, hệ thống tự động phân bổ vào các dòng cùng `productId` còn hạn mức trả thay vì cộng dồn vào dòng đầu tiên.
     - Kiểm tra số lượng trả của từng dòng không vượt quá `purchasedQty - alreadyReturnedQty`.
     - Hàng trả có `condition === "GOOD"` được cộng lại vào tồn Kho Tầng 1 đúng biến thể `(color, size)` (`+quantity`), ghi `StockMovement` loại `RETURN` / `EXCHANGE_IN`. Hàng `DAMAGED` không cộng tồn kho bán.
-    - Hàng đổi mới (`exchangeItems`) kiểm tra tồn Kho Tầng 1 theo sản phẩm và biến thể `(color, size)`, trừ tồn kho (`-quantity`), ghi `StockMovement` loại `EXCHANGE_OUT`.
-    - Tính `returnTotal`, `exchangeTotal`, `netDifference = exchangeTotal - returnTotal` (dương: khách trả thêm, âm: cửa hàng hoàn tiền).
+    - Hàng đổi mới (`exchangeItems`):
+      - Cho phép tra cứu sản phẩm đổi theo `productId`, `code` gốc hoặc mã vạch / mã biến thể con (`variantCode` / `barcode`).
+      - Chuẩn hóa phân loại `(color, size)` theo biến thể thực tế: nếu không truyền `color`/`size` khi sản phẩm chỉ có 1 biến thể khả dụng thì tự động gán biến thể đó; nếu sản phẩm có nhiều biến thể khả dụng mà không chỉ định thì trả `400 EXCHANGE_VARIANT_REQUIRED`; nếu truyền biến thể không tồn tại thì trả `400 EXCHANGE_VARIANT_NOT_FOUND`.
+      - Tính tồn Kho Tầng 1 khả dụng (đã cộng phần hàng `GOOD` vừa nhận lại cùng sản phẩm/biến thể trong giao dịch) và hỗ trợ **tự động tách Bộ → Lẻ** (`executeUnpackSetToRetail` tại `FLOOR_1`) nếu sản phẩm đổi là hàng lẻ liên kết `parentSetProductId` còn tồn Bộ ở Kho Tầng 1. Sau đó trừ tồn kho Tầng 1 (`-quantity`) và ghi `StockMovement` loại `EXCHANGE_OUT` (`warehouseLocation: "FLOOR_1"`).
+    - Tính tiền hoàn trả kèm **hoàn lại phí quẹt thẻ (`refundedCardFee`)**:
+      - `returnSubtotal`: tổng thành tiền gốc của các sản phẩm trả lại (`sum(lineTotal)`).
+      - `refundedCardFee`: nếu đơn gốc thanh toán bằng thẻ có thu phí (`order.cardFee > 0`), hoàn lại phí thẻ cho khách theo tỷ lệ giá trị hàng trả trên `order.subtotal` (hoặc hoàn trọn vẹn toàn bộ phần phí thẻ còn lại của đơn khi tất cả các dòng hàng có giá trị trong đơn đã được trả hết, đảm bảo tổng phí thẻ hoàn qua các lần không vượt quá `order.cardFee`). Nếu đơn gốc không thu phí thẻ thì `refundedCardFee = 0`.
+      - `returnTotal = returnSubtotal + refundedCardFee`.
+      - `netDifference = exchangeTotal - returnTotal` (dương: khách trả thêm `additionalCharge`, âm: cửa hàng hoàn tiền `refundAmount = |netDifference|`).
     - Cập nhật `returnedQuantity` theo đúng chỉ số dòng đơn gốc và chuyển trạng thái đơn hàng gốc (`PARTIALLY_RETURNED` hoặc `FULLY_RETURNED`).
 
 ### 2.7 Báo cáo hoạt động nhân viên (`/reports/staff-activity`) *(v1.4)*

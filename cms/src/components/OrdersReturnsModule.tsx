@@ -141,6 +141,14 @@ export default function OrdersReturnsModule({
       { text: r.customerName, weight: 1.3 },
       { text: r.performedByName, weight: 0.9 },
       { text: r.note, weight: 0.8 },
+      ...(r.returnItems || []).flatMap((i) => [
+        { text: i.productCode, weight: 1.2 },
+        { text: i.productName, weight: 1.1 },
+      ]),
+      ...(r.exchangeItems || []).flatMap((i) => [
+        { text: i.productCode, weight: 1.2 },
+        { text: i.productName, weight: 1.1 },
+      ]),
     ]);
   }, [returns, search]);
 
@@ -414,7 +422,12 @@ export default function OrdersReturnsModule({
                   </td>
                   <td className="py-3 px-3 font-bold">{r.type}</td>
                   <td className="py-3 px-3 text-right font-mono">
-                    {formatVND(r.returnTotal)}
+                    <div>{formatVND(r.returnTotal)}</div>
+                    {Number(r.refundedCardFee) > 0 && (
+                      <div className="text-[10px] text-emerald-700 font-sans font-semibold">
+                        (gồm phí thẻ {formatVND(Number(r.refundedCardFee))})
+                      </div>
+                    )}
                   </td>
                   <td className="py-3 px-3 text-right font-mono">
                     {formatVND(r.exchangeTotal)}
