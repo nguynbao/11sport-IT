@@ -1165,5 +1165,80 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
     const stillAt19: any = await leaveRequestRepo.findById(off20Id);
     expect(stillAt19.date).toBe('2026-11-19');
     await leaveRequestRepo.deleteById(String((otherLeaveOnTarget as any)._id));
+    await leaveRequestRepo.deleteById(String(conflictChangeId));
+
+    // 14.6 Áp dụng quy tắc báo trước 21 ngày khi chuyển ngày nghỉ sang tuần đã có 2 ngày nghỉ (hoặc 1 ngày phép)
+    // Giả sử tuần 23/11 - 29/11 (cách hôm nay 12/11 < 21 ngày) đã có 2 ngày nghỉ (23/11 OFF và 24/11 PAID_LEAVE)
+    const w2Off = await leaveRequestRepo.create({
+      staffId: String(staffId),
+      staffCode: salesCreate.body.data.code,
+      staffName: 'Nhân Viên Đổi Ngày Off',
+      department: 'SALES',
+      type: 'OFF',
+      date: '2026-11-23',
+      reason: 'Nghỉ tuần sau 1',
+      status: 'APPROVED',
+    });
+    const w2Paid = await leaveRequestRepo.create({
+      staffId: String(staffId),
+      staffCode: salesCreate.body.data.code,
+      staffName: 'Nhân Viên Đổi Ngày Off',
+      department: 'SALES',
+      type: 'PAID_LEAVE',
+      date: '2026-11-24',
+      reason: 'Nghỉ phép tuần sau 2',
+      status: 'APPROVED',
+    });
+
+    // Chuyển OFF từ 2026-11-19 sang 2026-11-25 (làm tuần 23/11-29/11 thành 3 ngày nghỉ mà báo trước < 21 ngày) -> chặn 400 ADVANCE_NOTICE_REQUIRED khi tạo
+    const changeToFullWeek = await request(app)
+      .post('/api/v1/leave-requests')
+      .set('Authorization', `Bearer ${empToken}`)
+      .send({
+        type: 'CHANGE_OFF',
+        fromDate: '2026-11-19',
+        date: '2026-11-25',
+        sourceLeaveId: off20Id,
+        reason: 'Xin dồn ngày off sang tuần sau (thành 3 ngày nghỉ/tuần)',
+      });
+    expect(changeToFullWeek.status).toBe(400);
+    expect(changeToFullWeek.body.code).toBe('ADVANCE_NOTICE_REQUIRED');
+
+    // Tạm xóa đơn ngày 24/11 để tạo đơn CHANGE_OFF sang 25/11 hợp lệ (tuần đích lúc tạo chỉ có 2 ngày nghỉ),
+    // sau đó phát sinh lại đơn ngày 24/11 trước khi HR duyệt -> HR duyệt sẽ bị chặn 400 ADVANCE_NOTICE_REQUIRED
+    await leaveRequestRepo.deleteById(String((w2Paid as any)._id));
+    const pendingChangeToW2 = await request(app)
+      .post('/api/v1/leave-requests')
+      .set('Authorization', `Bearer ${empToken}`)
+      .send({
+        type: 'CHANGE_OFF',
+        fromDate: '2026-11-19',
+        date: '2026-11-25',
+        sourceLeaveId: off20Id,
+        reason: 'Xin đổi ngày off sang 25/11 khi tuần đó mới có 1 ngày nghỉ',
+      });
+    expect(pendingChangeToW2.status).toBe(201);
+
+    const w2PaidAgain = await leaveRequestRepo.create({
+      staffId: String(staffId),
+      staffCode: salesCreate.body.data.code,
+      staffName: 'Nhân Viên Đổi Ngày Off',
+      department: 'SALES',
+      type: 'PAID_LEAVE',
+      date: '2026-11-24',
+      reason: 'Phát sinh thêm ngày phép 24/11 trong tuần đích',
+      status: 'APPROVED',
+    });
+
+    const approveExceedWeekRes = await request(app)
+      .patch(`/api/v1/leave-requests/${pendingChangeToW2.body.data._id}`)
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({ status: 'APPROVED', reviewNote: 'Duyệt khi tuần đích đã lên 3 ngày nghỉ' });
+    expect(approveExceedWeekRes.status).toBe(400);
+    expect(approveExceedWeekRes.body.code).toBe('ADVANCE_NOTICE_REQUIRED');
+
+    await leaveRequestRepo.deleteById(String((w2Off as any)._id));
+    await leaveRequestRepo.deleteById(String((w2PaidAgain as any)._id));
+    await leaveRequestRepo.deleteById(String(pendingChangeToW2.body.data._id));
   });
 });

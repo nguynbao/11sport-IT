@@ -495,9 +495,10 @@ export async function assertAdvanceNoticeForLeaveRequest(params: {
   type: string;
   date: string;
   excludeLeaveId?: string;
+  excludeDates?: Set<string>;
   referenceTodayStr?: string;
 }) {
-  const { staff, type, date, excludeLeaveId } = params;
+  const { staff, type, date, excludeLeaveId, excludeDates } = params;
   if (type !== 'PAID_LEAVE' && type !== 'OFF') return;
 
   const targetDate = String(date).trim();
@@ -520,6 +521,7 @@ export async function assertAdvanceNoticeForLeaveRequest(params: {
     const paidDates = new Set<string>();
     for (const l of allLeaves as any[]) {
       if (excludeId && String(l._id) === excludeId) continue;
+      if (excludeDates && excludeDates.has(String(l.date))) continue;
       if (l.type === 'PAID_LEAVE' && (l.status === 'PENDING' || l.status === 'APPROVED') && l.date) {
         paidDates.add(String(l.date));
       }
@@ -551,6 +553,7 @@ export async function assertAdvanceNoticeForLeaveRequest(params: {
     const offDatesInWeek = new Set<string>([targetDate]);
     for (const l of allLeaves as any[]) {
       if (excludeId && String(l._id) === excludeId) continue;
+      if (excludeDates && excludeDates.has(String(l.date))) continue;
       if (
         (l.type === 'OFF' || l.type === 'PAID_LEAVE') &&
         (l.status === 'PENDING' || l.status === 'APPROVED') &&
@@ -560,6 +563,7 @@ export async function assertAdvanceNoticeForLeaveRequest(params: {
       }
     }
     for (const s of allShifts as any[]) {
+      if (excludeDates && excludeDates.has(String(s.date))) continue;
       if (s.shiftCode === 'OFF' && weekDateSet.has(String(s.date))) {
         offDatesInWeek.add(String(s.date));
       }
@@ -716,6 +720,15 @@ leaveRequestsRouter.post('/leave-requests', async (req, res, next) => {
           excludeDatesSet
         );
       }
+
+      // Kiểm tra điều kiện báo trước tối thiểu 3 tuần (21 ngày) tại ngày đích (loại trừ ngày nguồn cleanFromDate)
+      await assertAdvanceNoticeForLeaveRequest({
+        staff,
+        type: resolvedSourceOffType,
+        date: cleanDate,
+        excludeLeaveId: resolvedSourceLeaveId,
+        excludeDates: excludeDatesSet,
+      });
 
       const createdChange = await leaveRequestRepo.create({
         staffId: staff._id,
@@ -937,6 +950,25 @@ leaveRequestsRouter.patch('/leave-requests/:id', async (req, res, next) => {
           `Ngày đích (${targetDate}) đã có lịch nghỉ hoặc đơn xin nghỉ khác. Không thể duyệt chuyển ngày off sang ngày này.`
         );
       }
+
+      const staffDoc = (await staffRepo.findById(staffId)) || {
+        _id: staffId,
+        department: reqDoc.department || 'OFFICE',
+        role: reqDoc.department === 'SALES' ? 'SALES' : 'OFFICE',
+      };
+      const createdDayStr =
+        reqDoc.createdAt && !Number.isNaN(new Date(reqDoc.createdAt).getTime())
+          ? toLocalDateStr(new Date(reqDoc.createdAt))
+          : undefined;
+
+      await assertAdvanceNoticeForLeaveRequest({
+        staff: staffDoc,
+        type: sourceOffType,
+        date: targetDate,
+        excludeLeaveId: primaryLeave ? String(primaryLeave._id) : sourceLeaveId,
+        excludeDates: excludeDatesSet,
+        referenceTodayStr: createdDayStr,
+      });
 
       const noteSuffix = `Đã đổi ngày off từ ${fromDate} sang ${targetDate}`;
 

@@ -114,14 +114,14 @@
     "semantic_hash": ""
   },
   "cms/src/components/StaffModule.tsx": {
-    "mtime": 1794477364.289089,
-    "seen": 1794477473.464235,
+    "mtime": 1794478832.5620196,
+    "seen": 1794478868.746988,
     "ast_hash": "133122bc07c7b20446d479aa8e5e4e7c",
     "semantic_hash": ""
   },
   "cms/src/lib/api.ts": {
-    "mtime": 1794474835.511694,
-    "seen": 1794475162.7083268,
+    "mtime": 1794478832.5658462,
+    "seen": 1794478868.7469912,
     "ast_hash": "b65a42e00f3d4ac7d69bc2c5dc5bfaa7",
     "semantic_hash": ""
   },
@@ -138,8 +138,8 @@
     "semantic_hash": ""
   },
   "cms/src/lib/exports.ts": {
-    "mtime": 1794475968.4538321,
-    "seen": 1794476443.581999,
+    "mtime": 1794478832.5676227,
+    "seen": 1794478868.7469969,
     "ast_hash": "678ddc5219030aee7d2863b9166fde10",
     "semantic_hash": ""
   },
@@ -354,8 +354,8 @@
     "semantic_hash": ""
   },
   "server/src/utils/fileImportParser.ts": {
-    "mtime": 1794476032.7502906,
-    "seen": 1794476443.582117,
+    "mtime": 1794478832.6180594,
+    "seen": 1794478868.747088,
     "ast_hash": "e6e6ce044e2554232053fb2c19262c1b",
     "semantic_hash": ""
   },
@@ -594,8 +594,8 @@
     "semantic_hash": ""
   },
   "web/src/lib/api.ts": {
-    "mtime": 1794474423.7584705,
-    "seen": 1794475162.70852,
+    "mtime": 1794478832.6372387,
+    "seen": 1794478868.7471948,
     "ast_hash": "487864e8210ba557762681291a052c80",
     "semantic_hash": ""
   },
@@ -642,8 +642,8 @@
     "semantic_hash": ""
   },
   "docs/api-contract.md": {
-    "mtime": 1794474015.1456687,
-    "seen": 1794475162.7085319,
+    "mtime": 1794478832.5690575,
+    "seen": 1794478868.747209,
     "ast_hash": "60bc4736bd895d1eff76921b70d59e54",
     "semantic_hash": ""
   },
@@ -678,8 +678,8 @@
     "semantic_hash": ""
   },
   "docs/status.md": {
-    "mtime": 1794476409.1053703,
-    "seen": 1794476443.582316,
+    "mtime": 1794478832.5726948,
+    "seen": 1794478868.747225,
     "ast_hash": "cdd49624df75d7e12dc790542c91025b",
     "semantic_hash": ""
   },
@@ -768,8 +768,8 @@
     "semantic_hash": ""
   },
   "cms/src/components/HrmAttendanceModule.tsx": {
-    "mtime": 1794474902.3195155,
-    "seen": 1794475162.708304,
+    "mtime": 1794478832.5602407,
+    "seen": 1794478868.746967,
     "ast_hash": "b71cf1ee5b9c1c0f78fa30583bf6533f",
     "semantic_hash": ""
   },
@@ -786,8 +786,8 @@
     "semantic_hash": ""
   },
   "server/src/models/LeaveRequest.ts": {
-    "mtime": 1794474061.7153497,
-    "seen": 1794475162.7083662,
+    "mtime": 1794478832.605345,
+    "seen": 1794478868.747033,
     "ast_hash": "74b4d3449c927a00f7fe3c8e98a93f7b",
     "semantic_hash": ""
   },
@@ -816,9 +816,9 @@
     "semantic_hash": ""
   },
   "server/src/routes/leaveRequests.ts": {
-    "mtime": 1794477323.3678782,
-    "seen": 1794477473.464382,
-    "ast_hash": "7cbcc17a107a2742bb6c5d98c0fda7c0",
+    "mtime": 1794478836.4056733,
+    "seen": 1794478868.747063,
+    "ast_hash": "4506cf8bc392b1f0bd9efe816eb20450",
     "semantic_hash": ""
   },
   "server/src/routes/shifts.ts": {
@@ -828,9 +828,9 @@
     "semantic_hash": ""
   },
   "server/tests/hrm-attendance.test.ts": {
-    "mtime": 1794477410.821151,
-    "seen": 1794477473.4644842,
-    "ast_hash": "e76ff5c667e6206af24662491a769613",
+    "mtime": 1794478836.4073691,
+    "seen": 1794478868.747114,
+    "ast_hash": "aaa037b651abede8b4fa0bcba23a4f87",
     "semantic_hash": ""
   },
   "web/src/components/AttendanceModal.tsx": {
@@ -858,8 +858,8 @@
     "semantic_hash": ""
   },
   "docs/requirements/he-thong-cham-cong-hrm.md": {
-    "mtime": 1794474037.8615167,
-    "seen": 1794475162.708544,
+    "mtime": 1794478832.5709476,
+    "seen": 1794478868.747222,
     "ast_hash": "cd25e7300aeda2d493389ffafcecea8c",
     "semantic_hash": ""
   },
@@ -906,8 +906,8 @@
     "semantic_hash": ""
   },
   "server/src/routes/attendanceTimesheet.ts": {
-    "mtime": 1794474341.8885057,
-    "seen": 1794475162.708385,
+    "mtime": 1794478832.610956,
+    "seen": 1794478868.747054,
     "ast_hash": "1dbda49e3a7b172b0ab350eaece92a18",
     "semantic_hash": ""
   },
@@ -924,14 +924,14 @@
     "semantic_hash": ""
   },
   "web/src/components/LeaveRequests.tsx": {
-    "mtime": 1794474590.1833248,
-    "seen": 1794475162.708503,
+    "mtime": 1794478832.6337545,
+    "seen": 1794478868.747178,
     "ast_hash": "b095d8afc38806b2dbaedd01eb9909cd",
     "semantic_hash": ""
   },
   "web/src/components/MyAttendanceCalendar.tsx": {
-    "mtime": 1794475491.1798687,
-    "seen": 1794476443.582248,
+    "mtime": 1794478832.6350245,
+    "seen": 1794478868.747181,
     "ast_hash": "6b3002473b09f653cb0019c635c54881",
     "semantic_hash": ""
   },
@@ -1020,14 +1020,14 @@
     "semantic_hash": ""
   },
   "server/src/utils/staffImportParser.ts": {
-    "mtime": 1794476120.242634,
-    "seen": 1794476443.582131,
+    "mtime": 1794478832.6210053,
+    "seen": 1794478868.7470982,
     "ast_hash": "3848ddf30bd54cf236ca7bef1f9ff333",
     "semantic_hash": ""
   },
   "server/tests/staff-import.test.ts": {
-    "mtime": 1794476361.1080015,
-    "seen": 1794476443.5821729,
+    "mtime": 1794478832.6318483,
+    "seen": 1794478868.7471292,
     "ast_hash": "3b1916a5afc28c3f17e62a5ff1f0574a",
     "semantic_hash": ""
   },
