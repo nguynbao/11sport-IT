@@ -806,12 +806,14 @@
         - Nếu check-out trễ **quá 5 phút** (`lateCheckoutMinutes > 5`) mà chưa truyền `lateCheckoutReason`: Trả lỗi `400 LATE_CHECKOUT_REASON_REQUIRED` kèm `{ lateCheckoutMinutes }` để giao diện yêu cầu nhân viên nhập lý do vì sao check-out trễ.
         - Khi có `lateCheckoutReason`: Lưu `lateCheckoutMinutes`, `lateCheckoutReason` và đặt `overtimeStatus: "PENDING"` để HR xem xét và quyết định số giờ/phút check-out trễ đó có được tính là tăng ca hay không.
       - **Khối Văn phòng (`OFFICE`)**: Tự check-out muộn sau `17:30` không tự động tính tăng ca; chỉ được tính tăng ca khi **được HR yêu cầu / phê duyệt** (`overtimeStatus: "APPROVED"`).
-    - Nếu nhân viên là `SALES` và đã đủ giờ kết ca: Khi bấm nút Pause (Check-out) trên Header mà chưa lập biên bản bàn giao Kho Tầng 1 trong ca, trả `400 HANDOVER_REQUIRED` để giao diện tự động mở popup Bàn giao ca (`ShiftHandoverModal`) mà không cần nút `Bàn giao K1` trên Header. Sau khi gửi biên bản bàn giao, tự động hoàn tất Check-out.
+    - Nếu nhân viên là `SALES` (không phải `WFH`) khi bấm nút Pause (Check-out):
+      1. **Kiểm tra xác nhận bàn giao từ ca trước**: Nếu trong ngày đang có phiếu bàn giao của ca trước (`status === "PENDING"`, `fromStaffId !== user.userId`) mà nhân viên hiện tại chưa xác nhận -> Trả lỗi `400 INCOMING_HANDOVER_CONFIRM_REQUIRED` kèm `{ pendingHandoverId }` để giao diện tự động bật lại Popup xác nhận phiếu bàn giao ca trước (nhân viên bắt buộc phải xác nhận thông tin bàn giao của ca trước thì mới được phép kết ca).
+      2. **Kiểm tra lập phiếu kết ca của ca hiện tại**: Nếu nhân viên chưa lập phiếu kết ca & bàn giao Kho Tầng 1 của ca mình, trả lỗi `400 HANDOVER_REQUIRED` để giao diện tự động mở popup Kết ca (`ShiftHandoverModal`). Sau khi gửi phiếu kết ca, hệ thống tự động hoàn tất Check-out.
     - Tự động trừ giờ nghỉ trưa: Với nhân viên `OFFICE`, khoảng thời gian `12:00 - 13:00` (1h; ca sáng `08:30 - 12:00`, ca chiều `13:00 - 17:30`) được tự động loại khỏi giờ làm thực tế.
   - Response: `{ "data": { "attendance": { "id": "...", "checkOutTime": "...", "totalWorkHours": 8, "status": "COMPLETED | EARLY_LEAVE", "lateCheckoutMinutes": 0, "lateCheckoutReason": "", "overtimeStatus": "NONE | PENDING | APPROVED | REJECTED", "overtimeApprovedMinutes": 0 } } }`
 
 - `GET /api/v1/attendance/today`
-  - Trả về trạng thái chấm công của nhân viên hôm nay, ca được phân công, trạng thái WFH, và thông tin bàn giao ca (nếu là Sales).
+  - Trả về trạng thái chấm công của nhân viên hôm nay, ca được phân công, trạng thái WFH, trạng thái phiếu bàn giao ca của bản thân (`handoverStatus`), và phiếu bàn giao đang chờ xác nhận từ ca trước (`pendingIncomingHandover`).
 
 - `GET /api/v1/attendance/history`
   - Query: `?month=11&year=2026&staffId=...` (lọc đúng theo tháng/năm nếu truyền).
@@ -909,11 +911,40 @@
   - HR kích hoạt tự động xếp ca dựa trên preferences Thứ 6: `{ "weekStart": "2026-11-09" }`.
 - `PUT /api/v1/shifts/assign`
   - HR kéo - thả (Drag & Drop) hoặc chỉnh sửa phân ca: `{ "shiftAssignmentId": "...", "staffId": "...", "date": "...", "shiftCode": "SHIFT_1 | SHIFT_2" }`.
+- `GET /api/v1/shifts/handover/daily-check`
+  - Query: `?date=2026-11-12` (mặc định ngày hiện tại theo giờ địa phương).
+  - **Quy tắc Random Danh mục Kiểm Kết Ca theo ngày (`Vợt + ...`)**:
+    - Mỗi ngày hệ thống tự động chọn ngẫu nhiên tất định (deterministic theo ngày `YYYY-MM-DD`) **2 nhóm danh mục** tại Kho Tầng 1 để nhân viên kiểm đếm khi kết ca:
+      - **Danh mục bắt buộc cố định (luôn có)**: `Vợt` (`primaryCategory`).
+      - **Danh mục đi kèm xoay vòng ngẫu nhiên theo ngày**: 1 danh mục trong các danh mục còn lại (`Giày`, `Phụ kiện`, `Thời trang`, `Bóng thi đấu`... — `companionCategory`), ví dụ: `Vợt + Giày`, `Vợt + Phụ kiện`, `Vợt + Thời trang`, `Vợt + Bóng thi đấu`.
+  - Response: `{ "data": { "date": "2026-11-12", "categoryLabel": "Vợt + Phụ kiện", "checkedCategories": ["Vợt", "Phụ kiện"], "primaryCategory": { "_id": "...", "code": "VOT", "name": "Vợt", "productCount": 24 }, "companionCategory": { "_id": "...", "code": "PHU_KIEN", "name": "Phụ kiện", "productCount": 25 }, "availableCompanionCategories": [...], "products": [...] }, "meta": { "totalProducts": 49 } }`
+- `GET /api/v1/shifts/handover`
+  - Query: `?date=YYYY-MM-DD&from=YYYY-MM-DD&to=YYYY-MM-DD&status=PENDING|ACCEPTED|DISCREPANCY_REPORTED|STORE_CLOSED&shiftCode=SHIFT_1|SHIFT_2|BOTH&staffId=...&onlyDiscrepancy=true|false&search=...`
+  - **Phân quyền & Bảo mật dữ liệu phía máy chủ**:
+    - Nhóm Quản lý (`ADMIN`, `MANAGER`, `HR`, `ACCOUNTANT`): được phép tra cứu, lọc toàn bộ danh sách phiếu bàn giao ca.
+    - Nhân viên `SALES` (hoặc `department === "SALES"`): **chỉ nhận được các phiếu liên quan trực tiếp đến chính họ** (`fromStaffId === user.userId`, `toStaffId === user.userId`, hoặc đúng phiếu `pendingIncomingHandover` của ca liền trước đang chờ ca của họ nhận bàn giao). Không trả về `cashBalance`, ghi chú hay lịch sử chênh lệch của các ca khác không liên quan.
+    - Các vai trò khác (`MARKETING`, v.v.): trả lỗi `403 FORBIDDEN`.
+  - **Giới hạn `pendingIncomingHandover` & Chặn Check-out (`INCOMING_HANDOVER_CONFIRM_REQUIRED`)**:
+    - Chỉ xét phiếu `PENDING` của **ca liền trước chưa bị thay thế bởi phiếu mới hơn** và **trong phạm vi tối đa từ ngày hôm qua (`yesterday`) đến hôm nay (`today`)**; mọi phiếu `PENDING` cũ hơn (`date < yesterday`) hoặc đã có phiếu ca sau tạo mới đều hết hiệu lực chờ và không chặn Check-out.
+    - Khớp đúng ca/người nhận:
+      - Phiếu `SHIFT_1` cùng ngày (`date === today`) chỉ áp dụng cho nhân viên nhận ca chiều/tối (`SHIFT_2` hoặc `BOTH`, `fromStaffId !== user.userId`).
+      - Phiếu kết ca tối hôm qua (`date === yesterday`, `shiftCode === "SHIFT_2" | "BOTH"`) chỉ áp dụng cho nhân viên nhận ca mở cửa sáng hôm nay (`SHIFT_1` hoặc `BOTH`) khi trong ngày `today` chưa có phiếu bàn giao mới nào.
+      - Nếu phiếu đã gắn `toStaffId` thì chỉ áp dụng cho đúng `toStaffId` đó.
+  - Response: `{ "data": [ShiftHandover], "meta": { "total", "pendingCount", "acceptedCount", "storeClosedCount", "discrepancyHandoverCount", "pendingIncomingHandover" } }`
 - `POST /api/v1/shifts/handover`
-  - Sales Ca 1 tạo biên bản bàn giao Kho Tầng 1:
-    - Body: `{ "cashBalance": 17420000, "discrepancies": [{ "productCode": "GASIA221401DO38", "expected": 10, "actual": 9, "note": "Hàng mẫu trưng bày" }] }`
+  - Nhân viên Bán hàng (`SALES`) tạo phiếu kết ca & bàn giao Kho Tầng 1:
+    - Body: `{ "date"?: "2026-11-12", "shiftCode": "SHIFT_1 | SHIFT_2 | BOTH", "cashBalance": 17420000, "checkedCategories"?: ["Vợt", "Giày"], "totalCheckedProducts"?: 30, "discrepancies": [{ "productCode": "GASIA221401", "productName": "Giày Asia", "categoryName": "Giày", "expected": 10, "actual": 9, "note": "Thiếu 1" }], "notes"?: "string" }`
+    - Quy trình Bàn giao ca khép kín (Ca 1 → Ca 2 cùng ngày & Ca tối → Ca 1 sáng hôm sau):
+      - **Ca 1 (`SHIFT_1`, 08:30–17:30) giao cho Ca 2 (`SHIFT_2`, 12:00–21:00) cùng ngày**:
+        - Ca 2 đã check-in từ `12:00`. Khi Ca 1 kết ca lúc `17:30` và gửi phiếu bàn giao (`status: "PENDING"`), Ca 1 được phép Check-out ngay.
+        - Ngay khi phiếu của Ca 1 được tạo, màn hình của nhân viên Ca 2 tự động hiển thị **Popup Thông Báo Phiếu Bàn Giao Ca**. Nhân viên Ca 2 có thể bấm **Xác nhận ngay** hoặc **Tắt popup (Để sau)** để kiểm hàng sau; tuy nhiên khi Ca 2 muốn **Kết ca (Check-out)** thì bắt buộc phải xác nhận thông tin phiếu bàn giao của Ca 1 trước (`400 INCOMING_HANDOVER_CONFIRM_REQUIRED`).
+      - **Ca tối (`SHIFT_2` / `BOTH`, kết thúc 21:00) giao cho Ca 1 (`SHIFT_1` / `BOTH`) sáng hôm sau**:
+        - Khi Ca tối kết ca lúc `21:00` và gửi phiếu bàn giao (`status: "PENDING"`), phiếu này dành cho **Ca sáng ngày kế tiếp** nên Ca tối được phép Check-out ngay trong tối hôm đó.
+        - Sáng hôm sau khi nhân viên Ca 1 (`SHIFT_1` / `BOTH`) vào ca (Check-in), màn hình tự động hiển thị **Popup Thông Báo Phiếu Bàn Giao Từ Ca Tối Hôm Trước**. Nhân viên Ca 1 có thể **Xác nhận ngay** hoặc **Tắt popup để kiểm hàng sau**, nhưng bắt buộc phải xác nhận trước khi kết ca (`400 INCOMING_HANDOVER_CONFIRM_REQUIRED`).
 - `POST /api/v1/shifts/handover/:id/confirm`
-  - Sales Ca 2 (đã check-in) bấm xác nhận nhận bàn giao ca: `{ "accept": true, "note": "string" }` -> Mở khóa nút Check-out cho Ca 1.
+  - Nhân viên Ca 2 (hoặc `ADMIN` trên CMS) xác nhận thông tin phiếu bàn giao ca: `{ "accept": true, "note"?: "string" }` -> Chuyển trạng thái phiếu sang `"ACCEPTED"`, lưu `toStaffId`, `toStaffName`, `acceptedAt`, `confirmNote`.
+- `DELETE /api/v1/shifts/handover/:id` (Role `ADMIN`)
+  - Admin xóa phiếu bàn giao ca bị lập nhầm trên CMS.
 
 #### D. Cấu hình Ngày Lễ (`/holidays`)
 - `GET /api/v1/holidays`

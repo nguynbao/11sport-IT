@@ -1,7 +1,17 @@
 import { Router } from 'express';
-import { leaveRequestRepo, shiftAssignmentRepo, shiftHandoverRepo, staffRepo } from '../config/db';
+import {
+  attendanceRepo,
+  categoryRepo,
+  leaveRequestRepo,
+  productRepo,
+  shiftAssignmentRepo,
+  shiftHandoverRepo,
+  staffRepo,
+} from '../config/db';
 import { ApiError } from '../utils/errors';
 import { ShiftType } from '../models/ShiftAssignment';
+import { getFloorStocks } from '../utils/warehouseFloor';
+import { generateVariantProductCode } from '../utils/productCode';
 import {
   ADVANCE_NOTICE_DAYS_REQUIRED,
   assertPaidLeaveQuota,
@@ -897,40 +907,633 @@ shiftsRouter.put('/shifts/assign', async (req, res, next) => {
   }
 });
 
-// POST /api/v1/shifts/handover (Sales Ca 1 tạo biên bản bàn giao Kho Tầng 1)
-shiftsRouter.post('/shifts/handover', async (req, res, next) => {
+function getTodayLocalStr(d = new Date()): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function stripVnAccents(str: string): string {
+  return String(str || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase()
+    .trim();
+}
+
+export function isRacketCategory(code?: string, name?: string): boolean {
+  const c = stripVnAccents(code || '');
+  const n = stripVnAccents(name || '');
+  if (c === 'vot' || c.startsWith('vot_')) return true;
+  if (/\b(phu\s*kien|bao\s*ve|dan\s*vien|cuon\s*can|ve\s*sinh|chi\s*dan)\b/.test(n)) {
+    return false;
+  }
+  return /\b(vot|paddle|racket)\b/.test(n);
+}
+
+function buildDeterministicPermutation(n: number, cycleSeed: number): number[] {
+  const arr = Array.from({ length: n }, (_, i) => i);
+  if (n <= 1) return arr;
+  let state = (Math.imul(cycleSeed + 1, 0x9e3779b1) ^ 0x85ebca6b) >>> 0;
+  const nextRand = () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(state ^ (state >>> 15), 1 | state);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  for (let i = n - 1; i > 0; i--) {
+    const j = Math.floor(nextRand() * (i + 1));
+    const tmp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = tmp;
+  }
+  return arr;
+}
+
+function pickDailyCompanionIndex(dateStr: string, count: number): number {
+  if (count <= 1) return 0;
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dayNumber = Math.floor(Date.UTC(y || 2026, (m || 1) - 1, d || 1) / 86400000);
+  const cycle = Math.floor(dayNumber / count);
+  const posInCycle = ((dayNumber % count) + count) % count;
+
+  const perm = buildDeterministicPermutation(count, cycle);
+  const prevPerm = buildDeterministicPermutation(count, cycle - 1);
+  if (perm[0] === prevPerm[count - 1]) {
+    const tmp = perm[0];
+    perm[0] = perm[1];
+    perm[1] = tmp;
+  }
+  return perm[posInCycle];
+}
+
+export async function computeDailyHandoverCheck(targetDate?: string) {
+  const dateStr =
+    targetDate && /^\d{4}-\d{2}-\d{2}$/.test(targetDate) ? targetDate : getTodayLocalStr();
+
+  const [categories, allProducts] = await Promise.all([
+    categoryRepo.find({}),
+    productRepo.find({}),
+  ]);
+
+  const catMap = new Map(categories.map((c: any) => [String(c._id), c]));
+  const catByCode = new Map(categories.map((c: any) => [String(c.code || '').toUpperCase(), c]));
+  const catByName = new Map(
+    categories.map((c: any) => [String(c.name || '').trim().toLowerCase(), c])
+  );
+
+  const floor1Products = allProducts
+    .filter((p: any) => p.status !== 'INACTIVE')
+    .map((p: any) => {
+      const cat =
+        catMap.get(String(p.categoryId)) ||
+        (p.categoryCode ? catByCode.get(String(p.categoryCode).toUpperCase()) : undefined) ||
+        (p.categoryName ? catByName.get(String(p.categoryName).trim().toLowerCase()) : undefined);
+      const floors = getFloorStocks(p);
+      const visibleVariants = floors.variants.map((v: any) => {
+        const hasAttr = Boolean(
+          (v.color && String(v.color).trim()) || (v.size && String(v.size).trim())
+        );
+        const vCode = hasAttr
+          ? generateVariantProductCode(p.code, v.color, v.size)
+          : v.variantCode || p.code;
+        return {
+          ...v,
+          sku: vCode,
+          variantCode: vCode,
+          barcode: vCode,
+          stockFloor1: v.stockFloor1,
+          stockQtyFloor1: v.stockFloor1,
+        };
+      });
+      return {
+        _id: p._id,
+        code: p.code,
+        barcode: p.barcode || p.code,
+        name: p.name,
+        brand: p.brand || '',
+        modelName: p.modelName || '',
+        unit: p.unit || 'Cái',
+        sellingPrice: Number(p.sellingPrice) || 0,
+        categoryId: cat?._id ? String(cat._id) : String(p.categoryId || ''),
+        categoryCode: cat?.code || p.categoryCode || '',
+        categorySlug: String(cat?.code || p.categoryCode || '').toLowerCase(),
+        categoryName: cat?.name || p.categoryName || 'Chưa phân loại',
+        stockFloor1: floors.stockFloor1,
+        stockQtyFloor1: floors.stockFloor1,
+        stock: floors.stockFloor1,
+        variants: visibleVariants,
+      };
+    })
+    .filter((p: any) => (Number(p.stockFloor1) || 0) > 0);
+
+  const activeCategories = categories.filter((c: any) => c.status !== 'INACTIVE');
+  const racketCatDoc = activeCategories.find((c: any) => isRacketCategory(c.code, c.name));
+
+  const primaryProducts = floor1Products
+    .filter(
+      (p: any) =>
+        (racketCatDoc && String(p.categoryId) === String(racketCatDoc._id)) ||
+        isRacketCategory(p.categoryCode, p.categoryName)
+    )
+    .map((p: any) => ({ ...p, isPrimaryCategory: true }));
+
+  const primaryCategory = {
+    _id: racketCatDoc ? String(racketCatDoc._id) : 'VOT',
+    code: racketCatDoc?.code || 'VOT',
+    slug: String(racketCatDoc?.code || 'vot').toLowerCase(),
+    name: racketCatDoc?.name || 'Vợt',
+    productCount: primaryProducts.length,
+  };
+
+  // Xây dựng danh sách các Category đi kèm (ngoài Vợt)
+  const nonRacketCategories = activeCategories
+    .filter((c: any) => !isRacketCategory(c.code, c.name))
+    .map((c: any) => {
+      const count = floor1Products.filter(
+        (p: any) =>
+          String(p.categoryId) === String(c._id) ||
+          (c.code && String(p.categoryCode).toUpperCase() === String(c.code).toUpperCase()) ||
+          stripVnAccents(p.categoryName) === stripVnAccents(c.name)
+      ).length;
+      return {
+        _id: String(c._id),
+        code: String(c.code || ''),
+        slug: String(c.code || '').toLowerCase(),
+        name: String(c.name || ''),
+        productCount: count,
+      };
+    })
+    .sort((a, b) => a.code.localeCompare(b.code));
+
+  const nonEmptyCompanions = nonRacketCategories.filter((c) => c.productCount > 0);
+  const defaultFallbackCompanions = [
+    { _id: 'GIAY', code: 'GIAY', slug: 'giay', name: 'Giày', productCount: 0 },
+    { _id: 'PHU_KIEN', code: 'PHU_KIEN', slug: 'phu_kien', name: 'Phụ kiện', productCount: 0 },
+    { _id: 'THOI_TRANG', code: 'THOI_TRANG', slug: 'thoi_trang', name: 'Thời trang', productCount: 0 },
+  ];
+
+  const availableCompanionCategories =
+    nonEmptyCompanions.length > 0
+      ? nonEmptyCompanions
+      : nonRacketCategories.length > 0
+        ? nonRacketCategories
+        : defaultFallbackCompanions;
+
+  const pickedIdx = pickDailyCompanionIndex(dateStr, availableCompanionCategories.length);
+  const companionCategory = availableCompanionCategories[pickedIdx] || null;
+
+  const companionProducts = companionCategory
+    ? floor1Products
+        .filter(
+          (p: any) =>
+            !primaryProducts.some((vp: any) => String(vp._id) === String(p._id)) &&
+            (String(p.categoryId) === String(companionCategory._id) ||
+              (companionCategory.code &&
+                String(p.categoryCode).toUpperCase() ===
+                  String(companionCategory.code).toUpperCase()) ||
+              stripVnAccents(p.categoryName) === stripVnAccents(companionCategory.name))
+        )
+        .map((p: any) => ({ ...p, isPrimaryCategory: false }))
+    : [];
+
+  const selectedProducts = [...primaryProducts, ...companionProducts];
+  const checkedCategories = companionCategory
+    ? [primaryCategory.name, companionCategory.name]
+    : [primaryCategory.name];
+  const categoryLabel = checkedCategories.join(' + ');
+
+  return {
+    date: dateStr,
+    categoryLabel,
+    checkedCategoryLabel: categoryLabel,
+    checkedCategories,
+    totalCheckedProducts: selectedProducts.length,
+    primaryCategory,
+    companionCategory,
+    availableCompanionCategories,
+    products: selectedProducts,
+  };
+}
+
+export const HANDOVER_MANAGER_ROLES = new Set(['ADMIN', 'MANAGER', 'HR', 'ACCOUNTANT']);
+
+export function isHandoverManagerRole(role?: string): boolean {
+  return Boolean(role && HANDOVER_MANAGER_ROLES.has(String(role).toUpperCase()));
+}
+
+export function isSalesStaffUser(user?: { role?: string; department?: string } | null): boolean {
+  if (!user) return false;
+  return (
+    String(user.role || '').toUpperCase() === 'SALES' ||
+    String(user.department || '').toUpperCase() === 'SALES'
+  );
+}
+
+/**
+ * Tự động đánh dấu hết hiệu lực chờ ('STORE_CLOSED') cho các phiếu PENDING đã quá hạn (> 1 ngày)
+ * hoặc đã bị thay thế bởi phiếu bàn giao của ca mới hơn, tránh tồn đọng phiếu cũ chặn checkout.
+ */
+export async function expireStalePendingHandovers(todayLocal = getTodayLocalStr()): Promise<any[]> {
+  const todayUtc = new Date().toISOString().slice(0, 10);
+  const todaySet = new Set([todayLocal, todayUtc]);
+  const yesterdayLocal = addDaysStr(todayLocal, -1);
+  const yesterdayUtc = addDaysStr(todayUtc, -1);
+  const minValidDate = yesterdayLocal < yesterdayUtc ? yesterdayLocal : yesterdayUtc;
+
+  const allHandovers = (await shiftHandoverRepo.find({})) as any[];
+  const hasAnyHandoverToday = allHandovers.some((h) => todaySet.has(String(h.date)));
+  const hasClosingHandoverToday = allHandovers.some(
+    (h) => todaySet.has(String(h.date)) && (h.shiftCode === 'SHIFT_2' || h.shiftCode === 'BOTH')
+  );
+
+  for (const h of allHandovers) {
+    if (h.status !== 'PENDING') continue;
+    const hDate = String(h.date || '');
+    const isTooOld = !hDate || hDate < minValidDate;
+    const isPrevDaySuperseded = !todaySet.has(hDate) && hasAnyHandoverToday;
+    const isPrevDayShift1Expired = !todaySet.has(hDate) && h.shiftCode === 'SHIFT_1';
+    const isTodayShift1Superseded =
+      todaySet.has(hDate) && h.shiftCode === 'SHIFT_1' && hasClosingHandoverToday;
+
+    if (isTooOld || isPrevDaySuperseded || isPrevDayShift1Expired || isTodayShift1Superseded) {
+      h.status = 'STORE_CLOSED';
+      await shiftHandoverRepo.updateById(h._id, { status: 'STORE_CLOSED' });
+    }
+  }
+
+  return allHandovers;
+}
+
+/**
+ * Tìm đúng phiếu bàn giao ca đang chờ (`PENDING`) áp dụng cho nhân viên `userId` và ca nhận `receivingShiftCode`:
+ * - Không lấy phiếu cũ quá ngày hôm qua (`date < yesterday`) hoặc đã bị ca mới hơn thay thế.
+ * - Phiếu `SHIFT_1` cùng ngày (`today`) chỉ giao cho nhân viên ca chiều/tối (`SHIFT_2` hoặc `BOTH`).
+ * - Phiếu kết ca tối hôm qua (`yesterday`, `SHIFT_2` / `BOTH`) chỉ giao cho nhân viên mở cửa ca sáng hôm nay (`SHIFT_1` hoặc `BOTH`) khi hôm nay chưa có phiếu mới.
+ * - Nếu phiếu đã gán `toStaffId` thì chỉ áp dụng cho đúng `toStaffId` đó.
+ */
+export function resolvePendingIncomingHandoverForSales(params: {
+  allHandovers: any[];
+  userId: string;
+  todayLocal?: string;
+  receivingShiftCode?: 'SHIFT_1' | 'SHIFT_2' | 'BOTH' | null;
+}): any | null {
+  const {
+    allHandovers,
+    userId,
+    todayLocal = getTodayLocalStr(),
+    receivingShiftCode = null,
+  } = params;
+  const todayUtc = new Date().toISOString().slice(0, 10);
+  const todaySet = new Set([todayLocal, todayUtc]);
+  const yesterdayLocal = addDaysStr(todayLocal, -1);
+  const yesterdayUtc = addDaysStr(todayUtc, -1);
+  const yesterdaySet = new Set([yesterdayLocal, yesterdayUtc]);
+
+  const hasAnyHandoverToday = allHandovers.some((h) => todaySet.has(String(h.date)));
+  const hasClosingHandoverToday = allHandovers.some(
+    (h) => todaySet.has(String(h.date)) && (h.shiftCode === 'SHIFT_2' || h.shiftCode === 'BOTH')
+  );
+
+  return (
+    allHandovers
+      .filter((h) => {
+        if (h.status !== 'PENDING') return false;
+        if (String(h.fromStaffId) === String(userId)) return false;
+        if (h.toStaffId && String(h.toStaffId) !== String(userId)) return false;
+
+        const hDate = String(h.date || '');
+
+        // 1. Phiếu lập trong ngày hôm nay: chỉ phiếu Ca 1 (SHIFT_1) giao sang Ca 2 / BOTH
+        if (todaySet.has(hDate)) {
+          if (h.shiftCode !== 'SHIFT_1') return false;
+          if (hasClosingHandoverToday) return false;
+          if (receivingShiftCode && receivingShiftCode === 'SHIFT_1') {
+            return false;
+          }
+          return true;
+        }
+
+        // 2. Phiếu lập từ tối hôm qua (exact yesterday): chỉ phiếu kết ca tối (SHIFT_2 / BOTH) giao cho Ca 1 / BOTH sáng nay
+        if (yesterdaySet.has(hDate)) {
+          if (h.shiftCode !== 'SHIFT_2' && h.shiftCode !== 'BOTH') return false;
+          if (hasAnyHandoverToday) return false;
+          if (receivingShiftCode && receivingShiftCode === 'SHIFT_2') {
+            return false;
+          }
+          return true;
+        }
+
+        // 3. Mọi phiếu từ >= 2 ngày trước đều đã hết hạn
+        return false;
+      })
+      .sort((a, b) => {
+        const dateCmp = String(b.date || '').localeCompare(String(a.date || ''));
+        if (dateCmp !== 0) return dateCmp;
+        return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+      })[0] || null
+  );
+}
+
+// GET /api/v1/shifts/handover/daily-check (Lấy danh mục kiểm kết ca random theo ngày: luôn là Vợt + ...)
+shiftsRouter.get('/shifts/handover/daily-check', async (req, res, next) => {
   try {
     const user = req.user;
     if (!user) throw new ApiError(401, 'UNAUTHORIZED', 'Vui lòng đăng nhập');
+    if (!isHandoverManagerRole(user.role) && !isSalesStaffUser(user)) {
+      throw new ApiError(403, 'FORBIDDEN', 'Bạn không có quyền truy cập danh mục bàn giao ca');
+    }
 
-    const { date, shiftCode = 'SHIFT_1', cashBalance = 0, discrepancies = [], notes = '' } = req.body || {};
+    const dateQuery = typeof req.query.date === 'string' ? req.query.date.trim() : undefined;
+    const dailyCheck = await computeDailyHandoverCheck(dateQuery);
 
-    const handover = await shiftHandoverRepo.create({
-      date: date || new Date().toISOString().slice(0, 10),
-      shiftCode,
-      fromStaffId: user.userId,
-      fromStaffName: user.fullName || user.username,
-      handoverType: 'TANG_1',
-      cashBalance: Number(cashBalance) || 0,
-      discrepancies: Array.isArray(discrepancies) ? discrepancies : [],
-      status: 'PENDING',
-      notes: String(notes).trim(),
-    });
-
-    res.status(201).json({
-      data: handover,
-      meta: { message: 'Biên bản bàn giao Kho Tầng 1 đã được gửi, đang chờ ca sau xác nhận' },
+    res.json({
+      data: dailyCheck,
+      meta: {
+        totalProducts: dailyCheck.products.length,
+      },
     });
   } catch (err) {
     next(err);
   }
 });
 
-// POST /api/v1/shifts/handover/:id/confirm (Sales Ca 2 xác nhận nhận bàn giao ca)
+// GET /api/v1/shifts/handover (Danh sách các phiếu bàn giao ca cho Sales & Admin CMS)
+shiftsRouter.get('/shifts/handover', async (req, res, next) => {
+  try {
+    const user = req.user;
+    if (!user) throw new ApiError(401, 'UNAUTHORIZED', 'Vui lòng đăng nhập');
+
+    const isManager = isHandoverManagerRole(user.role);
+    const isSales = isSalesStaffUser(user);
+    if (!isManager && !isSales) {
+      throw new ApiError(
+        403,
+        'FORBIDDEN',
+        'Chỉ Quản lý (Admin/HR/Kế toán) hoặc Nhân viên Bán hàng mới có quyền xem phiếu bàn giao ca'
+      );
+    }
+
+    const { date, from, to, status, shiftCode, staffId, onlyDiscrepancy, search } = req.query;
+    const todayLocal = getTodayLocalStr();
+    const allHandovers = await expireStalePendingHandovers(todayLocal);
+
+    // Xác định ca làm việc hôm nay của nhân viên SALES (nếu có) để tìm đúng phiếu bàn giao cần nhận
+    let receivingShiftCode: 'SHIFT_1' | 'SHIFT_2' | 'BOTH' | null = null;
+    if (isSales) {
+      const todayAttendance = await attendanceRepo.findOne({
+        staffId: user.userId,
+        date: todayLocal,
+      });
+      const todayAssigned =
+        (await shiftAssignmentRepo.findOne({ staffId: String(user.userId), date: todayLocal })) ||
+        (await shiftAssignmentRepo.findOne({ staffId: user.userId, date: todayLocal }));
+
+      if (
+        todayAttendance &&
+        (todayAttendance.shiftCode === 'SHIFT_1' ||
+          todayAttendance.shiftCode === 'SHIFT_2' ||
+          todayAttendance.shiftCode === 'BOTH')
+      ) {
+        receivingShiftCode = todayAttendance.shiftCode;
+      } else if (
+        todayAssigned &&
+        (todayAssigned.shiftCode === 'SHIFT_1' ||
+          todayAssigned.shiftCode === 'SHIFT_2' ||
+          todayAssigned.shiftCode === 'BOTH')
+      ) {
+        receivingShiftCode = todayAssigned.shiftCode;
+      }
+    }
+
+    const pendingIncomingHandover = isSales
+      ? resolvePendingIncomingHandoverForSales({
+          allHandovers,
+          userId: String(user.userId),
+          todayLocal,
+          receivingShiftCode,
+        })
+      : null;
+
+    // Bảo mật phân quyền dữ liệu:
+    // - Quản lý (ADMIN / MANAGER / HR / ACCOUNTANT): được xem toàn bộ danh sách phiếu bàn giao
+    // - Nhân viên SALES: chỉ được xem các phiếu do chính họ tạo (fromStaffId), do chính họ nhận (toStaffId),
+    //   hoặc đúng 1 phiếu pendingIncomingHandover đang chờ ca của họ xác nhận (không lộ cashBalance của người khác)
+    let filtered = isManager
+      ? [...allHandovers]
+      : allHandovers.filter(
+          (h) =>
+            String(h.fromStaffId) === String(user.userId) ||
+            String(h.toStaffId) === String(user.userId) ||
+            (pendingIncomingHandover && String(h._id) === String(pendingIncomingHandover._id))
+        );
+
+    if (typeof date === 'string' && date.trim()) {
+      const d = date.trim();
+      filtered = filtered.filter((h) => String(h.date) === d);
+    }
+    if (typeof from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(from.trim())) {
+      filtered = filtered.filter((h) => String(h.date) >= from.trim());
+    }
+    if (typeof to === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(to.trim())) {
+      filtered = filtered.filter((h) => String(h.date) <= to.trim());
+    }
+    if (typeof status === 'string' && status.trim() && status !== 'ALL') {
+      filtered = filtered.filter((h) => String(h.status) === status.trim().toUpperCase());
+    }
+    if (typeof shiftCode === 'string' && shiftCode.trim() && shiftCode !== 'ALL') {
+      filtered = filtered.filter((h) => String(h.shiftCode) === shiftCode.trim().toUpperCase());
+    }
+    if (isManager && typeof staffId === 'string' && staffId.trim()) {
+      const sid = staffId.trim();
+      filtered = filtered.filter(
+        (h) => String(h.fromStaffId) === sid || String(h.toStaffId) === sid
+      );
+    }
+    if (onlyDiscrepancy === 'true' || req.query.hasDiscrepancy === 'true') {
+      filtered = filtered.filter(
+        (h) =>
+          h.status === 'DISCREPANCY_REPORTED' ||
+          (Array.isArray(h.discrepancies) && h.discrepancies.some((d: any) => d.actual !== d.expected))
+      );
+    }
+    if (typeof search === 'string' && search.trim()) {
+      const q = stripVnAccents(search.trim());
+      filtered = filtered.filter((h) => {
+        const hay = stripVnAccents(
+          [
+            h.fromStaffName,
+            h.toStaffName,
+            h.notes,
+            h.confirmNote,
+            ...(h.checkedCategories || []),
+            ...(h.discrepancies || []).map((d: any) => `${d.productCode} ${d.productName || ''}`),
+          ].join(' ')
+        );
+        return hay.includes(q);
+      });
+    }
+
+    filtered.sort((a, b) => {
+      const dateCmp = String(b.date || '').localeCompare(String(a.date || ''));
+      if (dateCmp !== 0) return dateCmp;
+      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+    });
+
+    const pendingCount = filtered.filter((h) => h.status === 'PENDING').length;
+    const acceptedCount = filtered.filter((h) => h.status === 'ACCEPTED').length;
+    const storeClosedCount = filtered.filter((h) => h.status === 'STORE_CLOSED').length;
+    const discrepancyHandoverCount = filtered.filter(
+      (h) => Array.isArray(h.discrepancies) && h.discrepancies.some((d: any) => d.actual !== d.expected)
+    ).length;
+
+    res.json({
+      data: filtered,
+      meta: {
+        total: filtered.length,
+        pendingCount,
+        acceptedCount,
+        storeClosedCount,
+        discrepancyHandoverCount,
+        pendingIncomingHandover,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/v1/shifts/handover (Sales tạo biên bản kết ca & bàn giao Kho Tầng 1)
+shiftsRouter.post('/shifts/handover', async (req, res, next) => {
+  try {
+    const user = req.user;
+    if (!user) throw new ApiError(401, 'UNAUTHORIZED', 'Vui lòng đăng nhập');
+    if (!isHandoverManagerRole(user.role) && !isSalesStaffUser(user)) {
+      throw new ApiError(403, 'FORBIDDEN', 'Chỉ Nhân viên Bán hàng hoặc Quản lý mới được lập phiếu bàn giao ca');
+    }
+
+    const {
+      date,
+      shiftCode = 'SHIFT_1',
+      cashBalance = 0,
+      checkedCategories,
+      totalCheckedProducts,
+      discrepancies = [],
+      notes = '',
+    } = req.body || {};
+
+    const effectiveDate =
+      typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date.trim())
+        ? date.trim()
+        : getTodayLocalStr();
+
+    const dailyCheck = await computeDailyHandoverCheck(effectiveDate);
+    const resolvedCheckedCategories =
+      Array.isArray(checkedCategories) && checkedCategories.length > 0
+        ? checkedCategories.map((c: any) => String(c))
+        : dailyCheck.checkedCategories;
+    const resolvedTotalChecked =
+      typeof totalCheckedProducts === 'number' && totalCheckedProducts >= 0
+        ? totalCheckedProducts
+        : dailyCheck.products.length;
+
+    const allProducts = await productRepo.find({});
+    const prodByCode = new Map(
+      allProducts.map((p: any) => [String(p.code || '').toUpperCase(), p])
+    );
+
+    const normalizedDiscrepancies = (Array.isArray(discrepancies) ? discrepancies : []).map(
+      (d: any) => {
+        const code = String(d?.productCode || '').trim().toUpperCase();
+        const prod = prodByCode.get(code);
+        const expected = Number(d?.expected) || 0;
+        const actual = Number(d?.actual) || 0;
+        return {
+          productCode: code,
+          productName: String(d?.productName || prod?.name || '').trim(),
+          categoryName: String(d?.categoryName || prod?.categoryName || '').trim(),
+          expected,
+          actual,
+          note:
+            String(d?.note || '').trim() ||
+            (actual > expected
+              ? `Thừa ${actual - expected}`
+              : actual < expected
+                ? `Thiếu ${expected - actual}`
+                : 'Khớp'),
+        };
+      }
+    );
+
+    // Mọi ca kết thúc (Ca 1 giao cho Ca 2 cùng ngày, hoặc Ca tối SHIFT_2/BOTH giao cho Ca 1 sáng hôm sau)
+    // đều tạo phiếu với status: 'PENDING' để ca kế tiếp nhận thông báo xác nhận.
+    const initialStatus = 'PENDING';
+
+    // Khi lập phiếu bàn giao mới cho effectiveDate, đóng các phiếu PENDING cũ từ những ngày trước (< effectiveDate)
+    // hoặc phiếu SHIFT_1 cùng ngày nếu đang lập phiếu kết ca tối (SHIFT_2 / BOTH)
+    const prevPendingList = (await shiftHandoverRepo.find({ status: 'PENDING' })) as any[];
+    for (const oldPending of prevPendingList) {
+      const oldDate = String(oldPending.date || '');
+      const shouldExpireOld =
+        oldDate < effectiveDate ||
+        (oldDate === effectiveDate &&
+          oldPending.shiftCode === 'SHIFT_1' &&
+          (shiftCode === 'SHIFT_2' || shiftCode === 'BOTH'));
+      if (shouldExpireOld) {
+        await shiftHandoverRepo.updateById(oldPending._id, { status: 'STORE_CLOSED' });
+      }
+    }
+
+    const existing = await shiftHandoverRepo.findOne({
+      date: effectiveDate,
+      fromStaffId: user.userId,
+      shiftCode,
+      status: initialStatus,
+    });
+
+    const payload = {
+      date: effectiveDate,
+      shiftCode,
+      fromStaffId: user.userId,
+      fromStaffName: user.fullName || user.username,
+      handoverType: 'TANG_1' as const,
+      cashBalance: Number(cashBalance) || 0,
+      checkedCategories: resolvedCheckedCategories,
+      totalCheckedProducts: resolvedTotalChecked,
+      discrepancies: normalizedDiscrepancies,
+      status: initialStatus as 'PENDING',
+      notes: String(notes || '').trim(),
+    };
+
+    const handover = existing
+      ? await shiftHandoverRepo.updateById(existing._id, payload)
+      : await shiftHandoverRepo.create(payload);
+
+    res.status(201).json({
+      data: handover,
+      meta: {
+        message:
+          shiftCode === 'SHIFT_1'
+            ? 'Phiếu kết ca đã được gửi! Ca 2 sẽ nhận được thông báo xác nhận bàn giao.'
+            : 'Đã lập phiếu kết ca tối! Ca 1 sáng hôm sau sẽ nhận được thông báo xác nhận bàn giao.',
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/v1/shifts/handover/:id/confirm (Sales ca nhận hoặc Quản lý xác nhận nhận bàn giao ca)
 shiftsRouter.post('/shifts/handover/:id/confirm', async (req, res, next) => {
   try {
     const user = req.user;
     if (!user) throw new ApiError(401, 'UNAUTHORIZED', 'Vui lòng đăng nhập');
+
+    const isManager = isHandoverManagerRole(user.role);
+    const isSales = isSalesStaffUser(user);
+    if (!isManager && !isSales) {
+      throw new ApiError(403, 'FORBIDDEN', 'Bạn không có quyền xác nhận phiếu bàn giao ca');
+    }
 
     const { id } = req.params;
     const handover = await shiftHandoverRepo.findById(id);
@@ -938,23 +1541,62 @@ shiftsRouter.post('/shifts/handover/:id/confirm', async (req, res, next) => {
       throw new ApiError(404, 'HANDOVER_NOT_FOUND', 'Không tìm thấy biên bản bàn giao ca');
     }
 
+    if (!isManager) {
+      if (String(handover.fromStaffId) === String(user.userId)) {
+        throw new ApiError(403, 'FORBIDDEN', 'Người lập phiếu bàn giao không thể tự xác nhận phiếu của chính mình');
+      }
+      if (handover.toStaffId && String(handover.toStaffId) !== String(user.userId)) {
+        throw new ApiError(403, 'FORBIDDEN', 'Phiếu bàn giao này đã được chỉ định cho nhân viên khác');
+      }
+    }
+
     const { accept = true, note = '' } = req.body || {};
+    const cleanNote = String(note || '').trim();
 
     const updated = await shiftHandoverRepo.updateById(id, {
       toStaffId: user.userId,
       toStaffName: user.fullName || user.username,
-      status: accept ? 'ACCEPTED' : 'PENDING',
-      acceptedAt: accept ? new Date() : undefined,
-      notes: note ? `${handover.notes} | Xác nhận: ${note}` : handover.notes,
+      status: accept ? 'ACCEPTED' : 'DISCREPANCY_REPORTED',
+      acceptedAt: new Date(),
+      confirmNote: cleanNote,
+      notes: cleanNote
+        ? handover.notes
+          ? `${handover.notes} | Xác nhận: ${cleanNote}`
+          : `Xác nhận: ${cleanNote}`
+        : handover.notes,
     });
 
     res.json({
       data: updated,
       meta: {
         message: accept
-          ? 'Đã xác nhận nhận bàn giao ca thành công! Nút Check-out của ca trước đã được mở khóa.'
-          : 'Đã từ chối bàn giao ca, yêu cầu kiểm đếm lại.',
+          ? 'Đã xác nhận thông tin bàn giao ca thành công!'
+          : 'Đã ghi nhận báo lệch thông tin bàn giao ca.',
       },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/v1/shifts/handover/:id (Admin/HR/Kế toán xóa phiếu bàn giao ca trên CMS)
+shiftsRouter.delete('/shifts/handover/:id', async (req, res, next) => {
+  try {
+    const user = req.user;
+    if (!user || !isHandoverManagerRole(user.role)) {
+      throw new ApiError(403, 'FORBIDDEN', 'Chỉ Quản trị viên / HR / Kế toán mới có quyền xóa phiếu bàn giao ca');
+    }
+
+    const { id } = req.params;
+    const handover = await shiftHandoverRepo.findById(id);
+    if (!handover) {
+      throw new ApiError(404, 'HANDOVER_NOT_FOUND', 'Không tìm thấy phiếu bàn giao ca');
+    }
+
+    await shiftHandoverRepo.deleteById(id);
+    res.json({
+      data: { deleted: true, _id: id },
+      meta: { message: 'Đã xóa phiếu bàn giao ca' },
     });
   } catch (err) {
     next(err);

@@ -13,6 +13,11 @@ import {
 import { ApiError } from '../utils/errors';
 import { ShiftCode } from '../models/Attendance';
 import { getLateToleranceMinutes } from './attendanceTimesheet';
+import {
+  expireStalePendingHandovers,
+  isSalesStaffUser,
+  resolvePendingIncomingHandoverForSales,
+} from './shifts';
 
 export const attendanceRouter = Router();
 
@@ -434,17 +439,36 @@ attendanceRouter.post('/attendance/check-out', async (req, res, next) => {
 
     // 1. Kiểm tra bàn giao ca cho nhân viên SALES khi bấm Check-out (bỏ qua nếu hôm nay làm việc từ xa WFH)
     if (attendance.department === 'SALES' && !isWfh) {
-      const handover =
-        (await shiftHandoverRepo.findOne({
-          date: todayStr,
-          fromStaffId: user.userId,
-          shiftCode: effectiveShiftCode,
-        })) ||
-        (await shiftHandoverRepo.findOne({
-          date: todayStr,
-          fromStaffId: user.userId,
-          shiftCode: attendance.shiftCode,
-        }));
+      const utcTodayStr = new Date().toISOString().slice(0, 10);
+      const todayCandidates = new Set([todayStr, utcTodayStr]);
+      const allHandovers = await expireStalePendingHandovers(todayStr);
+
+      // Bắt buộc xác nhận đúng phiếu bàn giao ca đang chờ của ca liền trước (khớp ca/người nhận, không lấy phiếu cũ quá hạn)
+      const pendingIncoming = resolvePendingIncomingHandoverForSales({
+        allHandovers,
+        userId: String(user.userId),
+        todayLocal: todayStr,
+        receivingShiftCode: effectiveShiftCode,
+      });
+
+      if (pendingIncoming) {
+        const isFromPrevDay = !todayCandidates.has(String(pendingIncoming.date));
+        throw new ApiError(
+          400,
+          'INCOMING_HANDOVER_CONFIRM_REQUIRED',
+          isFromPrevDay
+            ? `Bạn chưa xác nhận phiếu bàn giao ca tối ngày ${pendingIncoming.date} từ ${pendingIncoming.fromStaffName}. Vui lòng xác nhận thông tin bàn giao trước khi kết ca!`
+            : `Bạn chưa xác nhận phiếu bàn giao ca từ ${pendingIncoming.fromStaffName}. Vui lòng xác nhận thông tin bàn giao trước khi kết ca!`,
+          { pendingHandoverId: String(pendingIncoming._id) }
+        );
+      }
+
+      const handover = (allHandovers as any[]).find(
+        (h) =>
+          todayCandidates.has(String(h.date)) &&
+          String(h.fromStaffId) === String(user.userId) &&
+          (h.shiftCode === effectiveShiftCode || h.shiftCode === attendance.shiftCode)
+      );
 
       if (!handover) {
         throw new ApiError(
@@ -602,15 +626,36 @@ attendanceRouter.get('/attendance/today', async (req, res, next) => {
       (await shiftAssignmentRepo.findOne({ staffId: String(user.userId), date: todayStr })) ||
       (await shiftAssignmentRepo.findOne({ staffId: user.userId, date: todayStr }));
 
-    const handover = await shiftHandoverRepo.findOne({
-      date: todayStr,
-      fromStaffId: user.userId,
-      shiftCode: attendance
-        ? attendance.shiftCode
-        : assignedShift && assignedShift.shiftCode !== 'OFF'
-          ? assignedShift.shiftCode
-          : 'SHIFT_1',
-    });
+    const utcTodayStr = new Date().toISOString().slice(0, 10);
+    const todayCandidates = new Set([todayStr, utcTodayStr]);
+    const isSales = isSalesStaffUser(user) || attendance?.department === 'SALES';
+    const allHandovers = isSales ? await expireStalePendingHandovers(todayStr) : [];
+
+    const activeShiftCode: 'SHIFT_1' | 'SHIFT_2' | 'BOTH' | null = attendance
+      ? attendance.shiftCode
+      : assignedShift && assignedShift.shiftCode !== 'OFF'
+        ? assignedShift.shiftCode
+        : null;
+
+    const targetShiftCode = activeShiftCode || 'SHIFT_1';
+
+    const handover = isSales
+      ? (allHandovers as any[]).find(
+          (h) =>
+            todayCandidates.has(String(h.date)) &&
+            String(h.fromStaffId) === String(user.userId) &&
+            h.shiftCode === targetShiftCode
+        )
+      : null;
+
+    const pendingIncomingHandover = isSales
+      ? resolvePendingIncomingHandoverForSales({
+          allHandovers,
+          userId: String(user.userId),
+          todayLocal: todayStr,
+          receivingShiftCode: activeShiftCode,
+        })
+      : null;
 
     res.json({
       data: {
@@ -620,6 +665,7 @@ attendanceRouter.get('/attendance/today', async (req, res, next) => {
         isWfhToday: Boolean(approvedWfh),
         isEarlyApprovedToday: Boolean(approvedEarly),
         handoverStatus: handover ? handover.status : null,
+        pendingIncomingHandover,
       },
       meta: {},
     });
