@@ -381,6 +381,24 @@ export function exportReturns(returns: ReturnReceipt[]) {
       format: "money",
       total: true,
     },
+    {
+      header: "Cấn trừ công nợ",
+      value: (r) => Number(r.debtReduction) || 0,
+      format: "money",
+      total: true,
+    },
+    {
+      header: "Thực hoàn tiền khách",
+      value: (r) =>
+        Number(
+          r.cashRefund ??
+            (Number(r.netDifference) < 0
+              ? Math.max(0, Math.abs(Number(r.netDifference)) - Number(r.debtReduction || 0))
+              : 0)
+        ) || 0,
+      format: "money",
+      total: true,
+    },
     { header: "Hình thức hoàn/thu", value: (r) => PAYMENT[r.refundMethod] || r.refundMethod || "" },
     { header: "Người thực hiện", value: (r) => r.performedByName || "" },
     { header: "Ghi chú", value: (r) => r.note || "", width: 30 },
@@ -653,6 +671,7 @@ export function exportRevenueDashboard(data: RevenueDashboardData, from?: string
     { header: "Doanh thu đơn hàng", value: (d) => d.orderRevenue, format: "money", total: true },
     { header: "Chênh lệch Trả/Đổi", value: (d) => d.returnImpact, format: "money", total: true },
     { header: "Doanh thu thuần", value: (d) => d.netRevenue, format: "money", total: true },
+    { header: "Thực thu (vào quỹ)", value: (d) => d.cashCollected ?? 0, format: "money", total: true },
     { header: "Giá vốn (COGS)", value: (d) => d.cogs, format: "money", total: true },
     { header: "Lãi gộp", value: (d) => d.grossProfit, format: "money", total: true },
   ];

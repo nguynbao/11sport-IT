@@ -343,11 +343,25 @@
       - Cho phép tra cứu sản phẩm đổi theo `productId`, `code` gốc hoặc mã vạch / mã biến thể con (`variantCode` / `barcode`).
       - Chuẩn hóa phân loại `(color, size)` theo biến thể thực tế: nếu không truyền `color`/`size` khi sản phẩm chỉ có 1 biến thể khả dụng thì tự động gán biến thể đó; nếu sản phẩm có nhiều biến thể khả dụng mà không chỉ định thì trả `400 EXCHANGE_VARIANT_REQUIRED`; nếu truyền biến thể không tồn tại thì trả `400 EXCHANGE_VARIANT_NOT_FOUND`.
       - Tính tồn Kho Tầng 1 khả dụng (đã cộng phần hàng `GOOD` vừa nhận lại cùng sản phẩm/biến thể trong giao dịch) và hỗ trợ **tự động tách Bộ → Lẻ** (`executeUnpackSetToRetail` tại `FLOOR_1`) nếu sản phẩm đổi là hàng lẻ liên kết `parentSetProductId` còn tồn Bộ ở Kho Tầng 1. Sau đó trừ tồn kho Tầng 1 (`-quantity`) và ghi `StockMovement` loại `EXCHANGE_OUT` (`warehouseLocation: "FLOOR_1"`).
-    - Tính tiền hoàn trả kèm **hoàn lại phí quẹt thẻ (`refundedCardFee`)**:
-      - `returnSubtotal`: tổng thành tiền gốc của các sản phẩm trả lại (`sum(lineTotal)`).
-      - `refundedCardFee`: nếu đơn gốc thanh toán bằng thẻ có thu phí (`order.cardFee > 0`), hoàn lại phí thẻ cho khách theo tỷ lệ giá trị hàng trả trên `order.subtotal` (hoặc hoàn trọn vẹn toàn bộ phần phí thẻ còn lại của đơn khi tất cả các dòng hàng có giá trị trong đơn đã được trả hết, đảm bảo tổng phí thẻ hoàn qua các lần không vượt quá `order.cardFee`). Nếu đơn gốc không thu phí thẻ thì `refundedCardFee = 0`.
+    - Tính tiền hoàn trả kèm **phân bổ giảm giá Bill (`billDiscountAmount`)** và **hoàn lại phí quẹt thẻ (`refundedCardFee`)** *(cập nhật v4.1)*:
+      - **Phân bổ giảm giá Bill cho từng dòng đơn gốc**: Với mỗi dòng không phải quà tặng có `L_i = lineTotal`, tổng `S = order.subtotal`, giảm giá bill `B = order.billDiscountAmount`, phần giảm bill phân bổ cho dòng `i` là `B_i = round(L_i / S * B)` (dòng có giá trị cuối cùng nhận phần dư để `Σ B_i = B`). Tiền hàng thuần của dòng `i` là `N_i = max(0, L_i - B_i)`.
+      - Khi trả `take` đơn vị trên tổng `quantity_i` của dòng `i`: thành tiền hoàn của phần trả = `round(take / quantity_i * N_i)`, lần trả cuối cùng của dòng `i` nhận toàn bộ phần `N_i` còn lại chưa hoàn (đảm bảo khi trả hết đơn thì `Σ returnSubtotal = S - B = afterBillDiscount` khớp 100%).
+      - `returnSubtotal`: tổng tiền hàng thuần (`N_i` phần trả) của các sản phẩm trả lại (`sum(lineTotal)` của `returnItems`).
+      - Mỗi dòng `returnItems[]` lưu thêm `unitCost` (lấy `originalLine.unitCost ?? product.costPrice`); mỗi dòng `exchangeItems[]` lưu thêm `unitCost` (`product.costPrice` tại thời điểm đổi).
+      - `refundedCardFee`: nếu đơn gốc thanh toán bằng thẻ có thu phí (`order.cardFee > 0`), hoàn lại phí thẻ cho khách theo tỷ lệ giá trị hàng trả trên `afterBillDiscount` (`S - B`, tương đương tỷ lệ trên `subtotal`), hoặc hoàn trọn vẹn toàn bộ phần phí thẻ còn lại của đơn khi tất cả các dòng hàng có giá trị trong đơn đã được trả hết, đảm bảo tổng phí thẻ hoàn qua các lần không vượt quá `order.cardFee`. Nếu đơn gốc không thu phí thẻ thì `refundedCardFee = 0`.
       - `returnTotal = returnSubtotal + refundedCardFee`.
-      - `netDifference = exchangeTotal - returnTotal` (dương: khách trả thêm `additionalCharge`, âm: cửa hàng hoàn tiền `refundAmount = |netDifference|`).
+      - `netDifference = exchangeTotal - returnTotal` (dương: khách trả thêm `additionalCharge` thu ngay tại quầy không cộng vào nợ; âm: tổng nghĩa vụ hoàn cho khách `refundAmount = |netDifference|`).
+    - **Xử lý trả/đổi hàng trên đơn có Công nợ (`order.debtAmount > 0`) *(v4.1 — BR-03..BR-13)***:
+      - Khi `netDifference < 0` (`refundAmount > 0`) và đơn gốc đang còn nợ (`debtAmount > 0`): hệ thống **tự động cấn trừ vào dư nợ trước**, chỉ hoàn tiền mặt/chuyển khoản phần vượt quá dư nợ:
+        - `debtBefore = order.debtAmount`
+        - `debtReduction = Math.min(debtBefore, refundAmount)`
+        - `cashRefund = refundAmount - debtReduction`
+        - `debtAfter = debtBefore - debtReduction`
+        - `debtStatusAfter`: `'SETTLED'` nếu `debtAfter === 0`, `'PARTIAL'` nếu `debtAfter > 0` (hoặc `'NONE'` nếu đơn không nợ).
+      - Khi đơn không nợ (`debtAmount === 0`) hoặc `refundAmount === 0`: `debtReduction = 0`, `cashRefund = refundAmount`, `debtBefore = order.debtAmount || 0`, `debtAfter = debtBefore`.
+      - Nếu `debtReduction > 0`: trừ `debtReduction` khỏi `order.debtAmount`, cập nhật `order.debtStatus = debtStatusAfter` (không thay đổi `initialDebtAmount`, không ghi vào `debtPayments`), và ghi lịch sử vào `order.debtAdjustments[]`:
+        `{ _id, type: "RETURN", returnCode, amount: debtReduction, debtBefore, debtAfter, at, by, byName }`.
+      - `POST /api/v1/returns/calculate` & `POST /api/v1/returns` trả kèm: `debtBefore`, `debtReduction`, `cashRefund`, `debtAfter`, `debtStatusAfter`.
     - Cập nhật `returnedQuantity` theo đúng chỉ số dòng đơn gốc và chuyển trạng thái đơn hàng gốc (`PARTIALLY_RETURNED` hoặc `FULLY_RETURNED`).
 
 ### 2.7 Báo cáo hoạt động nhân viên (`/reports/staff-activity`) *(v1.4)*
@@ -372,17 +386,35 @@
     ```
   - Nguồn dữ liệu: đơn hàng (`createdBy`), phiếu trả/đổi (`performedBy`), phiếu nhập (`createdBy`, `completedBy`, `items[].scanCounts`), sổ kho loại `ADJUSTMENT` (`performedBy`). Thao tác không gắn được với nhân viên nào được gom vào dòng "Không xác định" (`staffId = ""`).
 
-### 2.8 Dashboard Doanh thu chi tiết & Phân tích Sản phẩm (`/reports/revenue-dashboard`) *(v2.3)*
+### 2.8 Dashboard Doanh thu chi tiết & Phân tích Sản phẩm (`/reports/revenue-dashboard`) *(v2.3 & v4.1)*
 - `GET /api/v1/reports/revenue-dashboard?from=YYYY-MM-DD&to=YYYY-MM-DD&categoryId=...&paymentMethod=...`
-  - Chỉ role `ADMIN` (Quản lý) → role khác `403 FORBIDDEN`.
+  - Chỉ role `ADMIN` (Quản lý) hoặc `ACCOUNTANT` (Kế toán) → role khác `403 FORBIDDEN`.
   - Trả về:
-    - `summary`: Tổng hợp doanh thu gộp (`grossRevenue`), giảm giá sản phẩm (`itemDiscountTotal`), giảm giá Bill (`billDiscountTotal`), phí quẹt thẻ (`cardFeeTotal`), doanh thu đơn hàng (`orderRevenue`), hoàn trả/đổi chênh lệch (`netReturnRefund`), doanh thu thuần (`netRevenue`), giá vốn hàng bán (`estimatedCogs`), lãi gộp thực tế (`grossProfit`), tỷ suất lãi gộp (`grossMarginPercent`), tổng số đơn (`totalOrders`), giá trị đơn trung bình (`avgOrderValue`), tổng sản phẩm bán (`totalUnitsSold`), sản phẩm tặng (`totalGiftUnits`).
-    - `byPaymentMethod`: Cơ cấu doanh thu theo hình thức thanh toán (`CASH`, `BANKING`, `CARD`, `OTHER`).
-    - `byCategory`: Cơ cấu doanh thu, số lượng bán, giá vốn và lãi gộp theo từng Category.
-    - `dailyTrend`: Chuỗi doanh thu & lợi nhuận theo từng ngày trong kỳ (tự động điền đầy đủ các ngày trong khoảng `from` – `to` để vẽ biểu đồ xu hướng).
-    - `hourlyTrend`: Chuỗi doanh thu & lợi nhuận theo từng khung giờ (`00:00` – `23:00`) của các giao dịch trong kỳ.
+    - `summary`:
+      - Doanh thu & giảm giá: `grossRevenue` (tổng giá gốc × SL không tính quà), `itemDiscountTotal` (giảm giá SP), `billDiscountTotal` (giảm giá Bill), `totalDiscount`, `orderRevenue` (**tiền hàng bán sau giảm SP & giảm Bill `S - B`, KHÔNG gồm phí quẹt thẻ**).
+      - Trả/đổi hàng: `returnGoodsTotal` (tổng tiền hàng trả đã phân bổ giảm Bill), `exchangeGoodsTotal` (tổng tiền hàng xuất đổi), `returnTotal`, `exchangeTotal`, `netReturnImpact`, `netReturnRefund`, `returnFromPriorPeriods` (phần `returnGoodsTotal` của phiếu trong kỳ nhưng thuộc đơn gốc tạo trước đầu kỳ `from`).
+      - **Doanh thu thuần (`netRevenue`)**: `orderRevenue - returnGoodsTotal + exchangeGoodsTotal` (**KHÔNG gồm phí quẹt thẻ**).
+      - **Phí quẹt thẻ hiển thị riêng**: `cardFeeCollected` (phí thẻ thu từ đơn trong kỳ), `cardFeeRefunded` (phí thẻ hoàn lại trên phiếu trả trong kỳ), `cardFeeNet = cardFeeCollected - cardFeeRefunded` (kèm `cardFeeTotal = cardFeeNet` để tương thích ngược). Khi lọc `categoryId`, các trường `cardFee* = 0`.
+      - **Giá vốn & Lãi gộp**: `estimatedCogs` (tính từ `unitCost` lưu lúc bán/trả/đổi; dòng trả chỉ đảo giá vốn khi `condition === "GOOD"` / `restocked`; nếu có dòng đơn/phiếu cũ thiếu `unitCost` phải fallback `product.costPrice` hiện tại thì `cogsEstimated = true`), `cogsEstimated` (`boolean`), `grossProfit = netRevenue - estimatedCogs`, `grossMarginPercent`.
+      - **Thực thu & Công nợ trong kỳ**:
+        - `cashAtPurchase`: tổng tiền khách trả ngay lúc mua của các đơn trong kỳ (`totalAmount - initialDebtAmount`, bao gồm phí thẻ thực thu).
+        - `debtCollectedInPeriod`: tổng tiền thu nợ (`debtPayments[].amount`) có `paidAt` trong kỳ (mọi đơn, kể cả đơn kỳ trước).
+        - `cashRefunded`: tổng tiền mặt/CK/thẻ thực hoàn cho khách trong kỳ (`cashRefund`, không gồm phần cấn trừ công nợ `debtReduction`).
+        - `cashCollected` (kèm `collectedRevenue = cashCollected` tương thích ngược): **`cashAtPurchase + debtCollectedInPeriod - cashRefunded`** (có thể `< 0` trong ngày chỉ có hoàn tiền, không clamp `0`; bằng `null` nếu lọc theo `categoryId`).
+        - `debtReducedByReturnInPeriod`: tổng công nợ giảm do trả hàng trong kỳ (`Σ debtReduction`).
+        - `outstandingDebtInPeriod` (và `outstandingDebt`): dư nợ hiện tại của các đơn tạo trong kỳ.
+        - Đồng nhất thức kỳ khép kín: `cashCollected = netRevenue + cardFeeNet - outstandingDebtInPeriod`.
+      - Thống kê đơn & SL: `totalOrders`, `paidOrders`, `returnedOrders` (số đơn `PARTIALLY_RETURNED` hoặc `FULLY_RETURNED`), `avgOrderValue`, `totalUnitsSold`, `totalGiftUnits`, `totalUnitsReturned`.
+    - `byPaymentMethod`: Cơ cấu doanh thu (`orderRevenue` không gồm phí thẻ) theo hình thức thanh toán (`CASH`, `BANKING`, `CARD`, `OTHER`), tổng `revenue` khớp `orderRevenue`.
+    - `byCategory`: Cơ cấu doanh thu thuần (`revenue`), số lượng bán, giá vốn và lãi gộp theo từng Category; tổng `revenue` (khi không lọc) khớp `netRevenue` (chênh lệch làm tròn = 0 nhờ dòng cuối nhận phần dư).
+    - `dailyTrend`: Chuỗi doanh thu & lợi nhuận theo từng ngày trong kỳ (`grossRevenue`, `discountTotal`, `orderRevenue`, `returnImpact`, `netRevenue`, `cogs`, `grossProfit`, `cashCollected`), tổng các ngày khớp `summary`.
+    - `hourlyTrend`: Chuỗi doanh thu & lợi nhuận theo từng khung giờ (`00:00` – `23:00`) của các giao dịch trong kỳ, tổng 24 giờ khớp `summary`.
     - `topSellingProducts`: Danh sách sản phẩm bán chạy nhất trong kỳ kèm tồn kho hiện tại (`stockFloor1`, `stockFloor2`, `stock`) và cảnh báo cần nhập thêm / dời từ Tầng 2 xuống Tầng 1 (`restockAlert`).
     - `needsPushProducts`: Danh sách sản phẩm đang cần đẩy mạnh (được tách sang phân hệ riêng của `MARKETING`, đã gỡ bỏ khỏi giao diện CMS `ADMIN`).
+    - `debtManagement`:
+      - `summary`: `{ totalOutstandingDebt, totalInitialDebt, totalCollectedDebt (Σ debtPayments.amount), totalReducedByReturn (Σ debtAdjustments.amount), activeDebtOrdersCount, settledDebtOrdersCount, activeDebtCustomersCount, overdueDebtAmount, overdueOrdersCount, newDebtInPeriod, collectedInPeriod, reducedByReturnInPeriod }`. Đảm bảo `totalInitialDebt = totalCollectedDebt + totalReducedByReturn + totalOutstandingDebt`.
+      - `customers`: Danh sách gom nhóm công nợ theo Khách hàng (kèm `totalReducedByReturn`, `orders[]`, `paymentHistory[]`, `debtAdjustments[]`).
+      - `orders`: Danh sách chi tiết các đơn hàng có phát sinh công nợ kèm `collectedDebtAmount`, `reducedByReturnAmount`, `debtPayments[]`, `debtAdjustments[]`.
 - `GET /api/v1/reports/push-products?from=YYYY-MM-DD&to=YYYY-MM-DD&categoryId=...`
   - Cho phép role `MARKETING`, `ADMIN`, `ACCOUNTANT` truy cập để bộ phận Marketing quan sát danh sách **Các Sản Phẩm Đang Cần Đẩy Mạnh**.
   - Trả về:

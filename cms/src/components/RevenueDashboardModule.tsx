@@ -72,6 +72,84 @@ function parseLocalDateBound(raw: string | undefined | null, isEnd: boolean): Da
   return dt;
 }
 
+function extractClientOrderDebtMeta(o: Order) {
+  const totalAmount = Math.max(0, Number(o.totalAmount) || 0);
+  let debtAmount = Math.max(0, Number(o.debtAmount) || 0);
+  let initialDebtAmount = Math.max(debtAmount, Number(o.initialDebtAmount) || 0);
+
+  const debtPayments = Array.isArray(o.debtPayments) ? o.debtPayments : [];
+  const debtAdjustments = Array.isArray(o.debtAdjustments) ? o.debtAdjustments : [];
+  const collectedDebtAmount = debtPayments.reduce(
+    (s, dp) => s + Math.max(0, Number(dp?.amount) || 0),
+    0
+  );
+  const reducedByReturnAmount = debtAdjustments.reduce(
+    (s, da) => s + Math.max(0, Number(da?.amount) || 0),
+    0
+  );
+
+  if (initialDebtAmount < debtAmount + collectedDebtAmount + reducedByReturnAmount) {
+    initialDebtAmount = debtAmount + collectedDebtAmount + reducedByReturnAmount;
+  }
+
+  if (
+    initialDebtAmount === 0 &&
+    debtAmount === 0 &&
+    o.paymentMethod === "OTHER" &&
+    /công\s*nợ|trả\s*sau|debt/i.test(String(o.paymentMethodDetail || ""))
+  ) {
+    const m = /(?:công\s*nợ|trả\s*sau|debt)[^0-9]*([0-9][0-9.,]*)/i.exec(
+      String(o.paymentMethodDetail || "")
+    );
+    if (m) {
+      const parsed = parseInt(m[1].replace(/[^0-9]/g, ""), 10);
+      if (!isNaN(parsed) && parsed > 0) {
+        debtAmount = Math.min(totalAmount, parsed);
+        initialDebtAmount = debtAmount;
+      }
+    }
+  }
+
+  const cashAtPurchase = Math.max(0, totalAmount - initialDebtAmount);
+  const paidAmount = Math.min(totalAmount, cashAtPurchase + collectedDebtAmount);
+
+  const debtStatus: "NONE" | "UNPAID" | "PARTIAL" | "SETTLED" =
+    o.debtStatus && o.debtStatus !== "NONE"
+      ? o.debtStatus
+      : initialDebtAmount <= 0 && debtAmount <= 0
+      ? "NONE"
+      : debtAmount <= 0
+      ? "SETTLED"
+      : paidAmount <= 0 && reducedByReturnAmount <= 0
+      ? "UNPAID"
+      : "PARTIAL";
+
+  const dueDate = o.debtDueDate ? new Date(o.debtDueDate) : null;
+  const validDueDate = dueDate && !isNaN(dueDate.getTime()) ? dueDate : null;
+  const nowMs = Date.now();
+  const isOverdue = Boolean(debtAmount > 0 && validDueDate && validDueDate.getTime() < nowMs);
+  const daysOverdue =
+    isOverdue && validDueDate
+      ? Math.max(1, Math.ceil((nowMs - validDueDate.getTime()) / (24 * 3600 * 1000)))
+      : 0;
+
+  return {
+    totalAmount,
+    cashAtPurchase,
+    paidAmount,
+    debtAmount,
+    initialDebtAmount,
+    collectedDebtAmount,
+    reducedByReturnAmount,
+    debtStatus,
+    debtDueDate: validDueDate ? validDueDate.toISOString() : null,
+    isOverdue,
+    daysOverdue,
+    debtPayments,
+    debtAdjustments,
+  };
+}
+
 /** Tính toán dự phòng phía client nếu server chưa có endpoint /reports/revenue-dashboard */
 function buildClientFallbackDashboard(
   orders: Order[],
@@ -102,6 +180,9 @@ function buildClientFallbackDashboard(
     prodByCode.set(String(p.code), p);
   });
 
+  const orderById = new Map<string, Order>();
+  orders.forEach((o) => orderById.set(String(o._id), o));
+
   const filterCatId = filters.categoryId || "";
   const filterPayMethod = filters.paymentMethod ? filters.paymentMethod.toUpperCase() : "";
 
@@ -115,11 +196,8 @@ function buildClientFallbackDashboard(
     if (!inRange(o.createdAt)) return false;
     if (filterPayMethod) {
       if (filterPayMethod === "DEBT") {
-        const hasDebt =
-          (Number(o.debtAmount) || 0) > 0 ||
-          (Number(o.initialDebtAmount) || 0) > 0 ||
-          (o.debtStatus && o.debtStatus !== "NONE");
-        if (!hasDebt) return false;
+        const dm = extractClientOrderDebtMeta(o);
+        if (dm.initialDebtAmount <= 0 && dm.debtAmount <= 0) return false;
       } else if (o.paymentMethod !== filterPayMethod) {
         return false;
       }
@@ -136,7 +214,16 @@ function buildClientFallbackDashboard(
 
   const filteredReturns = returns.filter((r) => {
     if (!inRange(r.createdAt)) return false;
-    if (filterPayMethod && filterPayMethod !== "DEBT" && r.refundMethod !== filterPayMethod) return false;
+    if (filterPayMethod) {
+      const origO = orderById.get(String(r.orderId));
+      if (!origO) return false;
+      if (filterPayMethod === "DEBT") {
+        const dm = extractClientOrderDebtMeta(origO);
+        if (dm.initialDebtAmount <= 0 && dm.debtAmount <= 0) return false;
+      } else if (origO.paymentMethod !== filterPayMethod) {
+        return false;
+      }
+    }
     if (filterCatId) {
       const hasCat =
         (r.returnItems || []).some((it: any) => {
@@ -155,14 +242,19 @@ function buildClientFallbackDashboard(
   let grossRevenue = 0;
   let itemDiscountTotal = 0;
   let billDiscountTotal = 0;
-  let cardFeeTotal = 0;
+  let cardFeeCollected = 0;
+  let cardFeeRefunded = 0;
   let orderRevenue = 0;
   let totalUnitsSold = 0;
   let totalGiftUnits = 0;
   let estimatedCogs = 0;
+  let cogsEstimated = false;
+  let cashAtPurchase = 0;
+  let cashRefunded = 0;
+  let debtReducedByReturnInPeriod = 0;
+  let returnFromPriorPeriods = 0;
   let outstandingDebtInPeriod = 0;
   let initialDebtInPeriod = 0;
-  let debtCollectedInPeriod = 0;
   let debtOrdersInPeriod = 0;
 
   interface ProdStat {
@@ -226,6 +318,7 @@ function buildClientFallbackDashboard(
       netRevenue: number;
       cogs: number;
       grossProfit: number;
+      cashCollected: number;
     }
   >();
 
@@ -247,6 +340,7 @@ function buildClientFallbackDashboard(
         netRevenue: 0,
         cogs: 0,
         grossProfit: 0,
+        cashCollected: 0,
       });
     }
     return dailyMap.get(key)!;
@@ -276,8 +370,26 @@ function buildClientFallbackDashboard(
       netRevenue: number;
       cogs: number;
       grossProfit: number;
+      cashCollected: number;
     }
   >();
+
+  for (let h = 0; h < 24; h++) {
+    const key = `${String(h).padStart(2, "0")}:00`;
+    hourlyMap.set(key, {
+      hour: key,
+      orders: 0,
+      unitsSold: 0,
+      grossRevenue: 0,
+      discountTotal: 0,
+      orderRevenue: 0,
+      returnImpact: 0,
+      netRevenue: 0,
+      cogs: 0,
+      grossProfit: 0,
+      cashCollected: 0,
+    });
+  }
 
   const ensureHour = (d: string | Date) => {
     const dt = new Date(d);
@@ -295,6 +407,7 @@ function buildClientFallbackDashboard(
         netRevenue: 0,
         cogs: 0,
         grossProfit: 0,
+        cashCollected: 0,
       });
     }
     return hourlyMap.get(key)!;
@@ -304,7 +417,7 @@ function buildClientFallbackDashboard(
     CASH: { method: "CASH", label: "Tiền mặt", orders: 0, revenue: 0 },
     BANKING: { method: "BANKING", label: "Chuyển khoản", orders: 0, revenue: 0 },
     CARD: { method: "CARD", label: "Quẹt thẻ", orders: 0, revenue: 0 },
-    OTHER: { method: "OTHER", label: "Khác", orders: 0, revenue: 0 },
+    OTHER: { method: "OTHER", label: "Khác (Tách / Công nợ)", orders: 0, revenue: 0 },
   };
 
   for (const o of filteredOrders) {
@@ -313,18 +426,49 @@ function buildClientFallbackDashboard(
     day.orders += 1;
     hr.orders += 1;
 
-    const orderSub = Number(o.subtotal) || 0;
-    const orderBillDisc = Number(o.billDiscountAmount) || 0;
-    const orderCardFee = Number(o.cardFee) || 0;
-    const orderTotal = Number(o.totalAmount) || 0;
+    const orderSub = Math.max(0, Number(o.subtotal) || 0);
+    const orderBillDisc = Math.min(orderSub, Math.max(0, Math.round(Number(o.billDiscountAmount) || 0)));
+    const orderAfterBill = Math.max(0, orderSub - orderBillDisc);
+    const orderCardFee = Math.max(0, Math.round(Number(o.cardFee) || 0));
+
+    const oItems = o.items || [];
+    const paidLineIndices = oItems
+      .map((it, idx) => ({ it, idx }))
+      .filter(({ it }) => !it.isGift && it.discountType !== "GIFT" && (Number(it.lineTotal) || 0) > 0)
+      .map(({ idx }) => idx);
+    const lastPaidIdx = paidLineIndices.length > 0 ? paidLineIndices[paidLineIndices.length - 1] : -1;
+
+    let allocatedBillDisc = 0;
+    const billShareByIdx: number[] = [];
+    for (let idx = 0; idx < oItems.length; idx++) {
+      const it = oItems[idx];
+      const lineTotal = Math.max(0, Number(it.lineTotal) || 0);
+      if (it.isGift || it.discountType === "GIFT" || lineTotal <= 0 || orderSub <= 0 || orderBillDisc <= 0) {
+        billShareByIdx[idx] = 0;
+        continue;
+      }
+      let bShare = 0;
+      if (idx === lastPaidIdx) {
+        bShare = Math.max(0, orderBillDisc - allocatedBillDisc);
+      } else {
+        bShare = Math.min(
+          Math.max(0, orderBillDisc - allocatedBillDisc),
+          Math.round((lineTotal / orderSub) * orderBillDisc)
+        );
+      }
+      allocatedBillDisc += bShare;
+      billShareByIdx[idx] = bShare;
+    }
 
     let orderIncludedGross = 0;
     let orderIncludedItemDisc = 0;
-    let orderIncludedLineTotal = 0;
+    let orderIncludedBillDisc = 0;
+    let orderIncludedNetRev = 0;
     let orderIncludedCogs = 0;
     let orderIncludedUnits = 0;
 
-    for (const it of o.items || []) {
+    for (let idx = 0; idx < oItems.length; idx++) {
+      const it = oItems[idx];
       const prod = prodById.get(String(it.productId)) || prodByCode.get(String(it.productCode));
       if (filterCatId && (!prod || getProdCatId(prod) !== filterCatId)) continue;
 
@@ -333,10 +477,15 @@ function buildClientFallbackDashboard(
       const origPrice = Number(it.originalUnitPrice ?? it.unitPrice) || 0;
       const lineTotal = Number(it.lineTotal) || 0;
       const itemDisc = Number(it.discountAmount) || 0;
-      const unitCost = Number(prod?.costPrice) || 0;
+      const hasSavedUnitCost = it.unitCost !== undefined && it.unitCost !== null;
+      if (!hasSavedUnitCost && qty > 0) {
+        cogsEstimated = true;
+      }
+      const unitCost = hasSavedUnitCost
+        ? Math.max(0, Math.round(Number(it.unitCost) || 0))
+        : Math.max(0, Math.round(Number(prod?.costPrice) || 0));
 
-      const billDiscShare =
-        !isGift && orderSub > 0 ? Math.round((lineTotal / orderSub) * orderBillDisc) : 0;
+      const billDiscShare = billShareByIdx[idx] || 0;
       const netItemRev = Math.max(0, lineTotal - billDiscShare);
       const itemCogs = qty * unitCost;
 
@@ -347,7 +496,8 @@ function buildClientFallbackDashboard(
         orderIncludedUnits += qty;
         orderIncludedGross += origPrice * qty;
         orderIncludedItemDisc += itemDisc;
-        orderIncludedLineTotal += lineTotal;
+        orderIncludedBillDisc += billDiscShare;
+        orderIncludedNetRev += netItemRev;
       }
       orderIncludedCogs += itemCogs;
 
@@ -365,22 +515,28 @@ function buildClientFallbackDashboard(
       }
     }
 
-    const effectiveBillDisc = filterCatId
-      ? orderSub > 0
-        ? Math.round((orderIncludedLineTotal / orderSub) * orderBillDisc)
-        : 0
-      : orderBillDisc;
+    const effectiveBillDisc = filterCatId ? orderIncludedBillDisc : orderBillDisc;
     const effectiveCardFee = filterCatId ? 0 : orderCardFee;
-    const effectiveOrderRev = filterCatId
-      ? Math.max(0, orderIncludedLineTotal - effectiveBillDisc)
-      : orderTotal;
+    const effectiveOrderRev = filterCatId ? orderIncludedNetRev : orderAfterBill;
 
     grossRevenue += filterCatId ? orderIncludedGross : Number(o.rawSubtotal ?? o.subtotal) || 0;
     itemDiscountTotal += filterCatId ? orderIncludedItemDisc : Number(o.itemDiscountTotal) || 0;
     billDiscountTotal += effectiveBillDisc;
-    cardFeeTotal += effectiveCardFee;
+    cardFeeCollected += effectiveCardFee;
     orderRevenue += effectiveOrderRev;
     estimatedCogs += orderIncludedCogs;
+
+    const dm = extractClientOrderDebtMeta(o);
+    const orderCashAtPurchase = filterCatId ? 0 : dm.cashAtPurchase;
+    cashAtPurchase += orderCashAtPurchase;
+
+    if (dm.initialDebtAmount > 0 || dm.debtAmount > 0) {
+      debtOrdersInPeriod += 1;
+      const ratio =
+        filterCatId && orderAfterBill > 0 ? Math.min(1, effectiveOrderRev / orderAfterBill) : 1;
+      outstandingDebtInPeriod += Math.round(dm.debtAmount * ratio);
+      initialDebtInPeriod += Math.round(dm.initialDebtAmount * ratio);
+    }
 
     day.unitsSold += orderIncludedUnits;
     day.grossRevenue += filterCatId ? orderIncludedGross : Number(o.rawSubtotal ?? o.subtotal) || 0;
@@ -390,6 +546,7 @@ function buildClientFallbackDashboard(
     day.netRevenue += effectiveOrderRev;
     day.cogs += orderIncludedCogs;
     day.grossProfit = day.netRevenue - day.cogs;
+    day.cashCollected += orderCashAtPurchase;
 
     hr.unitsSold += orderIncludedUnits;
     hr.grossRevenue += filterCatId ? orderIncludedGross : Number(o.rawSubtotal ?? o.subtotal) || 0;
@@ -399,21 +556,15 @@ function buildClientFallbackDashboard(
     hr.netRevenue += effectiveOrderRev;
     hr.cogs += orderIncludedCogs;
     hr.grossProfit = hr.netRevenue - hr.cogs;
+    hr.cashCollected += orderCashAtPurchase;
 
     const pm = paymentStats[o.paymentMethod] || paymentStats.OTHER;
     pm.orders += 1;
     pm.revenue += effectiveOrderRev;
-
-    const orderDebtRem = Math.max(0, Number(o.debtAmount) || 0);
-    const orderDebtInit = Math.max(orderDebtRem, Number(o.initialDebtAmount) || 0);
-    if (orderDebtInit > 0 || orderDebtRem > 0 || (o.debtStatus && o.debtStatus !== "NONE")) {
-      debtOrdersInPeriod += 1;
-      outstandingDebtInPeriod += orderDebtRem;
-      initialDebtInPeriod += orderDebtInit;
-      debtCollectedInPeriod += Math.max(0, orderDebtInit - orderDebtRem);
-    }
   }
 
+  let returnGoodsTotal = 0;
+  let exchangeGoodsTotal = 0;
   let returnTotal = 0;
   let exchangeTotal = 0;
   let netReturnImpact = 0;
@@ -422,25 +573,89 @@ function buildClientFallbackDashboard(
   for (const r of filteredReturns) {
     const day = ensureDay(r.createdAt);
     const hr = ensureHour(r.createdAt);
-    let rRetTotal = 0;
-    let rExTotal = 0;
+    let rRetGoods = 0;
+    let rExGoods = 0;
     let rCogsImpact = 0;
+    const origOrder = orderById.get(String(r.orderId));
+    const origSub = Math.max(0, Number(origOrder?.subtotal) || 0);
+    const origBillDisc = Math.min(origSub, Math.max(0, Math.round(Number(origOrder?.billDiscountAmount) || 0)));
 
-    for (const it of r.returnItems || []) {
+    const rRawLinesSum = (r.returnItems || []).reduce(
+      (s: number, it: any) => s + (Number(it.lineTotal) || 0),
+      0
+    );
+    const matchingOrigGrossSum = origOrder
+      ? (r.returnItems || []).reduce((s: number, it: any) => {
+          const matchedOrig = (origOrder.items || []).find(
+            (oi) =>
+              String(oi.productId) === String(it.productId) ||
+              oi.productCode === it.productCode
+          );
+          const origUnitPrice = Number(matchedOrig?.unitPrice ?? it.unitPrice) || 0;
+          return s + origUnitPrice * (Number(it.quantity) || 0);
+        }, 0)
+      : rRawLinesSum;
+    const isAlreadyNetOfBillDisc =
+      origBillDisc > 0 && rRawLinesSum > 0 && rRawLinesSum < matchingOrigGrossSum;
+
+    const rRetItems = r.returnItems || [];
+    let allocatedRetBillShare = 0;
+    const totalExpectedRetBillShare =
+      !isAlreadyNetOfBillDisc && origSub > 0 && origBillDisc > 0
+        ? Math.round((rRawLinesSum / origSub) * origBillDisc)
+        : 0;
+
+    for (let idx = 0; idx < rRetItems.length; idx++) {
+      const it = rRetItems[idx];
       const prod = prodById.get(String(it.productId)) || prodByCode.get(String(it.productCode));
-      if (filterCatId && (!prod || getProdCatId(prod) !== filterCatId)) continue;
       const qty = Number(it.quantity) || 0;
       const line = Number(it.lineTotal) || 0;
-      const unitCost = Number(prod?.costPrice) || 0;
+      const retIsGift = Boolean(it.isGift) || it.discountType === "GIFT" || line <= 0;
+      let retBillShare = 0;
+      if (!isAlreadyNetOfBillDisc && !retIsGift && origSub > 0 && origBillDisc > 0) {
+        if (idx === rRetItems.length - 1) {
+          retBillShare = Math.max(0, totalExpectedRetBillShare - allocatedRetBillShare);
+        } else {
+          retBillShare = Math.min(
+            Math.max(0, totalExpectedRetBillShare - allocatedRetBillShare),
+            Math.round((line / origSub) * origBillDisc)
+          );
+        }
+        allocatedRetBillShare += retBillShare;
+      }
+      const netRetLine = Math.max(0, line - retBillShare);
+
+      if (filterCatId && (!prod || getProdCatId(prod) !== filterCatId)) continue;
+
+      let resolvedUnitCost: number | undefined =
+        it.unitCost !== undefined && it.unitCost !== null
+          ? Math.max(0, Math.round(Number(it.unitCost) || 0))
+          : undefined;
+      if (resolvedUnitCost === undefined && origOrder) {
+        const matchedOrig = (origOrder.items || []).find(
+          (oi) =>
+            String(oi.productId) === String(it.productId) || oi.productCode === it.productCode
+        );
+        if (matchedOrig && matchedOrig.unitCost !== undefined && matchedOrig.unitCost !== null) {
+          resolvedUnitCost = Math.max(0, Math.round(Number(matchedOrig.unitCost) || 0));
+        }
+      }
+      if (resolvedUnitCost === undefined) {
+        if (qty > 0 && (it.condition === "GOOD" || it.restocked)) {
+          cogsEstimated = true;
+        }
+        resolvedUnitCost = Math.max(0, Math.round(Number(prod?.costPrice) || 0));
+      }
+
       totalUnitsReturned += qty;
-      rRetTotal += line;
+      rRetGoods += netRetLine;
 
       const st = ensureProdStat(String(it.productId), it.productCode, it.productName, it.unit);
       st.returnedQty += qty;
-      st.revenue = Math.max(0, st.revenue - line);
+      st.revenue -= netRetLine;
       if (it.condition === "GOOD" || it.restocked) {
-        st.cogs = Math.max(0, st.cogs - qty * unitCost);
-        rCogsImpact -= qty * unitCost;
+        st.cogs -= qty * resolvedUnitCost;
+        rCogsImpact -= qty * resolvedUnitCost;
       }
     }
 
@@ -449,8 +664,14 @@ function buildClientFallbackDashboard(
       if (filterCatId && (!prod || getProdCatId(prod) !== filterCatId)) continue;
       const qty = Number(it.quantity) || 0;
       const line = Number(it.lineTotal) || 0;
-      const unitCost = Number(prod?.costPrice) || 0;
-      rExTotal += line;
+      const hasSavedUnitCost = it.unitCost !== undefined && it.unitCost !== null;
+      if (!hasSavedUnitCost && qty > 0) {
+        cogsEstimated = true;
+      }
+      const unitCost = hasSavedUnitCost
+        ? Math.max(0, Math.round(Number(it.unitCost) || 0))
+        : Math.max(0, Math.round(Number(prod?.costPrice) || 0));
+      rExGoods += line;
 
       const st = ensureProdStat(String(it.productId), it.productCode, it.productName, it.unit);
       st.exchangeOutQty += qty;
@@ -459,34 +680,251 @@ function buildClientFallbackDashboard(
       rCogsImpact += qty * unitCost;
     }
 
-    const diff = filterCatId ? rExTotal - rRetTotal : Number(r.netDifference) || 0;
-    returnTotal += filterCatId ? rRetTotal : Number(r.returnTotal) || 0;
-    exchangeTotal += filterCatId ? rExTotal : Number(r.exchangeTotal) || 0;
-    if (!filterCatId && Number(r.refundedCardFee) > 0) {
-      cardFeeTotal = Math.max(0, cardFeeTotal - (Number(r.refundedCardFee) || 0));
+    const rRefundedFee = filterCatId ? 0 : Math.max(0, Math.round(Number(r.refundedCardFee) || 0));
+    cardFeeRefunded += rRefundedFee;
+    returnGoodsTotal += rRetGoods;
+    exchangeGoodsTotal += rExGoods;
+
+    if (fromDate && origOrder?.createdAt) {
+      const origTime = new Date(origOrder.createdAt).getTime();
+      if (!isNaN(origTime) && origTime < fromDate.getTime()) {
+        returnFromPriorPeriods += rRetGoods;
+      }
     }
-    netReturnImpact += diff;
-    estimatedCogs = Math.max(0, estimatedCogs + rCogsImpact);
 
-    day.returnImpact += diff;
-    day.netRevenue += diff;
-    day.cogs = Math.max(0, day.cogs + rCogsImpact);
+    const rDebtRed = filterCatId ? 0 : Math.max(0, Math.round(Number(r.debtReduction) || 0));
+    const rRefundAmt = Math.max(
+      0,
+      Math.round(Number(r.refundAmount ?? (r.netDifference < 0 ? Math.abs(r.netDifference) : 0)) || 0)
+    );
+    const rCashRef = filterCatId
+      ? 0
+      : r.cashRefund !== undefined && r.cashRefund !== null
+      ? Math.max(0, Math.round(Number(r.cashRefund) || 0))
+      : Math.max(0, rRefundAmt - rDebtRed);
+    const rAddCharge = filterCatId
+      ? 0
+      : Math.max(0, Math.round(Number(r.additionalCharge ?? (r.netDifference > 0 ? r.netDifference : 0)) || 0));
+
+    debtReducedByReturnInPeriod += rDebtRed;
+    cashRefunded += rCashRef;
+
+    if (rAddCharge > 0) {
+      cashAtPurchase += rAddCharge;
+    }
+
+    const goodsDiff = rExGoods - rRetGoods;
+    returnTotal += filterCatId ? rRetGoods : rRetGoods + rRefundedFee;
+    exchangeTotal += rExGoods;
+    netReturnImpact += goodsDiff;
+    estimatedCogs += rCogsImpact;
+
+    const rCashDelta = rAddCharge - rCashRef;
+
+    day.returnImpact += goodsDiff;
+    day.netRevenue += goodsDiff;
+    day.cogs += rCogsImpact;
     day.grossProfit = day.netRevenue - day.cogs;
+    day.cashCollected += rCashDelta;
 
-    hr.returnImpact += diff;
-    hr.netRevenue += diff;
-    hr.cogs = Math.max(0, hr.cogs + rCogsImpact);
+    hr.returnImpact += goodsDiff;
+    hr.netRevenue += goodsDiff;
+    hr.cogs += rCogsImpact;
     hr.grossProfit = hr.netRevenue - hr.cogs;
+    hr.cashCollected += rCashDelta;
   }
 
-  const netRevenue = orderRevenue + netReturnImpact;
+  const netRevenue = orderRevenue - returnGoodsTotal + exchangeGoodsTotal;
+  const cardFeeNet = cardFeeCollected - cardFeeRefunded;
+  const cardFeeTotal = cardFeeNet;
   const grossProfit = netRevenue - estimatedCogs;
   const grossMarginPercent =
     netRevenue > 0 ? Math.round((grossProfit / netRevenue) * 1000) / 10 : 0;
   const totalOrders = filteredOrders.length;
   const paidOrders = filteredOrders.filter((o) => o.status === "PAID").length;
-  const returnedOrders = filteredOrders.filter((o) => o.status !== "PAID").length;
+  const returnedOrders = filteredOrders.filter(
+    (o) => o.status === "PARTIALLY_RETURNED" || o.status === "FULLY_RETURNED"
+  ).length;
   const avgOrderValue = totalOrders > 0 ? Math.round(orderRevenue / totalOrders) : 0;
+
+  let totalOutstandingDebt = 0;
+  let totalInitialDebt = 0;
+  let totalCollectedDebt = 0;
+  let totalReducedByReturn = 0;
+  let activeDebtOrdersCount = 0;
+  let settledDebtOrdersCount = 0;
+  let overdueDebtAmount = 0;
+  let overdueOrdersCount = 0;
+  let debtCollectedInPeriod = 0;
+
+  const debtOrders: DebtOrderRow[] = [];
+  const customerDebtMap = new Map<string, DebtCustomerSummary>();
+
+  for (const o of orders) {
+    if (o.status === "DRAFT") continue;
+    const dm = extractClientOrderDebtMeta(o);
+
+    const matchesPaymentFilter =
+      !filterPayMethod ||
+      (filterPayMethod === "DEBT"
+        ? dm.initialDebtAmount > 0 || dm.debtAmount > 0
+        : o.paymentMethod === filterPayMethod);
+
+    if (!filterCatId && matchesPaymentFilter) {
+      for (const dp of dm.debtPayments) {
+        if (inRange(dp.paidAt)) {
+          const dpAmt = Math.max(0, Number(dp.amount) || 0);
+          debtCollectedInPeriod += dpAmt;
+          const dDay = ensureDay(dp.paidAt);
+          const dHr = ensureHour(dp.paidAt);
+          dDay.cashCollected += dpAmt;
+          dHr.cashCollected += dpAmt;
+        }
+      }
+    }
+
+    if (dm.initialDebtAmount <= 0 && dm.debtAmount <= 0) continue;
+
+    totalOutstandingDebt += dm.debtAmount;
+    totalInitialDebt += dm.initialDebtAmount;
+    totalCollectedDebt += dm.collectedDebtAmount;
+    totalReducedByReturn += dm.reducedByReturnAmount;
+
+    if (dm.debtAmount > 0) {
+      activeDebtOrdersCount += 1;
+      if (dm.isOverdue) {
+        overdueOrdersCount += 1;
+        overdueDebtAmount += dm.debtAmount;
+      }
+    } else {
+      settledDebtOrdersCount += 1;
+    }
+
+    const row: DebtOrderRow = {
+      _id: String(o._id),
+      orderCode: o.orderCode,
+      customerName: o.customerName || "Khách hàng",
+      customerPhone: o.customerPhone || "",
+      paymentMethod: o.paymentMethod,
+      paymentMethodDetail: o.paymentMethodDetail || "",
+      totalAmount: dm.totalAmount,
+      paidAmount: dm.paidAmount,
+      debtAmount: dm.debtAmount,
+      initialDebtAmount: dm.initialDebtAmount,
+      collectedDebtAmount: dm.collectedDebtAmount,
+      reducedByReturnAmount: dm.reducedByReturnAmount,
+      debtStatus: dm.debtStatus,
+      debtDueDate: dm.debtDueDate,
+      isOverdue: dm.isOverdue,
+      daysOverdue: dm.daysOverdue,
+      debtPayments: dm.debtPayments,
+      debtAdjustments: dm.debtAdjustments,
+      createdByName: o.createdByName || "",
+      confirmedByName: o.confirmedByName || o.createdByName || "",
+      createdAt: o.createdAt ? new Date(o.createdAt).toISOString() : new Date().toISOString(),
+      items: o.items || [],
+      note: o.note || "",
+    };
+    debtOrders.push(row);
+
+    const normPhone = String(o.customerPhone || "").replace(/\D/g, "") || o.customerPhone || o.customerName || String(o._id);
+    if (!customerDebtMap.has(normPhone)) {
+      customerDebtMap.set(normPhone, {
+        phone: o.customerPhone || normPhone,
+        customerName: o.customerName || "Khách hàng",
+        totalOrders: 0,
+        activeDebtOrders: 0,
+        settledDebtOrders: 0,
+        overdueOrders: 0,
+        totalOrderAmount: 0,
+        totalInitialDebt: 0,
+        totalPaidAmount: 0,
+        totalCollectedDebt: 0,
+        totalReducedByReturn: 0,
+        totalDebtAmount: 0,
+        nearestDueDate: null,
+        lastOrderAt: null,
+        orders: [],
+        paymentHistory: [],
+        debtAdjustments: [],
+      });
+    }
+    const cGroup = customerDebtMap.get(normPhone)!;
+    if (o.customerName) cGroup.customerName = o.customerName;
+    cGroup.totalOrders += 1;
+    if (dm.debtAmount > 0) {
+      cGroup.activeDebtOrders += 1;
+      if (dm.isOverdue) cGroup.overdueOrders += 1;
+      if (dm.debtDueDate) {
+        if (
+          !cGroup.nearestDueDate ||
+          new Date(dm.debtDueDate).getTime() < new Date(cGroup.nearestDueDate).getTime()
+        ) {
+          cGroup.nearestDueDate = dm.debtDueDate;
+        }
+      }
+    } else {
+      cGroup.settledDebtOrders += 1;
+    }
+    cGroup.totalOrderAmount += dm.totalAmount;
+    cGroup.totalInitialDebt += dm.initialDebtAmount;
+    cGroup.totalPaidAmount += dm.paidAmount;
+    cGroup.totalCollectedDebt = (cGroup.totalCollectedDebt || 0) + dm.collectedDebtAmount;
+    cGroup.totalReducedByReturn = (cGroup.totalReducedByReturn || 0) + dm.reducedByReturnAmount;
+    cGroup.totalDebtAmount += dm.debtAmount;
+    if (
+      !cGroup.lastOrderAt ||
+      new Date(row.createdAt).getTime() > new Date(cGroup.lastOrderAt).getTime()
+    ) {
+      cGroup.lastOrderAt = row.createdAt;
+    }
+    cGroup.orders.push(row);
+
+    for (const dp of dm.debtPayments) {
+      cGroup.paymentHistory.push({
+        _id: String(dp._id || `${o._id}_${dp.paidAt}`),
+        orderId: String(o._id),
+        orderCode: o.orderCode,
+        amount: Number(dp.amount) || 0,
+        method: dp.method || "BANKING",
+        note: dp.note || "",
+        paidAt: dp.paidAt ? new Date(dp.paidAt).toISOString() : row.createdAt,
+        collectedByName: dp.collectedByName || "Quản Trị Viên",
+      });
+    }
+
+    for (const da of dm.debtAdjustments) {
+      cGroup.debtAdjustments = cGroup.debtAdjustments || [];
+      cGroup.debtAdjustments.push({
+        _id: String(da._id || `${o._id}_${da.returnCode}`),
+        orderId: String(o._id),
+        orderCode: o.orderCode,
+        returnCode: da.returnCode || "",
+        amount: Number(da.amount) || 0,
+        debtBefore: Number(da.debtBefore) || 0,
+        debtAfter: Number(da.debtAfter) || 0,
+        at: da.at ? new Date(da.at).toISOString() : row.createdAt,
+        byName: da.byName || "Nhân viên bán hàng",
+      });
+    }
+  }
+
+  const cashCollected = filterCatId ? null : cashAtPurchase + debtCollectedInPeriod - cashRefunded;
+  const collectedRevenue = cashCollected ?? Math.max(0, netRevenue - outstandingDebtInPeriod);
+
+  const debtCustomers = Array.from(customerDebtMap.values())
+    .map((c) => ({
+      ...c,
+      paymentHistory: c.paymentHistory.sort(
+        (a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime()
+      ),
+    }))
+    .sort((a, b) => {
+      if (b.totalDebtAmount !== a.totalDebtAmount) return b.totalDebtAmount - a.totalDebtAmount;
+      return b.totalInitialDebt - a.totalInitialDebt;
+    });
+
+  const activeDebtCustomersCount = debtCustomers.filter((c) => c.totalDebtAmount > 0).length;
 
   const byPaymentMethod = Object.values(paymentStats).map((pm) => ({
     ...pm,
@@ -500,6 +938,7 @@ function buildClientFallbackDashboard(
       categoryName: string;
       unitsSold: number;
       revenue: number;
+      netRevenue: number;
       cogs: number;
       grossProfit: number;
     }
@@ -507,7 +946,7 @@ function buildClientFallbackDashboard(
 
   prodStats.forEach((st) => {
     const netUnits = Math.max(0, st.soldQty + st.exchangeOutQty - st.returnedQty);
-    if (netUnits === 0 && st.revenue === 0) return;
+    if (netUnits === 0 && st.revenue === 0 && st.cogs === 0) return;
     const key = st.categoryId || "UNCATEGORIZED";
     if (!catStatsMap.has(key)) {
       catStatsMap.set(key, {
@@ -515,6 +954,7 @@ function buildClientFallbackDashboard(
         categoryName: st.categoryName,
         unitsSold: 0,
         revenue: 0,
+        netRevenue: 0,
         cogs: 0,
         grossProfit: 0,
       });
@@ -522,6 +962,7 @@ function buildClientFallbackDashboard(
     const cRow = catStatsMap.get(key)!;
     cRow.unitsSold += netUnits;
     cRow.revenue += st.revenue;
+    cRow.netRevenue += st.revenue;
     cRow.cogs += st.cogs;
     cRow.grossProfit = cRow.revenue - cRow.cogs;
   });
@@ -669,26 +1110,38 @@ function buildClientFallbackDashboard(
     a.hour.localeCompare(b.hour)
   );
 
-  const collectedRevenue = netRevenue - outstandingDebtInPeriod;
-
   return {
     summary: {
       grossRevenue,
       itemDiscountTotal,
       billDiscountTotal,
       totalDiscount: itemDiscountTotal + billDiscountTotal,
+      cardFeeCollected,
+      cardFeeRefunded,
+      cardFeeNet,
       cardFeeTotal,
       orderRevenue,
+      returnGoodsTotal,
+      exchangeGoodsTotal,
       returnTotal,
       exchangeTotal,
       netReturnImpact,
+      netReturnRefund: netReturnImpact,
+      returnFromPriorPeriods,
       netRevenue,
+      cashAtPurchase,
+      cashRefunded,
+      cashCollected,
       collectedRevenue,
+      debtReducedByReturnInPeriod,
+      outstandingDebt: outstandingDebtInPeriod,
       outstandingDebtInPeriod,
       initialDebtInPeriod,
       debtCollectedInPeriod,
       debtOrdersInPeriod,
       estimatedCogs,
+      cogs: estimatedCogs,
+      cogsEstimated,
       grossProfit,
       grossMarginPercent,
       totalOrders,
@@ -707,19 +1160,21 @@ function buildClientFallbackDashboard(
     needsPushProducts,
     debtManagement: {
       summary: {
-        totalOutstandingDebt: outstandingDebtInPeriod,
-        totalInitialDebt: initialDebtInPeriod,
-        totalCollectedDebt: debtCollectedInPeriod,
-        activeDebtOrdersCount: 0,
-        settledDebtOrdersCount: 0,
-        activeDebtCustomersCount: 0,
-        overdueDebtAmount: 0,
-        overdueOrdersCount: 0,
+        totalOutstandingDebt,
+        totalInitialDebt,
+        totalCollectedDebt,
+        totalReducedByReturn,
+        activeDebtOrdersCount,
+        settledDebtOrdersCount,
+        activeDebtCustomersCount,
+        overdueDebtAmount,
+        overdueOrdersCount,
         newDebtInPeriod: initialDebtInPeriod,
         collectedInPeriod: debtCollectedInPeriod,
+        reducedByReturnInPeriod: debtReducedByReturnInPeriod,
       },
-      customers: [],
-      orders: [],
+      customers: debtCustomers,
+      orders: debtOrders,
     },
   };
 }
@@ -1386,7 +1841,7 @@ export default function RevenueDashboardModule({
         <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-xs font-extrabold uppercase text-slate-500">
-              1. Doanh thu thuần (Thực thu + Công nợ)
+              1. Doanh thu thuần & Thực thu
             </span>
             <span className="p-2 rounded-xl bg-emerald-100 text-emerald-700">
               <DollarSign className="w-4 h-4" />
@@ -1397,11 +1852,49 @@ export default function RevenueDashboardModule({
           </div>
           <div className="mt-3 pt-2.5 border-t border-slate-100 space-y-1 text-[11px] text-slate-600">
             <div className="flex justify-between">
-              <span className="font-semibold text-emerald-700">Thực thu (Đã vào quỹ):</span>
+              <span className="font-semibold text-emerald-700">
+                Thực thu vào quỹ (cashCollected):
+              </span>
               <span className="font-mono font-extrabold text-emerald-700">
-                {formatVND(s?.collectedRevenue ?? (s?.netRevenue || 0) - (s?.outstandingDebtInPeriod || 0))}
+                {s?.cashCollected === null
+                  ? "— (Theo danh mục)"
+                  : formatVND(
+                      s?.cashCollected ??
+                        s?.collectedRevenue ??
+                        (s?.netRevenue || 0) - (s?.outstandingDebtInPeriod || 0)
+                    )}
               </span>
             </div>
+            {s?.cashCollected !== null && (
+              <div className="pl-2 border-l-2 border-emerald-200 space-y-0.5 text-[10px] text-slate-500">
+                <div className="flex justify-between">
+                  <span>• Thu lúc mua (cashAtPurchase):</span>
+                  <span className="font-mono font-bold text-slate-700">
+                    {formatVND(s?.cashAtPurchase ?? s?.collectedRevenue ?? 0)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>• Thu nợ trong kỳ:</span>
+                  <span className="font-mono font-bold text-emerald-700">
+                    +{formatVND(s?.debtCollectedInPeriod || 0)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>• Hoàn tiền thực tế (cashRefunded):</span>
+                  <span className="font-mono font-bold text-red-600">
+                    -{formatVND(s?.cashRefunded || 0)}
+                  </span>
+                </div>
+                {(s?.debtReducedByReturnInPeriod || 0) > 0 && (
+                  <div className="flex justify-between text-purple-700">
+                    <span>• Giảm nợ do trả hàng (không chi tiền):</span>
+                    <span className="font-mono font-bold">
+                      {formatVND(s?.debtReducedByReturnInPeriod || 0)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="flex justify-between">
               <span className="font-semibold text-amber-700">Đang công nợ (Chưa thu):</span>
               <span className="font-mono font-extrabold text-amber-700">
@@ -1421,7 +1914,13 @@ export default function RevenueDashboardModule({
               </span>
             </div>
             <div className="flex justify-between">
-              <span>Chênh lệch Trả/Đổi hàng:</span>
+              <span>Doanh thu đơn bán (không gồm phí thẻ):</span>
+              <span className="font-mono font-bold text-slate-800">
+                {formatVND(s?.orderRevenue || 0)}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span>Trả hàng (-{formatVND(s?.returnGoodsTotal || 0)}) / Đổi (+{formatVND(s?.exchangeGoodsTotal || 0)}):</span>
               <span
                 className={`font-mono font-bold ${
                   (s?.netReturnImpact || 0) < 0 ? "text-red-600" : "text-slate-700"
@@ -1431,6 +1930,12 @@ export default function RevenueDashboardModule({
                 {formatVND(s?.netReturnImpact || 0)}
               </span>
             </div>
+            {(s?.returnFromPriorPeriods || 0) > 0 && (
+              <div className="text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-1">
+                Ghi chú: Bao gồm hoàn trả từ đơn kỳ trước:{" "}
+                <strong className="font-mono">-{formatVND(s?.returnFromPriorPeriods || 0)}</strong>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1457,17 +1962,33 @@ export default function RevenueDashboardModule({
                 {formatVND(s?.netRevenue || 0)}
               </span>
             </div>
-            <div className="flex justify-between">
-              <span>Giá vốn hàng bán (COGS):</span>
+            <div className="flex justify-between items-center gap-1">
+              <span className="flex items-center gap-1 flex-wrap">
+                Giá vốn hàng bán (COGS):
+                {s?.cogsEstimated && (
+                  <span
+                    title="Có đơn hàng cũ chưa lưu unitCost tại thời điểm bán, được ước tính theo giá vốn hiện tại của sản phẩm"
+                    className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-bold"
+                  >
+                    Có ước tính đơn cũ
+                  </span>
+                )}
+              </span>
               <span className="font-mono font-bold text-amber-300">
                 {formatVND(s?.estimatedCogs || 0)}
               </span>
             </div>
-            <div className="flex justify-between">
-              <span>Phí quẹt thẻ thu hộ (1.8% / 4%):</span>
-              <span className="font-mono font-bold text-slate-300">
-                {formatVND(s?.cardFeeTotal || 0)}
-              </span>
+            <div className="pt-1 border-t border-slate-800 space-y-0.5">
+              <div className="flex justify-between">
+                <span>Phí quẹt thẻ ròng (Thu hộ - không tính DT):</span>
+                <span className="font-mono font-bold text-slate-300">
+                  {formatVND(s?.cardFeeNet ?? s?.cardFeeTotal ?? 0)}
+                </span>
+              </div>
+              <div className="flex justify-between text-[10px] text-slate-400">
+                <span>• Thu hộ: +{formatVND(s?.cardFeeCollected ?? s?.cardFeeTotal ?? 0)}</span>
+                <span>• Hoàn trả: -{formatVND(s?.cardFeeRefunded || 0)}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -1641,15 +2162,23 @@ export default function RevenueDashboardModule({
 
           <div className="rounded-xl bg-emerald-50/70 border border-emerald-200 p-3.5">
             <div className="flex items-center justify-between text-[11px] font-extrabold uppercase text-emerald-800">
-              <span>Đã thu hồi công nợ</span>
+              <span>Đã thu nợ & Giảm nợ trả hàng</span>
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
             </div>
             <div className="text-xl font-black font-mono text-emerald-800 mt-1">
               {formatVND(dm?.summary?.totalCollectedDebt || 0)}
             </div>
-            <div className="text-[11px] text-emerald-800 mt-1">
-              Đã tất toán xong:{" "}
-              <strong>{dm?.summary?.settledDebtOrdersCount || 0}</strong> đơn công nợ
+            <div className="text-[11px] text-emerald-800 mt-1 space-y-0.5">
+              <div>
+                Giảm nợ do trả hàng:{" "}
+                <strong className="font-mono text-purple-700">
+                  {formatVND(dm?.summary?.totalReducedByReturn || 0)}
+                </strong>
+              </div>
+              <div>
+                Đã tất toán xong:{" "}
+                <strong>{dm?.summary?.settledDebtOrdersCount || 0}</strong> đơn công nợ
+              </div>
             </div>
           </div>
         </div>
@@ -1705,7 +2234,7 @@ export default function RevenueDashboardModule({
                   <th className="text-left px-3 py-2.5">Mã đơn / Ngày mua</th>
                   <th className="text-left px-3 py-2.5">Khách hàng</th>
                   <th className="text-right px-3 py-2.5">Tổng đơn</th>
-                  <th className="text-right px-3 py-2.5">Đã thu</th>
+                  <th className="text-right px-3 py-2.5">Đã thu / Giảm nợ</th>
                   <th className="text-right px-3 py-2.5">Còn nợ</th>
                   <th className="text-center px-3 py-2.5">Hạn hẹn trả</th>
                   <th className="text-center px-3 py-2.5">Trạng thái & Lịch sử</th>
@@ -1756,6 +2285,11 @@ export default function RevenueDashboardModule({
                       </td>
                       <td className="px-3 py-2.5 text-right font-mono font-bold text-emerald-700">
                         {formatVND(o.paidAmount)}
+                        {(o.reducedByReturnAmount || 0) > 0 && (
+                          <div className="text-[10px] text-purple-700 font-semibold">
+                            Giảm nợ trả hàng: -{formatVND(o.reducedByReturnAmount || 0)}
+                          </div>
+                        )}
                       </td>
                       <td className="px-3 py-2.5 text-right font-mono font-black text-amber-700 text-sm">
                         {formatVND(o.debtAmount)}
@@ -1792,15 +2326,32 @@ export default function RevenueDashboardModule({
                             ? "Trả 1 phần"
                             : "Chưa trả nợ"}
                         </span>
-                        {o.debtPayments && o.debtPayments.length > 0 && (
-                          <div className="mt-1 space-y-0.5 text-[10px] text-slate-600 text-left bg-slate-50 rounded p-1.5 border border-slate-200 max-w-[230px] mx-auto">
-                            {o.debtPayments.map((dp, i) => (
-                              <div key={i} className="flex justify-between gap-1">
+                        {((o.debtPayments && o.debtPayments.length > 0) ||
+                          (o.debtAdjustments && o.debtAdjustments.length > 0)) && (
+                          <div className="mt-1 space-y-0.5 text-[10px] text-slate-600 text-left bg-slate-50 rounded p-1.5 border border-slate-200 max-w-[240px] mx-auto">
+                            {o.debtPayments?.map((dp, i) => (
+                              <div key={`dp-${i}`} className="flex justify-between gap-1">
                                 <span className="font-mono font-bold text-emerald-700">
                                   +{formatVND(dp.amount)} ({dp.method})
                                 </span>
                                 <span className="text-slate-400">
                                   {new Date(dp.paidAt).toLocaleDateString("vi-VN")}
+                                </span>
+                              </div>
+                            ))}
+                            {o.debtAdjustments?.map((da, i) => (
+                              <div
+                                key={`da-${i}`}
+                                className="flex justify-between gap-1 text-purple-700"
+                                title={da.note || `Cấn trừ nợ từ phiếu trả ${da.returnCode || ""}`}
+                              >
+                                <span className="font-mono font-bold">
+                                  -{formatVND(da.amount)} (Trả {da.returnCode || "hàng"})
+                                </span>
+                                <span className="text-slate-400">
+                                  {da.at || da.adjustedAt
+                                    ? new Date(da.at || da.adjustedAt || "").toLocaleDateString("vi-VN")
+                                    : ""}
                                 </span>
                               </div>
                             ))}
@@ -1822,7 +2373,7 @@ export default function RevenueDashboardModule({
                   <th className="text-left px-3 py-2.5">Khách hàng / SĐT</th>
                   <th className="text-center px-3 py-2.5">Số đơn nợ</th>
                   <th className="text-right px-3 py-2.5">Tổng mua</th>
-                  <th className="text-right px-3 py-2.5">Đã thanh toán</th>
+                  <th className="text-right px-3 py-2.5">Đã thu / Giảm nợ</th>
                   <th className="text-right px-3 py-2.5">Tổng dư nợ còn lại</th>
                   <th className="text-center px-3 py-2.5">Hạn trả gần nhất</th>
                   <th className="text-right px-3 py-2.5">Chi tiết đơn</th>
@@ -1865,6 +2416,11 @@ export default function RevenueDashboardModule({
                           </td>
                           <td className="px-3 py-2.5 text-right font-mono font-bold text-emerald-700">
                             {formatVND(c.totalPaidAmount)}
+                            {(c.totalReducedByReturn || 0) > 0 && (
+                              <div className="text-[10px] text-purple-700 font-semibold">
+                                Giảm nợ trả hàng: -{formatVND(c.totalReducedByReturn || 0)}
+                              </div>
+                            )}
                           </td>
                           <td className="px-3 py-2.5 text-right font-mono font-black text-amber-700 text-sm">
                             {formatVND(c.totalDebtAmount)}
@@ -1932,6 +2488,14 @@ export default function RevenueDashboardModule({
                                         <span className="text-emerald-700">
                                           Đã trả: <strong className="font-mono">{formatVND(co.paidAmount)}</strong>
                                         </span>
+                                        {(co.reducedByReturnAmount || 0) > 0 && (
+                                          <span className="text-purple-700">
+                                            Giảm nợ trả hàng:{" "}
+                                            <strong className="font-mono">
+                                              -{formatVND(co.reducedByReturnAmount || 0)}
+                                            </strong>
+                                          </span>
+                                        )}
                                         <span className="text-amber-700">
                                           Còn nợ: <strong className="font-mono">{formatVND(co.debtAmount)}</strong>
                                         </span>
@@ -2517,6 +3081,7 @@ export default function RevenueDashboardModule({
                       <th className="py-2.5 px-3 text-right">Tiền hàng</th>
                       <th className="py-2.5 px-3 text-right text-amber-300">Giảm giá</th>
                       <th className="py-2.5 px-3 text-right text-emerald-300">Doanh thu thuần</th>
+                      <th className="py-2.5 px-3 text-right text-teal-300">Thực thu</th>
                       <th className="py-2.5 px-3 text-right">Giá vốn</th>
                       <th className="py-2.5 px-3 text-right text-indigo-300">Lãi gộp</th>
                     </tr>
@@ -2537,6 +3102,9 @@ export default function RevenueDashboardModule({
                         </td>
                         <td className="py-2 px-3 text-right font-extrabold text-emerald-700 whitespace-nowrap">
                           {formatVND(d.netRevenue)}
+                        </td>
+                        <td className="py-2 px-3 text-right font-bold text-teal-700 whitespace-nowrap">
+                          {d.cashCollected !== undefined ? formatVND(d.cashCollected) : "—"}
                         </td>
                         <td className="py-2 px-3 text-right text-slate-600 whitespace-nowrap">
                           {formatVND(d.cogs)}

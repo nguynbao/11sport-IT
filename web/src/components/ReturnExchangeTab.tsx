@@ -5,6 +5,7 @@ import {
   Order,
   Product,
   ReturnReceipt,
+  ReturnCalculateResult,
   apiRequest,
   formatVND,
   formatDateTime,
@@ -358,51 +359,204 @@ export default function ReturnExchangeTab() {
     }
   };
 
-  // Tính toán tài chính (bao gồm hoàn lại phí quẹt thẻ tương ứng nếu đơn gốc có thu phí thẻ)
-  const returnSubtotal = returnRows.reduce(
-    (sum, r) => sum + r.unitPrice * r.quantity,
-    0
-  );
-  const refundedCardFee = useMemo(() => {
-    if (!selectedOrder || returnSubtotal <= 0) return 0;
-    const orderCardFee = Math.max(0, Math.round(Number(selectedOrder.cardFee) || 0));
-    if (orderCardFee <= 0) return 0;
+  // Tính toán tài chính (đồng bộ công thức phân bổ giảm giá Bill, hoàn phí thẻ và cấn trừ công nợ từ /returns/calculate)
+  const [serverCalc, setServerCalc] = useState<ReturnCalculateResult | null>(null);
 
-    const orderReturns: ReturnReceipt[] = Array.isArray((selectedOrder as any).returns)
-      ? (selectedOrder as any).returns
-      : recentReturns.filter(
-          (r) =>
-            r.orderId === selectedOrder._id ||
-            r.orderCode === (selectedOrder.orderCode || selectedOrder.code)
-        );
-    const alreadyRefunded = orderReturns.reduce(
-      (sum, r) => sum + Math.max(0, Math.round(Number(r.refundedCardFee) || 0)),
+  useEffect(() => {
+    const activeReturns = returnRows.filter((r) => r.quantity > 0);
+    if (!selectedOrder || activeReturns.length === 0) {
+      setServerCalc(null);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await apiRequest<ReturnCalculateResult>("/returns/calculate", {
+          method: "POST",
+          body: JSON.stringify({
+            orderId: selectedOrder._id,
+            type: mode,
+            returnItems: activeReturns.map((r) => ({
+              lineIndex: r.lineIndex,
+              productId: r.productId,
+              color: r.color,
+              size: r.size,
+              quantity: r.quantity,
+              condition: r.condition,
+            })),
+            exchangeItems:
+              mode === "EXCHANGE"
+                ? exchangeRows.map((ex) => ({
+                    productId: ex.product._id,
+                    color: ex.color,
+                    size: ex.size,
+                    quantity: ex.quantity,
+                  }))
+                : [],
+          }),
+        });
+        if (!cancelled && res.data) {
+          setServerCalc(res.data);
+        }
+      } catch {
+        if (!cancelled) setServerCalc(null);
+      }
+    }, 180);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [selectedOrder, mode, returnRows, exchangeRows]);
+
+  const localCalc = useMemo(() => {
+    if (!selectedOrder) {
+      return {
+        returnSubtotal: 0,
+        refundedCardFee: 0,
+        returnTotal: 0,
+        exchangeTotal: 0,
+        netDifference: 0,
+        refundAmount: 0,
+        additionalCharge: 0,
+        debtBefore: 0,
+        debtReduction: 0,
+        cashRefund: 0,
+        debtAfter: 0,
+      };
+    }
+
+    const orderItems = Array.isArray(selectedOrder.items) ? selectedOrder.items : [];
+    const orderSubtotalS = orderItems.reduce(
+      (sum, it) =>
+        sum +
+        (Number(it.lineTotal) ||
+          Math.max(0, Number(it.unitPrice) || 0) * Math.max(0, Number(it.quantity) || 0)),
       0
     );
-    const remainingCardFee = Math.max(0, orderCardFee - alreadyRefunded);
+    const orderBillDiscB = Math.min(
+      orderSubtotalS,
+      Math.max(0, Math.round(Number(selectedOrder.billDiscountAmount) || 0))
+    );
+    const orderNetGoods = Math.max(0, orderSubtotalS - orderBillDiscB);
 
-    const allPaidLinesReturned =
-      returnRows.some((r) => r.quantity > 0) &&
-      returnRows.every((r) => r.unitPrice <= 0 || r.quantity >= r.maxReturnable);
+    const lineNetAmounts = orderItems.map((it) => {
+      const l_i =
+        Number(it.lineTotal) ||
+        Math.max(0, Number(it.unitPrice) || 0) * Math.max(0, Number(it.quantity) || 0);
+      if (l_i <= 0 || orderSubtotalS <= 0) return 0;
+      const b_i = (l_i / orderSubtotalS) * orderBillDiscB;
+      return Math.max(0, Math.round(l_i - b_i));
+    });
 
-    if (allPaidLinesReturned) {
-      return remainingCardFee;
+    if (orderNetGoods > 0 && lineNetAmounts.length > 0) {
+      const sumNet = lineNetAmounts.reduce((s, v) => s + v, 0);
+      const diff = orderNetGoods - sumNet;
+      if (diff !== 0) {
+        let lastPaidIdx = -1;
+        for (let i = lineNetAmounts.length - 1; i >= 0; i--) {
+          if (lineNetAmounts[i] > 0) {
+            lastPaidIdx = i;
+            break;
+          }
+        }
+        if (lastPaidIdx >= 0) {
+          lineNetAmounts[lastPaidIdx] = Math.max(0, lineNetAmounts[lastPaidIdx] + diff);
+        }
+      }
     }
-    const orderSubtotal = Math.max(0, Number(selectedOrder.subtotal) || 0);
-    return orderSubtotal > 0
-      ? Math.min(remainingCardFee, Math.round((returnSubtotal / orderSubtotal) * orderCardFee))
-      : remainingCardFee;
-  }, [selectedOrder, returnSubtotal, returnRows, recentReturns]);
 
-  const returnTotal = returnSubtotal + refundedCardFee;
-  const exchangeTotal =
-    mode === "EXCHANGE"
-      ? exchangeRows.reduce(
-          (sum, r) => sum + r.product.sellingPrice * r.quantity,
-          0
-        )
-      : 0;
-  const netDifference = exchangeTotal - returnTotal;
+    let calcReturnSubtotal = 0;
+    for (const r of returnRows) {
+      if (r.quantity <= 0) continue;
+      const ordItem = orderItems[r.lineIndex];
+      const q_i = Math.max(1, Number(ordItem?.quantity || r.maxReturnable || 1));
+      const alreadyReturned = Math.max(0, Number(ordItem?.returnedQuantity || 0));
+      const N_i =
+        lineNetAmounts[r.lineIndex] ??
+        Math.max(0, Math.round(r.unitPrice * q_i));
+      const unitRefundPrice = r.isGift ? 0 : Math.max(0, Math.round(N_i / q_i));
+      const isReturningRemainingAll = alreadyReturned + r.quantity >= q_i;
+      const alreadyRefundedOnLine = alreadyReturned * unitRefundPrice;
+      const lineRefundTotal = r.isGift
+        ? 0
+        : isReturningRemainingAll
+        ? Math.max(0, N_i - alreadyRefundedOnLine)
+        : unitRefundPrice * r.quantity;
+      calcReturnSubtotal += lineRefundTotal;
+    }
+
+    let calcRefundedCardFee = 0;
+    const orderCardFee = Math.max(0, Math.round(Number(selectedOrder.cardFee) || 0));
+    if (orderCardFee > 0 && calcReturnSubtotal > 0) {
+      const orderReturns: ReturnReceipt[] = Array.isArray((selectedOrder as any).returns)
+        ? (selectedOrder as any).returns
+        : recentReturns.filter(
+            (r) =>
+              r.orderId === selectedOrder._id ||
+              r.orderCode === (selectedOrder.orderCode || selectedOrder.code)
+          );
+      const alreadyRefunded = orderReturns.reduce(
+        (sum, r) => sum + Math.max(0, Math.round(Number(r.refundedCardFee) || 0)),
+        0
+      );
+      const remainingCardFee = Math.max(0, orderCardFee - alreadyRefunded);
+
+      const allPaidLinesReturned =
+        returnRows.some((r) => r.quantity > 0) &&
+        returnRows.every((r) => r.unitPrice <= 0 || r.quantity >= r.maxReturnable);
+
+      if (allPaidLinesReturned) {
+        calcRefundedCardFee = remainingCardFee;
+      } else {
+        const baseForFee =
+          orderNetGoods > 0 ? orderNetGoods : Math.max(0, Number(selectedOrder.subtotal) || 0);
+        calcRefundedCardFee =
+          baseForFee > 0
+            ? Math.min(remainingCardFee, Math.round((calcReturnSubtotal / baseForFee) * orderCardFee))
+            : remainingCardFee;
+      }
+    }
+
+    const calcReturnTotal = calcReturnSubtotal + calcRefundedCardFee;
+    const calcExchangeTotal =
+      mode === "EXCHANGE"
+        ? exchangeRows.reduce((sum, r) => sum + r.product.sellingPrice * r.quantity, 0)
+        : 0;
+    const calcNetDifference = calcExchangeTotal - calcReturnTotal;
+    const calcRefundAmount = calcNetDifference < 0 ? Math.abs(calcNetDifference) : 0;
+    const calcAdditionalCharge = calcNetDifference > 0 ? calcNetDifference : 0;
+    const calcDebtBefore = Math.max(0, Math.round(Number(selectedOrder.debtAmount) || 0));
+    const calcDebtReduction = Math.min(calcDebtBefore, calcRefundAmount);
+    const calcCashRefund = Math.max(0, calcRefundAmount - calcDebtReduction);
+    const calcDebtAfter = Math.max(0, calcDebtBefore - calcDebtReduction);
+
+    return {
+      returnSubtotal: calcReturnSubtotal,
+      refundedCardFee: calcRefundedCardFee,
+      returnTotal: calcReturnTotal,
+      exchangeTotal: calcExchangeTotal,
+      netDifference: calcNetDifference,
+      refundAmount: calcRefundAmount,
+      additionalCharge: calcAdditionalCharge,
+      debtBefore: calcDebtBefore,
+      debtReduction: calcDebtReduction,
+      cashRefund: calcCashRefund,
+      debtAfter: calcDebtAfter,
+    };
+  }, [selectedOrder, returnRows, exchangeRows, mode, recentReturns]);
+
+  const returnSubtotal = serverCalc?.returnSubtotal ?? localCalc.returnSubtotal;
+  const refundedCardFee = serverCalc?.refundedCardFee ?? localCalc.refundedCardFee;
+  const returnTotal = serverCalc?.returnTotal ?? localCalc.returnTotal;
+  const exchangeTotal = serverCalc?.exchangeTotal ?? localCalc.exchangeTotal;
+  const netDifference = serverCalc?.netDifference ?? localCalc.netDifference;
+  const refundAmount = serverCalc?.refundAmount ?? localCalc.refundAmount;
+  const debtBefore = serverCalc?.debtBefore ?? localCalc.debtBefore;
+  const debtReduction = serverCalc?.debtReduction ?? localCalc.debtReduction;
+  const cashRefund = serverCalc?.cashRefund ?? localCalc.cashRefund;
+  const debtAfter = serverCalc?.debtAfter ?? localCalc.debtAfter;
 
   const handleSubmitReturnExchange = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -459,10 +613,31 @@ export default function ReturnExchangeTab() {
       const createdReturn = res.data?.returnExchange || res.data;
       const updatedOrder: Order | undefined = res.data?.order;
 
+      const createdDebtReduction = Number(createdReturn?.debtReduction || 0);
+      const createdRefundAmount = Number(
+        createdReturn?.refundAmount ?? Math.max(0, -Number(createdReturn?.netDifference || 0))
+      );
+      const createdCashRefund = Number(
+        createdReturn?.cashRefund ?? Math.max(0, createdRefundAmount - createdDebtReduction)
+      );
+      const createdDebtAfter = Number(
+        createdReturn?.debtAfter ?? updatedOrder?.debtAmount ?? 0
+      );
+
       setSuccessMsg(
-        `Đã xử lý phiếu ${
-          createdReturn?.returnCode || createdReturn?.code || "Trả/Đổi"
-        } thành công! Tồn kho và trạng thái đơn gốc đã được cập nhật.`
+        createdDebtReduction > 0
+          ? `Đã xử lý phiếu ${
+              createdReturn?.returnCode || createdReturn?.code || "Trả/Đổi"
+            } thành công! Tổng tiền hoàn trả: ${formatVND(
+              createdRefundAmount
+            )} · Cấn trừ vào công nợ đơn gốc: -${formatVND(
+              createdDebtReduction
+            )} (Nợ còn lại: ${formatVND(
+              createdDebtAfter
+            )}) · Tiền mặt/CK thực hoàn cho khách: ${formatVND(createdCashRefund)}.`
+          : `Đã xử lý phiếu ${
+              createdReturn?.returnCode || createdReturn?.code || "Trả/Đổi"
+            } thành công! Tồn kho và trạng thái đơn gốc đã được cập nhật.`
       );
       setNote("");
       await loadInitialLists();
@@ -499,8 +674,8 @@ export default function ReturnExchangeTab() {
         </h2>
         <p className="text-xs text-slate-500 mt-0.5">
           Nhập mã đơn hàng cần trả/đổi. Hệ thống kiểm tra số lượng đã mua/đã trả, cộng lại kho cho hàng{" "}
-          <strong>Còn bán được (GOOD)</strong> và tự động hoàn lại cả{" "}
-          <strong>phí quẹt thẻ</strong> tương ứng (nếu đơn gốc có thu phí thẻ).
+          <strong>Còn bán được (GOOD)</strong>, tự động hoàn lại cả{" "}
+          <strong>phí quẹt thẻ</strong> và ưu tiên <strong>cấn trừ công nợ</strong> nếu đơn gốc còn nợ.
         </p>
 
         <form onSubmit={handleSearchOrder} className="mt-4 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
@@ -576,17 +751,34 @@ export default function ReturnExchangeTab() {
                 {selectedOrder.orderCode || selectedOrder.code} — {selectedOrder.customerName}
                 {selectedOrder.customerPhone ? ` (${formatPhone(selectedOrder.customerPhone)})` : ""}
               </div>
-              <div className="text-xs text-slate-500 mt-0.5">
-                Ngày mua: {formatDateTime(selectedOrder.createdAt)} · Tiền hàng:{" "}
-                <strong className="font-mono">{formatVND(selectedOrder.subtotal)}</strong> · Phí
-                thẻ:{" "}
-                <strong className="font-mono">{formatVND(selectedOrder.cardFee)}</strong>{" "}
-                {Number(selectedOrder.cardFee) > 0 ? (
-                  <span className="text-emerald-700 font-semibold">
-                    (Có hoàn lại phí thẻ cho khách khi trả/đổi)
+              <div className="text-xs text-slate-500 mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span>
+                  Ngày mua: {formatDateTime(selectedOrder.createdAt)} · Tiền hàng:{" "}
+                  <strong className="font-mono">{formatVND(selectedOrder.subtotal)}</strong>
+                </span>
+                {Number(selectedOrder.billDiscountAmount) > 0 && (
+                  <span className="text-amber-700 font-semibold">
+                    · Giảm giá Bill:{" "}
+                    <strong className="font-mono">
+                      -{formatVND(Number(selectedOrder.billDiscountAmount))}
+                    </strong>
                   </span>
-                ) : (
-                  <span>(Không thu phí thẻ)</span>
+                )}
+                <span>
+                  · Phí thẻ:{" "}
+                  <strong className="font-mono">{formatVND(selectedOrder.cardFee)}</strong>{" "}
+                  {Number(selectedOrder.cardFee) > 0 ? (
+                    <span className="text-emerald-700 font-semibold">
+                      (Có hoàn lại phí thẻ cho khách khi trả/đổi)
+                    </span>
+                  ) : (
+                    <span>(Không thu phí thẻ)</span>
+                  )}
+                </span>
+                {Number(selectedOrder.debtAmount) > 0 && (
+                  <span className="px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-amber-900 font-bold">
+                    Đang còn công nợ: {formatVND(Number(selectedOrder.debtAmount))} (Sẽ ưu tiên cấn trừ vào nợ khi hoàn trả)
+                  </span>
                 )}
               </div>
             </div>
@@ -1089,7 +1281,13 @@ export default function ReturnExchangeTab() {
 
             <div className="bg-slate-900 text-white p-4 sm:p-5 rounded-xl space-y-2">
               <div className="flex justify-between gap-2 text-xs text-slate-300">
-                <span>Tiền hàng trả lại (Giá sản phẩm):</span>
+                <span>
+                  Tiền hàng trả lại
+                  {Number(selectedOrder.billDiscountAmount) > 0
+                    ? " (đã phân bổ giảm giá Bill)"
+                    : ""}
+                  :
+                </span>
                 <span className="font-mono font-bold text-amber-400">
                   {formatVND(returnSubtotal)}
                 </span>
@@ -1126,7 +1324,7 @@ export default function ReturnExchangeTab() {
                   {netDifference > 0
                     ? "Khách cần trả thêm:"
                     : netDifference < 0
-                    ? "Cửa hàng hoàn lại khách:"
+                    ? "Tổng tiền hoàn trả (refundAmount):"
                     : "Chênh lệch thanh toán:"}
                 </span>
                 <span
@@ -1138,6 +1336,37 @@ export default function ReturnExchangeTab() {
                 </span>
               </div>
 
+              {/* Hiển thị chi tiết cấn trừ công nợ & tiền thực hoàn cho khách khi đơn gốc có nợ */}
+              {(debtBefore > 0 || debtReduction > 0) && netDifference < 0 && (
+                <div className="mt-2 p-3 rounded-lg bg-slate-800/90 border border-amber-500/40 space-y-1.5 text-xs">
+                  <div className="font-bold text-amber-300 uppercase text-[11px]">
+                    Phân bổ hoàn trả cho đơn đang có công nợ ({formatVND(debtBefore)}):
+                  </div>
+                  <div className="flex justify-between gap-2 text-slate-200">
+                    <span>1. Tổng tiền hoàn trả (refundAmount):</span>
+                    <span className="font-mono font-bold text-amber-300">
+                      {formatVND(refundAmount)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-2 text-purple-300">
+                    <span>
+                      2. Cấn trừ vào công nợ đơn gốc (Nợ còn lại: {formatVND(debtAfter)}):
+                    </span>
+                    <span className="font-mono font-extrabold">
+                      -{formatVND(debtReduction)}
+                    </span>
+                  </div>
+                  <div className="pt-1 border-t border-slate-700 flex justify-between gap-2 text-emerald-300 text-sm">
+                    <span className="font-extrabold">
+                      3. Thực hoàn tiền mặt/CK cho khách (cashRefund):
+                    </span>
+                    <span className="font-mono font-extrabold text-emerald-400">
+                      {formatVND(cashRefund)}
+                    </span>
+                  </div>
+                </div>
+              )}
+
               <button
                 type="submit"
                 disabled={submitting}
@@ -1147,6 +1376,8 @@ export default function ReturnExchangeTab() {
                   ? "Đang xử lý..."
                   : mode === "EXCHANGE"
                   ? "XÁC NHẬN PHIẾU ĐỔI HÀNG"
+                  : debtReduction > 0 && cashRefund === 0
+                  ? "XÁC NHẬN TRẢ HÀNG & CẤN TRỪ CÔNG NỢ"
                   : "XÁC NHẬN PHIẾU TRẢ HÀNG & HOÀN TIỀN"}
               </button>
             </div>
@@ -1169,7 +1400,7 @@ export default function ReturnExchangeTab() {
                   <th className="py-2.5 px-3">Loại</th>
                   <th className="py-2.5 px-3 text-right">Tiền hàng trả</th>
                   <th className="py-2.5 px-3 text-right">Tiền hàng đổi</th>
-                  <th className="py-2.5 px-3 text-right">Chênh lệch</th>
+                  <th className="py-2.5 px-3 text-right">Chênh lệch / Hoàn trả</th>
                   <th className="py-2.5 px-3">Thời gian</th>
                 </tr>
               </thead>
@@ -1195,11 +1426,26 @@ export default function ReturnExchangeTab() {
                       {formatVND(r.exchangeTotal)}
                     </td>
                     <td className="py-2.5 px-3 text-right font-mono font-bold whitespace-nowrap">
-                      {r.netDifference < 0
-                        ? `Hoàn khách ${formatVND(Math.abs(r.netDifference))}`
-                        : r.netDifference > 0
-                        ? `Thu thêm ${formatVND(r.netDifference)}`
-                        : "0 ₫"}
+                      <div>
+                        {r.netDifference < 0
+                          ? `Hoàn khách ${formatVND(Math.abs(r.netDifference))}`
+                          : r.netDifference > 0
+                          ? `Thu thêm ${formatVND(r.netDifference)}`
+                          : "0 ₫"}
+                      </div>
+                      {r.netDifference < 0 && Number(r.debtReduction) > 0 && (
+                        <div className="text-[10px] font-sans font-semibold text-purple-700 mt-0.5 space-y-0.5">
+                          <div>
+                            • Cấn trừ nợ: -{formatVND(Number(r.debtReduction))}
+                            {r.debtAfter !== undefined
+                              ? ` (Còn nợ: ${formatVND(Number(r.debtAfter))})`
+                              : ""}
+                          </div>
+                          <div className="text-emerald-700">
+                            • Thực hoàn tiền: {formatVND(Number(r.cashRefund ?? 0))}
+                          </div>
+                        </div>
+                      )}
                     </td>
                     <td className="py-2.5 px-3 text-slate-500 whitespace-nowrap">
                       {formatDateTime(r.createdAt)}

@@ -190,12 +190,15 @@ describe('Regression Test: Hoàn trả đơn HD-0162 (nhiều biến thể cùng
         ],
       });
 
-    const expectedFirstFeeRefund = Math.round((3000000 / 17720000) * 696000); // 117.833 VND
+    // BR-01: Phân bổ giảm giá bill 320.000 trên tổng 17.720.000 cho dòng Selkirk 3.000.000
+    const selkirkBillShare = Math.round((3000000 / 17720000) * 320000); // 54.176 VND
+    const expectedFirstSubtotal = 3000000 - selkirkBillShare; // 2.945.824 VND
+    const expectedFirstFeeRefund = Math.round((expectedFirstSubtotal / 17400000) * 696000); // 117.833 VND
     expect(res.status).toBe(201);
-    expect(res.body.data.returnExchange.returnSubtotal).toBe(3000000);
+    expect(res.body.data.returnExchange.returnSubtotal).toBe(expectedFirstSubtotal);
     expect(res.body.data.returnExchange.refundedCardFee).toBe(expectedFirstFeeRefund);
-    expect(res.body.data.returnExchange.returnTotal).toBe(3000000 + expectedFirstFeeRefund);
-    expect(res.body.data.returnExchange.refundAmount).toBe(3000000 + expectedFirstFeeRefund);
+    expect(res.body.data.returnExchange.returnTotal).toBe(expectedFirstSubtotal + expectedFirstFeeRefund);
+    expect(res.body.data.returnExchange.refundAmount).toBe(expectedFirstSubtotal + expectedFirstFeeRefund);
     expect(res.body.data.order.status).toBe('PARTIALLY_RETURNED');
     // Dòng 1 (Dauntless) vẫn chưa trả, dòng 2 (Era Power) đã trả 1
     expect(res.body.data.order.items[1].returnedQuantity).toBe(0);
@@ -232,9 +235,12 @@ describe('Regression Test: Hoàn trả đơn HD-0162 (nhiều biến thể cùng
         ],
       });
 
-    const expectedFirstFeeRefund = Math.round((3000000 / 17720000) * 696000); // 117.833 VND
+    const selkirkBillShare = Math.round((3000000 / 17720000) * 320000); // 54.176 VND
+    const expectedFirstSubtotal = 3000000 - selkirkBillShare; // 2.945.824 VND
+    const expectedFirstFeeRefund = Math.round((expectedFirstSubtotal / 17400000) * 696000); // 117.833 VND
     const expectedRemainingFeeRefund = 696000 - expectedFirstFeeRefund; // 578.167 VND (Tổng 2 lần = đúng 696.000 VND!)
-    const remainingItemsSubtotal = 2300000 + 3000000 + 4500000 + 4500000 + 420000;
+    // Tổng tiền hàng thuần của đơn (S - B = 17.720.000 - 320.000 = 17.400.000) trừ lần trả đầu = 14.454.176 (khớp 100% AC-10!)
+    const remainingItemsSubtotal = 17400000 - expectedFirstSubtotal;
 
     expect(res.status).toBe(201);
     expect(res.body.data.order.status).toBe('FULLY_RETURNED');

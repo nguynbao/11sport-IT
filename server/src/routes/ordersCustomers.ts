@@ -368,6 +368,7 @@ async function prepareOrderData(body: any, isDraft: boolean) {
     requestedQtyByVariant.set(variantKey, totalRequestedForVariant);
 
     const originalUnitPrice = Math.round(Number(product.sellingPrice) || 0);
+    const unitCost = Math.max(0, Math.round(Number(product.costPrice) || 0));
 
     if (isGift) {
       orderItems.push({
@@ -378,6 +379,7 @@ async function prepareOrderData(body: any, isDraft: boolean) {
         size: itemSize,
         unit: product.unit,
         originalUnitPrice,
+        unitCost,
         isGift: true,
         discountType: 'GIFT',
         discountValue: 100,
@@ -419,6 +421,7 @@ async function prepareOrderData(body: any, isDraft: boolean) {
         size: itemSize,
         unit: product.unit,
         originalUnitPrice,
+        unitCost,
         isGift: false,
         discountType: itemDiscValue > 0 ? itemDiscType : 'NONE',
         discountValue: itemDiscValue,
@@ -601,7 +604,9 @@ async function prepareOrderData(body: any, isDraft: boolean) {
   }
 
   let debtAmount = 0;
-  if (method === 'OTHER') {
+  if (rawBodyDebtAmount !== undefined && rawBodyDebtAmount !== null && Number(rawBodyDebtAmount) > 0) {
+    debtAmount = Math.min(totalAmount, Math.max(0, Math.round(Number(rawBodyDebtAmount) || 0)));
+  } else if (method === 'OTHER') {
     const debtFromSplits = cleanSplitPayments
       .filter((s) => s.method === 'DEBT')
       .reduce((sum, s) => sum + s.amount, 0);
@@ -782,6 +787,7 @@ ordersCustomersRouter.post('/orders', async (req, res, next) => {
       debtStatus: prepared.debtStatus,
       debtDueDate: prepared.debtDueDate,
       debtPayments: [],
+      debtAdjustments: [],
       note: prepared.cleanNote,
       status: isDraft ? 'DRAFT' : 'PAID',
       createdBy: req.user?.userId || 'SALES',
@@ -1063,13 +1069,19 @@ ordersCustomersRouter.post('/orders/:id/debt-payment', async (req, res, next) =>
     const prevPayments = Array.isArray(existingOrder.debtPayments)
       ? existingOrder.debtPayments
       : [];
+    const nextPayments = [...prevPayments, paymentRecord];
     const nextDebtAmount = Math.max(0, currentDebt - payAmount);
     const totalOrderAmount = Math.max(0, Number(existingOrder.totalAmount) || 0);
-    const nextPaidAmount = Math.max(0, totalOrderAmount - nextDebtAmount);
     const initialDebt = Math.max(
       currentDebt,
       Number(existingOrder.initialDebtAmount) || currentDebt
     );
+    const cashAtPurchase = Math.max(0, totalOrderAmount - initialDebt);
+    const totalCollectedDebt = nextPayments.reduce(
+      (s, dp) => s + Math.max(0, Number(dp.amount) || 0),
+      0
+    );
+    const nextPaidAmount = Math.min(totalOrderAmount, cashAtPurchase + totalCollectedDebt);
     const nextDebtStatus: DebtStatus = nextDebtAmount === 0 ? 'SETTLED' : 'PARTIAL';
 
     const updatedOrder = await orderRepo.updateById(existingOrder._id, {
@@ -1077,7 +1089,7 @@ ordersCustomersRouter.post('/orders/:id/debt-payment', async (req, res, next) =>
       debtAmount: nextDebtAmount,
       initialDebtAmount: initialDebt,
       debtStatus: nextDebtStatus,
-      debtPayments: [...prevPayments, paymentRecord],
+      debtPayments: nextPayments,
     });
 
     res.json({

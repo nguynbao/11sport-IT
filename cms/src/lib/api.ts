@@ -311,6 +311,7 @@ export interface OrderItem {
   discountValue?: number;
   discountAmount?: number;
   unitPrice: number;
+  unitCost?: number;
   quantity: number;
   returnedQuantity?: number;
   lineTotal: number;
@@ -331,6 +332,24 @@ export interface DebtPaymentRecord {
   paidAt: string;
   collectedBy?: string;
   collectedByName?: string;
+}
+
+export interface DebtAdjustmentRecord {
+  _id?: string;
+  type?: "RETURN" | string;
+  returnId?: string;
+  returnCode?: string;
+  amount: number;
+  debtBefore?: number;
+  debtAfter?: number;
+  reason?: string;
+  note?: string;
+  at?: string;
+  adjustedAt?: string;
+  by?: string;
+  byName?: string;
+  performedBy?: string;
+  performedByName?: string;
 }
 
 export interface Order {
@@ -358,6 +377,7 @@ export interface Order {
   debtStatus?: DebtStatus;
   debtDueDate?: string | null;
   debtPayments?: DebtPaymentRecord[];
+  debtAdjustments?: DebtAdjustmentRecord[];
   note: string;
   status: "DRAFT" | "PAID" | "PARTIALLY_RETURNED" | "FULLY_RETURNED";
   items: OrderItem[];
@@ -474,6 +494,12 @@ export interface ReturnReceipt {
   returnTotal: number;
   exchangeTotal: number;
   netDifference: number;
+  refundAmount?: number;
+  additionalCharge?: number;
+  debtBefore?: number;
+  debtReduction?: number;
+  cashRefund?: number;
+  debtAfter?: number;
   note?: string;
   performedByName?: string;
   createdAt: string;
@@ -544,18 +570,32 @@ export interface RevenueDashboardSummary {
   itemDiscountTotal: number;
   billDiscountTotal: number;
   totalDiscount: number;
+  cardFeeCollected?: number;
+  cardFeeRefunded?: number;
+  cardFeeNet?: number;
   cardFeeTotal: number;
   orderRevenue: number;
+  returnGoodsTotal?: number;
+  exchangeGoodsTotal?: number;
   returnTotal: number;
   exchangeTotal: number;
   netReturnImpact: number;
+  netReturnRefund?: number;
+  returnFromPriorPeriods?: number;
   netRevenue: number;
+  cashAtPurchase?: number;
+  cashRefunded?: number;
+  cashCollected?: number | null;
   collectedRevenue?: number;
+  debtReducedByReturnInPeriod?: number;
+  outstandingDebt?: number;
   outstandingDebtInPeriod?: number;
   initialDebtInPeriod?: number;
   debtCollectedInPeriod?: number;
   debtOrdersInPeriod?: number;
   estimatedCogs: number;
+  cogs?: number;
+  cogsEstimated?: boolean;
   grossProfit: number;
   grossMarginPercent: number;
   totalOrders: number;
@@ -580,6 +620,7 @@ export interface RevenueByCategory {
   categoryName: string;
   unitsSold: number;
   revenue: number;
+  netRevenue?: number;
   cogs: number;
   grossProfit: number;
   sharePercent: number;
@@ -596,6 +637,7 @@ export interface DailyRevenueTrend {
   netRevenue: number;
   cogs: number;
   grossProfit: number;
+  cashCollected?: number;
 }
 
 export interface ProductSalesAnalysisRow {
@@ -639,6 +681,7 @@ export interface HourlyRevenueTrend {
   netRevenue: number;
   cogs: number;
   grossProfit: number;
+  cashCollected?: number;
 }
 
 export interface DebtOrderRow {
@@ -652,11 +695,14 @@ export interface DebtOrderRow {
   paidAmount: number;
   debtAmount: number;
   initialDebtAmount: number;
+  collectedDebtAmount?: number;
+  reducedByReturnAmount?: number;
   debtStatus: DebtStatus;
   debtDueDate: string | null;
   isOverdue: boolean;
   daysOverdue: number;
   debtPayments: DebtPaymentRecord[];
+  debtAdjustments?: DebtAdjustmentRecord[];
   createdByName: string;
   confirmedByName: string;
   createdAt: string;
@@ -674,6 +720,8 @@ export interface DebtCustomerSummary {
   totalOrderAmount: number;
   totalInitialDebt: number;
   totalPaidAmount: number;
+  totalCollectedDebt?: number;
+  totalReducedByReturn?: number;
   totalDebtAmount: number;
   nearestDueDate: string | null;
   lastOrderAt: string | null;
@@ -688,6 +736,17 @@ export interface DebtCustomerSummary {
     paidAt: string;
     collectedByName: string;
   }[];
+  debtAdjustments?: {
+    _id: string;
+    orderId: string;
+    orderCode: string;
+    returnCode: string;
+    amount: number;
+    debtBefore: number;
+    debtAfter: number;
+    at: string;
+    byName: string;
+  }[];
 }
 
 export interface DebtManagementData {
@@ -695,6 +754,7 @@ export interface DebtManagementData {
     totalOutstandingDebt: number;
     totalInitialDebt: number;
     totalCollectedDebt: number;
+    totalReducedByReturn?: number;
     activeDebtOrdersCount: number;
     settledDebtOrdersCount: number;
     activeDebtCustomersCount: number;
@@ -702,6 +762,7 @@ export interface DebtManagementData {
     overdueOrdersCount: number;
     newDebtInPeriod: number;
     collectedInPeriod: number;
+    reducedByReturnInPeriod?: number;
   };
   customers: DebtCustomerSummary[];
   orders: DebtOrderRow[];

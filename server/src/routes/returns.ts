@@ -7,7 +7,7 @@ import {
 } from '../config/db';
 import { ApiError } from '../utils/errors';
 import { IReturnItem, IExchangeItem, ReturnCondition } from '../models/ReturnExchange';
-import { PaymentMethod } from '../models/Order';
+import { DebtStatus, IDebtAdjustmentRecord, PaymentMethod } from '../models/Order';
 import {
   applyFloorDelta,
   deductStockForSale,
@@ -63,6 +63,57 @@ async function prepareReturnExchangeCalculation(body: any) {
   const allocatedByIdx = new Map<number, number>();
   const getRemainingForIdx = (idx: number) =>
     Math.max(0, (maxReturnableByIdx[idx] || 0) - (allocatedByIdx.get(idx) || 0));
+
+  // BR-01: Phân bổ giảm giá bill (B_i = round(L_i / S * B), dòng có giá trị cuối nhận phần dư để ΣB_i = B)
+  const orderSub = Math.max(
+    0,
+    Number(order.subtotal) ||
+      order.items.reduce((s, it) => s + (it.isGift ? 0 : Math.max(0, Number(it.lineTotal) || 0)), 0)
+  );
+  const orderBillDisc = Math.min(orderSub, Math.max(0, Math.round(Number(order.billDiscountAmount) || 0)));
+  const paidLineIndices = order.items
+    .map((it, idx) => ({ it, idx }))
+    .filter(({ it }) => !it.isGift && it.discountType !== 'GIFT' && (Number(it.lineTotal) || 0) > 0)
+    .map(({ idx }) => idx);
+  const lastPaidIdx = paidLineIndices.length > 0 ? paidLineIndices[paidLineIndices.length - 1] : -1;
+
+  const lineNetAmountByIdx: number[] = [];
+  let allocatedBillDisc = 0;
+  for (let idx = 0; idx < order.items.length; idx++) {
+    const it = order.items[idx];
+    const lineTotal = Math.max(0, Number(it.lineTotal) || 0);
+    if (it.isGift || it.discountType === 'GIFT' || lineTotal <= 0 || orderSub <= 0 || orderBillDisc <= 0) {
+      lineNetAmountByIdx[idx] = lineTotal;
+      continue;
+    }
+    let bShare = 0;
+    if (idx === lastPaidIdx) {
+      bShare = Math.max(0, orderBillDisc - allocatedBillDisc);
+    } else {
+      bShare = Math.min(
+        Math.max(0, orderBillDisc - allocatedBillDisc),
+        Math.round((lineTotal / orderSub) * orderBillDisc)
+      );
+    }
+    allocatedBillDisc += bShare;
+    lineNetAmountByIdx[idx] = Math.max(0, lineTotal - bShare);
+  }
+
+  // Theo dõi số tiền hàng thuần đã hoàn cho từng dòng qua các lần trả trước + trong cùng giao dịch
+  const allocatedNetByIdx = new Map<number, number>();
+  for (let idx = 0; idx < order.items.length; idx++) {
+    const it = order.items[idx];
+    const totalQty = Math.max(0, Number(it.quantity) || 0);
+    const prevRetQty = Math.min(totalQty, Math.max(0, Number(it.returnedQuantity) || 0));
+    const netLine = lineNetAmountByIdx[idx] || 0;
+    if (prevRetQty <= 0 || totalQty <= 0 || netLine <= 0) {
+      allocatedNetByIdx.set(idx, 0);
+    } else if (prevRetQty >= totalQty) {
+      allocatedNetByIdx.set(idx, netLine);
+    } else {
+      allocatedNetByIdx.set(idx, Math.round((prevRetQty / totalQty) * netLine));
+    }
+  }
 
   const preparedReturnItems: IReturnItem[] = [];
   for (const rItem of returnItems) {
@@ -169,8 +220,29 @@ async function prepareReturnExchangeCalculation(body: any) {
       const avail = getRemainingForIdx(idx);
       if (avail <= 0) continue;
       const take = Math.min(avail, leftToAllocate);
-      allocatedByIdx.set(idx, (allocatedByIdx.get(idx) || 0) + take);
+      const nextAllocatedForIdx = (allocatedByIdx.get(idx) || 0) + take;
+      allocatedByIdx.set(idx, nextAllocatedForIdx);
       leftToAllocate -= take;
+
+      const totalQtyOfLine = Math.max(1, Number(originalLine.quantity) || 1);
+      const netLine = lineNetAmountByIdx[idx] || 0;
+      const alreadyAllocNet = allocatedNetByIdx.get(idx) || 0;
+      const remainingNetForLine = Math.max(0, netLine - alreadyAllocNet);
+      const isLastPieceOfLine =
+        (Number(originalLine.returnedQuantity) || 0) + nextAllocatedForIdx >= totalQtyOfLine;
+      const returnLineTotal = isLastPieceOfLine
+        ? remainingNetForLine
+        : Math.min(remainingNetForLine, Math.round((take / totalQtyOfLine) * netLine));
+      allocatedNetByIdx.set(idx, alreadyAllocNet + returnLineTotal);
+
+      let resolvedUnitCost =
+        originalLine.unitCost !== undefined && originalLine.unitCost !== null
+          ? Math.max(0, Math.round(Number(originalLine.unitCost) || 0))
+          : undefined;
+      if (resolvedUnitCost === undefined) {
+        const origProd = await productRepo.findById(originalLine.productId);
+        resolvedUnitCost = Math.max(0, Math.round(Number(origProd?.costPrice) || 0));
+      }
 
       preparedReturnItems.push({
         productId: originalLine.productId,
@@ -179,11 +251,12 @@ async function prepareReturnExchangeCalculation(body: any) {
         color: originalLine.color || rColor,
         size: originalLine.size || rSize,
         unit: originalLine.unit,
-        unitPrice: originalLine.unitPrice,
+        unitPrice: take > 0 ? Math.round(returnLineTotal / take) : originalLine.unitPrice,
+        unitCost: resolvedUnitCost,
         quantity: take,
         condition,
         restocked: condition === 'GOOD',
-        lineTotal: originalLine.unitPrice * take,
+        lineTotal: returnLineTotal,
       });
     }
   }
@@ -356,6 +429,7 @@ async function prepareReturnExchangeCalculation(body: any) {
         size: eSize,
         unit: product.unit || 'Cái',
         unitPrice: product.sellingPrice,
+        unitCost: Math.max(0, Math.round(Number(product.costPrice) || 0)),
         quantity: qty,
         lineTotal: product.sellingPrice * qty,
       });
@@ -488,10 +562,10 @@ async function prepareReturnExchangeCalculation(body: any) {
     if (allPaidLinesReturned) {
       refundedCardFee = remainingCardFee;
     } else {
-      const orderSubtotal = Math.max(0, Number(order.subtotal) || 0);
+      const orderAfterBill = Math.max(0, orderSub - orderBillDisc);
       refundedCardFee =
-        orderSubtotal > 0
-          ? Math.min(remainingCardFee, Math.round((returnSubtotal / orderSubtotal) * orderCardFee))
+        orderAfterBill > 0
+          ? Math.min(remainingCardFee, Math.round((returnSubtotal / orderAfterBill) * orderCardFee))
           : remainingCardFee;
     }
   }
@@ -501,6 +575,28 @@ async function prepareReturnExchangeCalculation(body: any) {
   const netDifference = exchangeTotal - returnTotal;
   const refundAmount = netDifference < 0 ? Math.abs(netDifference) : 0;
   const additionalCharge = netDifference > 0 ? netDifference : 0;
+
+  // BR-03..BR-13: Cấn trừ dư nợ của đơn gốc trước khi hoàn tiền mặt
+  const debtBefore = Math.max(0, Math.round(Number(order.debtAmount) || 0));
+  const initialDebt = Math.max(debtBefore, Math.round(Number(order.initialDebtAmount) || 0));
+  const debtReduction =
+    refundAmount > 0 && debtBefore > 0 ? Math.min(debtBefore, refundAmount) : 0;
+  const cashRefund = Math.max(0, refundAmount - debtReduction);
+  const debtAfter = Math.max(0, debtBefore - debtReduction);
+
+  let debtStatusAfter: DebtStatus = order.debtStatus || 'NONE';
+  if (debtReduction > 0) {
+    debtStatusAfter = debtAfter === 0 ? 'SETTLED' : 'PARTIAL';
+  } else if (!order.debtStatus || order.debtStatus === 'NONE') {
+    debtStatusAfter =
+      initialDebt <= 0 && debtAfter <= 0
+        ? 'NONE'
+        : debtAfter <= 0
+        ? 'SETTLED'
+        : (Number(order.paidAmount) || 0) <= 0
+        ? 'UNPAID'
+        : 'PARTIAL';
+  }
 
   return {
     order,
@@ -515,6 +611,11 @@ async function prepareReturnExchangeCalculation(body: any) {
     netDifference,
     refundAmount,
     additionalCharge,
+    debtBefore,
+    debtReduction,
+    cashRefund,
+    debtAfter,
+    debtStatusAfter,
   };
 }
 
@@ -577,6 +678,11 @@ returnsRouter.post('/returns/calculate', async (req, res, next) => {
         netDifference: calc.netDifference,
         refundAmount: calc.refundAmount,
         additionalCharge: calc.additionalCharge,
+        debtBefore: calc.debtBefore,
+        debtReduction: calc.debtReduction,
+        cashRefund: calc.cashRefund,
+        debtAfter: calc.debtAfter,
+        debtStatusAfter: calc.debtStatusAfter,
       },
       meta: {},
     });
@@ -600,6 +706,11 @@ returnsRouter.post('/returns', async (req, res, next) => {
       netDifference,
       refundAmount,
       additionalCharge,
+      debtBefore,
+      debtReduction,
+      cashRefund,
+      debtAfter,
+      debtStatusAfter,
     } = calc;
 
     const isExchange =
@@ -607,9 +718,11 @@ returnsRouter.post('/returns', async (req, res, next) => {
     const recordType = isExchange ? 'EXCHANGE' : 'RETURN';
 
     const validMethods: PaymentMethod[] = ['CASH', 'BANKING', 'CARD', 'OTHER'];
-    const refundMethod: PaymentMethod = validMethods.includes(req.body?.refundMethod)
-      ? req.body.refundMethod
-      : 'CASH';
+    // BR-13: Nếu cashRefund === 0 thì refundMethod lưu 'CASH'
+    const refundMethod: PaymentMethod =
+      cashRefund > 0 && validMethods.includes(req.body?.refundMethod)
+        ? req.body.refundMethod
+        : 'CASH';
 
     const code = await generateNextReturnExchangeCode(isExchange);
 
@@ -629,6 +742,10 @@ returnsRouter.post('/returns', async (req, res, next) => {
       netDifference,
       refundAmount,
       additionalCharge,
+      debtBefore,
+      debtReduction,
+      cashRefund,
+      debtAfter,
       refundMethod,
       note: req.body?.note ? String(req.body.note).trim() : '',
       performedBy: req.user?.userId || 'SALES',
@@ -752,15 +869,48 @@ returnsRouter.post('/returns', async (req, res, next) => {
       ? 'FULLY_RETURNED'
       : 'PARTIALLY_RETURNED';
 
+    const prevAdjustments: IDebtAdjustmentRecord[] = Array.isArray(order.debtAdjustments)
+      ? order.debtAdjustments
+      : [];
+    const nextAdjustments: IDebtAdjustmentRecord[] =
+      debtReduction > 0
+        ? [
+            ...prevAdjustments,
+            {
+              _id: `da_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+              type: 'RETURN',
+              returnCode: createdRecord.code,
+              amount: debtReduction,
+              debtBefore,
+              debtAfter,
+              at: new Date(),
+              by: req.user?.userId || 'SALES',
+              byName: req.user?.fullName || 'Nhân viên bán hàng',
+            },
+          ]
+        : prevAdjustments;
+
     const updatedOrder = await orderRepo.updateById(order._id, {
       items: updatedOrderItems,
       status: newOrderStatus,
+      ...(debtReduction > 0
+        ? {
+            debtAmount: debtAfter,
+            debtStatus: debtStatusAfter,
+            debtAdjustments: nextAdjustments,
+          }
+        : {}),
     });
 
     res.status(201).json({
       data: {
         returnExchange: createdRecord,
         order: updatedOrder,
+        debtBefore,
+        debtReduction,
+        cashRefund,
+        debtAfter,
+        debtStatusAfter,
       },
       meta: {},
     });
