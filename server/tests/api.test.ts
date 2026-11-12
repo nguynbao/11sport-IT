@@ -8,6 +8,10 @@ import { generateProductCode } from '../src/utils/productCode';
 const app = createApp();
 
 describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () => {
+  let poloBlueCode = '';
+  let shoesCode = '';
+  let socksCode = '';
+
   beforeAll(async () => {
     process.env.FORCE_MEMORY_DB = 'true';
     await connectDatabase();
@@ -27,7 +31,7 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
       .set('x-user-id', 'admin')
       .send({ code: 'PHUKIEN', name: 'Phụ kiện thể thao' });
 
-    await request(app)
+    const p1 = await request(app)
       .post('/api/v1/products')
       .set('x-user-id', 'admin')
       .send({
@@ -39,8 +43,9 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
         quantity: 25,
         targetWarehouse: 'FLOOR_1',
       });
+    poloBlueCode = p1.body.data.code;
 
-    await request(app)
+    const p2 = await request(app)
       .post('/api/v1/products')
       .set('x-user-id', 'admin')
       .send({
@@ -52,8 +57,9 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
         quantity: 12,
         targetWarehouse: 'FLOOR_1',
       });
+    shoesCode = p2.body.data.code;
 
-    await request(app)
+    const p3 = await request(app)
       .post('/api/v1/products')
       .set('x-user-id', 'admin')
       .send({
@@ -65,6 +71,7 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
         quantity: 50,
         targetWarehouse: 'FLOOR_1',
       });
+    socksCode = p3.body.data.code;
   });
 
   afterAll(async () => {
@@ -88,16 +95,16 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
     expect(staffRes.body.data.length).toBeGreaterThanOrEqual(3);
   });
 
-  it('AC-01: Sinh mã sản phẩm IN HOA VIẾT LIỀN từ dấu ngoặc đơn và chặn sửa mã sau khi tạo', async () => {
+  it('AC-01: Sinh mã sản phẩm chuẩn v3.2 ([Chữ đầu Category][Hãng|NN][6 số]) và chặn sửa mã sau khi tạo', async () => {
     const sampleName =
       'Áo Polo Thể thao Unisex V1 (Áo Polo Thể thao Unisex V1 KMAP262510 Đỏ size L)';
-    expect(generateProductCode(sampleName)).toBe('AOPOLOTHETHAOUNISEXV1KMAP262510');
+    expect(generateProductCode(sampleName)).toBe('ANN262510');
 
     const genRes = await request(app)
       .post('/api/v1/products/generate-code')
       .send({ name: sampleName });
     expect(genRes.status).toBe(200);
-    expect(genRes.body.data.code).toBe('AOPOLOTHETHAOUNISEXV1KMAP262510');
+    expect(genRes.body.data.code).toBe('ANN262510');
     expect(genRes.body.data.color).toBe('Đỏ');
     expect(genRes.body.data.size).toBe('L');
 
@@ -115,7 +122,7 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
         sellingPrice: 450000,
       });
     expect(createProdRes.status).toBe(201);
-    expect(createProdRes.body.data.code).toBe('AOKHOACGIO11SPORTAKG99');
+    expect(createProdRes.body.data.code).toMatch(/^A[A-Z]+\d{6}$/);
     expect(createProdRes.body.data.stock).toBe(0);
 
     // Thử sửa mã sản phẩm -> phải bị chặn 400 PRODUCT_CODE_IMMUTABLE
@@ -218,9 +225,11 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
     expect(completeRes.body.meta.confirmedCount).toBe(1);
 
     // Kiểm tra sản phẩm dòng 1 đã được tự động tạo mới với sellingPrice = 0 và stock = 18
+    const confirmedCode = completeRes.body.data.receipt.items[0].productCode;
+    const unconfirmedCode = completeRes.body.data.receipt.items[1].productCode;
     const productsRes = await request(app).get('/api/v1/products');
     const createdProd = productsRes.body.data.find(
-      (p: any) => p.code === 'AOTHUNTAPGYM11SPORTATTG01'
+      (p: any) => p.code === confirmedCode
     );
     expect(createdProd).toBeDefined();
     expect(createdProd.sellingPrice).toBe(0);
@@ -232,7 +241,7 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
 
     // Sản phẩm dòng 2 (isConfirmed = false) không được đẩy vào kho
     const unconfirmedProd = productsRes.body.data.find(
-      (p: any) => p.code === 'AOTHUNTAPGYM11SPORTATTG02'
+      (p: any) => p.code === unconfirmedCode
     );
     expect(unconfirmedProd).toBeUndefined();
 
@@ -265,7 +274,7 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
 
     // Lấy sản phẩm Áo Polo Xanh (sellingPrice = 280000, stock = 25)
     const poloBlue = productsRes.body.data.find(
-      (p: any) => p.code === 'AOPOLOTHETHAOUNISEXV1KMAP262510'
+      (p: any) => p.code === poloBlueCode
     );
     expect(poloBlue).toBeDefined();
     const initialStock = poloBlue.stock;
@@ -309,10 +318,10 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
 
     const productsRes = await request(app).get('/api/v1/products');
     const poloBlue = productsRes.body.data.find(
-      (p: any) => p.code === 'AOPOLOTHETHAOUNISEXV1KMAP262510'
+      (p: any) => p.code === poloBlueCode
     );
     const shoes = productsRes.body.data.find(
-      (p: any) => p.code === 'GIAYCHAYBO11SPORTPROGCB2026'
+      (p: any) => p.code === shoesCode
     );
 
     const poloStockBefore = poloBlue.stock;
@@ -334,10 +343,12 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
 
     expect(returnRes.status).toBe(201);
     const retData = returnRes.body.data.returnExchange;
-    expect(retData.returnTotal).toBe(560000);
+    expect(retData.returnSubtotal).toBe(560000);
+    expect(retData.refundedCardFee).toBe(10080);
+    expect(retData.returnTotal).toBe(570080);
     expect(retData.exchangeTotal).toBe(850000);
-    expect(retData.netDifference).toBe(290000);
-    expect(retData.additionalCharge).toBe(290000);
+    expect(retData.netDifference).toBe(279920);
+    expect(retData.additionalCharge).toBe(279920);
     expect(retData.refundAmount).toBe(0);
     expect(returnRes.body.data.order.status).toBe('PARTIALLY_RETURNED');
 
@@ -351,7 +362,7 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
   it('AC-07: Báo cáo Tồn đầu kỳ / Cuối kỳ & Phiếu điều chỉnh kho trên CMS', async () => {
     const productsRes = await request(app).get('/api/v1/products');
     const socks = productsRes.body.data.find(
-      (p: any) => p.code === 'VOTHETHAOCOCAOVTT01'
+      (p: any) => p.code === socksCode
     );
     const stockBeforeAdj = socks.stock;
 
@@ -384,9 +395,9 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
   });
 
   it('Edge Cases & Business Rules Validation (BR-03 fallback, BR-05 chặn sửa tay tồn kho, BR-12 không phí thẻ, BR-14 chặn trả vượt số lượng, BR-16 FULLY_RETURNED)', async () => {
-    // 1. BR-03 Fallback: Tên hàng không có ngoặc đơn () -> chuẩn hóa IN HOA VIẾT LIỀN toàn bộ chuỗi
-    expect(generateProductCode('Bình Nước Thể Thao 11Sport 750ml')).toBe(
-      'BINHNUOCTHETHAO11SPORT750ML'
+    // 1. BR-03 Fallback: Tên hàng không có ngoặc đơn () -> sinh mã theo chuẩn v3.2 [Chữ đầu][Hãng|NN][6 số]
+    expect(generateProductCode('Bình Nước Thể Thao 11Sport 750ml')).toMatch(
+      /^B(11SPORT|NN)\d{6}$/
     );
 
     // 2. BR-05: Chặn sửa tay tồn kho trực tiếp qua PATCH /api/v1/products/:id

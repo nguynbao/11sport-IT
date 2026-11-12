@@ -21,6 +21,18 @@ export interface IDebtPaymentRecord {
   collectedByName: string;
 }
 
+export interface IDebtAdjustmentRecord {
+  _id?: string;
+  type: 'RETURN';
+  returnCode: string;
+  amount: number;
+  debtBefore: number;
+  debtAfter: number;
+  at: Date | string;
+  by: string;
+  byName: string;
+}
+
 export interface IOrderItem {
   productId: string;
   productCode: string;
@@ -29,6 +41,7 @@ export interface IOrderItem {
   size?: string;
   unit: string;
   originalUnitPrice?: number;
+  unitCost?: number;
   isGift?: boolean;
   discountType?: DiscountType;
   discountValue?: number;
@@ -64,6 +77,7 @@ export interface IOrder extends Document {
   debtStatus?: DebtStatus;
   debtDueDate?: Date | null;
   debtPayments?: IDebtPaymentRecord[];
+  debtAdjustments?: IDebtAdjustmentRecord[];
   note: string;
   status: OrderStatus;
   createdBy: string;
@@ -84,6 +98,7 @@ const OrderItemSchema = new Schema<IOrderItem>(
     size: { type: String, default: '' },
     unit: { type: String, default: 'Cái' },
     originalUnitPrice: { type: Number, default: 0 },
+    unitCost: { type: Number },
     isGift: { type: Boolean, default: false },
     discountType: { type: String, enum: ['NONE', 'PERCENT', 'AMOUNT', 'GIFT'], default: 'NONE' },
     discountValue: { type: Number, default: 0 },
@@ -113,6 +128,21 @@ const DebtPaymentRecordSchema = new Schema<IDebtPaymentRecord>(
     paidAt: { type: Date, default: Date.now },
     collectedBy: { type: String, default: '' },
     collectedByName: { type: String, default: '' },
+  },
+  { _id: false }
+);
+
+const DebtAdjustmentRecordSchema = new Schema<IDebtAdjustmentRecord>(
+  {
+    _id: { type: String, default: '' },
+    type: { type: String, enum: ['RETURN'], default: 'RETURN' },
+    returnCode: { type: String, default: '' },
+    amount: { type: Number, required: true, default: 0 },
+    debtBefore: { type: Number, required: true, default: 0 },
+    debtAfter: { type: Number, required: true, default: 0 },
+    at: { type: Date, default: Date.now },
+    by: { type: String, default: '' },
+    byName: { type: String, default: '' },
   },
   { _id: false }
 );
@@ -148,6 +178,7 @@ const OrderSchema = new Schema<IOrder>(
     },
     debtDueDate: { type: Date, default: null },
     debtPayments: { type: [DebtPaymentRecordSchema], default: [] },
+    debtAdjustments: { type: [DebtAdjustmentRecordSchema], default: [] },
     note: { type: String, default: 'Giá đã bao gồm thuế' },
     status: {
       type: String,

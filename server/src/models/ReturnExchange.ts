@@ -12,6 +12,7 @@ export interface IReturnItem {
   size?: string;
   unit: string;
   unitPrice: number;
+  unitCost?: number;
   quantity: number;
   condition: ReturnCondition;
   restocked: boolean;
@@ -26,6 +27,7 @@ export interface IExchangeItem {
   size?: string;
   unit: string;
   unitPrice: number;
+  unitCost?: number;
   quantity: number;
   lineTotal: number;
 }
@@ -46,6 +48,10 @@ export interface IReturnExchange extends Document {
   netDifference: number; // > 0: khách trả thêm, < 0: hoàn khách |netDifference|
   refundAmount: number;
   additionalCharge: number;
+  debtReduction?: number;
+  cashRefund?: number;
+  debtBefore?: number;
+  debtAfter?: number;
   refundMethod: PaymentMethod;
   note: string;
   performedBy: string;
@@ -63,6 +69,7 @@ const ReturnItemSchema = new Schema<IReturnItem>(
     size: { type: String, default: '' },
     unit: { type: String, default: 'Cái' },
     unitPrice: { type: Number, required: true },
+    unitCost: { type: Number },
     quantity: { type: Number, required: true },
     condition: { type: String, enum: ['GOOD', 'DAMAGED'], required: true },
     restocked: { type: Boolean, required: true },
@@ -80,6 +87,7 @@ const ExchangeItemSchema = new Schema<IExchangeItem>(
     size: { type: String, default: '' },
     unit: { type: String, default: 'Cái' },
     unitPrice: { type: Number, required: true },
+    unitCost: { type: Number },
     quantity: { type: Number, required: true },
     lineTotal: { type: Number, required: true },
   },
@@ -103,6 +111,10 @@ const ReturnExchangeSchema = new Schema<IReturnExchange>(
     netDifference: { type: Number, required: true },
     refundAmount: { type: Number, required: true },
     additionalCharge: { type: Number, required: true },
+    debtReduction: { type: Number, default: 0 },
+    cashRefund: { type: Number, default: 0 },
+    debtBefore: { type: Number, default: 0 },
+    debtAfter: { type: Number, default: 0 },
     refundMethod: { type: String, enum: ['CASH', 'BANKING', 'CARD', 'OTHER'], default: 'CASH' },
     note: { type: String, default: '' },
     performedBy: { type: String, default: '' },

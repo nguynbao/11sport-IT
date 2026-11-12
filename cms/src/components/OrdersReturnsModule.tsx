@@ -433,11 +433,21 @@ export default function OrdersReturnsModule({
                     {formatVND(r.exchangeTotal)}
                   </td>
                   <td className="py-3 px-3 text-right font-mono font-bold">
-                    {r.netDifference < 0
-                      ? `Hoàn khách ${formatVND(Math.abs(r.netDifference))}`
-                      : r.netDifference > 0
-                        ? `Thu thêm ${formatVND(r.netDifference)}`
-                        : "0 ₫"}
+                    <div>
+                      {r.netDifference < 0
+                        ? `Hoàn khách ${formatVND(Math.abs(r.netDifference))}`
+                        : r.netDifference > 0
+                          ? `Thu thêm ${formatVND(r.netDifference)}`
+                          : "0 ₫"}
+                    </div>
+                    {r.netDifference < 0 && Number(r.debtReduction) > 0 && (
+                      <div className="text-[10px] font-sans font-semibold text-purple-700 mt-0.5 space-y-0.5">
+                        <div>• Cấn trừ nợ: -{formatVND(Number(r.debtReduction))}</div>
+                        <div className="text-emerald-700">
+                          • Thực hoàn tiền: {formatVND(Number(r.cashRefund ?? 0))}
+                        </div>
+                      </div>
+                    )}
                   </td>
                   <td className="py-3 px-3 font-semibold text-slate-800 whitespace-nowrap">
                     {r.performedByName || "-"}

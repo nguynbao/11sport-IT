@@ -17,6 +17,8 @@ describe('v2.4: Smart Search Engine (Bỏ dấu tiếng Việt, Đa từ rời r
   let aoCatId = '';
   let giayCatId = '';
   let poloRedId = '';
+  let poloCode = '';
+  let giayCode = '';
 
   beforeAll(async () => {
     process.env.FORCE_MEMORY_DB = 'true';
@@ -50,6 +52,7 @@ describe('v2.4: Smart Search Engine (Bỏ dấu tiếng Việt, Đa từ rời r
         upsertIfExists: true,
       });
     poloRedId = p1.body.data._id;
+    poloCode = p1.body.data.code;
 
     await request(app)
       .post('/api/v1/products')
@@ -65,7 +68,7 @@ describe('v2.4: Smart Search Engine (Bỏ dấu tiếng Việt, Đa từ rời r
         upsertIfExists: true,
       });
 
-    await request(app)
+    const p3 = await request(app)
       .post('/api/v1/products')
       .set('x-user-id', 'admin')
       .send({
@@ -77,6 +80,7 @@ describe('v2.4: Smart Search Engine (Bỏ dấu tiếng Việt, Đa từ rời r
         quantity: 5,
         targetWarehouse: 'FLOOR_1',
       });
+    giayCode = p3.body.data.code;
 
     // Tạo đơn hàng mẫu để test tìm kiếm đơn hàng & khách hàng
     await request(app)
@@ -132,13 +136,13 @@ describe('v2.4: Smart Search Engine (Bỏ dấu tiếng Việt, Đa từ rời r
     expect(res1.body.data.length).toBe(1);
     expect(res1.body.data[0]._id).toBe(poloRedId);
 
-    // 2. Tìm mã phụ viết liền + màu không dấu: "kmap262510 xanh"
+    // 2. Tìm mã v3.2 viết liền + màu không dấu: "262510 xanh"
     const res2 = await request(app)
-      .get('/api/v1/products?search=' + encodeURIComponent('kmap262510 xanh'))
+      .get('/api/v1/products?search=' + encodeURIComponent('262510 xanh'))
       .set('x-user-id', 'admin');
     expect(res2.status).toBe(200);
     expect(res2.body.data.length).toBe(1);
-    expect(res2.body.data[0].code).toContain('KMAP262510');
+    expect(res2.body.data[0].code).toBe(poloCode);
     expect(res2.body.data[0].variants.some((v: any) => v.color === 'Xanh Đen')).toBe(true);
 
     // 3. Tìm theo tên danh mục không dấu + size: "giay chay bo 42"
@@ -147,7 +151,7 @@ describe('v2.4: Smart Search Engine (Bỏ dấu tiếng Việt, Đa từ rời r
       .set('x-user-id', 'admin');
     expect(res3.status).toBe(200);
     expect(res3.body.data.length).toBe(1);
-    expect(res3.body.data[0].code).toContain('GCL88');
+    expect(res3.body.data[0].code).toBe(giayCode);
   });
 
   it('API GET /customers, /customers/lookup & /orders: Tìm khách không dấu, SĐT +84 và mã đơn viết liền', async () => {

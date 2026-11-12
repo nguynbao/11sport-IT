@@ -212,6 +212,7 @@ export interface OrderItem {
   discountValue?: number;
   discountAmount?: number;
   unitPrice: number;
+  unitCost?: number;
   quantity: number;
   returnedQuantity?: number;
   lineTotal: number;
@@ -232,6 +233,24 @@ export interface DebtPaymentRecord {
   paidAt: string;
   collectedBy?: string;
   collectedByName?: string;
+}
+
+export interface DebtAdjustmentRecord {
+  _id?: string;
+  type?: "RETURN" | string;
+  returnId?: string;
+  returnCode?: string;
+  amount: number;
+  debtBefore?: number;
+  debtAfter?: number;
+  reason?: "RETURN" | string;
+  note?: string;
+  at?: string;
+  adjustedAt?: string;
+  by?: string;
+  byName?: string;
+  performedBy?: string;
+  performedByName?: string;
 }
 
 export interface Order {
@@ -260,6 +279,7 @@ export interface Order {
   debtStatus?: DebtStatus;
   debtDueDate?: string | null;
   debtPayments?: DebtPaymentRecord[];
+  debtAdjustments?: DebtAdjustmentRecord[];
   note: string;
   status: "DRAFT" | "PAID" | "PARTIALLY_RETURNED" | "FULLY_RETURNED";
   items: OrderItem[];
@@ -271,6 +291,50 @@ export interface Order {
   confirmedAt?: string;
   createdByName?: string;
   createdAt: string;
+}
+
+export interface ReturnCalculateResult {
+  orderId: string;
+  orderCode: string;
+  type: "RETURN" | "EXCHANGE";
+  returnItems: {
+    productId: string;
+    productCode: string;
+    productName: string;
+    color?: string;
+    size?: string;
+    unit?: string;
+    unitPrice: number;
+    unitCost?: number;
+    quantity: number;
+    condition: "GOOD" | "DAMAGED";
+    lineTotal: number;
+  }[];
+  exchangeItems: {
+    productId: string;
+    productCode: string;
+    productName: string;
+    color?: string;
+    size?: string;
+    unit?: string;
+    unitPrice: number;
+    unitCost?: number;
+    quantity: number;
+    lineTotal: number;
+  }[];
+  returnSubtotal: number;
+  refundedCardFee: number;
+  returnTotal: number;
+  exchangeTotal: number;
+  netDifference: number;
+  refundAmount: number;
+  additionalCharge: number;
+  debtBefore: number;
+  debtReduction: number;
+  cashRefund: number;
+  debtAfter: number;
+  debtStatusAfter?: DebtStatus;
+  explanation?: string;
 }
 
 export interface ReturnReceipt {
@@ -291,6 +355,7 @@ export interface ReturnReceipt {
     size?: string;
     unit?: string;
     unitPrice: number;
+    unitCost?: number;
     quantity: number;
     condition: "GOOD" | "DAMAGED";
     lineTotal: number;
@@ -303,6 +368,7 @@ export interface ReturnReceipt {
     size?: string;
     unit?: string;
     unitPrice: number;
+    unitCost?: number;
     quantity: number;
     lineTotal: number;
   }[];
@@ -311,6 +377,13 @@ export interface ReturnReceipt {
   returnTotal: number;
   exchangeTotal: number;
   netDifference: number;
+  refundAmount?: number;
+  additionalCharge?: number;
+  debtBefore?: number;
+  debtReduction?: number;
+  cashRefund?: number;
+  debtAfter?: number;
+  debtStatusAfter?: DebtStatus;
   note?: string;
   performedByName?: string;
   createdAt: string;

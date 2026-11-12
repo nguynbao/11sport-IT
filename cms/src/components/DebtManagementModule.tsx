@@ -315,7 +315,7 @@ export default function DebtManagementModule({ onOpenInvoice }: DebtManagementMo
 
         <div className="rounded-2xl bg-white border border-slate-200 p-4 shadow-sm">
           <div className="flex items-center justify-between text-xs font-extrabold uppercase text-emerald-800">
-            <span>4. Đã thu hồi công nợ</span>
+            <span>4. Đã thu nợ & Giảm nợ trả hàng</span>
             <span className="p-2 rounded-xl bg-emerald-100 text-emerald-700">
               <CheckCircle2 className="w-4 h-4" />
             </span>
@@ -323,8 +323,16 @@ export default function DebtManagementModule({ onOpenInvoice }: DebtManagementMo
           <div className="text-2xl font-black font-mono text-emerald-700 mt-2">
             {formatVND(dm?.summary?.totalCollectedDebt || 0)}
           </div>
-          <div className="text-[11px] text-slate-600 mt-2 pt-2 border-t border-slate-100">
-            Đã tất toán hoàn tất: <strong>{dm?.summary?.settledDebtOrdersCount || 0}</strong> đơn
+          <div className="text-[11px] text-slate-600 mt-2 pt-2 border-t border-slate-100 space-y-0.5">
+            <div>
+              Giảm nợ do trả hàng:{" "}
+              <strong className="font-mono text-purple-700">
+                {formatVND(dm?.summary?.totalReducedByReturn || 0)}
+              </strong>
+            </div>
+            <div>
+              Đã tất toán hoàn tất: <strong>{dm?.summary?.settledDebtOrdersCount || 0}</strong> đơn
+            </div>
           </div>
         </div>
       </div>
@@ -380,7 +388,7 @@ export default function DebtManagementModule({ onOpenInvoice }: DebtManagementMo
                   <th className="text-left px-3 py-3">Mã đơn / Ngày mua</th>
                   <th className="text-left px-3 py-3">Khách hàng</th>
                   <th className="text-right px-3 py-3">Tổng đơn</th>
-                  <th className="text-right px-3 py-3">Đã thu</th>
+                  <th className="text-right px-3 py-3">Đã thu / Giảm nợ</th>
                   <th className="text-right px-3 py-3">Còn nợ</th>
                   <th className="text-center px-3 py-3">Hạn hẹn trả</th>
                   <th className="text-center px-3 py-3">Trạng thái & Lịch sử trả nợ</th>
@@ -432,6 +440,11 @@ export default function DebtManagementModule({ onOpenInvoice }: DebtManagementMo
                       </td>
                       <td className="px-3 py-3 text-right font-mono font-bold text-emerald-700">
                         {formatVND(o.paidAmount)}
+                        {(o.reducedByReturnAmount || 0) > 0 && (
+                          <div className="text-[10px] text-purple-700 font-semibold">
+                            Giảm nợ trả hàng: -{formatVND(o.reducedByReturnAmount || 0)}
+                          </div>
+                        )}
                       </td>
                       <td className="px-3 py-3 text-right font-mono font-black text-amber-700 text-sm">
                         {formatVND(o.debtAmount)}
@@ -468,15 +481,32 @@ export default function DebtManagementModule({ onOpenInvoice }: DebtManagementMo
                             ? "Trả 1 phần"
                             : "Chưa trả nợ"}
                         </span>
-                        {o.debtPayments && o.debtPayments.length > 0 && (
+                        {((o.debtPayments && o.debtPayments.length > 0) ||
+                          (o.debtAdjustments && o.debtAdjustments.length > 0)) && (
                           <div className="mt-1.5 space-y-0.5 text-[10px] text-slate-600 text-left bg-slate-50 rounded p-1.5 border border-slate-200 max-w-[240px] mx-auto">
-                            {o.debtPayments.map((dp, i) => (
-                              <div key={i} className="flex justify-between gap-1">
+                            {o.debtPayments?.map((dp, i) => (
+                              <div key={`dp-${i}`} className="flex justify-between gap-1">
                                 <span className="font-mono font-bold text-emerald-700">
                                   +{formatVND(dp.amount)} ({dp.method})
                                 </span>
                                 <span className="text-slate-400">
                                   {new Date(dp.paidAt).toLocaleDateString("vi-VN")}
+                                </span>
+                              </div>
+                            ))}
+                            {o.debtAdjustments?.map((da, i) => (
+                              <div
+                                key={`da-${i}`}
+                                className="flex justify-between gap-1 text-purple-700"
+                                title={da.note || `Cấn trừ nợ từ phiếu trả ${da.returnCode || ""}`}
+                              >
+                                <span className="font-mono font-bold">
+                                  -{formatVND(da.amount)} (Trả {da.returnCode || "hàng"})
+                                </span>
+                                <span className="text-slate-400">
+                                  {da.at || da.adjustedAt
+                                    ? new Date(da.at || da.adjustedAt || "").toLocaleDateString("vi-VN")
+                                    : ""}
                                 </span>
                               </div>
                             ))}

@@ -25,6 +25,7 @@ import {
 import { executeUnpackSetToRetail } from '../utils/unpackSet';
 import { buildVariantKey } from '../utils/productCode';
 import { filterAndRankBySearch, normalizePhoneDigits } from '../utils/search';
+import { withOrderLock } from '../utils/orderLock';
 
 export const ordersCustomersRouter = Router();
 
@@ -368,6 +369,7 @@ async function prepareOrderData(body: any, isDraft: boolean) {
     requestedQtyByVariant.set(variantKey, totalRequestedForVariant);
 
     const originalUnitPrice = Math.round(Number(product.sellingPrice) || 0);
+    const unitCost = Math.max(0, Math.round(Number(product.costPrice) || 0));
 
     if (isGift) {
       orderItems.push({
@@ -378,6 +380,7 @@ async function prepareOrderData(body: any, isDraft: boolean) {
         size: itemSize,
         unit: product.unit,
         originalUnitPrice,
+        unitCost,
         isGift: true,
         discountType: 'GIFT',
         discountValue: 100,
@@ -419,6 +422,7 @@ async function prepareOrderData(body: any, isDraft: boolean) {
         size: itemSize,
         unit: product.unit,
         originalUnitPrice,
+        unitCost,
         isGift: false,
         discountType: itemDiscValue > 0 ? itemDiscType : 'NONE',
         discountValue: itemDiscValue,
@@ -601,7 +605,9 @@ async function prepareOrderData(body: any, isDraft: boolean) {
   }
 
   let debtAmount = 0;
-  if (method === 'OTHER') {
+  if (rawBodyDebtAmount !== undefined && rawBodyDebtAmount !== null && Number(rawBodyDebtAmount) > 0) {
+    debtAmount = Math.min(totalAmount, Math.max(0, Math.round(Number(rawBodyDebtAmount) || 0)));
+  } else if (method === 'OTHER') {
     const debtFromSplits = cleanSplitPayments
       .filter((s) => s.method === 'DEBT')
       .reduce((sum, s) => sum + s.amount, 0);
@@ -782,6 +788,7 @@ ordersCustomersRouter.post('/orders', async (req, res, next) => {
       debtStatus: prepared.debtStatus,
       debtDueDate: prepared.debtDueDate,
       debtPayments: [],
+      debtAdjustments: [],
       note: prepared.cleanNote,
       status: isDraft ? 'DRAFT' : 'PAID',
       createdBy: req.user?.userId || 'SALES',
@@ -1003,89 +1010,128 @@ ordersCustomersRouter.post('/orders/:id/debt-payment', async (req, res, next) =>
     }
 
     const idOrCode = String(req.params.id || '').trim();
-    const existingOrder =
+    const initialLookupOrder =
       (await orderRepo.findById(idOrCode)) ||
       (await orderRepo.findOne({ orderCode: idOrCode.toUpperCase() }));
 
-    if (!existingOrder) {
+    if (!initialLookupOrder) {
       throw new ApiError(404, 'ORDER_NOT_FOUND', 'Không tìm thấy đơn hàng cần thu nợ');
     }
 
-    if (existingOrder.status === 'DRAFT') {
-      throw new ApiError(
-        400,
-        'ORDER_IS_DRAFT',
-        'Đơn hàng đang ở trạng thái Bản nháp (DRAFT), chưa phát sinh công nợ thực tế'
+    const result = await withOrderLock(String(initialLookupOrder._id), async () => {
+      const existingOrder = await orderRepo.findById(initialLookupOrder._id);
+      if (!existingOrder) {
+        throw new ApiError(404, 'ORDER_NOT_FOUND', 'Không tìm thấy đơn hàng cần thu nợ');
+      }
+
+      if (existingOrder.status === 'DRAFT') {
+        throw new ApiError(
+          400,
+          'ORDER_IS_DRAFT',
+          'Đơn hàng đang ở trạng thái Bản nháp (DRAFT), chưa phát sinh công nợ thực tế'
+        );
+      }
+
+      const currentDebt = Math.max(0, Number(existingOrder.debtAmount) || 0);
+      if (currentDebt <= 0) {
+        throw new ApiError(
+          400,
+          'ORDER_NO_DEBT',
+          `Đơn hàng ${existingOrder.orderCode} đã thanh toán đủ, không còn dư nợ`
+        );
+      }
+
+      const rawAmount = req.body?.amount;
+      const payAmount =
+        rawAmount === undefined || rawAmount === null || req.body?.payFull === true
+          ? currentDebt
+          : Math.round(Number(rawAmount));
+
+      if (isNaN(payAmount) || payAmount <= 0 || payAmount > currentDebt) {
+        throw new ApiError(
+          400,
+          'INVALID_DEBT_PAYMENT_AMOUNT',
+          `Số tiền thu nợ phải lớn hơn 0 và không vượt quá dư nợ hiện tại (${currentDebt.toLocaleString('vi-VN')} VND)`,
+          { amount: 'Số tiền thu nợ không hợp lệ' }
+        );
+      }
+
+      const rawMethod = String(req.body?.method || 'BANKING').toUpperCase();
+      const validMethods: ('CASH' | 'BANKING' | 'CARD')[] = ['CASH', 'BANKING', 'CARD'];
+      const method: 'CASH' | 'BANKING' | 'CARD' = validMethods.includes(rawMethod as any)
+        ? (rawMethod as 'CASH' | 'BANKING' | 'CARD')
+        : 'BANKING';
+
+      const note = String(req.body?.note || '').trim() || 'Thu công nợ khách hàng';
+      const paymentRecord: IDebtPaymentRecord = {
+        _id: `dp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        amount: payAmount,
+        method,
+        note,
+        paidAt: new Date(),
+        collectedBy: req.user?.userId || 'ADMIN',
+        collectedByName: req.user?.fullName || 'Quản Trị Viên 11Sport',
+      };
+
+      const prevPayments = Array.isArray(existingOrder.debtPayments)
+        ? existingOrder.debtPayments
+        : [];
+      const nextPayments = [...prevPayments, paymentRecord];
+      const nextDebtAmount = Math.max(0, currentDebt - payAmount);
+      const totalOrderAmount = Math.max(0, Number(existingOrder.totalAmount) || 0);
+      const totalCollectedDebt = nextPayments.reduce(
+        (s, dp) => s + Math.max(0, Number(dp.amount) || 0),
+        0
       );
-    }
-
-    const currentDebt = Math.max(0, Number(existingOrder.debtAmount) || 0);
-    if (currentDebt <= 0) {
-      throw new ApiError(
-        400,
-        'ORDER_NO_DEBT',
-        `Đơn hàng ${existingOrder.orderCode} đã thanh toán đủ, không còn dư nợ`
+      const reducedByReturnAmount = (
+        Array.isArray(existingOrder.debtAdjustments) ? existingOrder.debtAdjustments : []
+      ).reduce((s, da) => s + Math.max(0, Number(da?.amount) || 0), 0);
+      const initialDebt = Math.max(
+        currentDebt,
+        Number(existingOrder.initialDebtAmount) || currentDebt,
+        nextDebtAmount + totalCollectedDebt + reducedByReturnAmount
       );
-    }
+      const cashAtPurchase = Math.max(0, totalOrderAmount - initialDebt);
 
-    const rawAmount = req.body?.amount;
-    const payAmount =
-      rawAmount === undefined || rawAmount === null || req.body?.payFull === true
-        ? currentDebt
-        : Math.round(Number(rawAmount));
+      const orderReturns = await returnExchangeRepo.find({ orderId: existingOrder._id });
+      const totalCashRefundedForOrder = orderReturns.reduce((s, r) => {
+        const rDebtRed = Math.max(0, Math.round(Number(r.debtReduction) || 0));
+        const rRefundAmt = Math.max(0, Math.round(Number(r.refundAmount) || 0));
+        const rCashRef =
+          r.cashRefund !== undefined && r.cashRefund !== null
+            ? Math.max(0, Math.round(Number(r.cashRefund) || 0))
+            : Math.max(0, rRefundAmt - rDebtRed);
+        return s + rCashRef;
+      }, 0);
 
-    if (isNaN(payAmount) || payAmount <= 0 || payAmount > currentDebt) {
-      throw new ApiError(
-        400,
-        'INVALID_DEBT_PAYMENT_AMOUNT',
-        `Số tiền thu nợ phải lớn hơn 0 và không vượt quá dư nợ hiện tại (${currentDebt.toLocaleString('vi-VN')} VND)`,
-        { amount: 'Số tiền thu nợ không hợp lệ' }
+      const nextPaidAmount = Math.max(
+        0,
+        Math.min(totalOrderAmount, cashAtPurchase + totalCollectedDebt - totalCashRefundedForOrder)
       );
-    }
+      const nextDebtStatus: DebtStatus = nextDebtAmount === 0 ? 'SETTLED' : 'PARTIAL';
 
-    const rawMethod = String(req.body?.method || 'BANKING').toUpperCase();
-    const validMethods: ('CASH' | 'BANKING' | 'CARD')[] = ['CASH', 'BANKING', 'CARD'];
-    const method: 'CASH' | 'BANKING' | 'CARD' = validMethods.includes(rawMethod as any)
-      ? (rawMethod as 'CASH' | 'BANKING' | 'CARD')
-      : 'BANKING';
+      const updatedOrder = await orderRepo.updateById(existingOrder._id, {
+        paidAmount: nextPaidAmount,
+        debtAmount: nextDebtAmount,
+        initialDebtAmount: initialDebt,
+        debtStatus: nextDebtStatus,
+        debtPayments: nextPayments,
+      });
 
-    const note = String(req.body?.note || '').trim() || 'Thu công nợ khách hàng';
-    const paymentRecord: IDebtPaymentRecord = {
-      _id: `dp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      amount: payAmount,
-      method,
-      note,
-      paidAt: new Date(),
-      collectedBy: req.user?.userId || 'ADMIN',
-      collectedByName: req.user?.fullName || 'Quản Trị Viên 11Sport',
-    };
-
-    const prevPayments = Array.isArray(existingOrder.debtPayments)
-      ? existingOrder.debtPayments
-      : [];
-    const nextDebtAmount = Math.max(0, currentDebt - payAmount);
-    const totalOrderAmount = Math.max(0, Number(existingOrder.totalAmount) || 0);
-    const nextPaidAmount = Math.max(0, totalOrderAmount - nextDebtAmount);
-    const initialDebt = Math.max(
-      currentDebt,
-      Number(existingOrder.initialDebtAmount) || currentDebt
-    );
-    const nextDebtStatus: DebtStatus = nextDebtAmount === 0 ? 'SETTLED' : 'PARTIAL';
-
-    const updatedOrder = await orderRepo.updateById(existingOrder._id, {
-      paidAmount: nextPaidAmount,
-      debtAmount: nextDebtAmount,
-      initialDebtAmount: initialDebt,
-      debtStatus: nextDebtStatus,
-      debtPayments: [...prevPayments, paymentRecord],
+      return {
+        updatedOrder,
+        payAmount,
+        nextDebtAmount,
+        nextDebtStatus,
+      };
     });
 
     res.json({
-      data: updatedOrder,
+      data: result.updatedOrder,
       meta: {
-        collectedAmount: payAmount,
-        remainingDebt: nextDebtAmount,
-        debtStatus: nextDebtStatus,
+        collectedAmount: result.payAmount,
+        remainingDebt: result.nextDebtAmount,
+        debtStatus: result.nextDebtStatus,
       },
     });
   } catch (err) {

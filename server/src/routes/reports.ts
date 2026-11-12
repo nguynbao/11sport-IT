@@ -14,10 +14,25 @@ import { normalizePhoneDigits } from '../utils/search';
 
 export const reportsRouter = Router();
 
-function extractOrderDebtMeta(o: any) {
+function extractOrderDebtMeta(o: any, refundedCashForOrder = 0) {
   const totalAmount = Math.max(0, Number(o.totalAmount) || 0);
   let debtAmount = Math.max(0, Number(o.debtAmount) || 0);
   let initialDebtAmount = Math.max(debtAmount, Number(o.initialDebtAmount) || 0);
+
+  const debtPayments = Array.isArray(o.debtPayments) ? o.debtPayments : [];
+  const debtAdjustments = Array.isArray(o.debtAdjustments) ? o.debtAdjustments : [];
+  const collectedDebtAmount = debtPayments.reduce(
+    (s: number, dp: any) => s + Math.max(0, Number(dp?.amount) || 0),
+    0
+  );
+  const reducedByReturnAmount = debtAdjustments.reduce(
+    (s: number, da: any) => s + Math.max(0, Number(da?.amount) || 0),
+    0
+  );
+
+  if (initialDebtAmount < debtAmount + collectedDebtAmount + reducedByReturnAmount) {
+    initialDebtAmount = debtAmount + collectedDebtAmount + reducedByReturnAmount;
+  }
 
   if (
     initialDebtAmount === 0 &&
@@ -37,10 +52,12 @@ function extractOrderDebtMeta(o: any) {
     }
   }
 
-  const paidAmount =
-    o.paidAmount !== undefined && o.paidAmount !== null && Number(o.paidAmount) > 0
-      ? Math.min(totalAmount, Math.max(0, Number(o.paidAmount)))
-      : Math.max(0, totalAmount - debtAmount);
+  const cashAtPurchase = Math.max(0, totalAmount - initialDebtAmount);
+  const refundedCash = Math.max(0, Math.round(Number(refundedCashForOrder) || 0));
+  const paidAmount = Math.max(
+    0,
+    Math.min(totalAmount, cashAtPurchase + collectedDebtAmount - refundedCash)
+  );
 
   const debtStatus: 'NONE' | 'UNPAID' | 'PARTIAL' | 'SETTLED' =
     o.debtStatus && o.debtStatus !== 'NONE'
@@ -49,7 +66,7 @@ function extractOrderDebtMeta(o: any) {
       ? 'NONE'
       : debtAmount <= 0
       ? 'SETTLED'
-      : paidAmount <= 0
+      : cashAtPurchase + collectedDebtAmount <= 0 && reducedByReturnAmount <= 0
       ? 'UNPAID'
       : 'PARTIAL';
 
@@ -64,14 +81,18 @@ function extractOrderDebtMeta(o: any) {
 
   return {
     totalAmount,
+    cashAtPurchase,
     paidAmount,
     debtAmount,
     initialDebtAmount,
+    collectedDebtAmount,
+    reducedByReturnAmount,
     debtStatus,
     debtDueDate: validDueDate ? validDueDate.toISOString() : null,
     isOverdue,
     daysOverdue,
-    debtPayments: Array.isArray(o.debtPayments) ? o.debtPayments : [],
+    debtPayments,
+    debtAdjustments,
   };
 }
 
@@ -430,6 +451,24 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
       prodByCode.set(String(p.code), p);
     });
 
+    const orderById = new Map<string, any>();
+    orders.forEach((o) => orderById.set(String(o._id), o));
+
+    const refundedCashByOrderId = new Map<string, number>();
+    for (const r of returns) {
+      const oid = String(r.orderId || '');
+      if (!oid) continue;
+      const rDebtRed = Math.max(0, Math.round(Number(r.debtReduction) || 0));
+      const rRefundAmt = Math.max(0, Math.round(Number(r.refundAmount) || 0));
+      const rCashRef =
+        r.cashRefund !== undefined && r.cashRefund !== null
+          ? Math.max(0, Math.round(Number(r.cashRefund) || 0))
+          : Math.max(0, rRefundAmt - rDebtRed);
+      if (rCashRef > 0) {
+        refundedCashByOrderId.set(oid, (refundedCashByOrderId.get(oid) || 0) + rCashRef);
+      }
+    }
+
     const filterCatId = categoryId ? String(categoryId) : '';
     const filterPayMethod = paymentMethod ? String(paymentMethod).toUpperCase() : '';
 
@@ -438,7 +477,7 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
       if (!inRange(o.createdAt)) return false;
       if (filterPayMethod) {
         if (filterPayMethod === 'DEBT') {
-          const dm = extractOrderDebtMeta(o);
+          const dm = extractOrderDebtMeta(o, refundedCashByOrderId.get(String(o._id)) || 0);
           if (dm.initialDebtAmount <= 0 && dm.debtAmount <= 0) return false;
         } else if (o.paymentMethod !== filterPayMethod) {
           return false;
@@ -456,7 +495,16 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
 
     const filteredReturns = returns.filter((r) => {
       if (!inRange(r.createdAt)) return false;
-      if (filterPayMethod && filterPayMethod !== 'DEBT' && r.refundMethod !== filterPayMethod) return false;
+      if (filterPayMethod) {
+        const origO = orderById.get(String(r.orderId));
+        if (!origO) return false;
+        if (filterPayMethod === 'DEBT') {
+          const dm = extractOrderDebtMeta(origO, refundedCashByOrderId.get(String(origO._id)) || 0);
+          if (dm.initialDebtAmount <= 0 && dm.debtAmount <= 0) return false;
+        } else if (origO.paymentMethod !== filterPayMethod) {
+          return false;
+        }
+      }
       if (filterCatId) {
         const hasCat =
           (r.returnItems || []).some((it: any) => {
@@ -475,11 +523,17 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
     let grossRevenue = 0;
     let itemDiscountTotal = 0;
     let billDiscountTotal = 0;
-    let cardFeeTotal = 0;
+    let cardFeeCollected = 0;
+    let cardFeeRefunded = 0;
     let orderRevenue = 0;
     let totalUnitsSold = 0;
     let totalGiftUnits = 0;
     let estimatedCogs = 0;
+    let cogsEstimated = false;
+    let cashAtPurchase = 0;
+    let cashRefunded = 0;
+    let debtReducedByReturnInPeriod = 0;
+    let returnFromPriorPeriods = 0;
     let outstandingDebtInPeriod = 0;
     let initialDebtInPeriod = 0;
     let debtOrdersInPeriod = 0;
@@ -553,6 +607,7 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
         netRevenue: number;
         cogs: number;
         grossProfit: number;
+        cashCollected: number;
       }
     >();
 
@@ -574,6 +629,7 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
           netRevenue: 0,
           cogs: 0,
           grossProfit: 0,
+          cashCollected: 0,
         });
       }
       return dailyMap.get(key)!;
@@ -605,6 +661,7 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
         netRevenue: number;
         cogs: number;
         grossProfit: number;
+        cashCollected: number;
       }
     >();
 
@@ -621,6 +678,7 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
         netRevenue: 0,
         cogs: 0,
         grossProfit: 0,
+        cashCollected: 0,
       });
     }
 
@@ -640,6 +698,7 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
           netRevenue: 0,
           cogs: 0,
           grossProfit: 0,
+          cashCollected: 0,
         });
       }
       return hourlyMap.get(key)!;
@@ -659,19 +718,53 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
       day.orders += 1;
       hr.orders += 1;
 
-      const orderSub = Number(o.subtotal) || 0;
-      const orderBillDisc = Number(o.billDiscountAmount) || 0;
-      const orderCardFee = Number(o.cardFee) || 0;
-      const orderTotal = Number(o.totalAmount) || 0;
+      const orderSub = Math.max(0, Number(o.subtotal) || 0);
+      const orderBillDisc = Math.min(orderSub, Math.max(0, Math.round(Number(o.billDiscountAmount) || 0)));
+      const orderAfterBill = Math.max(0, orderSub - orderBillDisc);
+      const orderCardFee = Math.max(0, Math.round(Number(o.cardFee) || 0));
+      const orderTotal = Math.max(0, Number(o.totalAmount) || orderAfterBill + orderCardFee);
+
+      // Phân bổ giảm giá bill theo từng dòng (dòng có giá trị cuối nhận phần dư để ΣB_i = B)
+      const oItems = o.items || [];
+      const paidLineIndices = oItems
+        .map((it: any, idx: number) => ({ it, idx }))
+        .filter(({ it }: any) => !it.isGift && it.discountType !== 'GIFT' && (Number(it.lineTotal) || 0) > 0)
+        .map(({ idx }: any) => idx);
+      const lastPaidIdx = paidLineIndices.length > 0 ? paidLineIndices[paidLineIndices.length - 1] : -1;
+
+      let allocatedBillDisc = 0;
+      const billShareByIdx: number[] = [];
+      for (let idx = 0; idx < oItems.length; idx++) {
+        const it = oItems[idx];
+        const lineTotal = Math.max(0, Number(it.lineTotal) || 0);
+        if (it.isGift || it.discountType === 'GIFT' || lineTotal <= 0 || orderSub <= 0 || orderBillDisc <= 0) {
+          billShareByIdx[idx] = 0;
+          continue;
+        }
+        let bShare = 0;
+        if (idx === lastPaidIdx) {
+          bShare = Math.max(0, orderBillDisc - allocatedBillDisc);
+        } else {
+          bShare = Math.min(
+            Math.max(0, orderBillDisc - allocatedBillDisc),
+            Math.round((lineTotal / orderSub) * orderBillDisc)
+          );
+        }
+        allocatedBillDisc += bShare;
+        billShareByIdx[idx] = bShare;
+      }
 
       // Nếu lọc theo categoryId thì tính tỷ trọng của category đó trong đơn
       let orderIncludedGross = 0;
       let orderIncludedItemDisc = 0;
       let orderIncludedLineTotal = 0;
+      let orderIncludedBillDisc = 0;
+      let orderIncludedNetRev = 0;
       let orderIncludedCogs = 0;
       let orderIncludedUnits = 0;
 
-      for (const it of o.items || []) {
+      for (let idx = 0; idx < oItems.length; idx++) {
+        const it = oItems[idx];
         const prod = prodById.get(String(it.productId)) || prodByCode.get(String(it.productCode));
         if (filterCatId && (!prod || String(prod.categoryId) !== filterCatId)) {
           continue;
@@ -681,11 +774,15 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
         const origPrice = Number(it.originalUnitPrice ?? it.unitPrice) || 0;
         const lineTotal = Number(it.lineTotal) || 0;
         const itemDisc = Number(it.discountAmount) || 0;
-        const unitCost = Number(prod?.costPrice) || 0;
+        const hasSavedUnitCost = it.unitCost !== undefined && it.unitCost !== null;
+        if (!hasSavedUnitCost && qty > 0) {
+          cogsEstimated = true;
+        }
+        const unitCost = hasSavedUnitCost
+          ? Math.max(0, Math.round(Number(it.unitCost) || 0))
+          : Math.max(0, Math.round(Number(prod?.costPrice) || 0));
 
-        // Phân bổ giảm giá bill theo tỷ lệ lineTotal / subtotal
-        const billDiscShare =
-          !isGift && orderSub > 0 ? Math.round((lineTotal / orderSub) * orderBillDisc) : 0;
+        const billDiscShare = billShareByIdx[idx] || 0;
         const netItemRev = Math.max(0, lineTotal - billDiscShare);
         const itemCogs = qty * unitCost;
 
@@ -697,6 +794,8 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
           orderIncludedGross += origPrice * qty;
           orderIncludedItemDisc += itemDisc;
           orderIncludedLineTotal += lineTotal;
+          orderIncludedBillDisc += billDiscShare;
+          orderIncludedNetRev += netItemRev;
         }
         orderIncludedCogs += itemCogs;
 
@@ -719,28 +818,26 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
         }
       }
 
-      const effectiveBillDisc = filterCatId
-        ? orderSub > 0
-          ? Math.round((orderIncludedLineTotal / orderSub) * orderBillDisc)
-          : 0
-        : orderBillDisc;
+      // D1: orderRevenue = tiền hàng sau giảm SP & giảm bill (S - B), KHÔNG gồm cardFee
+      const effectiveBillDisc = filterCatId ? orderIncludedBillDisc : orderBillDisc;
       const effectiveCardFee = filterCatId ? 0 : orderCardFee;
-      const effectiveOrderRev = filterCatId
-        ? Math.max(0, orderIncludedLineTotal - effectiveBillDisc)
-        : orderTotal;
+      const effectiveOrderRev = filterCatId ? orderIncludedNetRev : orderAfterBill;
 
       grossRevenue += filterCatId ? orderIncludedGross : Number(o.rawSubtotal ?? o.subtotal) || 0;
       itemDiscountTotal += filterCatId ? orderIncludedItemDisc : Number(o.itemDiscountTotal) || 0;
       billDiscountTotal += effectiveBillDisc;
-      cardFeeTotal += effectiveCardFee;
+      cardFeeCollected += effectiveCardFee;
       orderRevenue += effectiveOrderRev;
       estimatedCogs += orderIncludedCogs;
 
-      const dm = extractOrderDebtMeta(o);
+      const dm = extractOrderDebtMeta(o, refundedCashByOrderId.get(String(o._id)) || 0);
+      const orderCashAtPurchase = filterCatId ? 0 : dm.cashAtPurchase;
+      cashAtPurchase += orderCashAtPurchase;
+
       if (dm.initialDebtAmount > 0 || dm.debtAmount > 0) {
         debtOrdersInPeriod += 1;
         const ratio =
-          filterCatId && orderTotal > 0 ? Math.min(1, effectiveOrderRev / orderTotal) : 1;
+          filterCatId && orderAfterBill > 0 ? Math.min(1, effectiveOrderRev / orderAfterBill) : 1;
         outstandingDebtInPeriod += Math.round(dm.debtAmount * ratio);
         initialDebtInPeriod += Math.round(dm.initialDebtAmount * ratio);
       }
@@ -752,6 +849,7 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
       day.netRevenue += effectiveOrderRev;
       day.cogs += orderIncludedCogs;
       day.grossProfit = day.netRevenue - day.cogs;
+      day.cashCollected += orderCashAtPurchase;
 
       hr.unitsSold += orderIncludedUnits;
       hr.grossRevenue += filterCatId ? orderIncludedGross : Number(o.rawSubtotal ?? o.subtotal) || 0;
@@ -760,32 +858,101 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
       hr.netRevenue += effectiveOrderRev;
       hr.cogs += orderIncludedCogs;
       hr.grossProfit = hr.netRevenue - hr.cogs;
+      hr.cashCollected += orderCashAtPurchase;
 
       const pm = paymentStats[o.paymentMethod] || paymentStats.OTHER;
       pm.orders += 1;
       pm.revenue += effectiveOrderRev;
     }
 
+    let returnGoodsTotal = 0;
+    let exchangeGoodsTotal = 0;
     let returnTotal = 0;
     let exchangeTotal = 0;
-    let netReturnImpact = 0; // Giá trị chênh lệch hoàn/đổi (âm = hoàn tiền cho khách, dương = khách bù thêm)
+    let netReturnImpact = 0; // Giá trị chênh lệch hàng đổi - hàng trả (không tính phí thẻ)
     let totalUnitsReturned = 0;
 
     for (const r of filteredReturns) {
       const day = ensureDay(r.createdAt);
       const hr = ensureHour(r.createdAt);
-      let rRetTotal = 0;
-      let rExTotal = 0;
+      let rRetGoods = 0;
+      let rExGoods = 0;
       let rCogsImpact = 0;
+      const origOrder = orderById.get(String(r.orderId));
+      const origSub = Math.max(0, Number(origOrder?.subtotal) || 0);
+      const origBillDisc = Math.min(origSub, Math.max(0, Math.round(Number(origOrder?.billDiscountAmount) || 0)));
 
-      for (const it of r.returnItems || []) {
+      // Kiểm tra xem phiếu trả đã phân bổ sẵn giảm giá bill vào returnSubtotal/lineTotal chưa (phiếu mới v4.1)
+      // Với phiếu cũ (lineTotal = unitPrice gốc chưa trừ giảm bill), ta phân bổ giảm bill tại đây.
+      const rRawLinesSum = (r.returnItems || []).reduce(
+        (s: number, it: any) => s + (Number(it.lineTotal) || 0),
+        0
+      );
+      const matchingOrigGrossSum = origOrder
+        ? (r.returnItems || []).reduce((s: number, it: any) => {
+            const matchedOrig = (origOrder.items || []).find(
+              (oi: any) =>
+                String(oi.productId) === String(it.productId) ||
+                oi.productCode === it.productCode
+            );
+            const origUnitPrice = Number(matchedOrig?.unitPrice ?? it.unitPrice) || 0;
+            return s + origUnitPrice * (Number(it.quantity) || 0);
+          }, 0)
+        : rRawLinesSum;
+      const isAlreadyNetOfBillDisc =
+        origBillDisc > 0 && rRawLinesSum > 0 && rRawLinesSum < matchingOrigGrossSum;
+
+      const rRetItems = r.returnItems || [];
+      let allocatedRetBillShare = 0;
+      const totalExpectedRetBillShare =
+        !isAlreadyNetOfBillDisc && origSub > 0 && origBillDisc > 0
+          ? Math.round((rRawLinesSum / origSub) * origBillDisc)
+          : 0;
+
+      for (let idx = 0; idx < rRetItems.length; idx++) {
+        const it = rRetItems[idx];
         const prod = prodById.get(String(it.productId)) || prodByCode.get(String(it.productCode));
-        if (filterCatId && (!prod || String(prod.categoryId) !== filterCatId)) continue;
         const qty = Number(it.quantity) || 0;
         const line = Number(it.lineTotal) || 0;
-        const unitCost = Number(prod?.costPrice) || 0;
+        const retIsGift = Boolean((it as any).isGift) || (it as any).discountType === 'GIFT' || line <= 0;
+        let retBillShare = 0;
+        if (!isAlreadyNetOfBillDisc && !retIsGift && origSub > 0 && origBillDisc > 0) {
+          if (idx === rRetItems.length - 1) {
+            retBillShare = Math.max(0, totalExpectedRetBillShare - allocatedRetBillShare);
+          } else {
+            retBillShare = Math.min(
+              Math.max(0, totalExpectedRetBillShare - allocatedRetBillShare),
+              Math.round((line / origSub) * origBillDisc)
+            );
+          }
+          allocatedRetBillShare += retBillShare;
+        }
+        const netRetLine = Math.max(0, line - retBillShare);
+
+        if (filterCatId && (!prod || String(prod.categoryId) !== filterCatId)) continue;
+
+        let resolvedUnitCost: number | undefined =
+          it.unitCost !== undefined && it.unitCost !== null
+            ? Math.max(0, Math.round(Number(it.unitCost) || 0))
+            : undefined;
+        if (resolvedUnitCost === undefined && origOrder) {
+          const matchedOrig = (origOrder.items || []).find(
+            (oi: any) =>
+              String(oi.productId) === String(it.productId) || oi.productCode === it.productCode
+          );
+          if (matchedOrig && matchedOrig.unitCost !== undefined && matchedOrig.unitCost !== null) {
+            resolvedUnitCost = Math.max(0, Math.round(Number(matchedOrig.unitCost) || 0));
+          }
+        }
+        if (resolvedUnitCost === undefined) {
+          if (qty > 0 && (it.condition === 'GOOD' || it.restocked)) {
+            cogsEstimated = true;
+          }
+          resolvedUnitCost = Math.max(0, Math.round(Number(prod?.costPrice) || 0));
+        }
+
         totalUnitsReturned += qty;
-        rRetTotal += line;
+        rRetGoods += netRetLine;
 
         const st = ensureProdStat(
           String(it.productId),
@@ -794,10 +961,10 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
           it.unit
         );
         st.returnedQty += qty;
-        st.revenue = Math.max(0, st.revenue - line);
+        st.revenue -= netRetLine;
         if (it.condition === 'GOOD' || it.restocked) {
-          st.cogs = Math.max(0, st.cogs - qty * unitCost);
-          rCogsImpact -= qty * unitCost;
+          st.cogs -= qty * resolvedUnitCost;
+          rCogsImpact -= qty * resolvedUnitCost;
         }
       }
 
@@ -806,8 +973,14 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
         if (filterCatId && (!prod || String(prod.categoryId) !== filterCatId)) continue;
         const qty = Number(it.quantity) || 0;
         const line = Number(it.lineTotal) || 0;
-        const unitCost = Number(prod?.costPrice) || 0;
-        rExTotal += line;
+        const hasSavedUnitCost = it.unitCost !== undefined && it.unitCost !== null;
+        if (!hasSavedUnitCost && qty > 0) {
+          cogsEstimated = true;
+        }
+        const unitCost = hasSavedUnitCost
+          ? Math.max(0, Math.round(Number(it.unitCost) || 0))
+          : Math.max(0, Math.round(Number(prod?.costPrice) || 0));
+        rExGoods += line;
 
         const st = ensureProdStat(
           String(it.productId),
@@ -821,40 +994,72 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
         rCogsImpact += qty * unitCost;
       }
 
-      const diff = filterCatId ? rExTotal - rRetTotal : Number(r.netDifference) || 0;
-      returnTotal += filterCatId ? rRetTotal : Number(r.returnTotal) || 0;
-      exchangeTotal += filterCatId ? rExTotal : Number(r.exchangeTotal) || 0;
-      if (!filterCatId && Number(r.refundedCardFee) > 0) {
-        cardFeeTotal = Math.max(0, cardFeeTotal - (Number(r.refundedCardFee) || 0));
+      const rRefundedFee = filterCatId ? 0 : Math.max(0, Math.round(Number(r.refundedCardFee) || 0));
+      cardFeeRefunded += rRefundedFee;
+      returnGoodsTotal += rRetGoods;
+      exchangeGoodsTotal += rExGoods;
+
+      if (fromDate && origOrder?.createdAt) {
+        const origTime = new Date(origOrder.createdAt).getTime();
+        if (!isNaN(origTime) && origTime < fromDate.getTime()) {
+          returnFromPriorPeriods += rRetGoods;
+        }
       }
-      netReturnImpact += diff;
-      estimatedCogs = Math.max(0, estimatedCogs + rCogsImpact);
 
-      day.returnImpact += diff;
-      day.netRevenue += diff;
-      day.cogs = Math.max(0, day.cogs + rCogsImpact);
+      const rDebtRed = filterCatId ? 0 : Math.max(0, Math.round(Number(r.debtReduction) || 0));
+      const rRefundAmt = Math.max(0, Math.round(Number(r.refundAmount) || 0));
+      const rCashRef = filterCatId
+        ? 0
+        : r.cashRefund !== undefined && r.cashRefund !== null
+        ? Math.max(0, Math.round(Number(r.cashRefund) || 0))
+        : Math.max(0, rRefundAmt - rDebtRed);
+      const rAddCharge = filterCatId ? 0 : Math.max(0, Math.round(Number(r.additionalCharge) || 0));
+
+      debtReducedByReturnInPeriod += rDebtRed;
+      cashRefunded += rCashRef;
+
+      // Phụ thu đổi hàng (additionalCharge > 0) khách trả ngay tại quầy -> cộng vào cashAtPurchase
+      if (rAddCharge > 0) {
+        cashAtPurchase += rAddCharge;
+      }
+
+      const goodsDiff = rExGoods - rRetGoods;
+      returnTotal += filterCatId ? rRetGoods : rRetGoods + rRefundedFee;
+      exchangeTotal += rExGoods;
+      netReturnImpact += goodsDiff;
+      estimatedCogs += rCogsImpact;
+
+      const rCashDelta = rAddCharge - rCashRef;
+
+      day.returnImpact += goodsDiff;
+      day.netRevenue += goodsDiff;
+      day.cogs += rCogsImpact;
       day.grossProfit = day.netRevenue - day.cogs;
+      day.cashCollected += rCashDelta;
 
-      hr.returnImpact += diff;
-      hr.netRevenue += diff;
-      hr.cogs = Math.max(0, hr.cogs + rCogsImpact);
+      hr.returnImpact += goodsDiff;
+      hr.netRevenue += goodsDiff;
+      hr.cogs += rCogsImpact;
       hr.grossProfit = hr.netRevenue - hr.cogs;
+      hr.cashCollected += rCashDelta;
     }
 
-    const netRevenue = orderRevenue + netReturnImpact;
-    const collectedRevenue = Math.max(0, netRevenue - outstandingDebtInPeriod);
+    const netRevenue = orderRevenue - returnGoodsTotal + exchangeGoodsTotal;
+    const cardFeeNet = cardFeeCollected - cardFeeRefunded;
+    const cardFeeTotal = cardFeeNet;
     const grossProfit = netRevenue - estimatedCogs;
     const grossMarginPercent =
       netRevenue > 0 ? Math.round((grossProfit / netRevenue) * 1000) / 10 : 0;
     const totalOrders = filteredOrders.length;
     const paidOrders = filteredOrders.filter((o) => o.status === 'PAID').length;
-    const returnedOrders = filteredOrders.filter((o) => o.status !== 'PAID').length;
+    const returnedOrders = filteredOrders.filter((o) => o.status === 'PARTIALLY_RETURNED' || o.status === 'FULLY_RETURNED').length;
     const avgOrderValue = totalOrders > 0 ? Math.round(orderRevenue / totalOrders) : 0;
 
     // ===== TỔNG HỢP QUẢN LÝ CÔNG NỢ (MUA TRƯỚC TRẢ SAU) =====
     let totalOutstandingDebt = 0;
     let totalInitialDebt = 0;
     let totalCollectedDebt = 0;
+    let totalReducedByReturn = 0;
     let activeDebtOrdersCount = 0;
     let settledDebtOrdersCount = 0;
     let overdueDebtAmount = 0;
@@ -872,11 +1077,14 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
       paidAmount: number;
       debtAmount: number;
       initialDebtAmount: number;
+      collectedDebtAmount: number;
+      reducedByReturnAmount: number;
       debtStatus: 'NONE' | 'UNPAID' | 'PARTIAL' | 'SETTLED';
       debtDueDate: string | null;
       isOverdue: boolean;
       daysOverdue: number;
       debtPayments: any[];
+      debtAdjustments: any[];
       createdByName: string;
       confirmedByName: string;
       createdAt: string;
@@ -897,6 +1105,8 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
         totalOrderAmount: number;
         totalInitialDebt: number;
         totalPaidAmount: number;
+        totalCollectedDebt: number;
+        totalReducedByReturn: number;
         totalDebtAmount: number;
         nearestDueDate: string | null;
         lastOrderAt: string | null;
@@ -911,16 +1121,40 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
           paidAt: string;
           collectedByName: string;
         }[];
+        debtAdjustments: {
+          _id: string;
+          orderId: string;
+          orderCode: string;
+          returnCode: string;
+          amount: number;
+          debtBefore: number;
+          debtAfter: number;
+          at: string;
+          byName: string;
+        }[];
       }
     >();
 
     for (const o of orders) {
       if (o.status === 'DRAFT') continue;
-      const dm = extractOrderDebtMeta(o);
+      const dm = extractOrderDebtMeta(o, refundedCashByOrderId.get(String(o._id)) || 0);
 
-      for (const dp of dm.debtPayments) {
-        if (inRange(dp.paidAt)) {
-          debtCollectedInPeriod += Math.max(0, Number(dp.amount) || 0);
+      const matchesPaymentFilter =
+        !filterPayMethod ||
+        (filterPayMethod === 'DEBT'
+          ? dm.initialDebtAmount > 0 || dm.debtAmount > 0
+          : o.paymentMethod === filterPayMethod);
+
+      if (!filterCatId && matchesPaymentFilter) {
+        for (const dp of dm.debtPayments) {
+          if (inRange(dp.paidAt)) {
+            const dpAmt = Math.max(0, Number(dp.amount) || 0);
+            debtCollectedInPeriod += dpAmt;
+            const dDay = ensureDay(dp.paidAt);
+            const dHr = ensureHour(dp.paidAt);
+            dDay.cashCollected += dpAmt;
+            dHr.cashCollected += dpAmt;
+          }
         }
       }
 
@@ -928,7 +1162,8 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
 
       totalOutstandingDebt += dm.debtAmount;
       totalInitialDebt += dm.initialDebtAmount;
-      totalCollectedDebt += Math.max(0, dm.initialDebtAmount - dm.debtAmount);
+      totalCollectedDebt += dm.collectedDebtAmount;
+      totalReducedByReturn += dm.reducedByReturnAmount;
 
       if (dm.debtAmount > 0) {
         activeDebtOrdersCount += 1;
@@ -951,11 +1186,14 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
         paidAmount: dm.paidAmount,
         debtAmount: dm.debtAmount,
         initialDebtAmount: dm.initialDebtAmount,
+        collectedDebtAmount: dm.collectedDebtAmount,
+        reducedByReturnAmount: dm.reducedByReturnAmount,
         debtStatus: dm.debtStatus,
         debtDueDate: dm.debtDueDate,
         isOverdue: dm.isOverdue,
         daysOverdue: dm.daysOverdue,
         debtPayments: dm.debtPayments,
+        debtAdjustments: dm.debtAdjustments,
         createdByName: o.createdByName || '',
         confirmedByName: o.confirmedByName || o.createdByName || '',
         createdAt: o.createdAt ? new Date(o.createdAt).toISOString() : new Date().toISOString(),
@@ -976,11 +1214,14 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
           totalOrderAmount: 0,
           totalInitialDebt: 0,
           totalPaidAmount: 0,
+          totalCollectedDebt: 0,
+          totalReducedByReturn: 0,
           totalDebtAmount: 0,
           nearestDueDate: null,
           lastOrderAt: null,
           orders: [],
           paymentHistory: [],
+          debtAdjustments: [],
         });
       }
       const cGroup = customerDebtMap.get(normPhone)!;
@@ -1003,6 +1244,8 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
       cGroup.totalOrderAmount += dm.totalAmount;
       cGroup.totalInitialDebt += dm.initialDebtAmount;
       cGroup.totalPaidAmount += dm.paidAmount;
+      cGroup.totalCollectedDebt += dm.collectedDebtAmount;
+      cGroup.totalReducedByReturn += dm.reducedByReturnAmount;
       cGroup.totalDebtAmount += dm.debtAmount;
       if (
         !cGroup.lastOrderAt ||
@@ -1024,7 +1267,24 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
           collectedByName: dp.collectedByName || 'Quản Trị Viên',
         });
       }
+
+      for (const da of dm.debtAdjustments) {
+        cGroup.debtAdjustments.push({
+          _id: String(da._id || `${o._id}_${da.returnCode}`),
+          orderId: String(o._id),
+          orderCode: o.orderCode,
+          returnCode: da.returnCode || '',
+          amount: Number(da.amount) || 0,
+          debtBefore: Number(da.debtBefore) || 0,
+          debtAfter: Number(da.debtAfter) || 0,
+          at: da.at ? new Date(da.at).toISOString() : row.createdAt,
+          byName: da.byName || 'Nhân viên bán hàng',
+        });
+      }
     }
+
+    const cashCollected = filterCatId ? null : cashAtPurchase + debtCollectedInPeriod - cashRefunded;
+    const collectedRevenue = cashCollected ?? Math.max(0, netRevenue - outstandingDebtInPeriod);
 
     const debtCustomers = Array.from(customerDebtMap.values())
       .map((c) => ({
@@ -1055,13 +1315,14 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
         categoryName: string;
         unitsSold: number;
         revenue: number;
+        netRevenue: number;
         cogs: number;
         grossProfit: number;
       }
     >();
     prodStats.forEach((st) => {
       const netUnits = Math.max(0, st.soldQty + st.exchangeOutQty - st.returnedQty);
-      if (netUnits === 0 && st.revenue === 0) return;
+      if (netUnits === 0 && st.revenue === 0 && st.cogs === 0) return;
       const key = st.categoryId || 'UNCATEGORIZED';
       if (!catStatsMap.has(key)) {
         catStatsMap.set(key, {
@@ -1069,6 +1330,7 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
           categoryName: st.categoryName,
           unitsSold: 0,
           revenue: 0,
+          netRevenue: 0,
           cogs: 0,
           grossProfit: 0,
         });
@@ -1076,6 +1338,7 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
       const cRow = catStatsMap.get(key)!;
       cRow.unitsSold += netUnits;
       cRow.revenue += st.revenue;
+      cRow.netRevenue += st.revenue;
       cRow.cogs += st.cogs;
       cRow.grossProfit = cRow.revenue - cRow.cogs;
     });
@@ -1232,18 +1495,32 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
           itemDiscountTotal,
           billDiscountTotal,
           totalDiscount: itemDiscountTotal + billDiscountTotal,
+          cardFeeCollected,
+          cardFeeRefunded,
+          cardFeeNet,
           cardFeeTotal,
           orderRevenue,
+          returnGoodsTotal,
+          exchangeGoodsTotal,
           returnTotal,
           exchangeTotal,
           netReturnImpact,
+          netReturnRefund: netReturnImpact,
+          returnFromPriorPeriods,
           netRevenue,
+          cashAtPurchase,
+          cashRefunded,
+          cashCollected,
           collectedRevenue,
+          debtReducedByReturnInPeriod,
+          outstandingDebt: outstandingDebtInPeriod,
           outstandingDebtInPeriod,
           initialDebtInPeriod,
           debtCollectedInPeriod,
           debtOrdersInPeriod,
           estimatedCogs,
+          cogs: estimatedCogs,
+          cogsEstimated,
           grossProfit,
           grossMarginPercent,
           totalOrders,
@@ -1265,6 +1542,7 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
             totalOutstandingDebt,
             totalInitialDebt,
             totalCollectedDebt,
+            totalReducedByReturn,
             activeDebtOrdersCount,
             settledDebtOrdersCount,
             activeDebtCustomersCount,
@@ -1272,6 +1550,7 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
             overdueOrdersCount,
             newDebtInPeriod: initialDebtInPeriod,
             collectedInPeriod: debtCollectedInPeriod,
+            reducedByReturnInPeriod: debtReducedByReturnInPeriod,
           },
           customers: debtCustomers,
           orders: debtOrders,

@@ -9,7 +9,7 @@ const app = createApp();
 describe('v1.1: Giá gốc khi nhập kho & phân quyền giá bán', () => {
   let categoryId = '';
   const productName = 'Quần Short Chạy Bộ (Quần Short Chạy Bộ QSCB01 Đen size M)';
-  const productCode = 'QUANSHORTCHAYBOQSCB01';
+  let productCode = '';
 
   beforeAll(async () => {
     process.env.FORCE_MEMORY_DB = 'true';
@@ -52,6 +52,9 @@ describe('v1.1: Giá gốc khi nhập kho & phân quyền giá bán', () => {
         .set('x-user-id', 'warehouse1')
         .send({});
       expect(done.status).toBe(200);
+      if (!productCode) {
+        productCode = done.body.data.receipt.items[0].productCode;
+      }
     };
 
     await runImport(10, 150000);
@@ -135,7 +138,6 @@ describe('v1.1: Giá gốc khi nhập kho & phân quyền giá bán', () => {
 
   it('CMS Admin nhập thẳng sản phẩm vào kho (quantity, upsertIfExists) & sửa số lượng tồn (allowDirectStock)', async () => {
     const directName = 'Áo Ba Lỗ Gym (Áo Ba Lỗ Gym ABL09 Đen size L)';
-    const directCode = 'AOBALOGYMABL09';
 
     // 1. Tạo mới kèm số lượng nhập thẳng = 12
     const createRes = await request(app)
@@ -151,6 +153,7 @@ describe('v1.1: Giá gốc khi nhập kho & phân quyền giá bán', () => {
         upsertIfExists: true,
       });
     expect(createRes.status).toBe(201);
+    const directCode = createRes.body.data.code;
     expect(createRes.body.data.stock).toBe(12);
     expect(createRes.body.data.costPrice).toBe(120000);
     expect(createRes.body.data.sellingPrice).toBe(220000);
@@ -275,7 +278,6 @@ describe('v1.1: Giá gốc khi nhập kho & phân quyền giá bán', () => {
 
   it('Hệ thống Kho 2 tầng (FLOOR_1 & FLOOR_2): chọn tầng khi nhập kho, Admin lập Phiếu xuất kho chuyển tầng (PXK-...) và ghi vào Hoạt động nhân viên', async () => {
     const floorProdName = 'Giày Chạy Bộ 2 Tầng (Giày Chạy Bộ 2 Tầng GCB02 Trắng size 42)';
-    const floorProdCode = 'GIAYCHAYBO2TANGGCB02';
 
     // 1. Warehouse lập phiếu nhập 6 đôi vào Kho Tầng 2 (FLOOR_2)
     const impF2 = await request(app)
@@ -304,6 +306,7 @@ describe('v1.1: Giá gốc khi nhập kho & phân quyền giá bán', () => {
       .set('x-user-id', 'warehouse1')
       .send({});
     expect(doneF2.status).toBe(200);
+    const floorProdCode = doneF2.body.data.receipt.items[0].productCode;
 
     let prodRes = await request(app).get('/api/v1/products').set('x-user-id', 'admin');
     let prod = prodRes.body.data.find((p: any) => p.code === floorProdCode);
