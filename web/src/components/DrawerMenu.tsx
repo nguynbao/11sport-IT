@@ -13,7 +13,7 @@ import {
   Rocket,
 } from "lucide-react";
 
-export type TabType = "POS" | "INVENTORY" | "IMPORT" | "CUSTOMER" | "RETURN" | "PUSH_PRODUCTS";
+export type TabType = "POS" | "INVENTORY" | "CUSTOMER" | "RETURN" | "PUSH_PRODUCTS";
 export type DrawerPageType = "NONE" | "PROFILE" | "ATTENDANCE";
 
 export interface TabConfig {
