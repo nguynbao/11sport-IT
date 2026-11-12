@@ -132,8 +132,11 @@ export interface LeaveRequest {
   staffCode: string;
   staffName: string;
   department: Department;
-  type: "WFH" | "OFF" | "LATE" | "EARLY" | "PAID_LEAVE";
+  type: "WFH" | "OFF" | "LATE" | "EARLY" | "PAID_LEAVE" | "CHANGE_OFF";
   date: string;
+  fromDate?: string;
+  sourceLeaveId?: string;
+  sourceOffType?: "OFF" | "PAID_LEAVE";
   reason: string;
   status: "PENDING" | "APPROVED" | "REJECTED";
   reviewedBy?: string;

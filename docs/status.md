@@ -59,6 +59,10 @@ Trạng thái: `Backlog` | `Đang làm` | `Chờ review` | `Đang test` | `Xong`
 | BE-27 | Sửa toàn diện công thức Dashboard Doanh thu (`/reports/revenue-dashboard`), Lưu `unitCost` tại thời điểm bán/đổi, Phân bổ giảm giá bill khi trả hàng, Giảm nợ trước khi hoàn tiền trên đơn công nợ (`/returns`) | server / docs | Backend | Xong | BA-03 | Đã cập nhật `docs/api-contract.md`, `Order.ts`, `ReturnExchange.ts`, `ordersCustomers.ts`, `returns.ts`, `reports.ts`; PASS 14/14 tests (`revenue-dashboard` & `return-hd0162`) |
 | FE-36 | Đồng bộ công thức & hiển thị Dashboard Doanh thu trên CMS (`RevenueDashboardModule.tsx`, `DebtManagementModule.tsx`, `OrdersReturnsModule.tsx`, `exports.ts`) và hiển thị giảm nợ khi trả hàng trên POS (`web/src/components/ReturnExchangeTab.tsx`) | cms / web | Frontend | Xong | BE-27 | PASS `tsc --noEmit` trên cả `cms/` và `web/` |
 | QA-03 | Rà soát baseline test (`baseline-2026-11-12.md`), cập nhật 14 test cũ theo quy chuẩn mã SP v3.2 + `vitest.config.ts` và kiểm thử nghiệm thu toàn bộ AC-01..AC-16 của Dashboard Doanh thu & Công nợ | server / docs/test | Tester | Xong | BE-27, FE-36 | PASS 16/16 test files (103/103 tests — 100%), 0 lỗi mở |
+| BE-28 / FE-37 | Cho phép nhân sự **Xin chuyển ngày off (`CHANGE_OFF`)** từ ngày đã xin off (`fromDate`) sang ngày khác (`date`), bắt buộc **HR duyệt (`APPROVED`)** mới có hiệu lực và tự động đồng bộ lịch nghỉ/phân ca (`ShiftAssignment`) | server / web / cms / docs | BA + Backend + Frontend + Tester | Xong | BE-25, FE-33, FE-34 | Cập nhật `docs/requirements/he-thong-cham-cong-hrm.md`, `docs/api-contract.md`, PASS 14/14 `hrm-attendance.test.ts` & `tsc --noEmit` trên `server`, `web`, `cms` |
+| BE-29 / FE-38 | Cập nhật file mẫu tải về (`downloadStaffImportTemplate`) và đồng bộ bộ bóc tách + giao diện form/bảng xem trước Import Hồ sơ Nhân sự theo đúng 26 cột chuẩn của HR (`BẮT ĐẦU` → `STK`) | server / cms / docs | Backend + Frontend + Tester | Xong | BE-25, FE-33 | Cập nhật `exports.ts`, `fileImportParser.ts`, `staffImportParser.ts`, `StaffModule.tsx`, PASS 3/3 `staff-import.test.ts` & `tsc --noEmit` |
+
+
 
 
 

@@ -163,8 +163,13 @@ export function parseMoneyCell(raw: string): number {
     return Number.isFinite(n) && n > 0 ? n : 0;
   }
 
-  // Dạng có dấu chấm/phẩy phân cách hàng nghìn (VD: "8.000.000", "8,500,000 đ")
-  const digits = s.replace(/[^\d]/g, '');
+  // Loại bỏ phần thập phân .00 hoặc ,00 ở cuối khi có dấu phân cách hàng nghìn (VD: "5.300.000,00 ₫" hoặc "5,300,000.00 ₫")
+  const withoutCurrency = s
+    .replace(/[^\d.,]/g, '')
+    .replace(/([.,]\d{3})+[.,]\d{1,2}$/, (m) => m.replace(/[.,]\d{1,2}$/, ''));
+
+  // Dạng có dấu chấm/phẩy phân cách hàng nghìn (VD: "5.300.000 ₫", "7.500.000 ₫", "8,500,000 đ")
+  const digits = withoutCurrency.replace(/[^\d]/g, '');
   if (!digits) return 0;
   const parsed = Number(digits);
   return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : 0;
@@ -461,13 +466,42 @@ function matchSubHeaderKey(subNorm: string, activeGroupNorm: string): ColumnKey 
     return 'insurance';
   }
   if (
-    (activeGroupNorm.includes('BHXH') && subNorm.includes('NGAY NGHI')) ||
-    subNorm === 'NGAY NGHI'
+    subNorm === 'NGAY NGHI' ||
+    (activeGroupNorm.includes('BHXH') && subNorm.includes('NGAY NGHI') && !subNorm.includes('SO NGAY'))
   ) {
     return 'bhxhEndDate';
   }
   return null;
 }
+
+const TEMPLATE_26_COLS: ColumnKey[] = [
+  'contractStartDate', // 0: BẮT ĐẦU
+  'contractEndDate', // 1: KẾT THÚC
+  'fullName', // 2: HỌ TÊN
+  'dateOfBirth', // 3: NGÀY SINH
+  'gender', // 4: GIỚI TÍNH
+  'nationality', // 5: QUỐC TỊCH
+  'citizenId', // 6: CMND
+  'citizenIssueDate', // 7: NGÀY CẤP
+  'citizenIssuePlace', // 8: NƠI CẤP
+  'permanentAddress', // 9: ĐỊA CHỈ THƯỜNG CHÚ
+  'currentAddress', // 10: ĐỊA CHỈ HIỆN TẠI
+  'school', // 11: TRƯỜNG HỌC
+  'major', // 12: CHUYÊN NGÀNH
+  'positionTitle', // 13: VỊ TRÍ
+  'contractTypeRaw', // 14: LOẠI HỢP ĐỒNG
+  'internContractNumber', // 15: SỐ HĐ -> HDTT
+  'probationContractNumber', // 16: SỐ HĐ -> HĐTV
+  'officialContractNumber', // 17: SỐ HĐ -> HDXDTH
+  'phone', // 18: SDT
+  'departmentRaw', // 19: BỘ PHẬN
+  'bhxhStartDate', // 20: BHXH -> NGÀY ĐÓNG
+  'insurance', // 21: BHXH -> MỨC ĐÓNG
+  'bhxhEndDate', // 22: BHXH -> NGÀY NGHỈ
+  'baseSalary', // 23: Lương
+  'recordedLeaveDays', // 24: Số ngày nghỉ
+  'bankAccount', // 25: STK
+];
 
 /**
  * Bóc tách ma trận 2 chiều từ Excel / CSV theo mẫu hồ sơ nhân sự của HR.
@@ -541,9 +575,22 @@ export function parseStaffImportMatrix(
       continue;
     }
 
-    const topMatched = matchTopHeaderKey(topNorm);
+    const topMatched = matchTopHeaderKey(topNorm) || (hasSubHeaderRow ? matchTopHeaderKey(subNorm) : null);
     if (topMatched) {
+      activeGroup = topNorm || subNorm;
       colMap.set(c, topMatched);
+    }
+  }
+
+  // Nếu là đúng mẫu 26 cột 2 dòng tiêu đề của HR mà có ô bị trống tiêu đề phụ khi xuất từ Excel, điền khuyết theo vị trí chuẩn 26 cột
+  if (hasSubHeaderRow && maxCols >= 26 && colMap.get(0) === 'contractStartDate' && colMap.get(2) === 'fullName') {
+    const mappedValues = new Set(colMap.values());
+    for (let c = 0; c < TEMPLATE_26_COLS.length; c++) {
+      const targetKey = TEMPLATE_26_COLS[c];
+      if (!colMap.has(c) && !mappedValues.has(targetKey)) {
+        colMap.set(c, targetKey);
+        mappedValues.add(targetKey);
+      }
     }
   }
 

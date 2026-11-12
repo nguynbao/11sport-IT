@@ -217,12 +217,26 @@ export async function buildTimesheet(params: {
       const key = String(l.staffId);
       if (!allHistoryLeavesByStaff.has(key)) allHistoryLeavesByStaff.set(key, []);
       allHistoryLeavesByStaff.get(key)!.push(l);
+      if (String(l.date || '').startsWith(monthPrefix)) {
+        if (!allLeavesByStaff.has(key)) allLeavesByStaff.set(key, new Map());
+        const dayList = allLeavesByStaff.get(key)!.get(l.date) || [];
+        dayList.push(l);
+        allLeavesByStaff.get(key)!.set(l.date, dayList);
+      }
+      if (
+        l.type === 'CHANGE_OFF' &&
+        l.fromDate &&
+        l.fromDate !== l.date &&
+        String(l.fromDate).startsWith(monthPrefix)
+      ) {
+        if (!allLeavesByStaff.has(key)) allLeavesByStaff.set(key, new Map());
+        const fromList = allLeavesByStaff.get(key)!.get(l.fromDate) || [];
+        fromList.push(l);
+        allLeavesByStaff.get(key)!.set(l.fromDate, fromList);
+      }
       if (!String(l.date || '').startsWith(monthPrefix)) continue;
-      if (!allLeavesByStaff.has(key)) allLeavesByStaff.set(key, new Map());
-      const dayList = allLeavesByStaff.get(key)!.get(l.date) || [];
-      dayList.push(l);
-      allLeavesByStaff.get(key)!.set(l.date, dayList);
       if (l.status !== 'APPROVED') continue;
+      if (l.type === 'CHANGE_OFF') continue;
       if (!leaveByStaff.has(key)) leaveByStaff.set(key, new Map());
       const existing = leaveByStaff.get(key)!.get(l.date);
       // Ưu tiên đơn OFF (nghỉ cả ngày) khi trùng ngày
@@ -317,10 +331,15 @@ export async function buildTimesheet(params: {
           id: String(l._id),
           type: l.type,
           status: l.status,
+          date: l.date,
+          fromDate: l.fromDate || undefined,
+          sourceOffType: l.sourceOffType || undefined,
           reason: l.reason || '',
           reviewNote: l.reviewNote || '',
         }));
-        summary.pendingRequests += dayLeaves.filter((l) => l.status === 'PENDING').length;
+        summary.pendingRequests += dayLeaves.filter(
+          (l) => l.status === 'PENDING' && String(l.date) === date
+        ).length;
         const approvedTypes = new Set(dayLeaves.filter((l) => l.status === 'APPROVED').map((l) => l.type));
 
         // Có phải ngày làm việc theo lịch không?

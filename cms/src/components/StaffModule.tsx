@@ -929,229 +929,155 @@ export default function StaffModule({
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Nhóm 1: Tài khoản, Phân quyền & Hợp đồng cốt lõi */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3 items-start">
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">
-                  Tên đăng nhập *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="VD: nganptt"
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono text-xs"
-                />
+            {/* Hàng Tài khoản hệ thống: Username, Mật khẩu, Vai trò */}
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/90 space-y-3">
+              <div className="text-[11px] font-extrabold uppercase tracking-wider text-slate-600">
+                1. Tài khoản Đăng nhập &amp; Phân quyền Hệ thống
               </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">
+                    Tên đăng nhập *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="VD: maunv (tự gợi ý khi import)"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-mono text-xs"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">
-                  Mật khẩu *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono text-xs"
-                />
-              </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">
+                    Mật khẩu *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-mono text-xs"
+                  />
+                </div>
 
-              <div className="md:col-span-2">
-                <label className="block text-xs font-bold text-slate-600 mb-1">
-                  Họ và tên nhân viên *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="VD: Phạm Thị Thu Ngân"
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-semibold"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">
-                  Số điện thoại (SDT)
-                </label>
-                <input
-                  type="text"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="VD: 0909123456"
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">
-                  Vị trí (Chức danh)
-                </label>
-                <input
-                  type="text"
-                  value={positionTitle}
-                  onChange={(e) => setPositionTitle(e.target.value)}
-                  placeholder="VD: NV Bán hàng, Kế toán..."
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">
-                  Vai trò hệ thống *
-                </label>
-                <select
-                  value={role === "ADMIN" ? "SALES" : role}
-                  onChange={(e) => {
-                    const nextRole = e.target.value as UserRole;
-                    setRole(nextRole);
-                    setDepartment(nextRole === "SALES" ? "SALES" : "OFFICE");
-                  }}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white font-bold"
-                >
-                  <option value="SALES">SALES (Bán hàng)</option>
-                  <option value="HR">HR (Nhân sự &amp; Chấm công)</option>
-                  <option value="ACCOUNTANT">ACCOUNTANT (Kế toán &amp; Kho)</option>
-                  <option value="MARKETING">MARKETING (Content Marketing)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">
-                  Bộ phận (Khối) *
-                </label>
-                <select
-                  value={department}
-                  onChange={(e) => setDepartment(e.target.value as "OFFICE" | "SALES")}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white font-bold"
-                >
-                  <option value="OFFICE">Khối Văn phòng</option>
-                  <option value="SALES">Khối Bán hàng (Showroom)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">
-                  Loại hợp đồng *
-                </label>
-                <select
-                  required={!isAdminView}
-                  value={contractType}
-                  onChange={(e) => setContractType(e.target.value as ContractType | "")}
-                  className={`w-full px-3 py-2 rounded-lg border text-xs bg-white font-bold ${
-                    contractType ? "border-slate-300" : "border-amber-400 text-slate-400"
-                  }`}
-                >
-                  <option value="" disabled>
-                    -- Chọn loại hợp đồng --
-                  </option>
-                  {CONTRACT_TYPE_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">
-                  Bắt đầu HĐ
-                </label>
-                <input
-                  type="date"
-                  value={contractStartDate}
-                  onChange={(e) => setContractStartDate(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">
-                  Kết thúc HĐ
-                </label>
-                <input
-                  type="date"
-                  value={contractEndDate}
-                  onChange={(e) => setContractEndDate(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">
-                  Email liên hệ
-                </label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="ca_nhan@gmail.com"
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs"
-                />
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">
+                    Vai trò hệ thống *
+                  </label>
+                  <select
+                    value={role === "ADMIN" ? "SALES" : role}
+                    onChange={(e) => {
+                      const nextRole = e.target.value as UserRole;
+                      setRole(nextRole);
+                      setDepartment(nextRole === "SALES" ? "SALES" : "OFFICE");
+                    }}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white font-bold"
+                  >
+                    <option value="SALES">SALES (Bán hàng)</option>
+                    <option value="HR">HR (Nhân sự &amp; Chấm công)</option>
+                    <option value="ACCOUNTANT">ACCOUNTANT (Kế toán &amp; Kho)</option>
+                    <option value="MARKETING">MARKETING (Content Marketing)</option>
+                  </select>
+                </div>
               </div>
             </div>
 
-            {/* Nút Thu gọn / Mở rộng Hồ sơ chi tiết */}
-            <div className="border-t border-slate-100 pt-3">
-              <button
-                type="button"
-                onClick={() => setShowExtendedCreate((prev) => !prev)}
-                className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 hover:text-emerald-800 cursor-pointer"
-              >
-                {showExtendedCreate ? (
-                  <ChevronUp className="w-4 h-4" />
-                ) : (
-                  <ChevronDown className="w-4 h-4" />
-                )}
-                <span>
-                  {showExtendedCreate
-                    ? "Thu gọn thông tin hồ sơ chi tiết (Cá nhân, CCCD, Học vấn, Số HĐ, BHXH, Lương & Ngân hàng)"
-                    : "Mở rộng thông tin hồ sơ chi tiết (Cá nhân, CCCD, Học vấn, Số HĐ, BHXH, Lương & Ngân hàng)"}
-                </span>
-              </button>
-            </div>
+            {/* Khung 26 trường chuẩn theo đúng mẫu Import Nhân sự của HR */}
+            <div className="p-3.5 rounded-xl bg-white border border-slate-200 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-800">
+                  2. Thông tin Hồ sơ Nhân sự theo Mẫu Chuẩn (BẮT ĐẦU → STK)
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowExtendedCreate((prev) => !prev)}
+                  className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 hover:text-emerald-800 cursor-pointer"
+                >
+                  {showExtendedCreate ? (
+                    <ChevronUp className="w-4 h-4" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4" />
+                  )}
+                  <span>{showExtendedCreate ? "Thu gọn" : "Mở rộng đầy đủ"}</span>
+                </button>
+              </div>
 
-            {showExtendedCreate && (
-              <div className="space-y-4">
-                {/* Nhóm 2: Cá nhân, CCCD, Địa chỉ & Học vấn */}
-                <div className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/80 space-y-3">
-                  <div className="text-[11px] font-extrabold uppercase tracking-wider text-slate-600">
-                    1. Thông tin Cá nhân, CCCD &amp; Học vấn
-                  </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">
+                    BẮT ĐẦU
+                  </label>
+                  <input
+                    type="date"
+                    value={contractStartDate}
+                    onChange={(e) => setContractStartDate(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-mono text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">
+                    KẾT THÚC
+                  </label>
+                  <input
+                    type="date"
+                    value={contractEndDate}
+                    onChange={(e) => setContractEndDate(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-mono text-xs"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-bold text-slate-600 mb-1">
+                    HỌ TÊN *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="VD: Nguyễn Văn Mẫu"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">
+                    NGÀY SINH
+                  </label>
+                  <input
+                    type="date"
+                    value={dateOfBirth}
+                    onChange={(e) => setDateOfBirth(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-mono text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">
+                    GIỚI TÍNH
+                  </label>
+                  <select
+                    value={gender}
+                    onChange={(e) => setGender(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold"
+                  >
+                    <option value="">-- Chọn --</option>
+                    <option value="Nam">Nam</option>
+                    <option value="Nữ">Nữ</option>
+                    <option value="Khác">Khác</option>
+                  </select>
+                </div>
+              </div>
+
+              {showExtendedCreate && (
+                <div className="space-y-4 pt-2 border-t border-slate-100">
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3">
                     <div>
                       <label className="block text-xs font-bold text-slate-600 mb-1">
-                        Ngày sinh
-                      </label>
-                      <input
-                        type="date"
-                        value={dateOfBirth}
-                        onChange={(e) => setDateOfBirth(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-mono text-xs"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">
-                        Giới tính
-                      </label>
-                      <select
-                        value={gender}
-                        onChange={(e) => setGender(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold"
-                      >
-                        <option value="">-- Chọn --</option>
-                        <option value="Nam">Nam</option>
-                        <option value="Nữ">Nữ</option>
-                        <option value="Khác">Khác</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">
-                        Quốc tịch
+                        QUỐC TỊCH
                       </label>
                       <input
                         type="text"
@@ -1170,14 +1096,14 @@ export default function StaffModule({
                         type="text"
                         value={citizenId}
                         onChange={(e) => setCitizenId(e.target.value)}
-                        placeholder="Số CCCD 12 số..."
+                        placeholder="VD: 048201001234"
                         className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
                       />
                     </div>
 
                     <div>
                       <label className="block text-xs font-bold text-slate-600 mb-1">
-                        Ngày cấp CCCD
+                        NGÀY CẤP
                       </label>
                       <input
                         type="date"
@@ -1189,46 +1115,59 @@ export default function StaffModule({
 
                     <div>
                       <label className="block text-xs font-bold text-slate-600 mb-1">
-                        Nơi cấp CCCD
+                        NƠI CẤP
                       </label>
                       <input
                         type="text"
                         value={citizenIssuePlace}
                         onChange={(e) => setCitizenIssuePlace(e.target.value)}
-                        placeholder="VD: Cục CS QLHC..."
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs"
-                      />
-                    </div>
-
-                    <div className="md:col-span-3">
-                      <label className="block text-xs font-bold text-slate-600 mb-1">
-                        Địa chỉ thường trú
-                      </label>
-                      <input
-                        type="text"
-                        value={permanentAddress}
-                        onChange={(e) => setPermanentAddress(e.target.value)}
-                        placeholder="Số nhà, đường, phường/xã, quận/huyện, tỉnh/thành..."
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs"
-                      />
-                    </div>
-
-                    <div className="md:col-span-3">
-                      <label className="block text-xs font-bold text-slate-600 mb-1">
-                        Địa chỉ hiện tại
-                      </label>
-                      <input
-                        type="text"
-                        value={currentAddress}
-                        onChange={(e) => setCurrentAddress(e.target.value)}
-                        placeholder="Nơi ở hiện tại..."
+                        placeholder="VD: Cục CS QLHC về TTXH"
                         className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs"
                       />
                     </div>
 
                     <div className="md:col-span-2">
                       <label className="block text-xs font-bold text-slate-600 mb-1">
-                        Trường học
+                        SDT
+                      </label>
+                      <input
+                        type="text"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        placeholder="VD: 0905123456"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
+                      />
+                    </div>
+
+                    <div className="md:col-span-3">
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        ĐỊA CHỈ THƯỜNG CHÚ
+                      </label>
+                      <input
+                        type="text"
+                        value={permanentAddress}
+                        onChange={(e) => setPermanentAddress(e.target.value)}
+                        placeholder="VD: Hải Châu, Đà Nẵng"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs"
+                      />
+                    </div>
+
+                    <div className="md:col-span-3">
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        ĐỊA CHỈ HIỆN TẠI
+                      </label>
+                      <input
+                        type="text"
+                        value={currentAddress}
+                        onChange={(e) => setCurrentAddress(e.target.value)}
+                        placeholder="VD: Thanh Khê, Đà Nẵng"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs"
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        TRƯỜNG HỌC
                       </label>
                       <input
                         type="text"
@@ -1241,7 +1180,7 @@ export default function StaffModule({
 
                     <div className="md:col-span-2">
                       <label className="block text-xs font-bold text-slate-600 mb-1">
-                        Chuyên ngành
+                        CHUYÊN NGÀNH
                       </label>
                       <input
                         type="text"
@@ -1252,177 +1191,183 @@ export default function StaffModule({
                       />
                     </div>
 
-                    <div className="md:col-span-2">
+                    <div>
                       <label className="block text-xs font-bold text-slate-600 mb-1">
-                        Email công ty
+                        VỊ TRÍ
                       </label>
                       <input
-                        type="email"
-                        value={companyEmail}
-                        onChange={(e) => setCompanyEmail(e.target.value)}
-                        placeholder="VD: nhanvien@11sport.vn"
+                        type="text"
+                        value={positionTitle}
+                        onChange={(e) => setPositionTitle(e.target.value)}
+                        placeholder="VD: Nhân viên bán hàng"
                         className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs"
                       />
                     </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        BỘ PHẬN *
+                      </label>
+                      <select
+                        value={department}
+                        onChange={(e) => setDepartment(e.target.value as "OFFICE" | "SALES")}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white font-bold"
+                      >
+                        <option value="SALES">Bán hàng (Showroom)</option>
+                        <option value="OFFICE">Văn phòng (Office)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Nhóm SỐ HĐ (HDTT / HĐTV / HDXDTH), BHXH (NGÀY ĐÓNG / MỨC ĐÓNG / NGÀY NGHỈ), Lương, Số ngày nghỉ, STK */}
+                  <div className="p-3.5 rounded-xl bg-emerald-50/40 border border-emerald-200/70 space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3">
+                      <div className="md:col-span-2">
+                        <label className="block text-xs font-bold text-slate-600 mb-1">
+                          LOẠI HỢP ĐỒNG *
+                        </label>
+                        <select
+                          required={!isAdminView}
+                          value={contractType}
+                          onChange={(e) => setContractType(e.target.value as ContractType | "")}
+                          className={`w-full px-3 py-2 rounded-lg border text-xs bg-white font-bold ${
+                            contractType ? "border-slate-300" : "border-amber-400 text-slate-400"
+                          }`}
+                        >
+                          <option value="" disabled>
+                            -- Chọn loại hợp đồng --
+                          </option>
+                          {CONTRACT_TYPE_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 mb-1">
+                          SỐ HĐ — HDTT
+                        </label>
+                        <input
+                          type="text"
+                          value={internContractNumber}
+                          onChange={(e) => setInternContractNumber(e.target.value)}
+                          placeholder="Mã HDTT..."
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 mb-1">
+                          SỐ HĐ — HĐTV
+                        </label>
+                        <input
+                          type="text"
+                          value={probationContractNumber}
+                          onChange={(e) => setProbationContractNumber(e.target.value)}
+                          placeholder="VD: HĐTV-001/2026"
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
+                        />
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <label className="block text-xs font-bold text-slate-600 mb-1">
+                          SỐ HĐ — HDXDTH
+                        </label>
+                        <input
+                          type="text"
+                          value={officialContractNumber}
+                          onChange={(e) => setOfficialContractNumber(e.target.value)}
+                          placeholder="Mã HDXDTH..."
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 mb-1">
+                          BHXH — NGÀY ĐÓNG
+                        </label>
+                        <input
+                          type="date"
+                          value={bhxhStartDate}
+                          onChange={(e) => setBhxhStartDate(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-mono text-xs"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 mb-1">
+                          BHXH — MỨC ĐÓNG
+                        </label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={formatMoneyInput(insurance)}
+                          onChange={(e) => setInsurance(String(parseMoneyInput(e.target.value) || ""))}
+                          placeholder="VD: 5.300.000"
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 mb-1">
+                          BHXH — NGÀY NGHỈ
+                        </label>
+                        <input
+                          type="date"
+                          value={bhxhEndDate}
+                          onChange={(e) => setBhxhEndDate(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-mono text-xs"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 mb-1">
+                          Lương
+                        </label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={formatMoneyInput(baseSalary)}
+                          onChange={(e) => setBaseSalary(String(parseMoneyInput(e.target.value) || ""))}
+                          placeholder="VD: 7.500.000"
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 mb-1">
+                          Số ngày nghỉ
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.5"
+                          value={recordedLeaveDays}
+                          onChange={(e) => setRecordedLeaveDays(e.target.value)}
+                          placeholder="0"
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 mb-1">
+                          STK
+                        </label>
+                        <input
+                          type="text"
+                          value={bankAccount}
+                          onChange={(e) => setBankAccount(e.target.value)}
+                          placeholder="VD: 1903686868 - Techcombank"
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
-
-                {/* Nhóm 3: Số HĐ (HDTT / HĐTV / HDXDTH), BHXH, Lương, Số ngày nghỉ & STK */}
-                <div className="p-3.5 rounded-xl bg-emerald-50/40 border border-emerald-200/70 space-y-3">
-                  <div className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-800">
-                    2. Số Hợp đồng (SỐ HĐ), BHXH, Chế độ Lương &amp; Tài khoản Ngân hàng (STK)
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">
-                        Số HĐ Thực tập (HDTT)
-                      </label>
-                      <input
-                        type="text"
-                        value={internContractNumber}
-                        onChange={(e) => setInternContractNumber(e.target.value)}
-                        placeholder="Mã HDTT..."
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">
-                        Số HĐ Thử việc (HĐTV)
-                      </label>
-                      <input
-                        type="text"
-                        value={probationContractNumber}
-                        onChange={(e) => setProbationContractNumber(e.target.value)}
-                        placeholder="Mã HĐTV..."
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">
-                        Số HĐ Chính thức (HDXDTH)
-                      </label>
-                      <input
-                        type="text"
-                        value={officialContractNumber}
-                        onChange={(e) => setOfficialContractNumber(e.target.value)}
-                        placeholder="Mã HDXDTH..."
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">
-                        BHXH — Ngày đóng
-                      </label>
-                      <input
-                        type="date"
-                        value={bhxhStartDate}
-                        onChange={(e) => setBhxhStartDate(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-mono text-xs"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">
-                        BHXH — Mức đóng (VNĐ)
-                      </label>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={formatMoneyInput(insurance)}
-                        onChange={(e) => setInsurance(String(parseMoneyInput(e.target.value) || ""))}
-                        placeholder="VD: 5.300.000"
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">
-                        BHXH — Ngày nghỉ
-                      </label>
-                      <input
-                        type="date"
-                        value={bhxhEndDate}
-                        onChange={(e) => setBhxhEndDate(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-mono text-xs"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">
-                        Lương cơ bản (VNĐ)
-                      </label>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={formatMoneyInput(baseSalary)}
-                        onChange={(e) => setBaseSalary(String(parseMoneyInput(e.target.value) || ""))}
-                        placeholder="VD: 8.000.000"
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">
-                        Trợ cấp (VNĐ)
-                      </label>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={formatMoneyInput(allowance)}
-                        onChange={(e) => setAllowance(String(parseMoneyInput(e.target.value) || ""))}
-                        placeholder="VD: 1.000.000"
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">
-                        Thưởng (VNĐ)
-                      </label>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={formatMoneyInput(bonus)}
-                        onChange={(e) => setBonus(String(parseMoneyInput(e.target.value) || ""))}
-                        placeholder="VD: 500.000"
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">
-                        Số ngày nghỉ (Hồ sơ)
-                      </label>
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.5"
-                        value={recordedLeaveDays}
-                        onChange={(e) => setRecordedLeaveDays(e.target.value)}
-                        placeholder="0"
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
-                      />
-                    </div>
-
-                    <div className="md:col-span-2">
-                      <label className="block text-xs font-bold text-slate-600 mb-1">
-                        Số tài khoản ngân hàng (STK)
-                      </label>
-                      <input
-                        type="text"
-                        value={bankAccount}
-                        onChange={(e) => setBankAccount(e.target.value)}
-                        placeholder="VD: 1903686868 - Techcombank"
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* Hàng cuối: File hợp đồng đính kèm + Nút Tạo nhân viên */}
             <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
@@ -1914,10 +1859,10 @@ export default function StaffModule({
               )}
 
               <div className="overflow-x-auto border border-slate-200 rounded-xl">
-                <table className="w-full text-xs text-left">
+                <table className="w-full text-xs text-left whitespace-nowrap">
                   <thead className="bg-slate-100 text-slate-700 uppercase font-bold">
-                    <tr>
-                      <th className="py-2.5 px-3 w-10">
+                    <tr className="border-b border-slate-200">
+                      <th rowSpan={2} className="py-2 px-3 w-10 border-r border-slate-200">
                         <button
                           type="button"
                           onClick={() =>
@@ -1935,14 +1880,42 @@ export default function StaffModule({
                           )}
                         </button>
                       </th>
-                      <th className="py-2.5 px-3">Username *</th>
-                      <th className="py-2.5 px-3">Họ tên &amp; NS</th>
-                      <th className="py-2.5 px-3">CCCD &amp; SĐT</th>
-                      <th className="py-2.5 px-3">Vị trí / Khối</th>
-                      <th className="py-2.5 px-3">Loại HĐ &amp; Thời hạn</th>
-                      <th className="py-2.5 px-3 text-right">Lương / BHXH</th>
-                      <th className="py-2.5 px-3">STK</th>
-                      <th className="py-2.5 px-3 text-right">Thao tác</th>
+                      <th rowSpan={2} className="py-2 px-3 border-r border-slate-200">Username *</th>
+                      <th rowSpan={2} className="py-2 px-3 border-r border-slate-200">BẮT ĐẦU</th>
+                      <th rowSpan={2} className="py-2 px-3 border-r border-slate-200">KẾT THÚC</th>
+                      <th rowSpan={2} className="py-2 px-3 border-r border-slate-200">HỌ TÊN</th>
+                      <th rowSpan={2} className="py-2 px-3 border-r border-slate-200">NGÀY SINH</th>
+                      <th rowSpan={2} className="py-2 px-3 border-r border-slate-200">GIỚI TÍNH</th>
+                      <th rowSpan={2} className="py-2 px-3 border-r border-slate-200">QUỐC TỊCH</th>
+                      <th rowSpan={2} className="py-2 px-3 border-r border-slate-200">CMND</th>
+                      <th rowSpan={2} className="py-2 px-3 border-r border-slate-200">NGÀY CẤP</th>
+                      <th rowSpan={2} className="py-2 px-3 border-r border-slate-200">NƠI CẤP</th>
+                      <th rowSpan={2} className="py-2 px-3 border-r border-slate-200">ĐỊA CHỈ THƯỜNG CHÚ</th>
+                      <th rowSpan={2} className="py-2 px-3 border-r border-slate-200">ĐỊA CHỈ HIỆN TẠI</th>
+                      <th rowSpan={2} className="py-2 px-3 border-r border-slate-200">TRƯỜNG HỌC</th>
+                      <th rowSpan={2} className="py-2 px-3 border-r border-slate-200">CHUYÊN NGÀNH</th>
+                      <th rowSpan={2} className="py-2 px-3 border-r border-slate-200">VỊ TRÍ</th>
+                      <th rowSpan={2} className="py-2 px-3 border-r border-slate-200">LOẠI HỢP ĐỒNG</th>
+                      <th colSpan={3} className="py-1.5 px-3 text-center border-r border-b border-slate-200 bg-slate-200/60">
+                        SỐ HĐ
+                      </th>
+                      <th rowSpan={2} className="py-2 px-3 border-r border-slate-200">SDT</th>
+                      <th rowSpan={2} className="py-2 px-3 border-r border-slate-200">BỘ PHẬN</th>
+                      <th colSpan={3} className="py-1.5 px-3 text-center border-r border-b border-slate-200 bg-slate-200/60">
+                        BHXH
+                      </th>
+                      <th rowSpan={2} className="py-2 px-3 text-right border-r border-slate-200">Lương</th>
+                      <th rowSpan={2} className="py-2 px-3 text-center border-r border-slate-200">Số ngày nghỉ</th>
+                      <th rowSpan={2} className="py-2 px-3 border-r border-slate-200">STK</th>
+                      <th rowSpan={2} className="py-2 px-3 text-right">Thao tác</th>
+                    </tr>
+                    <tr>
+                      <th className="py-1.5 px-2.5 border-r border-slate-200 text-[10px]">HDTT</th>
+                      <th className="py-1.5 px-2.5 border-r border-slate-200 text-[10px]">HĐTV</th>
+                      <th className="py-1.5 px-2.5 border-r border-slate-200 text-[10px]">HDXDTH</th>
+                      <th className="py-1.5 px-2.5 border-r border-slate-200 text-[10px]">NGÀY ĐÓNG</th>
+                      <th className="py-1.5 px-2.5 border-r border-slate-200 text-[10px] text-right">MỨC ĐÓNG</th>
+                      <th className="py-1.5 px-2.5 border-r border-slate-200 text-[10px]">NGÀY NGHỈ</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
@@ -1976,42 +1949,42 @@ export default function StaffModule({
                             className="w-28 px-2 py-1 rounded border border-slate-300 font-mono text-xs bg-white text-slate-900"
                           />
                         </td>
+                        <td className="py-2.5 px-3 font-mono">{r.contractStartDate || "—"}</td>
+                        <td className="py-2.5 px-3 font-mono">{r.contractEndDate || "—"}</td>
+                        <td className="py-2.5 px-3 font-bold text-slate-900">{r.fullName}</td>
+                        <td className="py-2.5 px-3 font-mono">{r.dateOfBirth || "—"}</td>
+                        <td className="py-2.5 px-3">{r.gender || "—"}</td>
+                        <td className="py-2.5 px-3">{r.nationality || "Việt Nam"}</td>
+                        <td className="py-2.5 px-3 font-mono">{r.citizenId || "—"}</td>
+                        <td className="py-2.5 px-3 font-mono">{r.citizenIssueDate || "—"}</td>
+                        <td className="py-2.5 px-3">{r.citizenIssuePlace || "—"}</td>
+                        <td className="py-2.5 px-3 max-w-[180px] truncate" title={r.permanentAddress}>
+                          {r.permanentAddress || "—"}
+                        </td>
+                        <td className="py-2.5 px-3 max-w-[180px] truncate" title={r.currentAddress}>
+                          {r.currentAddress || "—"}
+                        </td>
+                        <td className="py-2.5 px-3">{r.school || "—"}</td>
+                        <td className="py-2.5 px-3">{r.major || "—"}</td>
+                        <td className="py-2.5 px-3 font-semibold text-slate-800">{r.positionTitle || r.role}</td>
+                        <td className="py-2.5 px-3 font-bold text-emerald-700">{contractTypeLabel(r.contractType)}</td>
+                        <td className="py-2.5 px-2.5 font-mono">{r.internContractNumber || "—"}</td>
+                        <td className="py-2.5 px-2.5 font-mono">{r.probationContractNumber || "—"}</td>
+                        <td className="py-2.5 px-2.5 font-mono">{r.officialContractNumber || "—"}</td>
+                        <td className="py-2.5 px-3 font-mono">{r.phone || "—"}</td>
                         <td className="py-2.5 px-3">
-                          <div className="font-bold text-slate-900">{r.fullName}</div>
-                          <div className="text-[11px] text-slate-500">
-                            {r.dateOfBirth || "Chưa rõ NS"}
-                            {r.gender ? ` · ${r.gender}` : ""}
-                          </div>
+                          {r.department === "OFFICE" ? "Văn phòng" : "Bán hàng"} ({r.role})
                         </td>
-                        <td className="py-2.5 px-3 font-mono">
-                          <div>{r.citizenId || "—"}</div>
-                          <div className="text-[11px] text-slate-500">{r.phone || "—"}</div>
+                        <td className="py-2.5 px-2.5 font-mono">{r.bhxhStartDate || "—"}</td>
+                        <td className="py-2.5 px-2.5 text-right font-mono">
+                          {r.insurance > 0 ? formatVND(r.insurance) : "—"}
                         </td>
-                        <td className="py-2.5 px-3">
-                          <div className="font-semibold text-slate-800">{r.positionTitle || r.role}</div>
-                          <div className="text-[11px] text-slate-500">
-                            {r.department === "OFFICE" ? "Văn phòng" : "Bán hàng"} ({r.role})
-                          </div>
+                        <td className="py-2.5 px-2.5 font-mono">{r.bhxhEndDate || "—"}</td>
+                        <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
+                          {r.baseSalary ? formatVND(r.baseSalary) : "0đ"}
                         </td>
-                        <td className="py-2.5 px-3">
-                          <div className="font-bold text-emerald-700">
-                            {contractTypeLabel(r.contractType)}
-                          </div>
-                          <div className="text-[10px] font-mono text-slate-500">
-                            {r.contractStartDate || "?"} → {r.contractEndDate || "Không TH"}
-                          </div>
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-mono">
-                          <div className="font-bold text-slate-900">
-                            {r.baseSalary ? formatVND(r.baseSalary) : "0đ"}
-                          </div>
-                          {r.insurance > 0 && (
-                            <div className="text-[10px] text-slate-500">
-                              BHXH: {formatVND(r.insurance)}
-                            </div>
-                          )}
-                        </td>
-                        <td className="py-2.5 px-3 font-mono text-[11px] max-w-[140px] truncate" title={r.bankAccount}>
+                        <td className="py-2.5 px-3 text-center font-mono">{r.recordedLeaveDays ?? 0}</td>
+                        <td className="py-2.5 px-3 font-mono text-[11px]" title={r.bankAccount}>
                           {r.bankAccount || "—"}
                         </td>
                         <td className="py-2.5 px-3 text-right whitespace-nowrap">

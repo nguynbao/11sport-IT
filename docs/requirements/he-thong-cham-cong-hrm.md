@@ -213,6 +213,20 @@ Hệ thống bán hàng 11 Sport hiện có 2 khối nhân sự với đặc th�
 
 ---
 
+### US-06: Xin chuyển ngày off (Đổi ngày nghỉ) cần HR duyệt
+> Là **Nhân viên**, khi **đã xin off / có lịch off vào một ngày (VD: 20/11) nhưng có việc đột xuất muốn đổi sang nghỉ ngày khác (VD: 19/11)**, tôi muốn **gửi đơn xin chuyển ngày off để HR xét duyệt**, nhằm **điều chỉnh lịch nghỉ linh hoạt mà vẫn đảm bảo nhân sự trực ca và đúng quy định công ty**.
+
+- **AC-10 (Tạo đơn xin chuyển ngày off chờ HR duyệt)**:
+  - **Given**: Nhân viên đang có ngày nghỉ (`OFF` không lương, `PAID_LEAVE` phép có lương hoặc ca `OFF` trong lịch phân ca) vào ngày `20/11`.
+  - **When**: Nhân viên chọn "Đổi ngày off" từ ngày `20/11` sang ngày `19/11`, nhập lý do và gửi đơn.
+  - **Then**: Hệ thống tạo đơn loại `CHANGE_OFF` ở trạng thái `PENDING` (chờ HR duyệt); trong khi chờ duyệt, ngày off `20/11` vẫn giữ nguyên và không bị tính gấp đôi hạn mức nghỉ trong tháng.
+- **AC-11 (HR duyệt đơn chuyển ngày off)**:
+  - **Given**: Đơn `CHANGE_OFF` (từ `20/11` sang `19/11`) đang ở trạng thái `PENDING`.
+  - **When**: HR bấm "Duyệt" (`APPROVED`) trên CMS.
+  - **Then**: Hệ thống tự động chuyển ngày nghỉ từ `20/11` sang `19/11` (`APPROVED`), đồng thời nếu là nhân viên Bán hàng (`SALES`) thì cập nhật lịch phân ca ngày `19/11` thành `OFF` và chuyển ngày `20/11` sang ca làm việc. Nếu HR bấm "Từ chối" (`REJECTED`), lịch nghỉ cũ ngày `20/11` giữ nguyên.
+
+---
+
 ## 6. Thiết kế Mô hình Dữ liệu (Dự kiến)
 
 ```mermaid
