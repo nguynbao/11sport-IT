@@ -1,17 +1,17 @@
 # Graph Report - 11sport-IT  (2026-11-12)
 
 ## Corpus Check
-- 164 files · ~369,351 words
+- 164 files · ~369,300 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 11 file(s) not represented in the graph (top: (none) 3, .example 3, .css 2)
 
 ## Summary
-- 1653 nodes · 3959 edges · 83 communities (73 shown, 10 thin omitted)
+- 1653 nodes · 3956 edges · 84 communities (74 shown, 10 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 36 edges (avg confidence: 0.92)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `4ad00f22`
+- Built from commit: `2e2c1295`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -81,6 +81,7 @@
 - start-dev.sh
 - InventoryTab.tsx
 - shifts.ts
+- ShiftHandoverModule.tsx
 - cms/src/components/HeaderAttendanceBar.tsx
 - ordersCustomers.ts
 - ApiError
@@ -121,7 +122,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (83 total, 10 thin omitted)
+## Communities (84 total, 10 thin omitted)
 
 ### Community 0 - "imports.ts"
 Cohesion: 0.08
@@ -153,7 +154,7 @@ Nodes (34): BarcodeLabelItem, ColorInputWithPicker(), ColorSwatchBadge(), getCol
 
 ### Community 7 - "cms/src/lib/api.ts"
 Cohesion: 0.06
-Nodes (57): HrmAttendanceModule(), SubTab, getMonthStartStr(), localDateStr(), ShiftHandoverModule(), shiftLabel(), AttendanceConfig, buildCompactColorTokenFE() (+49 more)
+Nodes (47): HrmAttendanceModule(), SubTab, AttendanceConfig, buildCompactColorTokenFE(), compactColorTokenForBarcode(), createHolidayApi(), DebtManagementData, DebtPaymentRecord (+39 more)
 
 ### Community 8 - "ref_react"
 Cohesion: 0.10
@@ -366,6 +367,10 @@ Nodes (25): BarcodeLabelItem, BarcodeLabelModal(), BarcodeLabelModalProps, CODE1
 ### Community 70 - "shifts.ts"
 Cohesion: 0.15
 Nodes (20): IShiftAssignment, ShiftAssignmentModel, ShiftAssignmentSchema, ShiftType, SALES_MAX_PAID_LEAVE_PER_WEEK_SHIFT_REG, addDaysStr(), buildDeterministicPermutation(), computeDailyHandoverCheck() (+12 more)
+
+### Community 71 - "ShiftHandoverModule.tsx"
+Cohesion: 0.31
+Nodes (10): getMonthStartStr(), localDateStr(), ShiftHandoverModule(), shiftLabel(), confirmShiftHandoverApi(), DailyHandoverCheckData, deleteShiftHandoverApi(), fetchDailyHandoverCheckApi() (+2 more)
 
 ### Community 73 - "cms/src/components/HeaderAttendanceBar.tsx"
 Cohesion: 0.47

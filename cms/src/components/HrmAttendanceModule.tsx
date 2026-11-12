@@ -16,7 +16,6 @@ import {
 import StaffModule from "./StaffModule";
 import AttendanceTimesheetModule from "./AttendanceTimesheetModule";
 import ShiftScheduleModule from "./ShiftScheduleModule";
-import ShiftHandoverModule from "./ShiftHandoverModule";
 import {
   Calendar as CalendarIcon,
   CheckCircle2,
@@ -35,10 +34,9 @@ import {
   ChevronLeft,
   ChevronRight,
   UserPlus,
-  ClipboardCheck,
 } from "lucide-react";
 
-type SubTab = "CALENDAR" | "LEAVE_REQUESTS" | "SHIFTS" | "HANDOVERS" | "ATTENDANCE_LOG" | "STAFF_ACCOUNTS";
+type SubTab = "CALENDAR" | "LEAVE_REQUESTS" | "SHIFTS" | "ATTENDANCE_LOG" | "STAFF_ACCOUNTS";
 
 export default function HrmAttendanceModule({ currentUser }: { currentUser: StaffUser | null }) {
   const [activeTab, setActiveTab] = useState<SubTab>("CALENDAR");
@@ -378,17 +376,6 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
         >
           <Clock className="w-4 h-4" />
           Bảng Chấm Công Toàn Cty
-        </button>
-
-        <button
-          onClick={() => setActiveTab("HANDOVERS")}
-          className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition flex items-center gap-2 ${activeTab === "HANDOVERS"
-            ? "bg-emerald-600 text-white shadow-md"
-            : "text-slate-600 hover:bg-slate-100"
-            }`}
-        >
-          <ClipboardCheck className="w-4 h-4" />
-          Phiếu Bàn Giao Ca
         </button>
 
         <button
@@ -993,7 +980,6 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
       {activeTab === "ATTENDANCE_LOG" && <AttendanceTimesheetModule />}
 
       {/* ================= TAB 4.5: QUẢN LÝ PHIẾU BÀN GIAO CA ================= */}
-      {activeTab === "HANDOVERS" && <ShiftHandoverModule />}
 
       {/* ================= TAB 5: TẠO TÀI KHOẢN & QUẢN LÝ NHÂN SỰ ================= */}
       {activeTab === "STAFF_ACCOUNTS" && <StaffModule />}
