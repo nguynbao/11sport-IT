@@ -14,7 +14,6 @@ import {
 } from "@/lib/api";
 import PosTab from "@/components/PosTab";
 import InventoryTab from "@/components/InventoryTab";
-import ImportTab from "@/components/ImportTab";
 import CustomerTab from "@/components/CustomerTab";
 import ReturnExchangeTab from "@/components/ReturnExchangeTab";
 import MarketingPushProductsTab from "@/components/MarketingPushProductsTab";
@@ -31,7 +30,6 @@ import DrawerMenu, {
 import {
   ShoppingCart,
   Package,
-  ClipboardCheck,
   Users,
   RotateCcw,
   ShieldCheck,
@@ -63,22 +61,15 @@ const TABS_CONFIG: TabConfig[] = [
     roleHint: "Tất cả nhân sự",
   },
   {
-    id: "IMPORT",
-    label: "3. Nhập kho",
-    icon: ClipboardCheck,
-    allowedRoles: ["WAREHOUSE", "ADMIN"],
-    roleHint: "Thủ kho / Quản lý",
-  },
-  {
     id: "CUSTOMER",
-    label: "4. Tra cứu Khách & Xuất PDF",
+    label: "3. Tra cứu Khách & Xuất PDF",
     icon: Users,
     allowedRoles: ["SALES", "ADMIN"],
     roleHint: "NV Bán hàng / Quản lý",
   },
   {
     id: "RETURN",
-    label: "5. Trả / Đổi hàng",
+    label: "4. Trả / Đổi hàng",
     icon: RotateCcw,
     allowedRoles: ["SALES", "ADMIN"],
     roleHint: "NV Bán hàng / Quản lý",
@@ -86,7 +77,7 @@ const TABS_CONFIG: TabConfig[] = [
 ];
 
 function getDefaultTabForRole(role: UserRole): TabType {
-  if (role === "WAREHOUSE") return "IMPORT";
+  if (role === "WAREHOUSE") return "INVENTORY";
   if (role === "MARKETING") return "PUSH_PRODUCTS";
   return "POS";
 }
@@ -508,7 +499,6 @@ export default function WebPosHomePage() {
               <PosTab onOpenInvoice={(ord) => setInvoiceOrder(ord)} />
             )}
             {activeTab === "INVENTORY" && <InventoryTab />}
-            {activeTab === "IMPORT" && <ImportTab />}
             {activeTab === "CUSTOMER" && (
               <CustomerTab onOpenInvoice={(ord) => setInvoiceOrder(ord)} />
             )}

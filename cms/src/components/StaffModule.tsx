@@ -9,9 +9,11 @@ import {
   CONTRACT_TYPE_OPTIONS,
   contractTypeLabel,
   formatVND,
+  ParsedStaffImportRow,
+  parseStaffImportFileApi,
 } from "@/lib/api";
 import ExportExcelButton from "./ExportExcelButton";
-import { exportStaff } from "@/lib/exports";
+import { exportStaff, downloadStaffImportTemplate } from "@/lib/exports";
 import {
   Users,
   UserPlus,
@@ -31,6 +33,13 @@ import {
   ArrowUp,
   ArrowDown,
   RotateCcw,
+  FileSpreadsheet,
+  Download,
+  ChevronDown,
+  ChevronUp,
+  CheckSquare,
+  Square,
+  Loader2,
 } from "lucide-react";
 import ContractFilePreviewModal from "./ContractFilePreviewModal";
 
@@ -48,6 +57,16 @@ function parseMoneyInput(raw: string): number {
   return Number(digits) || 0;
 }
 
+function toIsoDateSlice(val?: string | null): string {
+  if (!val) return "";
+  return String(val).slice(0, 10);
+}
+
+interface EditableImportRow extends ParsedStaffImportRow {
+  selected: boolean;
+  usernameInput: string;
+}
+
 export default function StaffModule({
   mode = "HR_FULL",
 }: {
@@ -55,23 +74,54 @@ export default function StaffModule({
 }) {
   const isAdminView = mode === "ADMIN_LOCK_ONLY";
   const [staffList, setStaffList] = useState<StaffUser[]>([]);
+
+  // --- Form Tạo Tài Khoản Nhân Viên Mới ---
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("123456");
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [companyEmail, setCompanyEmail] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [gender, setGender] = useState("");
+  const [nationality, setNationality] = useState("Việt Nam");
   const [citizenId, setCitizenId] = useState("");
+  const [citizenIssueDate, setCitizenIssueDate] = useState("");
+  const [citizenIssuePlace, setCitizenIssuePlace] = useState("");
+  const [permanentAddress, setPermanentAddress] = useState("");
+  const [currentAddress, setCurrentAddress] = useState("");
+  const [school, setSchool] = useState("");
+  const [major, setMajor] = useState("");
+  const [positionTitle, setPositionTitle] = useState("");
+  const [bankAccount, setBankAccount] = useState("");
   const [role, setRole] = useState<UserRole>("SALES");
   const [department, setDepartment] = useState<"OFFICE" | "SALES">("SALES");
   // Bắt buộc HR chọn loại hợp đồng khi tạo tài khoản (không có mặc định)
   const [contractType, setContractType] = useState<ContractType | "">("");
+  const [contractStartDate, setContractStartDate] = useState("");
+  const [contractEndDate, setContractEndDate] = useState("");
+  const [internContractNumber, setInternContractNumber] = useState("");
+  const [probationContractNumber, setProbationContractNumber] = useState("");
+  const [officialContractNumber, setOfficialContractNumber] = useState("");
+  const [bhxhStartDate, setBhxhStartDate] = useState("");
+  const [bhxhEndDate, setBhxhEndDate] = useState("");
+  const [recordedLeaveDays, setRecordedLeaveDays] = useState<string>("");
   const [contractFileUrl, setContractFileUrl] = useState("");
   const [contractFileName, setContractFileName] = useState("");
   const [baseSalary, setBaseSalary] = useState<string>("");
   const [allowance, setAllowance] = useState<string>("");
   const [bonus, setBonus] = useState<string>("");
   const [insurance, setInsurance] = useState<string>("");
+  const [showExtendedCreate, setShowExtendedCreate] = useState<boolean>(true);
+
+  // --- Import nhanh từ Excel / CSV ---
+  const [importingExcel, setImportingExcel] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importFileName, setImportFileName] = useState("");
+  const [importRows, setImportRows] = useState<EditableImportRow[]>([]);
+  const [bulkPassword, setBulkPassword] = useState("123456");
+  const [bulkCreating, setBulkCreating] = useState(false);
+  const [importModalError, setImportModalError] = useState<string | null>(null);
 
   // Bộ lọc & sắp xếp Danh sách Nhân viên
   const [searchQuery, setSearchQuery] = useState("");
@@ -96,13 +146,29 @@ export default function StaffModule({
   const [editPhone, setEditPhone] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editCompanyEmail, setEditCompanyEmail] = useState("");
+  const [editDateOfBirth, setEditDateOfBirth] = useState("");
+  const [editGender, setEditGender] = useState("");
+  const [editNationality, setEditNationality] = useState("");
   const [editCitizenId, setEditCitizenId] = useState("");
-  const [editAddress, setEditAddress] = useState("");
+  const [editCitizenIssueDate, setEditCitizenIssueDate] = useState("");
+  const [editCitizenIssuePlace, setEditCitizenIssuePlace] = useState("");
+  const [editPermanentAddress, setEditPermanentAddress] = useState("");
+  const [editCurrentAddress, setEditCurrentAddress] = useState("");
+  const [editSchool, setEditSchool] = useState("");
+  const [editMajor, setEditMajor] = useState("");
+  const [editPositionTitle, setEditPositionTitle] = useState("");
+  const [editBankAccount, setEditBankAccount] = useState("");
   const [editDepartment, setEditDepartment] = useState<"OFFICE" | "SALES">("SALES");
   const [editContractType, setEditContractType] = useState<ContractType>("PROBATION");
   const [editProbationMonths, setEditProbationMonths] = useState<number>(2);
   const [editContractStart, setEditContractStart] = useState("");
   const [editContractEnd, setEditContractEnd] = useState("");
+  const [editInternContractNo, setEditInternContractNo] = useState("");
+  const [editProbationContractNo, setEditProbationContractNo] = useState("");
+  const [editOfficialContractNo, setEditOfficialContractNo] = useState("");
+  const [editBhxhStart, setEditBhxhStart] = useState("");
+  const [editBhxhEnd, setEditBhxhEnd] = useState("");
+  const [editRecordedLeaveDays, setEditRecordedLeaveDays] = useState<string>("0");
   const [editContractFileUrl, setEditContractFileUrl] = useState("");
   const [editContractFileName, setEditContractFileName] = useState("");
   const [editBaseSalary, setEditBaseSalary] = useState<number>(0);
@@ -136,64 +202,226 @@ export default function StaffModule({
     loadStaff();
   }, []);
 
-  const readFileAsDataUrl = (file: File): Promise<string> => {
+  const readFileAsDataUrl = (file: File, maxMb = 8): Promise<string> => {
     return new Promise((resolve, reject) => {
-      if (file.size > 8 * 1024 * 1024) {
-        reject(new Error("Dung lượng file hợp đồng tối đa 8MB."));
+      if (file.size > maxMb * 1024 * 1024) {
+        reject(new Error(`Dung lượng file tối đa ${maxMb}MB.`));
         return;
       }
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result || ""));
-      reader.onerror = () => reject(new Error("Không thể đọc file hợp đồng."));
+      reader.onerror = () => reject(new Error("Không thể đọc file."));
       reader.readAsDataURL(file);
     });
   };
 
-  const handleQuickUploadContract = async (st: StaffUser, file?: File) => {
+  const resetCreateForm = () => {
+    setUsername("");
+    setContractType("");
+    setFullName("");
+    setPhone("");
+    setEmail("");
+    setCompanyEmail("");
+    setDateOfBirth("");
+    setGender("");
+    setNationality("Việt Nam");
+    setCitizenId("");
+    setCitizenIssueDate("");
+    setCitizenIssuePlace("");
+    setPermanentAddress("");
+    setCurrentAddress("");
+    setSchool("");
+    setMajor("");
+    setPositionTitle("");
+    setBankAccount("");
+    setContractStartDate("");
+    setContractEndDate("");
+    setInternContractNumber("");
+    setProbationContractNumber("");
+    setOfficialContractNumber("");
+    setBhxhStartDate("");
+    setBhxhEndDate("");
+    setRecordedLeaveDays("");
+    setContractFileUrl("");
+    setContractFileName("");
+    setBaseSalary("");
+    setAllowance("");
+    setBonus("");
+    setInsurance("");
+  };
+
+  const fillCreateFormFromImportRow = (row: ParsedStaffImportRow, customUsername?: string) => {
+    setUsername((customUsername || row.suggestedUsername || "").trim());
+    setFullName(row.fullName || "");
+    setPhone(row.phone || "");
+    setEmail(row.email || "");
+    setCompanyEmail(row.companyEmail || "");
+    setDateOfBirth(row.dateOfBirth || "");
+    setGender(row.gender || "");
+    setNationality(row.nationality || "Việt Nam");
+    setCitizenId(row.citizenId || "");
+    setCitizenIssueDate(row.citizenIssueDate || "");
+    setCitizenIssuePlace(row.citizenIssuePlace || "");
+    setPermanentAddress(row.permanentAddress || "");
+    setCurrentAddress(row.currentAddress || "");
+    setSchool(row.school || "");
+    setMajor(row.major || "");
+    setPositionTitle(row.positionTitle || "");
+    setBankAccount(row.bankAccount || "");
+    setRole(row.role || "SALES");
+    setDepartment(row.department || (row.role === "SALES" ? "SALES" : "OFFICE"));
+    setContractType(row.contractType || "PROBATION");
+    setContractStartDate(row.contractStartDate || "");
+    setContractEndDate(row.contractEndDate || "");
+    setInternContractNumber(row.internContractNumber || "");
+    setProbationContractNumber(row.probationContractNumber || "");
+    setOfficialContractNumber(row.officialContractNumber || "");
+    setBhxhStartDate(row.bhxhStartDate || "");
+    setBhxhEndDate(row.bhxhEndDate || "");
+    setRecordedLeaveDays(row.recordedLeaveDays ? String(row.recordedLeaveDays) : "0");
+    setBaseSalary(row.baseSalary ? String(row.baseSalary) : "");
+    setAllowance(row.allowance ? String(row.allowance) : "");
+    setBonus(row.bonus ? String(row.bonus) : "");
+    setInsurance(row.insurance ? String(row.insurance) : "");
+    setShowExtendedCreate(true);
+  };
+
+  const handleImportStaffExcel = async (file?: File) => {
     if (!file) return;
     setStatusMsg(null);
+    setImportModalError(null);
+    setImportingExcel(true);
     try {
-      const dataUrl = await readFileAsDataUrl(file);
-      await apiRequest(`/staff/${st._id}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          contractFileUrl: dataUrl,
-          contractFileName: file.name,
-        }),
+      const dataUrl = await readFileAsDataUrl(file, 10);
+      const rows = await parseStaffImportFileApi({
+        fileName: file.name,
+        fileBase64: dataUrl,
       });
-      setStatusMsg({
-        type: "success",
-        text: `Đã tải file hợp đồng "${file.name}" cho nhân sự ${st.fullName}!`,
-      });
-      loadStaff();
+
+      if (!rows || rows.length === 0) {
+        setStatusMsg({
+          type: "error",
+          text: "Không tìm thấy dòng hồ sơ nhân sự hợp lệ trong file đã chọn.",
+        });
+        return;
+      }
+
+      if (rows.length === 1) {
+        fillCreateFormFromImportRow(rows[0]);
+        setStatusMsg({
+          type: "success",
+          text: `Đã tự động điền toàn bộ hồ sơ của "${rows[0].fullName}" (username gợi ý: @${rows[0].suggestedUsername}) từ file "${file.name}". Kiểm tra lại và bấm "+ Tạo Nhân Viên Mới"!`,
+        });
+      } else {
+        setImportFileName(file.name);
+        setBulkPassword(password || "123456");
+        setImportRows(
+          rows.map((r) => ({
+            ...r,
+            selected: true,
+            usernameInput: r.suggestedUsername,
+          }))
+        );
+        setImportModalOpen(true);
+      }
     } catch (err: any) {
       setStatusMsg({
         type: "error",
-        text: err?.message || "Không thể tải file hợp đồng lên.",
+        text: err?.message || "Không thể đọc file Excel/CSV hồ sơ nhân sự.",
       });
+    } finally {
+      setImportingExcel(false);
     }
   };
 
-  const handleDeleteContractFile = async (st: StaffUser) => {
-    setStatusMsg(null);
-    try {
-      await apiRequest(`/staff/${st._id}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          contractFileUrl: "",
-          contractFileName: "",
-        }),
-      });
+  const handleBulkCreateFromModal = async () => {
+    const selected = importRows.filter((r) => r.selected);
+    if (selected.length === 0) {
+      setImportModalError("Vui lòng tích chọn ít nhất 1 nhân viên để tạo tài khoản.");
+      return;
+    }
+    const cleanPwd = bulkPassword.trim() || "123456";
+    if (cleanPwd.length < 4) {
+      setImportModalError("Mật khẩu khởi tạo phải có ít nhất 4 ký tự.");
+      return;
+    }
+
+    setBulkCreating(true);
+    setImportModalError(null);
+    let createdCount = 0;
+    const failedMessages: string[] = [];
+    const createdRowIndices = new Set<number>();
+
+    for (const row of selected) {
+      const uname = row.usernameInput.trim().toLowerCase();
+      if (!uname) {
+        failedMessages.push(`Dòng ${row.rowIndex} (${row.fullName}): Thiếu username`);
+        continue;
+      }
+      try {
+        await apiRequest("/staff", {
+          method: "POST",
+          body: JSON.stringify({
+            username: uname,
+            password: cleanPwd,
+            fullName: row.fullName,
+            phone: row.phone,
+            email: row.email,
+            companyEmail: row.companyEmail,
+            dateOfBirth: row.dateOfBirth || undefined,
+            gender: row.gender,
+            nationality: row.nationality || "Việt Nam",
+            citizenId: row.citizenId,
+            citizenIssueDate: row.citizenIssueDate || undefined,
+            citizenIssuePlace: row.citizenIssuePlace,
+            permanentAddress: row.permanentAddress,
+            currentAddress: row.currentAddress,
+            address: row.permanentAddress || row.currentAddress,
+            school: row.school,
+            major: row.major,
+            positionTitle: row.positionTitle,
+            bankAccount: row.bankAccount,
+            role: row.role,
+            department: row.department,
+            contractType: row.contractType,
+            contractStartDate: row.contractStartDate || undefined,
+            contractEndDate: row.contractEndDate || undefined,
+            internContractNumber: row.internContractNumber,
+            probationContractNumber: row.probationContractNumber,
+            officialContractNumber: row.officialContractNumber,
+            bhxhStartDate: row.bhxhStartDate || undefined,
+            bhxhEndDate: row.bhxhEndDate || undefined,
+            recordedLeaveDays: row.recordedLeaveDays || 0,
+            baseSalary: row.baseSalary || 0,
+            allowance: row.allowance || 0,
+            bonus: row.bonus || 0,
+            insurance: row.insurance || 0,
+          }),
+        });
+        createdCount++;
+        createdRowIndices.add(row.rowIndex);
+      } catch (err: any) {
+        failedMessages.push(
+          `Dòng ${row.rowIndex} (${row.fullName}): ${err?.message || "Lỗi tạo tài khoản"}`
+        );
+      }
+    }
+
+    await loadStaff();
+    setBulkCreating(false);
+
+    if (failedMessages.length === 0) {
+      setImportModalOpen(false);
+      setImportRows([]);
       setStatusMsg({
         type: "success",
-        text: `Đã xóa file hợp đồng của nhân sự "${st.fullName}"!`,
+        text: `Đã tạo hàng loạt thành công ${createdCount} tài khoản & hồ sơ nhân sự từ file "${importFileName}"!`,
       });
-      loadStaff();
-    } catch (err: any) {
-      setStatusMsg({
-        type: "error",
-        text: err?.message || "Không thể xóa file hợp đồng.",
-      });
+    } else {
+      setImportRows((prev) => prev.filter((r) => !createdRowIndices.has(r.rowIndex)));
+      setImportModalError(
+        `Đã tạo ${createdCount}/${selected.length} nhân sự. Lỗi (${failedMessages.length}): ${failedMessages.join(" | ")}`
+      );
     }
   };
 
@@ -203,8 +431,18 @@ export default function StaffModule({
     setEditPhone(st.phone || "");
     setEditEmail(st.email || "");
     setEditCompanyEmail(st.companyEmail || "");
+    setEditDateOfBirth(toIsoDateSlice(st.dateOfBirth));
+    setEditGender(st.gender || "");
+    setEditNationality(st.nationality || "Việt Nam");
     setEditCitizenId(st.citizenId || "");
-    setEditAddress(st.address || "");
+    setEditCitizenIssueDate(toIsoDateSlice(st.citizenIssueDate));
+    setEditCitizenIssuePlace(st.citizenIssuePlace || "");
+    setEditPermanentAddress(st.permanentAddress || st.address || "");
+    setEditCurrentAddress(st.currentAddress || "");
+    setEditSchool(st.school || "");
+    setEditMajor(st.major || "");
+    setEditPositionTitle(st.positionTitle || "");
+    setEditBankAccount(st.bankAccount || "");
     setEditDepartment(st.department === "OFFICE" ? "OFFICE" : "SALES");
     setEditContractType(st.contractType || "PROBATION");
     setEditProbationMonths(
@@ -216,12 +454,14 @@ export default function StaffModule({
           ? 2
           : 0
     );
-    setEditContractStart(
-      st.contractStartDate ? String(st.contractStartDate).slice(0, 10) : ""
-    );
-    setEditContractEnd(
-      st.contractEndDate ? String(st.contractEndDate).slice(0, 10) : ""
-    );
+    setEditContractStart(toIsoDateSlice(st.contractStartDate));
+    setEditContractEnd(toIsoDateSlice(st.contractEndDate));
+    setEditInternContractNo(st.internContractNumber || "");
+    setEditProbationContractNo(st.probationContractNumber || "");
+    setEditOfficialContractNo(st.officialContractNumber || "");
+    setEditBhxhStart(toIsoDateSlice(st.bhxhStartDate));
+    setEditBhxhEnd(toIsoDateSlice(st.bhxhEndDate));
+    setEditRecordedLeaveDays(String(Number(st.recordedLeaveDays || 0)));
     setEditContractFileUrl(st.contractFileUrl || "");
     setEditContractFileName(st.contractFileName || "");
     setEditBaseSalary(Number(st.baseSalary || 0));
@@ -236,6 +476,8 @@ export default function StaffModule({
     setProfileSaving(true);
     setStatusMsg(null);
     try {
+      const cleanPerm = editPermanentAddress.trim();
+      const cleanCurr = editCurrentAddress.trim();
       await apiRequest(`/staff/${selectedStaffProfile._id}`, {
         method: "PATCH",
         body: JSON.stringify({
@@ -243,8 +485,19 @@ export default function StaffModule({
           phone: editPhone.trim(),
           email: editEmail.trim(),
           companyEmail: editCompanyEmail.trim(),
+          dateOfBirth: editDateOfBirth || null,
+          gender: editGender.trim(),
+          nationality: editNationality.trim(),
           citizenId: editCitizenId.trim(),
-          address: editAddress.trim(),
+          citizenIssueDate: editCitizenIssueDate || null,
+          citizenIssuePlace: editCitizenIssuePlace.trim(),
+          permanentAddress: cleanPerm,
+          currentAddress: cleanCurr,
+          address: cleanPerm || cleanCurr,
+          school: editSchool.trim(),
+          major: editMajor.trim(),
+          positionTitle: editPositionTitle.trim(),
+          bankAccount: editBankAccount.trim(),
           department: editDepartment,
           contractType: editContractType,
           probationMonths:
@@ -253,6 +506,12 @@ export default function StaffModule({
               : Math.min(2, Math.max(0, Number(editProbationMonths) || 0)),
           contractStartDate: editContractStart || null,
           contractEndDate: editContractEnd || null,
+          internContractNumber: editInternContractNo.trim(),
+          probationContractNumber: editProbationContractNo.trim(),
+          officialContractNumber: editOfficialContractNo.trim(),
+          bhxhStartDate: editBhxhStart || null,
+          bhxhEndDate: editBhxhEnd || null,
+          recordedLeaveDays: Math.max(0, Number(editRecordedLeaveDays) || 0),
           contractFileUrl: editContractFileUrl,
           contractFileName: editContractFileName,
           baseSalary: Math.max(0, Number(editBaseSalary) || 0),
@@ -283,11 +542,16 @@ export default function StaffModule({
     if (!username.trim()) return;
     if (!isAdminView && !fullName.trim()) return;
     if (!isAdminView && !contractType) {
-      setStatusMsg({ type: "error", text: "Vui lòng chọn Loại hợp đồng (Thực tập / Thử việc / Chính thức)." });
+      setStatusMsg({
+        type: "error",
+        text: "Vui lòng chọn Loại hợp đồng (Thực tập / Thử việc / Chính thức).",
+      });
       return;
     }
     try {
       const targetFullName = fullName.trim() || username.trim();
+      const cleanPerm = permanentAddress.trim();
+      const cleanCurr = currentAddress.trim();
       const payload: Record<string, any> = {
         username: username.trim(),
         password: password || "123456",
@@ -303,6 +567,26 @@ export default function StaffModule({
         contractFileName,
       };
       if (!isAdminView) {
+        payload.dateOfBirth = dateOfBirth || undefined;
+        payload.gender = gender.trim();
+        payload.nationality = nationality.trim();
+        payload.citizenIssueDate = citizenIssueDate || undefined;
+        payload.citizenIssuePlace = citizenIssuePlace.trim();
+        payload.permanentAddress = cleanPerm;
+        payload.currentAddress = cleanCurr;
+        payload.address = cleanPerm || cleanCurr;
+        payload.school = school.trim();
+        payload.major = major.trim();
+        payload.positionTitle = positionTitle.trim();
+        payload.bankAccount = bankAccount.trim();
+        payload.contractStartDate = contractStartDate || undefined;
+        payload.contractEndDate = contractEndDate || undefined;
+        payload.internContractNumber = internContractNumber.trim();
+        payload.probationContractNumber = probationContractNumber.trim();
+        payload.officialContractNumber = officialContractNumber.trim();
+        payload.bhxhStartDate = bhxhStartDate || undefined;
+        payload.bhxhEndDate = bhxhEndDate || undefined;
+        payload.recordedLeaveDays = recordedLeaveDays !== "" ? Math.max(0, Number(recordedLeaveDays) || 0) : 0;
         payload.baseSalary = parseMoneyInput(baseSalary);
         payload.allowance = parseMoneyInput(allowance);
         payload.bonus = parseMoneyInput(bonus);
@@ -312,22 +596,10 @@ export default function StaffModule({
         method: "POST",
         body: JSON.stringify(payload),
       });
-      setUsername("");
-      setContractType("");
-      setFullName("");
-      setPhone("");
-      setEmail("");
-      setCompanyEmail("");
-      setCitizenId("");
-      setContractFileUrl("");
-      setContractFileName("");
-      setBaseSalary("");
-      setAllowance("");
-      setBonus("");
-      setInsurance("");
+      resetCreateForm();
       setStatusMsg({
         type: "success",
-        text: "Đã tạo tài khoản nhân viên mới thành công!",
+        text: `Đã tạo tài khoản nhân viên "${targetFullName}" thành công!`,
       });
       loadStaff();
     } catch (err: any) {
@@ -470,6 +742,15 @@ export default function StaffModule({
           st.companyEmail,
           st.citizenId,
           st.address,
+          st.permanentAddress,
+          st.currentAddress,
+          st.positionTitle,
+          st.school,
+          st.major,
+          st.bankAccount,
+          st.internContractNumber,
+          st.probationContractNumber,
+          st.officialContractNumber,
         ]
           .filter(Boolean)
           .join(" ")
@@ -498,14 +779,19 @@ export default function StaffModule({
     });
   }, [staffList, searchQuery, filterDept, filterRole, filterContract, filterStatus, sortBy, sortOrder]);
 
+  const allModalSelected =
+    importRows.length > 0 && importRows.every((r) => r.selected);
+  const selectedModalCount = importRows.filter((r) => r.selected).length;
+
   return (
     <div className="space-y-6">
       {statusMsg && (
         <div
-          className={`p-3.5 rounded-xl border text-xs font-bold flex items-center gap-2 ${statusMsg.type === "success"
-            ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-            : "bg-red-50 border-red-200 text-red-700"
-            }`}
+          className={`p-3.5 rounded-xl border text-xs font-bold flex items-center gap-2 ${
+            statusMsg.type === "success"
+              ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+              : "bg-red-50 border-red-200 text-red-700"
+          }`}
         >
           {statusMsg.type === "success" ? (
             <CheckCircle2 className="w-4 h-4 shrink-0" />
@@ -518,17 +804,69 @@ export default function StaffModule({
 
       {/* Form Tạo Tài Khoản:
           - Admin (isAdminView): Tạo nhanh với Tên đăng nhập, Mật khẩu, Cấp Role (bao gồm ADMIN)
-          - HR (!isAdminView): Tạo tài khoản kèm đầy đủ thông tin nhân sự (không có quyền cấp role ADMIN) */}
+          - HR (!isAdminView): Tạo tài khoản kèm đầy đủ thông tin nhân sự + nút Import nhanh từ Excel */}
       <form
         onSubmit={handleCreateStaff}
         className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4"
       >
-        <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-          <UserPlus className="w-4 h-4 text-emerald-600" />
-          {isAdminView
-            ? "Tạo Tài Khoản Mới & Cấp Quyền (Admin)"
-            : "Thêm Tài khoản Nhân viên Mới & Hồ sơ Nhân sự (HR)"}
-        </h3>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+            <UserPlus className="w-4 h-4 text-emerald-600" />
+            {isAdminView
+              ? "Tạo Tài Khoản Mới & Cấp Quyền (Admin)"
+              : "Thêm Tài khoản Nhân viên Mới & Hồ sơ Nhân sự (HR)"}
+          </h3>
+
+          {!isAdminView && (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={downloadStaffImportTemplate}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs transition cursor-pointer"
+                title="Tải file mẫu chuẩn (2 dòng tiêu đề gộp ô) của HR"
+              >
+                <Download className="w-3.5 h-3.5 text-slate-500" />
+                <span>Tải file mẫu</span>
+              </button>
+
+              <label
+                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition cursor-pointer ${
+                  importingExcel ? "opacity-70 pointer-events-none" : ""
+                }`}
+                title="Chọn file Excel (.xlsx) hoặc CSV (.csv) để tự động điền các ô thông tin hoặc tạo hàng loạt"
+              >
+                {importingExcel ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                )}
+                <span>
+                  {importingExcel ? "Đang đọc file..." : "Import nhanh từ Excel (.xlsx / .csv)"}
+                </span>
+                <input
+                  type="file"
+                  accept=".xlsx,.csv,.tsv"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleImportStaffExcel(f);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+
+              <button
+                type="button"
+                onClick={resetCreateForm}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs transition cursor-pointer"
+                title="Làm mới các ô đang nhập"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Xóa form</span>
+              </button>
+            </div>
+          )}
+        </div>
 
         {isAdminView ? (
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
@@ -573,8 +911,8 @@ export default function StaffModule({
                 className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white font-bold"
               >
                 <option value="SALES">SALES (Bán hàng)</option>
-                <option value="HR">HR (Nhân sự & Chấm công)</option>
-                <option value="ACCOUNTANT">ACCOUNTANT (Kế toán & Kho)</option>
+                <option value="HR">HR (Nhân sự &amp; Chấm công)</option>
+                <option value="ACCOUNTANT">ACCOUNTANT (Kế toán &amp; Kho)</option>
                 <option value="MARKETING">MARKETING (Content Marketing)</option>
                 <option value="ADMIN">ADMIN (Quản lý)</option>
               </select>
@@ -590,219 +928,512 @@ export default function StaffModule({
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3 items-end">
-            <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1">
-                Tên đăng nhập *
-              </label>
-              <input
-                type="text"
-                required
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="VD: sales2"
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono text-xs"
-              />
-            </div>
+          <div className="space-y-4">
+            {/* Nhóm 1: Tài khoản, Phân quyền & Hợp đồng cốt lõi */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3 items-start">
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">
+                  Tên đăng nhập *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="VD: nganptt"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono text-xs"
+                />
+              </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1">
-                Mật khẩu *
-              </label>
-              <input
-                type="text"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono text-xs"
-              />
-            </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">
+                  Mật khẩu *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono text-xs"
+                />
+              </div>
 
-            <div className="md:col-span-2">
-              <label className="block text-xs font-bold text-slate-600 mb-1">
-                Họ và tên nhân viên *
-              </label>
-              <input
-                type="text"
-                required
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                placeholder="VD: Phạm Thị Thu Ngân"
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs"
-              />
-            </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-bold text-slate-600 mb-1">
+                  Họ và tên nhân viên *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="VD: Phạm Thị Thu Ngân"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-semibold"
+                />
+              </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1">
-                Số điện thoại
-              </label>
-              <input
-                type="text"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="VD: 0909123456"
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-mono"
-              />
-            </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">
+                  Số điện thoại (SDT)
+                </label>
+                <input
+                  type="text"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="VD: 0909123456"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-mono"
+                />
+              </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1">
-                Vai trò (Role) *
-              </label>
-              <select
-                value={role === "ADMIN" ? "SALES" : role}
-                onChange={(e) => {
-                  const nextRole = e.target.value as UserRole;
-                  setRole(nextRole);
-                  setDepartment(nextRole === "SALES" ? "SALES" : "OFFICE");
-                }}
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white font-bold"
-              >
-                <option value="SALES">SALES (Bán hàng)</option>
-                <option value="HR">HR (Nhân sự & Chấm công)</option>
-                <option value="ACCOUNTANT">ACCOUNTANT (Kế toán & Kho)</option>
-                <option value="MARKETING">MARKETING (Content Marketing)</option>
-              </select>
-            </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">
+                  Vị trí (Chức danh)
+                </label>
+                <input
+                  type="text"
+                  value={positionTitle}
+                  onChange={(e) => setPositionTitle(e.target.value)}
+                  placeholder="VD: NV Bán hàng, Kế toán..."
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs"
+                />
+              </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1">
-                Phòng ban (Khối) *
-              </label>
-              <select
-                value={department}
-                onChange={(e) => setDepartment(e.target.value as "OFFICE" | "SALES")}
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white font-bold"
-              >
-                <option value="OFFICE">Khối Văn phòng</option>
-                <option value="SALES">Khối Bán hàng (Showroom)</option>
-              </select>
-            </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">
+                  Vai trò hệ thống *
+                </label>
+                <select
+                  value={role === "ADMIN" ? "SALES" : role}
+                  onChange={(e) => {
+                    const nextRole = e.target.value as UserRole;
+                    setRole(nextRole);
+                    setDepartment(nextRole === "SALES" ? "SALES" : "OFFICE");
+                  }}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white font-bold"
+                >
+                  <option value="SALES">SALES (Bán hàng)</option>
+                  <option value="HR">HR (Nhân sự &amp; Chấm công)</option>
+                  <option value="ACCOUNTANT">ACCOUNTANT (Kế toán &amp; Kho)</option>
+                  <option value="MARKETING">MARKETING (Content Marketing)</option>
+                </select>
+              </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1">
-                Loại hợp đồng *
-              </label>
-              <select
-                required={!isAdminView}
-                value={contractType}
-                onChange={(e) => setContractType(e.target.value as ContractType | "")}
-                className={`w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white font-bold ${contractType ? "border-slate-300" : "border-amber-400 text-slate-400"
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">
+                  Bộ phận (Khối) *
+                </label>
+                <select
+                  value={department}
+                  onChange={(e) => setDepartment(e.target.value as "OFFICE" | "SALES")}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white font-bold"
+                >
+                  <option value="OFFICE">Khối Văn phòng</option>
+                  <option value="SALES">Khối Bán hàng (Showroom)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">
+                  Loại hợp đồng *
+                </label>
+                <select
+                  required={!isAdminView}
+                  value={contractType}
+                  onChange={(e) => setContractType(e.target.value as ContractType | "")}
+                  className={`w-full px-3 py-2 rounded-lg border text-xs bg-white font-bold ${
+                    contractType ? "border-slate-300" : "border-amber-400 text-slate-400"
                   }`}
-              >
-                <option value="" disabled>
-                  -- Chọn loại hợp đồng --
-                </option>
-                {CONTRACT_TYPE_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
+                >
+                  <option value="" disabled>
+                    -- Chọn loại hợp đồng --
                   </option>
-                ))}
-              </select>
-              {contractType && (
-                <p className="text-[10px] text-slate-500 mt-1">
-                  {CONTRACT_TYPE_OPTIONS.find((o) => o.value === contractType)?.desc}
-                </p>
-              )}
+                  {CONTRACT_TYPE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">
+                  Bắt đầu HĐ
+                </label>
+                <input
+                  type="date"
+                  value={contractStartDate}
+                  onChange={(e) => setContractStartDate(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">
+                  Kết thúc HĐ
+                </label>
+                <input
+                  type="date"
+                  value={contractEndDate}
+                  onChange={(e) => setContractEndDate(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">
+                  Email liên hệ
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="ca_nhan@gmail.com"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs"
+                />
+              </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1">Email liên hệ</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="VD: ca_nhan@gmail.com"
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs"
-              />
+            {/* Nút Thu gọn / Mở rộng Hồ sơ chi tiết */}
+            <div className="border-t border-slate-100 pt-3">
+              <button
+                type="button"
+                onClick={() => setShowExtendedCreate((prev) => !prev)}
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 hover:text-emerald-800 cursor-pointer"
+              >
+                {showExtendedCreate ? (
+                  <ChevronUp className="w-4 h-4" />
+                ) : (
+                  <ChevronDown className="w-4 h-4" />
+                )}
+                <span>
+                  {showExtendedCreate
+                    ? "Thu gọn thông tin hồ sơ chi tiết (Cá nhân, CCCD, Học vấn, Số HĐ, BHXH, Lương & Ngân hàng)"
+                    : "Mở rộng thông tin hồ sơ chi tiết (Cá nhân, CCCD, Học vấn, Số HĐ, BHXH, Lương & Ngân hàng)"}
+                </span>
+              </button>
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1">Email công ty</label>
-              <input
-                type="email"
-                value={companyEmail}
-                onChange={(e) => setCompanyEmail(e.target.value)}
-                placeholder="VD: nhanvien@11sport.vn"
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs"
-              />
-            </div>
+            {showExtendedCreate && (
+              <div className="space-y-4">
+                {/* Nhóm 2: Cá nhân, CCCD, Địa chỉ & Học vấn */}
+                <div className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/80 space-y-3">
+                  <div className="text-[11px] font-extrabold uppercase tracking-wider text-slate-600">
+                    1. Thông tin Cá nhân, CCCD &amp; Học vấn
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        Ngày sinh
+                      </label>
+                      <input
+                        type="date"
+                        value={dateOfBirth}
+                        onChange={(e) => setDateOfBirth(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-mono text-xs"
+                      />
+                    </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1">CCCD / CMND</label>
-              <input
-                type="text"
-                value={citizenId}
-                onChange={(e) => setCitizenId(e.target.value)}
-                placeholder="Số CCCD 12 số..."
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-mono"
-              />
-            </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        Giới tính
+                      </label>
+                      <select
+                        value={gender}
+                        onChange={(e) => setGender(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold"
+                      >
+                        <option value="">-- Chọn --</option>
+                        <option value="Nam">Nam</option>
+                        <option value="Nữ">Nữ</option>
+                        <option value="Khác">Khác</option>
+                      </select>
+                    </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1">
-                Lương cơ bản (VNĐ)
-              </label>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={formatMoneyInput(baseSalary)}
-                onChange={(e) => setBaseSalary(String(parseMoneyInput(e.target.value) || ""))}
-                placeholder="VD: 8.000.000"
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-mono"
-              />
-            </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        Quốc tịch
+                      </label>
+                      <input
+                        type="text"
+                        value={nationality}
+                        onChange={(e) => setNationality(e.target.value)}
+                        placeholder="Việt Nam"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs"
+                      />
+                    </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1">
-                Trợ cấp (VNĐ)
-              </label>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={formatMoneyInput(allowance)}
-                onChange={(e) => setAllowance(String(parseMoneyInput(e.target.value) || ""))}
-                placeholder="VD: 1.000.000"
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-mono"
-              />
-            </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        CMND / CCCD
+                      </label>
+                      <input
+                        type="text"
+                        value={citizenId}
+                        onChange={(e) => setCitizenId(e.target.value)}
+                        placeholder="Số CCCD 12 số..."
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
+                      />
+                    </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1">
-                Thưởng (VNĐ)
-              </label>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={formatMoneyInput(bonus)}
-                onChange={(e) => setBonus(String(parseMoneyInput(e.target.value) || ""))}
-                placeholder="VD: 500.000"
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-mono"
-              />
-            </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        Ngày cấp CCCD
+                      </label>
+                      <input
+                        type="date"
+                        value={citizenIssueDate}
+                        onChange={(e) => setCitizenIssueDate(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-mono text-xs"
+                      />
+                    </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1">
-                Bảo hiểm (VNĐ)
-              </label>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={formatMoneyInput(insurance)}
-                onChange={(e) => setInsurance(String(parseMoneyInput(e.target.value) || ""))}
-                placeholder="VD: 850.000"
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-mono"
-              />
-            </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        Nơi cấp CCCD
+                      </label>
+                      <input
+                        type="text"
+                        value={citizenIssuePlace}
+                        onChange={(e) => setCitizenIssuePlace(e.target.value)}
+                        placeholder="VD: Cục CS QLHC..."
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs"
+                      />
+                    </div>
 
-            <div className="md:col-span-3">
-              <label className="block text-xs font-bold text-slate-600 mb-1">
-                File hợp đồng lao động (PDF / Ảnh / Word)
-              </label>
+                    <div className="md:col-span-3">
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        Địa chỉ thường trú
+                      </label>
+                      <input
+                        type="text"
+                        value={permanentAddress}
+                        onChange={(e) => setPermanentAddress(e.target.value)}
+                        placeholder="Số nhà, đường, phường/xã, quận/huyện, tỉnh/thành..."
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs"
+                      />
+                    </div>
+
+                    <div className="md:col-span-3">
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        Địa chỉ hiện tại
+                      </label>
+                      <input
+                        type="text"
+                        value={currentAddress}
+                        onChange={(e) => setCurrentAddress(e.target.value)}
+                        placeholder="Nơi ở hiện tại..."
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs"
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        Trường học
+                      </label>
+                      <input
+                        type="text"
+                        value={school}
+                        onChange={(e) => setSchool(e.target.value)}
+                        placeholder="VD: ĐH Kinh tế Đà Nẵng"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs"
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        Chuyên ngành
+                      </label>
+                      <input
+                        type="text"
+                        value={major}
+                        onChange={(e) => setMajor(e.target.value)}
+                        placeholder="VD: Quản trị kinh doanh"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs"
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        Email công ty
+                      </label>
+                      <input
+                        type="email"
+                        value={companyEmail}
+                        onChange={(e) => setCompanyEmail(e.target.value)}
+                        placeholder="VD: nhanvien@11sport.vn"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Nhóm 3: Số HĐ (HDTT / HĐTV / HDXDTH), BHXH, Lương, Số ngày nghỉ & STK */}
+                <div className="p-3.5 rounded-xl bg-emerald-50/40 border border-emerald-200/70 space-y-3">
+                  <div className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-800">
+                    2. Số Hợp đồng (SỐ HĐ), BHXH, Chế độ Lương &amp; Tài khoản Ngân hàng (STK)
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        Số HĐ Thực tập (HDTT)
+                      </label>
+                      <input
+                        type="text"
+                        value={internContractNumber}
+                        onChange={(e) => setInternContractNumber(e.target.value)}
+                        placeholder="Mã HDTT..."
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        Số HĐ Thử việc (HĐTV)
+                      </label>
+                      <input
+                        type="text"
+                        value={probationContractNumber}
+                        onChange={(e) => setProbationContractNumber(e.target.value)}
+                        placeholder="Mã HĐTV..."
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        Số HĐ Chính thức (HDXDTH)
+                      </label>
+                      <input
+                        type="text"
+                        value={officialContractNumber}
+                        onChange={(e) => setOfficialContractNumber(e.target.value)}
+                        placeholder="Mã HDXDTH..."
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        BHXH — Ngày đóng
+                      </label>
+                      <input
+                        type="date"
+                        value={bhxhStartDate}
+                        onChange={(e) => setBhxhStartDate(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-mono text-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        BHXH — Mức đóng (VNĐ)
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={formatMoneyInput(insurance)}
+                        onChange={(e) => setInsurance(String(parseMoneyInput(e.target.value) || ""))}
+                        placeholder="VD: 5.300.000"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        BHXH — Ngày nghỉ
+                      </label>
+                      <input
+                        type="date"
+                        value={bhxhEndDate}
+                        onChange={(e) => setBhxhEndDate(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-mono text-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        Lương cơ bản (VNĐ)
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={formatMoneyInput(baseSalary)}
+                        onChange={(e) => setBaseSalary(String(parseMoneyInput(e.target.value) || ""))}
+                        placeholder="VD: 8.000.000"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        Trợ cấp (VNĐ)
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={formatMoneyInput(allowance)}
+                        onChange={(e) => setAllowance(String(parseMoneyInput(e.target.value) || ""))}
+                        placeholder="VD: 1.000.000"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        Thưởng (VNĐ)
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={formatMoneyInput(bonus)}
+                        onChange={(e) => setBonus(String(parseMoneyInput(e.target.value) || ""))}
+                        placeholder="VD: 500.000"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        Số ngày nghỉ (Hồ sơ)
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.5"
+                        value={recordedLeaveDays}
+                        onChange={(e) => setRecordedLeaveDays(e.target.value)}
+                        placeholder="0"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        Số tài khoản ngân hàng (STK)
+                      </label>
+                      <input
+                        type="text"
+                        value={bankAccount}
+                        onChange={(e) => setBankAccount(e.target.value)}
+                        placeholder="VD: 1903686868 - Techcombank"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Hàng cuối: File hợp đồng đính kèm + Nút Tạo nhân viên */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
               <div className="flex flex-wrap items-center gap-2">
                 <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 font-bold text-xs transition">
                   <Upload className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>{contractFileName ? "Đổi file hợp đồng" : "Import file hợp đồng lên"}</span>
+                  <span>
+                    {contractFileName
+                      ? "Đổi file hợp đồng đính kèm"
+                      : "Đính kèm file hợp đồng (PDF / Ảnh / Word)"}
+                  </span>
                   <input
                     type="file"
                     accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
@@ -825,7 +1456,7 @@ export default function StaffModule({
                 {contractFileName && (
                   <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold">
                     <FileText className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
-                    <span className="max-w-[180px] truncate">{contractFileName}</span>
+                    <span className="max-w-[200px] truncate">{contractFileName}</span>
                     <button
                       type="button"
                       onClick={() => {
@@ -840,12 +1471,10 @@ export default function StaffModule({
                   </div>
                 )}
               </div>
-            </div>
 
-            <div className="flex items-end">
               <button
                 type="submit"
-                className="w-full py-2.5 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition"
+                className="py-2.5 px-6 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition cursor-pointer"
               >
                 + Tạo Nhân Viên Mới
               </button>
@@ -869,19 +1498,17 @@ export default function StaffModule({
 
         {/* Thanh Bộ lọc (Filter) & Sắp xếp (Sort) */}
         <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/90 flex flex-wrap items-center gap-2 text-xs">
-          {/* Tìm kiếm */}
           <div className="relative flex-1 min-w-[200px]">
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Tìm tên, mã NV, username, SĐT, CCCD..."
+              placeholder="Tìm tên, mã NV, username, SĐT, CCCD, vị trí, STK..."
               className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
 
-          {/* Lọc theo Khối */}
           <select
             value={filterDept}
             onChange={(e) => setFilterDept(e.target.value as "ALL" | "OFFICE" | "SALES")}
@@ -892,7 +1519,6 @@ export default function StaffModule({
             <option value="SALES">Khối Bán hàng</option>
           </select>
 
-          {/* Lọc theo Vai trò */}
           <select
             value={filterRole}
             onChange={(e) => setFilterRole(e.target.value as "ALL" | UserRole)}
@@ -906,7 +1532,6 @@ export default function StaffModule({
             <option value="ADMIN">ADMIN (Quản lý)</option>
           </select>
 
-          {/* Lọc theo Loại hợp đồng */}
           <select
             value={filterContract}
             onChange={(e) => setFilterContract(e.target.value as "ALL" | ContractType)}
@@ -918,7 +1543,6 @@ export default function StaffModule({
             <option value="INTERN">Thực tập (Intern)</option>
           </select>
 
-          {/* Lọc theo Trạng thái */}
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value as "ALL" | "ACTIVE" | "LOCKED")}
@@ -929,7 +1553,6 @@ export default function StaffModule({
             <option value="LOCKED">Đã khóa</option>
           </select>
 
-          {/* Sắp xếp (Sort) */}
           <div className="inline-flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-1">
             <ArrowUpDown className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
             <span className="text-[11px] font-bold text-slate-500">Sắp xếp:</span>
@@ -938,13 +1561,13 @@ export default function StaffModule({
               onChange={(e) =>
                 setSortBy(
                   e.target.value as
-                  | "code"
-                  | "fullName"
-                  | "baseSalary"
-                  | "allowance"
-                  | "bonus"
-                  | "insurance"
-                  | "createdAt"
+                    | "code"
+                    | "fullName"
+                    | "baseSalary"
+                    | "allowance"
+                    | "bonus"
+                    | "insurance"
+                    | "createdAt"
                 )
               }
               className="bg-transparent font-bold text-slate-800 outline-none cursor-pointer"
@@ -1022,9 +1645,9 @@ export default function StaffModule({
                   </span>
                 </th>
                 <th className="py-3 px-3.5">CCCD &amp; Địa chỉ</th>
-                <th className="py-3 px-3.5">Khối</th>
+                <th className="py-3 px-3.5">Khối &amp; Vị trí</th>
                 <th className="py-3 px-3.5">Vai trò (Role)</th>
-                <th className="py-3 px-3.5">Hợp đồng &amp; Thời hạn</th>
+                <th className="py-3 px-3.5">Hợp đồng &amp; Số HĐ</th>
                 <th className="py-3 px-3.5 text-center">Trạng thái</th>
                 <th className="py-3 px-3.5 text-right">Thao tác</th>
               </tr>
@@ -1041,12 +1664,15 @@ export default function StaffModule({
                   const normalizedRole =
                     st.role === ("WAREHOUSE" as any) ? "ACCOUNTANT" : st.role;
                   const isTargetAdmin = normalizedRole === "ADMIN";
-                  const startStr = st.contractStartDate
-                    ? String(st.contractStartDate).slice(0, 10)
-                    : "";
-                  const endStr = st.contractEndDate
-                    ? String(st.contractEndDate).slice(0, 10)
-                    : "";
+                  const startStr = toIsoDateSlice(st.contractStartDate);
+                  const endStr = toIsoDateSlice(st.contractEndDate);
+                  const displayAddr =
+                    st.currentAddress || st.permanentAddress || st.address || "";
+                  const activeContractNo =
+                    st.officialContractNumber ||
+                    st.probationContractNumber ||
+                    st.internContractNumber ||
+                    "";
 
                   return (
                     <tr key={st._id} className="hover:bg-slate-50">
@@ -1058,6 +1684,11 @@ export default function StaffModule({
                         <div className="text-[11px] text-slate-500 font-mono">
                           @{st.username} • {st.phone || "Chưa có SĐT"}
                         </div>
+                        {st.bankAccount && (
+                          <div className="text-[11px] text-slate-600 font-mono">
+                            <span className="text-slate-400">STK:</span> {st.bankAccount}
+                          </div>
+                        )}
                         {st.email && (
                           <div className="text-[11px] text-slate-500 font-mono">
                             <span className="text-slate-400">LH:</span> {st.email}
@@ -1073,22 +1704,36 @@ export default function StaffModule({
                         <div className="font-mono text-slate-800 font-semibold">
                           {st.citizenId || "Chưa có CCCD"}
                         </div>
-                        <div className="text-[11px] text-slate-400 max-w-[160px] truncate" title={st.address || ""}>
-                          {st.address || "Chưa cập nhật địa chỉ"}
+                        {st.dateOfBirth && (
+                          <div className="text-[11px] text-slate-500 font-mono">
+                            NS: {toIsoDateSlice(st.dateOfBirth)}
+                            {st.gender ? ` · ${st.gender}` : ""}
+                          </div>
+                        )}
+                        <div
+                          className="text-[11px] text-slate-400 max-w-[180px] truncate"
+                          title={displayAddr}
+                        >
+                          {displayAddr || "Chưa cập nhật địa chỉ"}
                         </div>
                       </td>
                       <td className="py-3 px-3.5">
                         <span
-                          className={`px-2 py-0.5 rounded text-[11px] font-bold ${st.department === "OFFICE"
-                            ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
-                            : "bg-amber-50 text-amber-700 border border-amber-200"
-                            }`}
+                          className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                            st.department === "OFFICE"
+                              ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                              : "bg-amber-50 text-amber-700 border border-amber-200"
+                          }`}
                         >
                           {st.department === "OFFICE" ? "Văn phòng" : "Bán hàng"}
                         </span>
+                        {st.positionTitle && (
+                          <div className="text-[11px] text-slate-600 font-semibold mt-1">
+                            {st.positionTitle}
+                          </div>
+                        )}
                       </td>
                       <td className="py-3 px-3.5">
-                        {/* Nếu HR đang xem dòng của ADMIN -> Không được sửa role của ADMIN */}
                         {!isAdminView && isTargetAdmin ? (
                           <span className="px-2.5 py-1 rounded bg-emerald-50 border border-emerald-200 font-mono font-bold text-xs text-emerald-800">
                             ADMIN (Quản lý)
@@ -1116,16 +1761,22 @@ export default function StaffModule({
                       <td className="py-3 px-3.5">
                         <div className="text-slate-800 font-bold">
                           <span
-                            className={`px-2 py-0.5 rounded-md text-[11px] ${st.contractType === "FULLTIME"
-                              ? "bg-emerald-50 text-emerald-700"
-                              : st.contractType === "INTERN"
-                                ? "bg-sky-50 text-sky-700"
-                                : "bg-amber-50 text-amber-700"
-                              }`}
+                            className={`px-2 py-0.5 rounded-md text-[11px] ${
+                              st.contractType === "FULLTIME"
+                                ? "bg-emerald-50 text-emerald-700"
+                                : st.contractType === "INTERN"
+                                  ? "bg-sky-50 text-sky-700"
+                                  : "bg-amber-50 text-amber-700"
+                            }`}
                           >
                             {contractTypeLabel(st.contractType)}
                           </span>
                         </div>
+                        {activeContractNo && (
+                          <div className="text-[11px] text-slate-600 font-mono mt-0.5">
+                            Số HĐ: {activeContractNo}
+                          </div>
+                        )}
                         {(startStr || endStr) && (
                           <div className="text-[10px] text-slate-400 font-mono mt-0.5">
                             {startStr || "?"} → {endStr || "Không TH"}
@@ -1134,21 +1785,22 @@ export default function StaffModule({
                         <div className="mt-1.5">
                           {st.contractFileUrl ? (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold">
-                              Đã có HĐ
+                              Đã có file HĐ
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200 text-[11px] font-semibold">
-                              Chưa có HĐ
+                              Chưa có file HĐ
                             </span>
                           )}
                         </div>
                       </td>
                       <td className="py-3 px-3.5 text-center">
                         <span
-                          className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${st.status === "ACTIVE"
-                            ? "bg-emerald-100 text-emerald-800"
-                            : "bg-red-100 text-red-700"
-                            }`}
+                          className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                            st.status === "ACTIVE"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : "bg-red-100 text-red-700"
+                          }`}
                         >
                           {st.status === "ACTIVE" ? "Đang hoạt động" : "Đã khóa"}
                         </span>
@@ -1161,20 +1813,22 @@ export default function StaffModule({
                                 <button
                                   type="button"
                                   onClick={() => handleOpenProfileModal(st)}
-                                  className="py-1.5 px-3 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs transition"
+                                  className="py-1.5 px-3 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs transition cursor-pointer"
                                 >
                                   Sửa hồ sơ
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => handleOpenResetPassword(st)}
-                                  className="px-3 py-1.5 rounded-lg font-bold inline-flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200"
+                                  className="px-3 py-1.5 rounded-lg font-bold inline-flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 cursor-pointer"
                                 >
                                   <KeyRound className="w-3.5 h-3.5" /> Đổi mật khẩu
                                 </button>
                               </>
                             ) : (
-                              <span className="text-[11px] text-slate-400 italic">Tài khoản Quản lý</span>
+                              <span className="text-[11px] text-slate-400 italic">
+                                Tài khoản Quản lý
+                              </span>
                             )
                           ) : (
                             <button
@@ -1184,10 +1838,11 @@ export default function StaffModule({
                                   status: st.status === "ACTIVE" ? "LOCKED" : "ACTIVE",
                                 })
                               }
-                              className={`px-3 py-1.5 rounded-lg font-bold inline-flex items-center gap-1 ${st.status === "ACTIVE"
-                                ? "bg-red-50 hover:bg-red-100 text-red-600"
-                                : "bg-emerald-50 hover:bg-emerald-100 text-emerald-700"
-                                }`}
+                              className={`px-3 py-1.5 rounded-lg font-bold inline-flex items-center gap-1 cursor-pointer ${
+                                st.status === "ACTIVE"
+                                  ? "bg-red-50 hover:bg-red-100 text-red-600"
+                                  : "bg-emerald-50 hover:bg-emerald-100 text-emerald-700"
+                              }`}
                             >
                               {st.status === "ACTIVE" ? (
                                 <>
@@ -1210,6 +1865,208 @@ export default function StaffModule({
           </table>
         </div>
       </div>
+
+      {/* Modal Xem trước & Chọn dòng khi file Excel có nhiều nhân viên */}
+      {importModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/65 p-4">
+          <div className="w-full max-w-6xl max-h-[90vh] flex flex-col bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
+              <div>
+                <div className="text-xs uppercase font-bold text-emerald-400 tracking-wider flex items-center gap-1.5">
+                  <FileSpreadsheet className="w-4 h-4" />
+                  <span>Import Nhanh Hồ Sơ Nhân Sự Từ Excel</span>
+                </div>
+                <h3 className="font-extrabold text-base text-white mt-0.5">
+                  File: {importFileName} — Đọc được {importRows.length} nhân sự
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setImportModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 overflow-y-auto text-xs">
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                <div className="text-slate-600">
+                  Bấm <strong className="text-emerald-700">&ldquo;Điền vào form&rdquo;</strong> ở 1 dòng để đưa thông tin ra ngoài kiểm tra kỹ trước khi tạo, hoặc tích chọn nhiều dòng để{" "}
+                  <strong className="text-slate-900">Tạo hàng loạt</strong>.
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="font-bold text-slate-700">Mật khẩu mặc định khi tạo loạt:</label>
+                  <input
+                    type="text"
+                    value={bulkPassword}
+                    onChange={(e) => setBulkPassword(e.target.value)}
+                    className="w-36 px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-mono font-bold text-xs"
+                  />
+                </div>
+              </div>
+
+              {importModalError && (
+                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 font-bold flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{importModalError}</span>
+                </div>
+              )}
+
+              <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-100 text-slate-700 uppercase font-bold">
+                    <tr>
+                      <th className="py-2.5 px-3 w-10">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setImportRows((prev) =>
+                              prev.map((r) => ({ ...r, selected: !allModalSelected }))
+                            )
+                          }
+                          className="text-slate-700 hover:text-emerald-700 cursor-pointer"
+                          title="Chọn / Bỏ chọn tất cả"
+                        >
+                          {allModalSelected ? (
+                            <CheckSquare className="w-4 h-4 text-emerald-600" />
+                          ) : (
+                            <Square className="w-4 h-4" />
+                          )}
+                        </button>
+                      </th>
+                      <th className="py-2.5 px-3">Username *</th>
+                      <th className="py-2.5 px-3">Họ tên &amp; NS</th>
+                      <th className="py-2.5 px-3">CCCD &amp; SĐT</th>
+                      <th className="py-2.5 px-3">Vị trí / Khối</th>
+                      <th className="py-2.5 px-3">Loại HĐ &amp; Thời hạn</th>
+                      <th className="py-2.5 px-3 text-right">Lương / BHXH</th>
+                      <th className="py-2.5 px-3">STK</th>
+                      <th className="py-2.5 px-3 text-right">Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {importRows.map((r, idx) => (
+                      <tr key={r.rowIndex} className={r.selected ? "bg-white" : "bg-slate-50/60 text-slate-400"}>
+                        <td className="py-2.5 px-3">
+                          <input
+                            type="checkbox"
+                            checked={r.selected}
+                            onChange={(e) =>
+                              setImportRows((prev) =>
+                                prev.map((item, i) =>
+                                  i === idx ? { ...item, selected: e.target.checked } : item
+                                )
+                              )
+                            }
+                            className="w-4 h-4 accent-emerald-600 cursor-pointer"
+                          />
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <input
+                            type="text"
+                            value={r.usernameInput}
+                            onChange={(e) =>
+                              setImportRows((prev) =>
+                                prev.map((item, i) =>
+                                  i === idx ? { ...item, usernameInput: e.target.value } : item
+                                )
+                              )
+                            }
+                            className="w-28 px-2 py-1 rounded border border-slate-300 font-mono text-xs bg-white text-slate-900"
+                          />
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <div className="font-bold text-slate-900">{r.fullName}</div>
+                          <div className="text-[11px] text-slate-500">
+                            {r.dateOfBirth || "Chưa rõ NS"}
+                            {r.gender ? ` · ${r.gender}` : ""}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 font-mono">
+                          <div>{r.citizenId || "—"}</div>
+                          <div className="text-[11px] text-slate-500">{r.phone || "—"}</div>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <div className="font-semibold text-slate-800">{r.positionTitle || r.role}</div>
+                          <div className="text-[11px] text-slate-500">
+                            {r.department === "OFFICE" ? "Văn phòng" : "Bán hàng"} ({r.role})
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <div className="font-bold text-emerald-700">
+                            {contractTypeLabel(r.contractType)}
+                          </div>
+                          <div className="text-[10px] font-mono text-slate-500">
+                            {r.contractStartDate || "?"} → {r.contractEndDate || "Không TH"}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono">
+                          <div className="font-bold text-slate-900">
+                            {r.baseSalary ? formatVND(r.baseSalary) : "0đ"}
+                          </div>
+                          {r.insurance > 0 && (
+                            <div className="text-[10px] text-slate-500">
+                              BHXH: {formatVND(r.insurance)}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-[11px] max-w-[140px] truncate" title={r.bankAccount}>
+                          {r.bankAccount || "—"}
+                        </td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              fillCreateFormFromImportRow(r, r.usernameInput);
+                              setImportModalOpen(false);
+                              setStatusMsg({
+                                type: "success",
+                                text: `Đã điền hồ sơ "${r.fullName}" vào form. Kiểm tra lại và bấm "+ Tạo Nhân Viên Mới"!`,
+                              });
+                            }}
+                            className="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs cursor-pointer"
+                          >
+                            Điền vào form
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3 shrink-0">
+              <span className="text-xs font-bold text-slate-600">
+                Đã chọn: <strong className="text-emerald-700">{selectedModalCount}</strong> / {importRows.length} nhân sự
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setImportModalOpen(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-xs font-bold text-slate-700 cursor-pointer"
+                >
+                  Đóng
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkCreating || selectedModalCount === 0}
+                  onClick={handleBulkCreateFromModal}
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-xs font-bold shadow inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  {bulkCreating && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>
+                    {bulkCreating
+                      ? "Đang tạo tài khoản..."
+                      : `Tạo hàng loạt (${selectedModalCount} nhân viên)`}
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal Đổi mật khẩu cho nhân viên */}
       {pwdTargetStaff && (
@@ -1296,7 +2153,7 @@ export default function StaffModule({
       {/* Modal Chỉnh Sửa Chi Tiết Hồ Sơ Nhân Sự (Dành cho HR) */}
       {selectedStaffProfile && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/65 p-4">
-          <div className="w-full max-w-xl max-h-[90vh] flex flex-col bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden">
+          <div className="w-full max-w-4xl max-h-[92vh] flex flex-col bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden">
             <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
               <div>
                 <span className="text-xs uppercase font-bold text-emerald-400 tracking-wider">
@@ -1309,232 +2166,438 @@ export default function StaffModule({
               <button
                 type="button"
                 onClick={() => setSelectedStaffProfile(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveProfileModal} className="p-6 space-y-4 text-xs overflow-y-auto">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Họ và tên nhân viên *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editFullName}
-                    onChange={(e) => setEditFullName(e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs font-semibold"
-                  />
+            <form onSubmit={handleSaveProfileModal} className="p-6 space-y-5 text-xs overflow-y-auto">
+              {/* Khối 1: Thông tin Cá nhân, CCCD & Học vấn */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                <div className="text-[11px] font-extrabold uppercase tracking-wider text-slate-600">
+                  1. Thông tin Cá nhân, CCCD, Địa chỉ &amp; Học vấn
                 </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Số điện thoại
-                  </label>
-                  <input
-                    type="text"
-                    value={editPhone}
-                    onChange={(e) => setEditPhone(e.target.value)}
-                    placeholder="0909..."
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-mono text-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Email liên hệ</label>
-                  <input
-                    type="email"
-                    value={editEmail}
-                    onChange={(e) => setEditEmail(e.target.value)}
-                    placeholder="ca_nhan@gmail.com"
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Email công ty</label>
-                  <input
-                    type="email"
-                    value={editCompanyEmail}
-                    onChange={(e) => setEditCompanyEmail(e.target.value)}
-                    placeholder="nhanvien@11sport.vn"
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">CCCD / CMND</label>
-                  <input
-                    type="text"
-                    value={editCitizenId}
-                    onChange={(e) => setEditCitizenId(e.target.value)}
-                    placeholder="Số CCCD 12 chữ số..."
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-mono text-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Địa chỉ thường trú / chỗ ở hiện tại
-                  </label>
-                  <input
-                    type="text"
-                    value={editAddress}
-                    onChange={(e) => setEditAddress(e.target.value)}
-                    placeholder="Nhập địa chỉ nhân sự..."
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Phòng ban (Khối)
-                  </label>
-                  <select
-                    value={editDepartment}
-                    onChange={(e) => setEditDepartment(e.target.value as "OFFICE" | "SALES")}
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white font-bold text-xs"
-                  >
-                    <option value="OFFICE">Khối Văn phòng</option>
-                    <option value="SALES">Khối Bán hàng (Showroom)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Loại hợp đồng
-                  </label>
-                  <select
-                    value={editContractType}
-                    onChange={(e) => {
-                      const nextType = e.target.value as ContractType;
-                      setEditContractType(nextType);
-                      if (
-                        nextType === "FULLTIME" &&
-                        selectedStaffProfile?.contractType === "PROBATION" &&
-                        editProbationMonths === 0
-                      ) {
-                        setEditProbationMonths(2);
-                      }
-                    }}
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white font-bold text-xs"
-                  >
-                    {CONTRACT_TYPE_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                    {editContractType === "PARTTIME" && (
-                      <option value="PARTTIME">Bán thời gian (cũ – vui lòng chọn lại)</option>
-                    )}
-                  </select>
-                </div>
-
-                {(editContractType === "PROBATION" || editContractType === "FULLTIME") && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                   <div>
                     <label className="block font-bold text-slate-700 mb-1">
-                      Số tháng thử việc
+                      Họ và tên nhân viên *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editFullName}
+                      onChange={(e) => setEditFullName(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs font-semibold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Ngày sinh</label>
+                    <input
+                      type="date"
+                      value={editDateOfBirth}
+                      onChange={(e) => setEditDateOfBirth(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono text-xs"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Giới tính</label>
+                      <select
+                        value={editGender}
+                        onChange={(e) => setEditGender(e.target.value)}
+                        className="w-full px-2.5 py-2 rounded-xl border border-slate-300 bg-white text-xs font-semibold"
+                      >
+                        <option value="">-- Chọn --</option>
+                        <option value="Nam">Nam</option>
+                        <option value="Nữ">Nữ</option>
+                        <option value="Khác">Khác</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Quốc tịch</label>
+                      <input
+                        type="text"
+                        value={editNationality}
+                        onChange={(e) => setEditNationality(e.target.value)}
+                        placeholder="Việt Nam"
+                        className="w-full px-2.5 py-2 rounded-xl border border-slate-300 bg-white text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">CMND / CCCD</label>
+                    <input
+                      type="text"
+                      value={editCitizenId}
+                      onChange={(e) => setEditCitizenId(e.target.value)}
+                      placeholder="Số CCCD 12 số..."
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Ngày cấp CCCD</label>
+                    <input
+                      type="date"
+                      value={editCitizenIssueDate}
+                      onChange={(e) => setEditCitizenIssueDate(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Nơi cấp CCCD</label>
+                    <input
+                      type="text"
+                      value={editCitizenIssuePlace}
+                      onChange={(e) => setEditCitizenIssuePlace(e.target.value)}
+                      placeholder="Cục CS QLHC..."
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Số điện thoại</label>
+                    <input
+                      type="text"
+                      value={editPhone}
+                      onChange={(e) => setEditPhone(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Email liên hệ</label>
+                    <input
+                      type="email"
+                      value={editEmail}
+                      onChange={(e) => setEditEmail(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Email công ty</label>
+                    <input
+                      type="email"
+                      value={editCompanyEmail}
+                      onChange={(e) => setEditCompanyEmail(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">
+                        Địa chỉ thường trú
+                      </label>
+                      <input
+                        type="text"
+                        value={editPermanentAddress}
+                        onChange={(e) => setEditPermanentAddress(e.target.value)}
+                        placeholder="Nhập hộ khẩu / địa chỉ thường trú..."
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">
+                        Địa chỉ hiện tại
+                      </label>
+                      <input
+                        type="text"
+                        value={editCurrentAddress}
+                        onChange={(e) => setEditCurrentAddress(e.target.value)}
+                        placeholder="Nhập chỗ ở hiện tại..."
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Trường học</label>
+                    <input
+                      type="text"
+                      value={editSchool}
+                      onChange={(e) => setEditSchool(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Chuyên ngành</label>
+                    <input
+                      type="text"
+                      value={editMajor}
+                      onChange={(e) => setEditMajor(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      Số tài khoản ngân hàng (STK)
+                    </label>
+                    <input
+                      type="text"
+                      value={editBankAccount}
+                      onChange={(e) => setEditBankAccount(e.target.value)}
+                      placeholder="VD: 1903686868 - Techcombank"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Khối 2: Vị trí, Hợp đồng & Số HĐ */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                <div className="text-[11px] font-extrabold uppercase tracking-wider text-slate-600">
+                  2. Vị trí, Hợp đồng Lao động &amp; Số Hợp đồng (HDTT / HĐTV / HDXDTH)
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      Vị trí (Chức danh)
+                    </label>
+                    <input
+                      type="text"
+                      value={editPositionTitle}
+                      onChange={(e) => setEditPositionTitle(e.target.value)}
+                      placeholder="VD: Nhân viên bán hàng"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs font-semibold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      Bộ phận (Khối)
                     </label>
                     <select
-                      value={editProbationMonths}
-                      onChange={(e) => setEditProbationMonths(Number(e.target.value))}
-                      className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white font-bold text-xs"
+                      value={editDepartment}
+                      onChange={(e) => setEditDepartment(e.target.value as "OFFICE" | "SALES")}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-bold text-xs"
                     >
-                      <option value={0}>0 tháng (Vào thẳng chính thức)</option>
-                      <option value={1}>1 tháng thử việc (+1 ngày phép khi lên Chính thức)</option>
-                      <option value={2}>2 tháng thử việc (+2 ngày phép khi lên Chính thức)</option>
+                      <option value="OFFICE">Khối Văn phòng</option>
+                      <option value="SALES">Khối Bán hàng (Showroom)</option>
                     </select>
                   </div>
-                )}
 
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Ngày bắt đầu hợp đồng
-                  </label>
-                  <input
-                    type="date"
-                    value={editContractStart}
-                    onChange={(e) => setEditContractStart(e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-mono text-xs"
-                  />
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      Loại hợp đồng
+                    </label>
+                    <select
+                      value={editContractType}
+                      onChange={(e) => {
+                        const nextType = e.target.value as ContractType;
+                        setEditContractType(nextType);
+                        if (
+                          nextType === "FULLTIME" &&
+                          selectedStaffProfile?.contractType === "PROBATION" &&
+                          editProbationMonths === 0
+                        ) {
+                          setEditProbationMonths(2);
+                        }
+                      }}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-bold text-xs"
+                    >
+                      {CONTRACT_TYPE_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                      {editContractType === "PARTTIME" && (
+                        <option value="PARTTIME">Bán thời gian (cũ – vui lòng chọn lại)</option>
+                      )}
+                    </select>
+                  </div>
+
+                  {(editContractType === "PROBATION" || editContractType === "FULLTIME") && (
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">
+                        Số tháng thử việc
+                      </label>
+                      <select
+                        value={editProbationMonths}
+                        onChange={(e) => setEditProbationMonths(Number(e.target.value))}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-bold text-xs"
+                      >
+                        <option value={0}>0 tháng (Vào thẳng chính thức)</option>
+                        <option value={1}>1 tháng thử việc (+1 ngày phép khi lên Chính thức)</option>
+                        <option value={2}>2 tháng thử việc (+2 ngày phép khi lên Chính thức)</option>
+                      </select>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      Ngày bắt đầu hợp đồng
+                    </label>
+                    <input
+                      type="date"
+                      value={editContractStart}
+                      onChange={(e) => setEditContractStart(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      Ngày kết thúc hợp đồng
+                    </label>
+                    <input
+                      type="date"
+                      value={editContractEnd}
+                      onChange={(e) => setEditContractEnd(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      Số HĐ Thực tập (HDTT)
+                    </label>
+                    <input
+                      type="text"
+                      value={editInternContractNo}
+                      onChange={(e) => setEditInternContractNo(e.target.value)}
+                      placeholder="Mã HDTT..."
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      Số HĐ Thử việc (HĐTV)
+                    </label>
+                    <input
+                      type="text"
+                      value={editProbationContractNo}
+                      onChange={(e) => setEditProbationContractNo(e.target.value)}
+                      placeholder="Mã HĐTV..."
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      Số HĐ Chính thức (HDXDTH)
+                    </label>
+                    <input
+                      type="text"
+                      value={editOfficialContractNo}
+                      onChange={(e) => setEditOfficialContractNo(e.target.value)}
+                      placeholder="Mã HDXDTH..."
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono text-xs"
+                    />
+                  </div>
                 </div>
+              </div>
 
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Ngày kết thúc hợp đồng
-                  </label>
-                  <input
-                    type="date"
-                    value={editContractEnd}
-                    onChange={(e) => setEditContractEnd(e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-mono text-xs"
-                  />
+              {/* Khối 3: Lương, BHXH, Số ngày nghỉ & File hợp đồng */}
+              <div className="p-4 rounded-2xl bg-emerald-50/40 border border-emerald-200/80 space-y-3">
+                <div className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-800">
+                  3. Lương, BHXH, Số ngày nghỉ &amp; File Hợp đồng đính kèm
                 </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      Lương cơ bản (VNĐ)
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={formatMoneyInput(editBaseSalary)}
+                      onChange={(e) => setEditBaseSalary(parseMoneyInput(e.target.value))}
+                      placeholder="0"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono text-xs"
+                    />
+                  </div>
 
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Lương cơ bản (VNĐ)
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={formatMoneyInput(editBaseSalary)}
-                    onChange={(e) => setEditBaseSalary(parseMoneyInput(e.target.value))}
-                    placeholder="0"
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-mono text-xs"
-                  />
-                </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      Trợ cấp (VNĐ)
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={formatMoneyInput(editAllowance)}
+                      onChange={(e) => setEditAllowance(parseMoneyInput(e.target.value))}
+                      placeholder="0"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono text-xs"
+                    />
+                  </div>
 
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Trợ cấp (VNĐ)
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={formatMoneyInput(editAllowance)}
-                    onChange={(e) => setEditAllowance(parseMoneyInput(e.target.value))}
-                    placeholder="0"
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-mono text-xs"
-                  />
-                </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      Thưởng (VNĐ)
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={formatMoneyInput(editBonus)}
+                      onChange={(e) => setEditBonus(parseMoneyInput(e.target.value))}
+                      placeholder="0"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono text-xs"
+                    />
+                  </div>
 
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Thưởng (VNĐ)
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={formatMoneyInput(editBonus)}
-                    onChange={(e) => setEditBonus(parseMoneyInput(e.target.value))}
-                    placeholder="0"
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-mono text-xs"
-                  />
-                </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      BHXH — Ngày đóng
+                    </label>
+                    <input
+                      type="date"
+                      value={editBhxhStart}
+                      onChange={(e) => setEditBhxhStart(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono text-xs"
+                    />
+                  </div>
 
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Bảo hiểm (VNĐ)
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={formatMoneyInput(editInsurance)}
-                    onChange={(e) => setEditInsurance(parseMoneyInput(e.target.value))}
-                    placeholder="0"
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-mono text-xs"
-                  />
-                </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      BHXH — Mức đóng (VNĐ)
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={formatMoneyInput(editInsurance)}
+                      onChange={(e) => setEditInsurance(parseMoneyInput(e.target.value))}
+                      placeholder="0"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono text-xs"
+                    />
+                  </div>
 
-                <div className="sm:col-span-2 p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
-                  <label className="block font-bold text-slate-800">
-                    File hợp đồng lao động
-                  </label>
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      BHXH — Ngày nghỉ
+                    </label>
+                    <input
+                      type="date"
+                      value={editBhxhEnd}
+                      onChange={(e) => setEditBhxhEnd(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      Số ngày nghỉ (Hồ sơ)
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.5"
+                      value={editRecordedLeaveDays}
+                      onChange={(e) => setEditRecordedLeaveDays(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono text-xs"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2 flex flex-wrap items-end gap-2">
                     <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition">
                       <Upload className="w-3.5 h-3.5" />
                       <span>
@@ -1575,7 +2638,7 @@ export default function StaffModule({
                               fileUrl: editContractFileUrl,
                             })
                           }
-                          className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-bold text-xs transition"
+                          className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-bold text-xs transition cursor-pointer"
                         >
                           <Eye className="w-3.5 h-3.5 text-emerald-600" />
                           <span className="max-w-[160px] truncate">
@@ -1588,7 +2651,7 @@ export default function StaffModule({
                             setEditContractFileUrl("");
                             setEditContractFileName("");
                           }}
-                          className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold text-xs transition"
+                          className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold text-xs transition cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                           <span>Xóa file</span>
@@ -1603,14 +2666,14 @@ export default function StaffModule({
                 <button
                   type="button"
                   onClick={() => setSelectedStaffProfile(null)}
-                  className="px-4 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100"
+                  className="px-4 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100 cursor-pointer"
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
                   disabled={profileSaving}
-                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white rounded-xl text-xs font-bold transition shadow-md flex items-center gap-1.5"
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white rounded-xl text-xs font-bold transition shadow-md flex items-center gap-1.5 cursor-pointer"
                 >
                   <Save className="w-4 h-4" />
                   {profileSaving ? "Đang lưu..." : "Lưu thông tin nhân sự"}

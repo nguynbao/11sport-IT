@@ -7,6 +7,8 @@ declare global {
   namespace Express {
     interface Request {
       user?: TokenPayload;
+      /** true khi user chỉ là fallback mặc định (chưa xác thực rõ ràng) */
+      isFallbackUser?: boolean;
     }
   }
 }
@@ -49,6 +51,7 @@ export async function attachUserContext(
     // Fallback mặc định trong môi trường nội bộ/demo POS nếu chưa gửi header
     const defaultStaff = await staffRepo.findOne({ username: 'admin' });
     if (defaultStaff) {
+      req.isFallbackUser = true;
       req.user = {
         userId: defaultStaff._id,
         username: defaultStaff.username,

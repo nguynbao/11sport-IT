@@ -43,8 +43,19 @@ export interface StaffUser {
   phone?: string;
   email?: string;
   companyEmail?: string;
+  dateOfBirth?: string;
+  gender?: string;
+  nationality?: string;
   citizenId?: string;
+  citizenIssueDate?: string;
+  citizenIssuePlace?: string;
   address?: string;
+  permanentAddress?: string;
+  currentAddress?: string;
+  school?: string;
+  major?: string;
+  positionTitle?: string;
+  bankAccount?: string;
   role: UserRole;
   department?: Department;
   contractType?: ContractType;
@@ -53,14 +64,56 @@ export interface StaffUser {
   fulltimeStartDate?: string;
   contractStartDate?: string;
   contractEndDate?: string;
+  internContractNumber?: string;
+  probationContractNumber?: string;
+  officialContractNumber?: string;
   contractFileUrl?: string;
   contractFileName?: string;
+  bhxhStartDate?: string;
+  bhxhEndDate?: string;
+  recordedLeaveDays?: number;
   baseSalary?: number;
   allowance?: number;
   bonus?: number;
   insurance?: number;
   status: "ACTIVE" | "LOCKED";
   createdAt?: string;
+}
+
+export interface ParsedStaffImportRow {
+  rowIndex: number;
+  suggestedUsername: string;
+  fullName: string;
+  dateOfBirth: string;
+  gender: string;
+  nationality: string;
+  citizenId: string;
+  citizenIssueDate: string;
+  citizenIssuePlace: string;
+  permanentAddress: string;
+  currentAddress: string;
+  school: string;
+  major: string;
+  positionTitle: string;
+  role: Exclude<UserRole, "ADMIN" | "WAREHOUSE">;
+  department: Department;
+  contractType: Exclude<ContractType, "PARTTIME">;
+  contractStartDate: string;
+  contractEndDate: string;
+  internContractNumber: string;
+  probationContractNumber: string;
+  officialContractNumber: string;
+  phone: string;
+  email: string;
+  companyEmail: string;
+  bhxhStartDate: string;
+  insurance: number;
+  bhxhEndDate: string;
+  baseSalary: number;
+  allowance: number;
+  bonus: number;
+  recordedLeaveDays: number;
+  bankAccount: string;
 }
 
 export interface Holiday {
@@ -1908,6 +1961,18 @@ export async function saveShiftChangesApi(
     body: JSON.stringify({ weekStart, changes, confirmWeek }),
   });
   return res.data;
+}
+
+export async function parseStaffImportFileApi(params: {
+  fileName: string;
+  fileBase64?: string;
+  csvText?: string;
+}): Promise<ParsedStaffImportRow[]> {
+  const res = await apiRequest<{ rows: ParsedStaffImportRow[] }>("/staff/parse-import-file", {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+  return res.data?.rows || [];
 }
 
 export interface ShiftHandoverDiscrepancy {

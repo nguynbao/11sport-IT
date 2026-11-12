@@ -85,8 +85,8 @@ async function reconcileAutoShiftPreferencesForWeek(weekStart: string): Promise<
           rec.shiftCode === 'SHIFT_1' || rec.shiftCode === 'SHIFT_2'
             ? rec.shiftCode
             : Math.random() < 0.5
-            ? 'SHIFT_1'
-            : 'SHIFT_2';
+              ? 'SHIFT_1'
+              : 'SHIFT_2';
       }
       if (rec.shiftCode !== targetShift) {
         await shiftAssignmentRepo.updateById(rec._id, { shiftCode: targetShift });
@@ -774,10 +774,10 @@ shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
           shiftCode: c.shiftCode,
           ...(confirmWeek
             ? {
-                assignedBy: 'HR',
-                confirmedAt: now,
-                seenByStaff: false,
-              }
+              assignedBy: 'HR',
+              confirmedAt: now,
+              seenByStaff: false,
+            }
             : {}),
         });
         updated++;
@@ -801,12 +801,12 @@ shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
         assignedBy: confirmWeek ? 'HR' : 'AUTO',
         ...(confirmWeek
           ? {
-              confirmedAt: now,
-              seenByStaff: false,
-            }
+            confirmedAt: now,
+            seenByStaff: false,
+          }
           : {
-              seenByStaff: true,
-            }),
+            seenByStaff: true,
+          }),
       });
       created++;
     }
@@ -1085,16 +1085,16 @@ export async function computeDailyHandoverCheck(targetDate?: string) {
 
   const companionProducts = companionCategory
     ? floor1Products
-        .filter(
-          (p: any) =>
-            !primaryProducts.some((vp: any) => String(vp._id) === String(p._id)) &&
-            (String(p.categoryId) === String(companionCategory._id) ||
-              (companionCategory.code &&
-                String(p.categoryCode).toUpperCase() ===
-                  String(companionCategory.code).toUpperCase()) ||
-              stripVnAccents(p.categoryName) === stripVnAccents(companionCategory.name))
-        )
-        .map((p: any) => ({ ...p, isPrimaryCategory: false }))
+      .filter(
+        (p: any) =>
+          !primaryProducts.some((vp: any) => String(vp._id) === String(p._id)) &&
+          (String(p.categoryId) === String(companionCategory._id) ||
+            (companionCategory.code &&
+              String(p.categoryCode).toUpperCase() ===
+              String(companionCategory.code).toUpperCase()) ||
+            stripVnAccents(p.categoryName) === stripVnAccents(companionCategory.name))
+      )
+      .map((p: any) => ({ ...p, isPrimaryCategory: false }))
     : [];
 
   const selectedProducts = [...primaryProducts, ...companionProducts];
@@ -1116,7 +1116,7 @@ export async function computeDailyHandoverCheck(targetDate?: string) {
   };
 }
 
-export const HANDOVER_MANAGER_ROLES = new Set(['ADMIN', 'MANAGER', 'HR', 'ACCOUNTANT']);
+export const HANDOVER_MANAGER_ROLES = new Set(['ADMIN', 'MANAGER', 'ACCOUNTANT']);
 
 export function isHandoverManagerRole(role?: string): boolean {
   return Boolean(role && HANDOVER_MANAGER_ROLES.has(String(role).toUpperCase()));
@@ -1308,11 +1308,11 @@ shiftsRouter.get('/shifts/handover', async (req, res, next) => {
 
     const pendingIncomingHandover = isSales
       ? resolvePendingIncomingHandoverForSales({
-          allHandovers,
-          userId: String(user.userId),
-          todayLocal,
-          receivingShiftCode,
-        })
+        allHandovers,
+        userId: String(user.userId),
+        todayLocal,
+        receivingShiftCode,
+      })
       : null;
 
     // Bảo mật phân quyền dữ liệu:
@@ -1322,11 +1322,11 @@ shiftsRouter.get('/shifts/handover', async (req, res, next) => {
     let filtered = isManager
       ? [...allHandovers]
       : allHandovers.filter(
-          (h) =>
-            String(h.fromStaffId) === String(user.userId) ||
-            String(h.toStaffId) === String(user.userId) ||
-            (pendingIncomingHandover && String(h._id) === String(pendingIncomingHandover._id))
-        );
+        (h) =>
+          String(h.fromStaffId) === String(user.userId) ||
+          String(h.toStaffId) === String(user.userId) ||
+          (pendingIncomingHandover && String(h._id) === String(pendingIncomingHandover._id))
+      );
 
     if (typeof date === 'string' && date.trim()) {
       const d = date.trim();
