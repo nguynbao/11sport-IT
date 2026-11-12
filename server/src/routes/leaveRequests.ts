@@ -888,7 +888,10 @@ leaveRequestsRouter.patch('/leave-requests/:id', async (req, res, next) => {
         shiftAssignmentRepo.find({ staffId: reqDoc.staffId }),
       ]);
 
-      // 1. Chuyển đơn nghỉ gốc ở fromDate sang targetDate (hoặc tạo mới nếu ngày cũ là ca OFF chưa có đơn)
+      const fromAssign = (staffShifts as any[]).find((s) => String(s.date) === fromDate);
+      const targetAssign = (staffShifts as any[]).find((s) => String(s.date) === targetDate);
+
+      // 1. Kiểm tra lại đơn nghỉ gốc ở fromDate và kiểm tra xung đột ở targetDate trước khi duyệt
       const activeFromLeaves = (staffLeaves as any[]).filter(
         (l) =>
           String(l._id) !== String(id) &&
@@ -902,12 +905,38 @@ leaveRequestsRouter.patch('/leave-requests/:id', async (req, res, next) => {
           (staffLeaves as any[]).find(
             (l) =>
               String(l._id) === sourceLeaveId &&
+              String(l.date) === fromDate &&
               (l.type === 'OFF' || l.type === 'PAID_LEAVE') &&
-              l.status !== 'REJECTED'
+              (l.status === 'PENDING' || l.status === 'APPROVED')
           )) ||
         activeFromLeaves.find((l) => l.type === sourceOffType) ||
         activeFromLeaves[0] ||
         null;
+
+      if (!primaryLeave && (!fromAssign || fromAssign.shiftCode !== 'OFF')) {
+        throw new ApiError(
+          400,
+          'SOURCE_OFF_NOT_FOUND',
+          `Ngày gốc (${fromDate}) hiện không còn lịch nghỉ hoặc đơn xin nghỉ hợp lệ để chuyển.`
+        );
+      }
+
+      const conflictingTargetLeave = (staffLeaves as any[]).find(
+        (l) =>
+          String(l._id) !== String(id) &&
+          (!primaryLeave || String(l._id) !== String(primaryLeave._id)) &&
+          String(l.date) === targetDate &&
+          (l.type === 'OFF' || l.type === 'PAID_LEAVE') &&
+          (l.status === 'PENDING' || l.status === 'APPROVED')
+      );
+
+      if (conflictingTargetLeave || (targetAssign && targetAssign.shiftCode === 'OFF')) {
+        throw new ApiError(
+          400,
+          'TARGET_DATE_ALREADY_OFF',
+          `Ngày đích (${targetDate}) đã có lịch nghỉ hoặc đơn xin nghỉ khác. Không thể duyệt chuyển ngày off sang ngày này.`
+        );
+      }
 
       const noteSuffix = `Đã đổi ngày off từ ${fromDate} sang ${targetDate}`;
 
@@ -926,39 +955,22 @@ leaveRequestsRouter.patch('/leave-requests/:id', async (req, res, next) => {
           }
         }
       } else {
-        const existingTargetLeave = (staffLeaves as any[]).find(
-          (l) =>
-            String(l._id) !== String(id) &&
-            String(l.date) === targetDate &&
-            l.type === sourceOffType
-        );
-        if (existingTargetLeave) {
-          await leaveRequestRepo.updateById(String(existingTargetLeave._id), {
-            status: 'APPROVED',
-            reviewedBy: reviewerName,
-            reviewedAt: new Date(),
-            reviewNote: String(reviewNote).trim() || noteSuffix,
-          });
-        } else {
-          await leaveRequestRepo.create({
-            staffId: reqDoc.staffId,
-            staffCode: reqDoc.staffCode,
-            staffName: reqDoc.staffName,
-            department: reqDoc.department || 'OFFICE',
-            type: sourceOffType,
-            date: targetDate,
-            reason: `${reqDoc.reason} (${noteSuffix})`.slice(0, LEAVE_REASON_MAX_LENGTH),
-            status: 'APPROVED',
-            reviewedBy: reviewerName,
-            reviewedAt: new Date(),
-            reviewNote: String(reviewNote).trim() || noteSuffix,
-          });
-        }
+        await leaveRequestRepo.create({
+          staffId: reqDoc.staffId,
+          staffCode: reqDoc.staffCode,
+          staffName: reqDoc.staffName,
+          department: reqDoc.department || 'OFFICE',
+          type: sourceOffType,
+          date: targetDate,
+          reason: `${reqDoc.reason} (${noteSuffix})`.slice(0, LEAVE_REASON_MAX_LENGTH),
+          status: 'APPROVED',
+          reviewedBy: reviewerName,
+          reviewedAt: new Date(),
+          reviewNote: String(reviewNote).trim() || noteSuffix,
+        });
       }
 
       // 2. Đồng bộ lịch phân ca (ShiftAssignment) nếu là nhân viên khối SALES hoặc đã có phân ca
-      const fromAssign = (staffShifts as any[]).find((s) => String(s.date) === fromDate);
-      const targetAssign = (staffShifts as any[]).find((s) => String(s.date) === targetDate);
       const isSales = reqDoc.department === 'SALES';
 
       if (isSales || fromAssign || targetAssign) {

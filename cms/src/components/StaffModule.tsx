@@ -1139,6 +1139,32 @@ export default function StaffModule({
                       />
                     </div>
 
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        Email liên hệ
+                      </label>
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="canhan@gmail.com"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs"
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        Email công ty
+                      </label>
+                      <input
+                        type="email"
+                        value={companyEmail}
+                        onChange={(e) => setCompanyEmail(e.target.value)}
+                        placeholder="ten@11sport.vn"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs"
+                      />
+                    </div>
+
                     <div className="md:col-span-3">
                       <label className="block text-xs font-bold text-slate-600 mb-1">
                         ĐỊA CHỈ THƯỜNG CHÚ
@@ -1332,6 +1358,34 @@ export default function StaffModule({
                           value={formatMoneyInput(baseSalary)}
                           onChange={(e) => setBaseSalary(String(parseMoneyInput(e.target.value) || ""))}
                           placeholder="VD: 7.500.000"
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 mb-1">
+                          Trợ cấp
+                        </label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={formatMoneyInput(allowance)}
+                          onChange={(e) => setAllowance(String(parseMoneyInput(e.target.value) || ""))}
+                          placeholder="0"
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 mb-1">
+                          Thưởng
+                        </label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={formatMoneyInput(bonus)}
+                          onChange={(e) => setBonus(String(parseMoneyInput(e.target.value) || ""))}
+                          placeholder="0"
                           className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-mono"
                         />
                       </div>

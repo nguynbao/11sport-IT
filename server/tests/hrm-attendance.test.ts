@@ -1127,5 +1127,43 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
     expect(calAfterApprove.body.data.row.cells['2026-11-20'].code).not.toBe('LEAVE');
     expect(calAfterApprove.body.data.row.cells['2026-11-20'].code).not.toBe('DAY_OFF');
     expect(calAfterApprove.body.data.row.cells['2026-11-20'].shiftCode).toBe('SHIFT_2');
+
+    // 14.5 Nếu trong lúc đơn CHANGE_OFF đang chờ HR duyệt mà ngày đích phát sinh đơn nghỉ khác -> chặn 400 TARGET_DATE_ALREADY_OFF khi duyệt
+    const reqChangeConflict = await request(app)
+      .post('/api/v1/leave-requests')
+      .set('Authorization', `Bearer ${empToken}`)
+      .send({
+        type: 'CHANGE_OFF',
+        fromDate: '2026-11-19',
+        date: '2026-11-21',
+        sourceLeaveId: off20Id,
+        reason: 'Xin đổi tiếp từ 19/11 sang 21/11',
+      });
+    expect(reqChangeConflict.status).toBe(201);
+    const conflictChangeId = reqChangeConflict.body.data._id;
+
+    // Giả lập phát sinh đơn nghỉ phép năm (PAID_LEAVE) ở ngày đích 2026-11-21 trước khi HR duyệt đơn CHANGE_OFF
+    const otherLeaveOnTarget = await leaveRequestRepo.create({
+      staffId: String(staffId),
+      staffCode: salesCreate.body.data.code,
+      staffName: 'Nhân Viên Đổi Ngày Off',
+      department: 'SALES',
+      type: 'PAID_LEAVE',
+      date: '2026-11-21',
+      reason: 'Nghỉ phép năm ngày 21/11',
+      status: 'APPROVED',
+    });
+
+    const approveConflictRes = await request(app)
+      .patch(`/api/v1/leave-requests/${conflictChangeId}`)
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({ status: 'APPROVED', reviewNote: 'Thử duyệt khi ngày đích đã có đơn nghỉ khác' });
+    expect(approveConflictRes.status).toBe(400);
+    expect(approveConflictRes.body.code).toBe('TARGET_DATE_ALREADY_OFF');
+
+    // Đảm bảo đơn gốc vẫn giữ nguyên ở ngày 2026-11-19, không bị chuyển đè sang 2026-11-21
+    const stillAt19: any = await leaveRequestRepo.findById(off20Id);
+    expect(stillAt19.date).toBe('2026-11-19');
+    await leaveRequestRepo.deleteById(String((otherLeaveOnTarget as any)._id));
   });
 });
