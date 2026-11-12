@@ -172,8 +172,9 @@ authStaffRouter.get('/staff', async (req, res, next) => {
   try {
     const { role, department, contractType, status, search, sortBy, sortOrder } = req.query;
     const allStaff = await staffRepo.find({}, { createdAt: 1 });
+    const authedUser = req.user && !req.isFallbackUser ? req.user : undefined;
     const canViewAllSalaries =
-      !req.user || ['HR', 'ADMIN', 'ACCOUNTANT'].includes(req.user.role);
+      !!authedUser && ['HR', 'ADMIN', 'ACCOUNTANT'].includes(authedUser.role);
 
     const baseFiltered = allStaff
       .filter((s) => {
@@ -184,7 +185,7 @@ authStaffRouter.get('/staff', async (req, res, next) => {
         return true;
       })
       .map(({ passwordHash, ...rest }) => {
-        const isSelf = req.user && String(rest._id) === String(req.user.userId);
+        const isSelf = !!authedUser && String(rest._id) === String(authedUser.userId);
         const showSalary = canViewAllSalaries || isSelf;
         if (!showSalary) {
           // Người không có quyền: chỉ trả thông tin công khai, ẩn toàn bộ hồ sơ nhạy cảm
