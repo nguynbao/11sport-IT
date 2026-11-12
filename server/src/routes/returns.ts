@@ -18,6 +18,7 @@ import {
 import { executeUnpackSetToRetail } from '../utils/unpackSet';
 import { buildVariantKey } from '../utils/productCode';
 import { filterAndRankBySearch } from '../utils/search';
+import { withOrderLock, deepCloneSnapshot } from '../utils/orderLock';
 
 export const returnsRouter = Router();
 
@@ -100,16 +101,108 @@ async function prepareReturnExchangeCalculation(body: any) {
   }
 
   // Theo dõi số tiền hàng thuần đã hoàn cho từng dòng qua các lần trả trước + trong cùng giao dịch
+  const priorReturns = await returnExchangeRepo.find({ orderId: order._id }, { createdAt: 1 });
+  const priorQtyByIdx = new Map<number, number>();
+  const priorNetByIdx = new Map<number, number>();
+
+  for (const pr of priorReturns) {
+    for (const pItem of pr.returnItems || []) {
+      const pQty = Math.max(0, Math.round(Number(pItem.quantity) || 0));
+      const pLineTotal = Math.max(0, Math.round(Number(pItem.lineTotal) || 0));
+      if (pQty <= 0) continue;
+
+      const pColor = pItem.color ? String(pItem.color).trim() : '';
+      const pSize = pItem.size ? String(pItem.size).trim().toUpperCase() : '';
+      const pHasVar = Boolean(pColor || pSize);
+      const pVarKey = buildVariantKey(pColor, pSize);
+
+      const matchingLines = order.items
+        .map((item, idx) => ({ item, idx }))
+        .filter(
+          ({ item }) =>
+            String(item.productId) === String(pItem.productId) ||
+            item.productCode === String(pItem.productCode || pItem.productId).toUpperCase()
+        );
+      if (matchingLines.length === 0) continue;
+
+      let candidates = matchingLines;
+      const rawLineIdx =
+        (pItem as any).lineIndex !== undefined &&
+        (pItem as any).lineIndex !== null &&
+        (pItem as any).lineIndex !== ''
+          ? Number((pItem as any).lineIndex)
+          : NaN;
+      const explicitMatch = Number.isInteger(rawLineIdx)
+        ? matchingLines.find(({ idx, item }) => {
+            if (idx !== rawLineIdx) return false;
+            if (!pHasVar) return true;
+            return buildVariantKey(item.color, item.size) === pVarKey;
+          })
+        : undefined;
+
+      if (explicitMatch) {
+        candidates = [explicitMatch];
+      } else if (pHasVar) {
+        const exactVar = matchingLines.filter(
+          ({ item }) => buildVariantKey(item.color, item.size) === pVarKey
+        );
+        if (exactVar.length > 0) candidates = exactVar;
+      } else {
+        const defVar = matchingLines.filter(
+          ({ item }) => buildVariantKey(item.color, item.size) === 'DEFAULT'
+        );
+        const defAvail = defVar.reduce(
+          (sum, { item, idx }) =>
+            sum +
+            Math.max(
+              0,
+              Math.min(Number(item.quantity) || 0, Number(item.returnedQuantity) || 0) -
+                (priorQtyByIdx.get(idx) || 0)
+            ),
+          0
+        );
+        if (defVar.length > 0 && defAvail >= pQty) {
+          candidates = defVar;
+        }
+      }
+
+      let leftPQty = pQty;
+      let leftPLineTotal = pLineTotal;
+      for (const { item, idx } of candidates) {
+        if (leftPQty <= 0) break;
+        const maxPriorForIdx = Math.max(
+          0,
+          Math.min(Number(item.quantity) || 0, Number(item.returnedQuantity) || 0)
+        );
+        const availPrior = Math.max(0, maxPriorForIdx - (priorQtyByIdx.get(idx) || 0));
+        if (availPrior <= 0) continue;
+        const takePrior = Math.min(availPrior, leftPQty);
+        const shareNet =
+          takePrior >= leftPQty
+            ? leftPLineTotal
+            : Math.min(leftPLineTotal, Math.round((takePrior / pQty) * pLineTotal));
+        priorQtyByIdx.set(idx, (priorQtyByIdx.get(idx) || 0) + takePrior);
+        priorNetByIdx.set(idx, (priorNetByIdx.get(idx) || 0) + shareNet);
+        leftPQty -= takePrior;
+        leftPLineTotal = Math.max(0, leftPLineTotal - shareNet);
+      }
+    }
+  }
+
   const allocatedNetByIdx = new Map<number, number>();
   for (let idx = 0; idx < order.items.length; idx++) {
     const it = order.items[idx];
     const totalQty = Math.max(0, Number(it.quantity) || 0);
     const prevRetQty = Math.min(totalQty, Math.max(0, Number(it.returnedQuantity) || 0));
     const netLine = lineNetAmountByIdx[idx] || 0;
+    const recordedPriorQty = priorQtyByIdx.get(idx) || 0;
+    const recordedPriorNet = priorNetByIdx.get(idx) || 0;
     if (prevRetQty <= 0 || totalQty <= 0 || netLine <= 0) {
       allocatedNetByIdx.set(idx, 0);
     } else if (prevRetQty >= totalQty) {
       allocatedNetByIdx.set(idx, netLine);
+    } else if (recordedPriorQty === prevRetQty && recordedPriorNet <= netLine) {
+      allocatedNetByIdx.set(idx, recordedPriorNet);
     } else {
       allocatedNetByIdx.set(idx, Math.round((prevRetQty / totalQty) * netLine));
     }
@@ -545,8 +638,7 @@ async function prepareReturnExchangeCalculation(body: any) {
   const orderCardFee = Math.max(0, Math.round(Number(order.cardFee) || 0));
   let refundedCardFee = 0;
   if (orderCardFee > 0 && returnSubtotal > 0) {
-    const prevReturns = await returnExchangeRepo.find({ orderId: order._id });
-    const alreadyRefundedCardFee = prevReturns.reduce(
+    const alreadyRefundedCardFee = priorReturns.reduce(
       (sum, r) => sum + Math.max(0, Math.round(Number(r.refundedCardFee) || 0)),
       0
     );
@@ -600,6 +692,7 @@ async function prepareReturnExchangeCalculation(body: any) {
 
   return {
     order,
+    priorReturns,
     allocatedByIdx,
     autoUnpackPlans,
     preparedReturnItems,
@@ -694,224 +787,353 @@ returnsRouter.post('/returns/calculate', async (req, res, next) => {
 // POST /api/v1/returns
 returnsRouter.post('/returns', async (req, res, next) => {
   try {
-    const calc = await prepareReturnExchangeCalculation(req.body);
-    const {
-      order,
-      preparedReturnItems,
-      preparedExchangeItems,
-      returnSubtotal,
-      refundedCardFee,
-      returnTotal,
-      exchangeTotal,
-      netDifference,
-      refundAmount,
-      additionalCharge,
-      debtBefore,
-      debtReduction,
-      cashRefund,
-      debtAfter,
-      debtStatusAfter,
-    } = calc;
-
-    const isExchange =
-      req.body?.type === 'EXCHANGE' || preparedExchangeItems.length > 0;
-    const recordType = isExchange ? 'EXCHANGE' : 'RETURN';
-
-    const validMethods: PaymentMethod[] = ['CASH', 'BANKING', 'CARD', 'OTHER'];
-    // BR-13: Nếu cashRefund === 0 thì refundMethod lưu 'CASH'
-    const refundMethod: PaymentMethod =
-      cashRefund > 0 && validMethods.includes(req.body?.refundMethod)
-        ? req.body.refundMethod
-        : 'CASH';
-
-    const code = await generateNextReturnExchangeCode(isExchange);
-
-    const createdRecord = await returnExchangeRepo.create({
-      code,
-      orderId: order._id,
-      orderCode: order.orderCode,
-      customerName: order.customerName || 'Khách lẻ',
-      customerPhone: order.customerPhone || '',
-      type: recordType,
-      returnItems: preparedReturnItems,
-      exchangeItems: preparedExchangeItems,
-      returnSubtotal,
-      refundedCardFee,
-      returnTotal,
-      exchangeTotal,
-      netDifference,
-      refundAmount,
-      additionalCharge,
-      debtBefore,
-      debtReduction,
-      cashRefund,
-      debtAfter,
-      refundMethod,
-      note: req.body?.note ? String(req.body.note).trim() : '',
-      performedBy: req.user?.userId || 'SALES',
-      performedByName: req.user?.fullName || 'Nhân viên bán hàng',
-    });
-
-    // 1. Xử lý tồn kho cho hàng trả về: chỉ cộng lại vào kho khi condition === 'GOOD' (BR-15)
-    for (const rItem of preparedReturnItems) {
-      if (rItem.condition === 'GOOD') {
-        const product = await productRepo.findById(rItem.productId);
-        if (product) {
-          const beforeFloors = getFloorStocks(product);
-          const balanceBefore = beforeFloors.stock;
-          const nextFloors = applyFloorDelta(
-            product,
-            'FLOOR_1',
-            rItem.quantity,
-            rItem.color,
-            rItem.size
-          );
-          const balanceAfter = nextFloors.stock;
-          await productRepo.updateById(product._id, {
-            variants: nextFloors.variants,
-            stockFloor1: nextFloors.stockFloor1,
-            stockFloor2: nextFloors.stockFloor2,
-            stock: nextFloors.stock,
-          });
-
-          await stockMovementRepo.create({
-            type: isExchange ? 'EXCHANGE_IN' : 'RETURN',
-            productId: product._id,
-            productCode: product.code,
-            productName: formatProductWithVariant(product.name, rItem.color, rItem.size),
-            color: rItem.color || '',
-            size: rItem.size || '',
-            categoryId: product.categoryId || '',
-            unit: product.unit || 'Cái',
-            quantityChange: rItem.quantity,
-            balanceBefore,
-            balanceAfter,
-            warehouseLocation: 'FLOOR_1',
-            referenceType: 'RETURN_EXCHANGE',
-            referenceId: createdRecord._id,
-            referenceCode: createdRecord.code,
-            performedBy: req.user?.userId || 'SALES',
-            performedByName: req.user?.fullName || 'Nhân viên bán hàng',
-            note: `Nhận lại hàng (${rItem.condition}) từ đơn ${order.orderCode}`,
-          });
-        }
-      }
+    const { orderId, orderCode } = req.body || {};
+    const lookupKey = String(orderId || orderCode || '').trim();
+    if (!lookupKey) {
+      throw new ApiError(
+        400,
+        'ORDER_ID_REQUIRED',
+        'Vui lòng cung cấp mã đơn hàng gốc (orderId hoặc orderCode)'
+      );
     }
 
-    // 1.5. Thực hiện tự động tách Bộ -> Lẻ tại Kho Tầng 1 trước khi xuất hàng đổi mới (nếu có)
-    if (Array.isArray(calc.autoUnpackPlans) && calc.autoUnpackPlans.length > 0) {
-      for (const plan of calc.autoUnpackPlans) {
-        await executeUnpackSetToRetail({
-          retailProductId: String(plan.retailProduct._id),
-          setsToUnpack: plan.setsToUnpack,
-          warehouse: 'FLOOR_1',
-          color: plan.color,
-          size: plan.size,
-          reason: `Tự động tách bộ khi đổi hàng phiếu ${createdRecord.code} (đơn gốc ${order.orderCode})`,
-          actorId: req.user?.userId || 'SALES',
-          actorName: req.user?.fullName || 'Nhân viên bán hàng',
-          actorRole: req.user?.role || 'SALES',
-        });
-      }
+    const initialOrder =
+      (await orderRepo.findById(lookupKey)) ||
+      (await orderRepo.findOne({ orderCode: lookupKey.toUpperCase() }));
+
+    if (!initialOrder) {
+      throw new ApiError(404, 'ORDER_NOT_FOUND', 'Không tìm thấy đơn hàng gốc cần trả/đổi');
     }
 
-    // 2. Xử lý tồn kho cho hàng đổi mới: trừ tồn kho & ghi StockMovement loại EXCHANGE_OUT
-    for (const eItem of preparedExchangeItems) {
-      const product = await productRepo.findById(eItem.productId);
-      if (product) {
-        const beforeFloors = getFloorStocks(product);
-        const balanceBefore = beforeFloors.stock;
-        const nextFloors = deductStockForSale(product, eItem.quantity, eItem.color, eItem.size);
-        const balanceAfter = nextFloors.stock;
-        await productRepo.updateById(product._id, {
-          variants: nextFloors.variants,
-          stockFloor1: nextFloors.stockFloor1,
-          stockFloor2: nextFloors.stockFloor2,
-          stock: nextFloors.stock,
-        });
-
-        await stockMovementRepo.create({
-          type: 'EXCHANGE_OUT',
-          productId: product._id,
-          productCode: product.code,
-          productName: formatProductWithVariant(product.name, eItem.color, eItem.size),
-          color: eItem.color || '',
-          size: eItem.size || '',
-          categoryId: product.categoryId || '',
-          unit: product.unit || 'Cái',
-          quantityChange: -eItem.quantity,
-          balanceBefore,
-          balanceAfter,
-          warehouseLocation: 'FLOOR_1',
-          referenceType: 'RETURN_EXCHANGE',
-          referenceId: createdRecord._id,
-          referenceCode: createdRecord.code,
-          performedBy: req.user?.userId || 'SALES',
-          performedByName: req.user?.fullName || 'Nhân viên bán hàng',
-          note: `Xuất hàng đổi mới cho đơn ${order.orderCode}`,
-        });
-      }
-    }
-
-    // 3. Cập nhật returnedQuantity chính xác theo chỉ số dòng (lineIndex) và trạng thái đơn gốc
-    const updatedOrderItems = order.items.map((item, idx) => {
-      const returnedInThisTx = calc.allocatedByIdx.get(idx) || 0;
-      return {
-        ...item,
-        returnedQuantity: (Number(item.returnedQuantity) || 0) + returnedInThisTx,
-      };
-    });
-
-    const allFullyReturned = updatedOrderItems.every(
-      (i) => i.returnedQuantity >= i.quantity
-    );
-    const newOrderStatus = allFullyReturned
-      ? 'FULLY_RETURNED'
-      : 'PARTIALLY_RETURNED';
-
-    const prevAdjustments: IDebtAdjustmentRecord[] = Array.isArray(order.debtAdjustments)
-      ? order.debtAdjustments
-      : [];
-    const nextAdjustments: IDebtAdjustmentRecord[] =
-      debtReduction > 0
-        ? [
-            ...prevAdjustments,
-            {
-              _id: `da_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-              type: 'RETURN',
-              returnCode: createdRecord.code,
-              amount: debtReduction,
-              debtBefore,
-              debtAfter,
-              at: new Date(),
-              by: req.user?.userId || 'SALES',
-              byName: req.user?.fullName || 'Nhân viên bán hàng',
-            },
-          ]
-        : prevAdjustments;
-
-    const updatedOrder = await orderRepo.updateById(order._id, {
-      items: updatedOrderItems,
-      status: newOrderStatus,
-      ...(debtReduction > 0
-        ? {
-            debtAmount: debtAfter,
-            debtStatus: debtStatusAfter,
-            debtAdjustments: nextAdjustments,
-          }
-        : {}),
-    });
-
-    res.status(201).json({
-      data: {
-        returnExchange: createdRecord,
-        order: updatedOrder,
+    const txResult = await withOrderLock(String(initialOrder._id), async () => {
+      const calc = await prepareReturnExchangeCalculation(req.body);
+      const {
+        order,
+        priorReturns,
+        preparedReturnItems,
+        preparedExchangeItems,
+        returnSubtotal,
+        refundedCardFee,
+        returnTotal,
+        exchangeTotal,
+        netDifference,
+        refundAmount,
+        additionalCharge,
         debtBefore,
         debtReduction,
         cashRefund,
         debtAfter,
         debtStatusAfter,
-      },
+      } = calc;
+
+      const isExchange =
+        req.body?.type === 'EXCHANGE' || preparedExchangeItems.length > 0;
+      const recordType = isExchange ? 'EXCHANGE' : 'RETURN';
+
+      const validMethods: PaymentMethod[] = ['CASH', 'BANKING', 'CARD', 'OTHER'];
+      // BR-13: Nếu cashRefund === 0 thì refundMethod lưu 'CASH'
+      const refundMethod: PaymentMethod =
+        cashRefund > 0 && validMethods.includes(req.body?.refundMethod)
+          ? req.body.refundMethod
+          : 'CASH';
+
+      // Chụp bản sao trạng thái ban đầu của order và tất cả sản phẩm liên quan để rollback nguyên tử nếu có lỗi
+      const orderSnapshot = deepCloneSnapshot({
+        items: order.items,
+        status: order.status,
+        paidAmount: order.paidAmount,
+        debtAmount: order.debtAmount,
+        initialDebtAmount: order.initialDebtAmount,
+        debtStatus: order.debtStatus,
+        debtAdjustments: order.debtAdjustments,
+      });
+
+      const affectedProductIds = new Set<string>();
+      for (const rItem of preparedReturnItems) {
+        if (rItem.productId) affectedProductIds.add(String(rItem.productId));
+      }
+      for (const eItem of preparedExchangeItems) {
+        if (eItem.productId) affectedProductIds.add(String(eItem.productId));
+      }
+      for (const plan of calc.autoUnpackPlans || []) {
+        if (plan.retailProduct?._id) affectedProductIds.add(String(plan.retailProduct._id));
+        if (plan.parentProduct?._id) affectedProductIds.add(String(plan.parentProduct._id));
+      }
+
+      const productSnapshots = new Map<string, Record<string, any>>();
+      for (const prodId of affectedProductIds) {
+        const prod = await productRepo.findById(prodId);
+        if (prod) {
+          productSnapshots.set(
+            prodId,
+            deepCloneSnapshot({
+              variants: prod.variants,
+              stockFloor1: prod.stockFloor1,
+              stockFloor2: prod.stockFloor2,
+              stock: prod.stock,
+              costPrice: prod.costPrice,
+            })
+          );
+        }
+      }
+
+      const existingMovementsBeforeTx = await stockMovementRepo.find({});
+      const existingMovementIdSet = new Set(existingMovementsBeforeTx.map((m) => String(m._id)));
+      const createdMovementIds: string[] = [];
+      let createdReturnId: string | null = null;
+
+      try {
+        const code = await generateNextReturnExchangeCode(isExchange);
+
+        const createdRecord = await returnExchangeRepo.create({
+          code,
+          orderId: order._id,
+          orderCode: order.orderCode,
+          customerName: order.customerName || 'Khách lẻ',
+          customerPhone: order.customerPhone || '',
+          type: recordType,
+          returnItems: preparedReturnItems,
+          exchangeItems: preparedExchangeItems,
+          returnSubtotal,
+          refundedCardFee,
+          returnTotal,
+          exchangeTotal,
+          netDifference,
+          refundAmount,
+          additionalCharge,
+          debtBefore,
+          debtReduction,
+          cashRefund,
+          debtAfter,
+          refundMethod,
+          note: req.body?.note ? String(req.body.note).trim() : '',
+          performedBy: req.user?.userId || 'SALES',
+          performedByName: req.user?.fullName || 'Nhân viên bán hàng',
+        });
+        createdReturnId = String(createdRecord._id);
+
+        // 1. Xử lý tồn kho cho hàng trả về: chỉ cộng lại vào kho khi condition === 'GOOD' (BR-15)
+        for (const rItem of preparedReturnItems) {
+          if (rItem.condition === 'GOOD') {
+            const product = await productRepo.findById(rItem.productId);
+            if (product) {
+              const beforeFloors = getFloorStocks(product);
+              const balanceBefore = beforeFloors.stock;
+              const nextFloors = applyFloorDelta(
+                product,
+                'FLOOR_1',
+                rItem.quantity,
+                rItem.color,
+                rItem.size
+              );
+              const balanceAfter = nextFloors.stock;
+              await productRepo.updateById(product._id, {
+                variants: nextFloors.variants,
+                stockFloor1: nextFloors.stockFloor1,
+                stockFloor2: nextFloors.stockFloor2,
+                stock: nextFloors.stock,
+              });
+
+              const retMovement = await stockMovementRepo.create({
+                type: isExchange ? 'EXCHANGE_IN' : 'RETURN',
+                productId: product._id,
+                productCode: product.code,
+                productName: formatProductWithVariant(product.name, rItem.color, rItem.size),
+                color: rItem.color || '',
+                size: rItem.size || '',
+                categoryId: product.categoryId || '',
+                unit: product.unit || 'Cái',
+                quantityChange: rItem.quantity,
+                balanceBefore,
+                balanceAfter,
+                warehouseLocation: 'FLOOR_1',
+                referenceType: 'RETURN_EXCHANGE',
+                referenceId: createdRecord._id,
+                referenceCode: createdRecord.code,
+                performedBy: req.user?.userId || 'SALES',
+                performedByName: req.user?.fullName || 'Nhân viên bán hàng',
+                note: `Nhận lại hàng (${rItem.condition}) từ đơn ${order.orderCode}`,
+              });
+              createdMovementIds.push(String(retMovement._id));
+            }
+          }
+        }
+
+        // 1.5. Thực hiện tự động tách Bộ -> Lẻ tại Kho Tầng 1 trước khi xuất hàng đổi mới (nếu có)
+        if (Array.isArray(calc.autoUnpackPlans) && calc.autoUnpackPlans.length > 0) {
+          for (const plan of calc.autoUnpackPlans) {
+            const unpackRes = await executeUnpackSetToRetail({
+              retailProductId: String(plan.retailProduct._id),
+              setsToUnpack: plan.setsToUnpack,
+              warehouse: 'FLOOR_1',
+              color: plan.color,
+              size: plan.size,
+              reason: `Tự động tách bộ khi đổi hàng phiếu ${createdRecord.code} (đơn gốc ${order.orderCode})`,
+              actorId: req.user?.userId || 'SALES',
+              actorName: req.user?.fullName || 'Nhân viên bán hàng',
+              actorRole: req.user?.role || 'SALES',
+            });
+            if (unpackRes.setMovement?._id) createdMovementIds.push(String(unpackRes.setMovement._id));
+            if (unpackRes.retailMovement?._id) createdMovementIds.push(String(unpackRes.retailMovement._id));
+          }
+        }
+
+        // 2. Xử lý tồn kho cho hàng đổi mới: trừ tồn kho & ghi StockMovement loại EXCHANGE_OUT
+        for (const eItem of preparedExchangeItems) {
+          const product = await productRepo.findById(eItem.productId);
+          if (product) {
+            const beforeFloors = getFloorStocks(product);
+            const balanceBefore = beforeFloors.stock;
+            const nextFloors = deductStockForSale(product, eItem.quantity, eItem.color, eItem.size);
+            const balanceAfter = nextFloors.stock;
+            await productRepo.updateById(product._id, {
+              variants: nextFloors.variants,
+              stockFloor1: nextFloors.stockFloor1,
+              stockFloor2: nextFloors.stockFloor2,
+              stock: nextFloors.stock,
+            });
+
+            const exMovement = await stockMovementRepo.create({
+              type: 'EXCHANGE_OUT',
+              productId: product._id,
+              productCode: product.code,
+              productName: formatProductWithVariant(product.name, eItem.color, eItem.size),
+              color: eItem.color || '',
+              size: eItem.size || '',
+              categoryId: product.categoryId || '',
+              unit: product.unit || 'Cái',
+              quantityChange: -eItem.quantity,
+              balanceBefore,
+              balanceAfter,
+              warehouseLocation: 'FLOOR_1',
+              referenceType: 'RETURN_EXCHANGE',
+              referenceId: createdRecord._id,
+              referenceCode: createdRecord.code,
+              performedBy: req.user?.userId || 'SALES',
+              performedByName: req.user?.fullName || 'Nhân viên bán hàng',
+              note: `Xuất hàng đổi mới cho đơn ${order.orderCode}`,
+            });
+            createdMovementIds.push(String(exMovement._id));
+          }
+        }
+
+        // 3. Cập nhật returnedQuantity chính xác theo chỉ số dòng (lineIndex), paidAmount và trạng thái đơn gốc
+        const updatedOrderItems = order.items.map((item, idx) => {
+          const returnedInThisTx = calc.allocatedByIdx.get(idx) || 0;
+          return {
+            ...item,
+            returnedQuantity: (Number(item.returnedQuantity) || 0) + returnedInThisTx,
+          };
+        });
+
+        const allFullyReturned = updatedOrderItems.every(
+          (i) => i.returnedQuantity >= i.quantity
+        );
+        const newOrderStatus = allFullyReturned
+          ? 'FULLY_RETURNED'
+          : 'PARTIALLY_RETURNED';
+
+        const prevAdjustments: IDebtAdjustmentRecord[] = Array.isArray(order.debtAdjustments)
+          ? order.debtAdjustments
+          : [];
+        const nextAdjustments: IDebtAdjustmentRecord[] =
+          debtReduction > 0
+            ? [
+                ...prevAdjustments,
+                {
+                  _id: `da_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                  type: 'RETURN',
+                  returnCode: createdRecord.code,
+                  amount: debtReduction,
+                  debtBefore,
+                  debtAfter,
+                  at: new Date(),
+                  by: req.user?.userId || 'SALES',
+                  byName: req.user?.fullName || 'Nhân viên bán hàng',
+                },
+              ]
+            : prevAdjustments;
+
+        const totalOrderAmount = Math.max(0, Number(order.totalAmount) || 0);
+        const collectedDebtAmount = (
+          Array.isArray(order.debtPayments) ? order.debtPayments : []
+        ).reduce((s, dp) => s + Math.max(0, Number(dp?.amount) || 0), 0);
+        const reducedByReturnAmount = nextAdjustments.reduce(
+          (s, da) => s + Math.max(0, Number(da?.amount) || 0),
+          0
+        );
+        const initialDebtAmount = Math.max(
+          debtBefore,
+          Number(order.initialDebtAmount) || 0,
+          debtAfter + collectedDebtAmount + reducedByReturnAmount
+        );
+        const cashAtPurchase = Math.max(0, totalOrderAmount - initialDebtAmount);
+        const priorCashRefunded = (priorReturns || []).reduce((s, r) => {
+          const rDebtRed = Math.max(0, Math.round(Number(r.debtReduction) || 0));
+          const rRefundAmt = Math.max(0, Math.round(Number(r.refundAmount) || 0));
+          const rCashRef =
+            r.cashRefund !== undefined && r.cashRefund !== null
+              ? Math.max(0, Math.round(Number(r.cashRefund) || 0))
+              : Math.max(0, rRefundAmt - rDebtRed);
+          return s + rCashRef;
+        }, 0);
+        const totalCashRefundedForOrder = priorCashRefunded + cashRefund;
+        const nextPaidAmount = Math.max(
+          0,
+          Math.min(totalOrderAmount, cashAtPurchase + collectedDebtAmount - totalCashRefundedForOrder)
+        );
+
+        const updatedOrder = await orderRepo.updateById(order._id, {
+          items: updatedOrderItems,
+          status: newOrderStatus,
+          paidAmount: nextPaidAmount,
+          ...(debtReduction > 0
+            ? {
+                debtAmount: debtAfter,
+                debtStatus: debtStatusAfter,
+                debtAdjustments: nextAdjustments,
+              }
+            : {}),
+        });
+
+        if (!updatedOrder) {
+          throw new ApiError(500, 'ORDER_UPDATE_FAILED', 'Không thể cập nhật trạng thái đơn hàng gốc');
+        }
+
+        return {
+          returnExchange: createdRecord,
+          order: updatedOrder,
+          debtBefore,
+          debtReduction,
+          cashRefund,
+          debtAfter,
+          debtStatusAfter,
+        };
+      } catch (txErr) {
+        // Rollback toàn bộ bút toán kho, phiếu trả/đổi, tồn kho sản phẩm và đơn hàng gốc
+        const currentMovements = await stockMovementRepo.find({}).catch(() => []);
+        const movementIdsToDelete = new Set<string>(createdMovementIds);
+        for (const m of currentMovements) {
+          if (!existingMovementIdSet.has(String(m._id))) {
+            movementIdsToDelete.add(String(m._id));
+          }
+        }
+        for (const movId of movementIdsToDelete) {
+          await stockMovementRepo.deleteById(movId).catch(() => null);
+        }
+        if (createdReturnId) {
+          await returnExchangeRepo.deleteById(createdReturnId).catch(() => null);
+        }
+        for (const [prodId, snap] of productSnapshots.entries()) {
+          await productRepo.updateById(prodId, snap).catch(() => null);
+        }
+        await orderRepo.updateById(order._id, orderSnapshot).catch(() => null);
+        throw txErr;
+      }
+    });
+
+    res.status(201).json({
+      data: txResult,
       meta: {},
     });
   } catch (err) {

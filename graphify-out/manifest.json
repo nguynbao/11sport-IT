@@ -102,9 +102,9 @@
     "semantic_hash": ""
   },
   "cms/src/components/RevenueDashboardModule.tsx": {
-    "mtime": 1794469310.3166327,
-    "seen": 1794469414.200937,
-    "ast_hash": "70fc808cebaccdd806bf33b37ba7bab2",
+    "mtime": 1794471823.8429518,
+    "seen": 1794472359.506809,
+    "ast_hash": "e72ebc7c8a49ff0f7a5ab6ea2778c410",
     "semantic_hash": ""
   },
   "cms/src/components/StaffActivityModule.tsx": {
@@ -288,9 +288,9 @@
     "semantic_hash": ""
   },
   "server/src/routes/ordersCustomers.ts": {
-    "mtime": 1794467622.8549871,
-    "seen": 1794468136.159651,
-    "ast_hash": "3019e1d4f0ff539a522d52b52d11b95c",
+    "mtime": 1794472049.5415661,
+    "seen": 1794472359.506967,
+    "ast_hash": "8381af49a2d30332b0c447cbc7941534",
     "semantic_hash": ""
   },
   "server/src/routes/printers.ts": {
@@ -312,15 +312,15 @@
     "semantic_hash": ""
   },
   "server/src/routes/reports.ts": {
-    "mtime": 1794467879.2484276,
-    "seen": 1794468136.159659,
-    "ast_hash": "a7054665d03c6602c560d352ac52a41d",
+    "mtime": 1794472006.4762015,
+    "seen": 1794472359.5069802,
+    "ast_hash": "41313f92e6a08e91b12c6e72e089f78d",
     "semantic_hash": ""
   },
   "server/src/routes/returns.ts": {
-    "mtime": 1794467716.4787257,
-    "seen": 1794468136.159661,
-    "ast_hash": "b0865319f22cd317944d2c1a53341f21",
+    "mtime": 1794472178.1380591,
+    "seen": 1794472359.5069828,
+    "ast_hash": "2e1366494a574de450365e0e14d5e85c",
     "semantic_hash": ""
   },
   "server/src/routes/wise.ts": {
@@ -432,9 +432,9 @@
     "semantic_hash": ""
   },
   "server/tests/revenue-dashboard.test.ts": {
-    "mtime": 1794468584.4012496,
-    "seen": 1794469414.201199,
-    "ast_hash": "adba03611e1753ddbbe23a27d532fb5f",
+    "mtime": 1794472275.381845,
+    "seen": 1794472359.507075,
+    "ast_hash": "28dadee99183f6942001b08da9ef2660",
     "semantic_hash": ""
   },
   "server/tests/search.test.ts": {
@@ -1059,6 +1059,12 @@
     "mtime": 1794468255.3848984,
     "seen": 1794469414.2012212,
     "ast_hash": "5cc4ee245e4c6c1db0570d5551688596",
+    "semantic_hash": ""
+  },
+  "server/src/utils/orderLock.ts": {
+    "mtime": 1794471960.592462,
+    "seen": 1794472359.507021,
+    "ast_hash": "bc3d9796bd8b7bd220c6a48fc7a86630",
     "semantic_hash": ""
   },
   "cms/package-lock.json": {

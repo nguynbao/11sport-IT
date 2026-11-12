@@ -1,7 +1,15 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app';
-import { connectDatabase, clearDatabase, disconnectDatabase, orderRepo } from '../src/config/db';
+import {
+  connectDatabase,
+  clearDatabase,
+  disconnectDatabase,
+  orderRepo,
+  productRepo,
+  returnExchangeRepo,
+  stockMovementRepo,
+} from '../src/config/db';
 import { seedDatabaseIfNeeded } from '../src/config/seed';
 
 const app = createApp();
@@ -379,6 +387,7 @@ describe('GĐ2 & GĐ4: Chuẩn hóa chỉ số Dashboard Doanh thu (D1–D4) & T
     expect(r01Res.body.data.debtStatusAfter).toBe('SETTLED');
     expect(r01Res.body.data.order.debtAmount).toBe(0);
     expect(r01Res.body.data.order.debtStatus).toBe('SETTLED');
+    expect(r01Res.body.data.order.paidAmount).toBe(899875); // 819.800 lúc mua + 100.000 thu nợ - 19.925 hoàn tiền mặt
     expect(r01Res.body.data.order.debtAdjustments.length).toBe(1);
     expect(r01Res.body.data.order.debtAdjustments[0].amount).toBe(200000);
 
@@ -439,6 +448,8 @@ describe('GĐ2 & GĐ4: Chuẩn hóa chỉ số Dashboard Doanh thu (D1–D4) & T
     expect(dmSum.totalInitialDebt).toBe(
       dmSum.totalCollectedDebt + dmSum.totalReducedByReturn + dmSum.totalOutstandingDebt
     );
+    expect(dash.debtManagement.orders[0].paidAmount).toBe(899875);
+    expect(dash.debtManagement.customers[0].totalPaidAmount).toBe(899875);
 
     // Chặn thu nợ tiếp khi nợ đã giảm về 0 (Biên 12)
     const dpAfterSettled = await request(app)
@@ -708,5 +719,252 @@ describe('GĐ2 & GĐ4: Chuẩn hóa chỉ số Dashboard Doanh thu (D1–D4) & T
     const ordAfterFail = await orderRepo.findById(debtOrd3._id);
     expect(ordAfterFail?.debtAmount).toBe(200000);
     expect(ordAfterFail?.items[0].returnedQuantity).toBe(0);
+  });
+
+  it('Codex Review Fixes (1–4): (1) paidAmount trừ cashRefund, (2) trả 3 lần dòng 800k/3 chiếc khớp 800.000đ, (3) concurrent POST /returns tuần tự hóa không mất lịch sử nợ, (4) rollback nguyên tử khi lỗi giữa chừng', async () => {
+    await clearDatabase();
+    await seedDatabaseIfNeeded();
+
+    const catRes = await request(app)
+      .post('/api/v1/categories')
+      .set('x-user-id', 'admin')
+      .send({ code: 'CODEX_FIX', name: 'Danh mục Codex Fix' });
+    const catId = catRes.body.data._id;
+
+    const p1 = (
+      await request(app).post('/api/v1/products').set('x-user-id', 'admin').send({
+        name: 'SP 1 Codex (SPCX1)',
+        categoryId: catId,
+        unit: 'Cái',
+        quantity: 20,
+        targetWarehouse: 'FLOOR_1',
+        costPrice: 150000,
+        sellingPrice: 300000,
+      })
+    ).body.data._id;
+
+    const p2 = (
+      await request(app).post('/api/v1/products').set('x-user-id', 'admin').send({
+        name: 'SP 2 Codex (SPCX2)',
+        categoryId: catId,
+        unit: 'Cái',
+        quantity: 20,
+        targetWarehouse: 'FLOOR_1',
+        costPrice: 120000,
+        sellingPrice: 300000,
+      })
+    ).body.data._id;
+
+    // [Điểm 2]: Đơn có 1 dòng 3 chiếc x 300.000 = 900.000, giảm bill 100.000 -> thuần 800.000
+    // Trả 3 lần mỗi lần 1 chiếc -> 266.667 + 266.667 + 266.666 = đúng 800.000 (không vượt 1đ)
+    const threePieceOrder = (
+      await request(app)
+        .post('/api/v1/orders')
+        .set('x-user-id', 'sales1')
+        .send({
+          customerName: 'Khách Trả 3 Lần',
+          customerPhone: '0977000111',
+          paymentMethod: 'CASH',
+          billDiscountType: 'AMOUNT',
+          billDiscountValue: 100000,
+          items: [{ productId: p1, quantity: 3 }],
+        })
+    ).body.data;
+    expect(threePieceOrder.totalAmount).toBe(800000);
+
+    const ret1 = (
+      await request(app)
+        .post('/api/v1/returns')
+        .set('x-user-id', 'sales1')
+        .send({
+          orderId: threePieceOrder._id,
+          type: 'RETURN',
+          returnItems: [{ productId: p1, quantity: 1, condition: 'GOOD' }],
+        })
+    ).body.data.returnExchange;
+    expect(ret1.returnSubtotal).toBe(266667);
+
+    const ret2 = (
+      await request(app)
+        .post('/api/v1/returns')
+        .set('x-user-id', 'sales1')
+        .send({
+          orderId: threePieceOrder._id,
+          type: 'RETURN',
+          returnItems: [{ productId: p1, quantity: 1, condition: 'GOOD' }],
+        })
+    ).body.data.returnExchange;
+    expect(ret2.returnSubtotal).toBe(266667);
+
+    const ret3 = (
+      await request(app)
+        .post('/api/v1/returns')
+        .set('x-user-id', 'sales1')
+        .send({
+          orderId: threePieceOrder._id,
+          type: 'RETURN',
+          returnItems: [{ productId: p1, quantity: 1, condition: 'GOOD' }],
+        })
+    ).body.data.returnExchange;
+    expect(ret3.returnSubtotal).toBe(266666);
+    expect(ret1.returnSubtotal + ret2.returnSubtotal + ret3.returnSubtotal).toBe(800000);
+
+    // [Điểm 1 & Điểm 3]: Đơn công nợ 2 sản phẩm (p1=300k, p2=300k -> tổng 600k, trả trước 100k, nợ 500k)
+    // Gửi 2 request POST /returns đồng thời (Promise.all):
+    // - Request A trả p1 (300k)
+    // - Request B trả p2 (300k)
+    // Tổng hoàn 600k cấn hết nợ 500k (2 bản ghi debtAdjustments: 300k + 200k) và hoàn tiền mặt 100k -> paidAmount giảm từ 100k về 0!
+    const concOrder = (
+      await request(app)
+        .post('/api/v1/orders')
+        .set('x-user-id', 'sales1')
+        .send({
+          customerName: 'Khách Đồng Thời',
+          customerPhone: '0977000222',
+          paymentMethod: 'OTHER',
+          paymentMethodDetail: 'Công nợ',
+          debtAmount: 500000,
+          items: [
+            { productId: p1, quantity: 1 },
+            { productId: p2, quantity: 1 },
+          ],
+        })
+    ).body.data;
+    expect(concOrder.paidAmount).toBe(100000);
+    expect(concOrder.debtAmount).toBe(500000);
+
+    const [concResA, concResB] = await Promise.all([
+      request(app)
+        .post('/api/v1/returns')
+        .set('x-user-id', 'sales1')
+        .send({
+          orderId: concOrder._id,
+          type: 'RETURN',
+          refundMethod: 'CASH',
+          returnItems: [{ productId: p1, quantity: 1, condition: 'GOOD' }],
+        }),
+      request(app)
+        .post('/api/v1/returns')
+        .set('x-user-id', 'sales1')
+        .send({
+          orderId: concOrder._id,
+          type: 'RETURN',
+          refundMethod: 'CASH',
+          returnItems: [{ productId: p2, quantity: 1, condition: 'GOOD' }],
+        }),
+    ]);
+    expect(concResA.status).toBe(201);
+    expect(concResB.status).toBe(201);
+
+    const updatedConcOrder = await orderRepo.findById(concOrder._id);
+    expect(updatedConcOrder?.debtAmount).toBe(0);
+    expect(updatedConcOrder?.debtStatus).toBe('SETTLED');
+    expect(updatedConcOrder?.paidAmount).toBe(0); // 100k lúc mua - 100k cashRefund = 0
+    expect(updatedConcOrder?.debtAdjustments?.length).toBe(2);
+    const totalAdj = (updatedConcOrder?.debtAdjustments || []).reduce(
+      (s, a) => s + Number(a.amount || 0),
+      0
+    );
+    expect(totalAdj).toBe(500000);
+
+    const dashAfterConc = (await getDash()).body.data;
+    const concDebtRow = dashAfterConc.debtManagement.orders.find(
+      (o: any) => o._id === String(concOrder._id)
+    );
+    expect(concDebtRow.paidAmount).toBe(0);
+    expect(concDebtRow.reducedByReturnAmount).toBe(500000);
+    expect(concDebtRow.debtAmount).toBe(0);
+
+    // [Điểm 3b]: Gửi 2 request POST /returns đồng thời cùng trả 1 sản phẩm chỉ có quantity = 1 -> 1 thành công (201), 1 bị chặn (400)
+    const raceDupOrder = (
+      await request(app)
+        .post('/api/v1/orders')
+        .set('x-user-id', 'sales1')
+        .send({
+          customerName: 'Khách Race Trùng',
+          customerPhone: '0977000333',
+          paymentMethod: 'OTHER',
+          paymentMethodDetail: 'Công nợ',
+          debtAmount: 200000,
+          items: [{ productId: p1, quantity: 1 }],
+        })
+    ).body.data;
+
+    const [dupA, dupB] = await Promise.all([
+      request(app)
+        .post('/api/v1/returns')
+        .set('x-user-id', 'sales1')
+        .send({
+          orderId: raceDupOrder._id,
+          type: 'RETURN',
+          returnItems: [{ productId: p1, quantity: 1, condition: 'GOOD' }],
+        }),
+      request(app)
+        .post('/api/v1/returns')
+        .set('x-user-id', 'sales1')
+        .send({
+          orderId: raceDupOrder._id,
+          type: 'RETURN',
+          returnItems: [{ productId: p1, quantity: 1, condition: 'GOOD' }],
+        }),
+    ]);
+    const statuses = [dupA.status, dupB.status].sort();
+    expect(statuses).toEqual([201, 400]);
+
+    // [Điểm 4]: Rollback nguyên tử toàn bộ (ReturnExchange, StockMovement, Product stock, Order) khi bước cuối cùng bị lỗi
+    const txOrder = (
+      await request(app)
+        .post('/api/v1/orders')
+        .set('x-user-id', 'sales1')
+        .send({
+          customerName: 'Khách Rollback Nguyên Tử',
+          customerPhone: '0977000444',
+          paymentMethod: 'OTHER',
+          paymentMethodDetail: 'Công nợ',
+          debtAmount: 250000,
+          items: [{ productId: p1, quantity: 1 }],
+        })
+    ).body.data;
+
+    const p1BeforeTx = await productRepo.findById(p1);
+    const p2BeforeTx = await productRepo.findById(p2);
+    const movementsBeforeTx = await stockMovementRepo.find({});
+
+    const spyUpdateOrder = vi
+      .spyOn(orderRepo, 'updateById')
+      .mockRejectedValueOnce(new Error('Simulated DB crash on order update'));
+
+    const failedTxRes = await request(app)
+      .post('/api/v1/returns')
+      .set('x-user-id', 'sales1')
+      .send({
+        orderId: txOrder._id,
+        type: 'EXCHANGE',
+        refundMethod: 'CASH',
+        returnItems: [{ productId: p1, quantity: 1, condition: 'GOOD' }],
+        exchangeItems: [{ productId: p2, quantity: 1 }],
+      });
+    expect(failedTxRes.status).toBe(500);
+    spyUpdateOrder.mockRestore();
+
+    // Kiểm tra phiếu trả/đổi, sổ kho, tồn kho SP và đơn hàng gốc được hoàn tác 100%
+    const orphanReturns = await returnExchangeRepo.find({ orderId: txOrder._id });
+    expect(orphanReturns.length).toBe(0);
+
+    const movementsAfterTx = await stockMovementRepo.find({});
+    expect(movementsAfterTx.length).toBe(movementsBeforeTx.length);
+
+    const p1AfterTx = await productRepo.findById(p1);
+    const p2AfterTx = await productRepo.findById(p2);
+    expect(p1AfterTx?.stock).toBe(p1BeforeTx?.stock);
+    expect(p1AfterTx?.stockFloor1).toBe(p1BeforeTx?.stockFloor1);
+    expect(p2AfterTx?.stock).toBe(p2BeforeTx?.stock);
+    expect(p2AfterTx?.stockFloor1).toBe(p2BeforeTx?.stockFloor1);
+
+    const txOrderAfter = await orderRepo.findById(txOrder._id);
+    expect(txOrderAfter?.status).toBe('PAID');
+    expect(txOrderAfter?.debtAmount).toBe(250000);
+    expect(txOrderAfter?.items[0].returnedQuantity).toBe(0);
+    expect(txOrderAfter?.debtAdjustments || []).toHaveLength(0);
   });
 });

@@ -14,7 +14,7 @@ import { normalizePhoneDigits } from '../utils/search';
 
 export const reportsRouter = Router();
 
-function extractOrderDebtMeta(o: any) {
+function extractOrderDebtMeta(o: any, refundedCashForOrder = 0) {
   const totalAmount = Math.max(0, Number(o.totalAmount) || 0);
   let debtAmount = Math.max(0, Number(o.debtAmount) || 0);
   let initialDebtAmount = Math.max(debtAmount, Number(o.initialDebtAmount) || 0);
@@ -53,7 +53,11 @@ function extractOrderDebtMeta(o: any) {
   }
 
   const cashAtPurchase = Math.max(0, totalAmount - initialDebtAmount);
-  const paidAmount = Math.min(totalAmount, cashAtPurchase + collectedDebtAmount);
+  const refundedCash = Math.max(0, Math.round(Number(refundedCashForOrder) || 0));
+  const paidAmount = Math.max(
+    0,
+    Math.min(totalAmount, cashAtPurchase + collectedDebtAmount - refundedCash)
+  );
 
   const debtStatus: 'NONE' | 'UNPAID' | 'PARTIAL' | 'SETTLED' =
     o.debtStatus && o.debtStatus !== 'NONE'
@@ -62,7 +66,7 @@ function extractOrderDebtMeta(o: any) {
       ? 'NONE'
       : debtAmount <= 0
       ? 'SETTLED'
-      : paidAmount <= 0 && reducedByReturnAmount <= 0
+      : cashAtPurchase + collectedDebtAmount <= 0 && reducedByReturnAmount <= 0
       ? 'UNPAID'
       : 'PARTIAL';
 
@@ -450,6 +454,21 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
     const orderById = new Map<string, any>();
     orders.forEach((o) => orderById.set(String(o._id), o));
 
+    const refundedCashByOrderId = new Map<string, number>();
+    for (const r of returns) {
+      const oid = String(r.orderId || '');
+      if (!oid) continue;
+      const rDebtRed = Math.max(0, Math.round(Number(r.debtReduction) || 0));
+      const rRefundAmt = Math.max(0, Math.round(Number(r.refundAmount) || 0));
+      const rCashRef =
+        r.cashRefund !== undefined && r.cashRefund !== null
+          ? Math.max(0, Math.round(Number(r.cashRefund) || 0))
+          : Math.max(0, rRefundAmt - rDebtRed);
+      if (rCashRef > 0) {
+        refundedCashByOrderId.set(oid, (refundedCashByOrderId.get(oid) || 0) + rCashRef);
+      }
+    }
+
     const filterCatId = categoryId ? String(categoryId) : '';
     const filterPayMethod = paymentMethod ? String(paymentMethod).toUpperCase() : '';
 
@@ -458,7 +477,7 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
       if (!inRange(o.createdAt)) return false;
       if (filterPayMethod) {
         if (filterPayMethod === 'DEBT') {
-          const dm = extractOrderDebtMeta(o);
+          const dm = extractOrderDebtMeta(o, refundedCashByOrderId.get(String(o._id)) || 0);
           if (dm.initialDebtAmount <= 0 && dm.debtAmount <= 0) return false;
         } else if (o.paymentMethod !== filterPayMethod) {
           return false;
@@ -480,7 +499,7 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
         const origO = orderById.get(String(r.orderId));
         if (!origO) return false;
         if (filterPayMethod === 'DEBT') {
-          const dm = extractOrderDebtMeta(origO);
+          const dm = extractOrderDebtMeta(origO, refundedCashByOrderId.get(String(origO._id)) || 0);
           if (dm.initialDebtAmount <= 0 && dm.debtAmount <= 0) return false;
         } else if (origO.paymentMethod !== filterPayMethod) {
           return false;
@@ -811,7 +830,7 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
       orderRevenue += effectiveOrderRev;
       estimatedCogs += orderIncludedCogs;
 
-      const dm = extractOrderDebtMeta(o);
+      const dm = extractOrderDebtMeta(o, refundedCashByOrderId.get(String(o._id)) || 0);
       const orderCashAtPurchase = filterCatId ? 0 : dm.cashAtPurchase;
       cashAtPurchase += orderCashAtPurchase;
 
@@ -1118,7 +1137,7 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
 
     for (const o of orders) {
       if (o.status === 'DRAFT') continue;
-      const dm = extractOrderDebtMeta(o);
+      const dm = extractOrderDebtMeta(o, refundedCashByOrderId.get(String(o._id)) || 0);
 
       const matchesPaymentFilter =
         !filterPayMethod ||

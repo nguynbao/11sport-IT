@@ -72,7 +72,7 @@ function parseLocalDateBound(raw: string | undefined | null, isEnd: boolean): Da
   return dt;
 }
 
-function extractClientOrderDebtMeta(o: Order) {
+function extractClientOrderDebtMeta(o: Order, refundedCashForOrder = 0) {
   const totalAmount = Math.max(0, Number(o.totalAmount) || 0);
   let debtAmount = Math.max(0, Number(o.debtAmount) || 0);
   let initialDebtAmount = Math.max(debtAmount, Number(o.initialDebtAmount) || 0);
@@ -111,7 +111,10 @@ function extractClientOrderDebtMeta(o: Order) {
   }
 
   const cashAtPurchase = Math.max(0, totalAmount - initialDebtAmount);
-  const paidAmount = Math.min(totalAmount, cashAtPurchase + collectedDebtAmount);
+  const paidAmount = Math.max(
+    0,
+    Math.min(totalAmount, cashAtPurchase + collectedDebtAmount - Math.max(0, refundedCashForOrder))
+  );
 
   const debtStatus: "NONE" | "UNPAID" | "PARTIAL" | "SETTLED" =
     o.debtStatus && o.debtStatus !== "NONE"
@@ -120,7 +123,7 @@ function extractClientOrderDebtMeta(o: Order) {
       ? "NONE"
       : debtAmount <= 0
       ? "SETTLED"
-      : paidAmount <= 0 && reducedByReturnAmount <= 0
+      : cashAtPurchase + collectedDebtAmount <= 0 && reducedByReturnAmount <= 0
       ? "UNPAID"
       : "PARTIAL";
 
@@ -183,6 +186,24 @@ function buildClientFallbackDashboard(
   const orderById = new Map<string, Order>();
   orders.forEach((o) => orderById.set(String(o._id), o));
 
+  const refundedCashByOrderId = new Map<string, number>();
+  returns.forEach((r) => {
+    const oId = String(r.orderId || "");
+    if (!oId) return;
+    const rDebtRed = Math.max(0, Math.round(Number(r.debtReduction) || 0));
+    const rRefundAmt = Math.max(
+      0,
+      Math.round(Number(r.refundAmount ?? (r.netDifference < 0 ? Math.abs(r.netDifference) : 0)) || 0)
+    );
+    const rCashRef =
+      r.cashRefund !== undefined && r.cashRefund !== null
+        ? Math.max(0, Math.round(Number(r.cashRefund) || 0))
+        : Math.max(0, rRefundAmt - rDebtRed);
+    if (rCashRef > 0) {
+      refundedCashByOrderId.set(oId, (refundedCashByOrderId.get(oId) || 0) + rCashRef);
+    }
+  });
+
   const filterCatId = filters.categoryId || "";
   const filterPayMethod = filters.paymentMethod ? filters.paymentMethod.toUpperCase() : "";
 
@@ -196,7 +217,7 @@ function buildClientFallbackDashboard(
     if (!inRange(o.createdAt)) return false;
     if (filterPayMethod) {
       if (filterPayMethod === "DEBT") {
-        const dm = extractClientOrderDebtMeta(o);
+        const dm = extractClientOrderDebtMeta(o, refundedCashByOrderId.get(String(o._id)) || 0);
         if (dm.initialDebtAmount <= 0 && dm.debtAmount <= 0) return false;
       } else if (o.paymentMethod !== filterPayMethod) {
         return false;
@@ -526,7 +547,7 @@ function buildClientFallbackDashboard(
     orderRevenue += effectiveOrderRev;
     estimatedCogs += orderIncludedCogs;
 
-    const dm = extractClientOrderDebtMeta(o);
+    const dm = extractClientOrderDebtMeta(o, refundedCashByOrderId.get(String(o._id)) || 0);
     const orderCashAtPurchase = filterCatId ? 0 : dm.cashAtPurchase;
     cashAtPurchase += orderCashAtPurchase;
 
@@ -762,7 +783,7 @@ function buildClientFallbackDashboard(
 
   for (const o of orders) {
     if (o.status === "DRAFT") continue;
-    const dm = extractClientOrderDebtMeta(o);
+    const dm = extractClientOrderDebtMeta(o, refundedCashByOrderId.get(String(o._id)) || 0);
 
     const matchesPaymentFilter =
       !filterPayMethod ||
