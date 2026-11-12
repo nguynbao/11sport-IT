@@ -361,7 +361,19 @@ export function exportReturns(returns: ReturnReceipt[]) {
     { header: "Khách hàng", value: (r) => r.customerName || "" },
     { header: "SĐT", value: (r) => r.customerPhone || "" },
     { header: "Loại", value: (r) => (r.type === "EXCHANGE" ? "Đổi hàng" : "Trả hàng") },
-    { header: "Tiền hàng trả", value: (r) => Number(r.returnTotal) || 0, format: "money", total: true },
+    {
+      header: "Tiền hàng gốc trả",
+      value: (r) => Number(r.returnSubtotal ?? (Number(r.returnTotal || 0) - Number(r.refundedCardFee || 0))) || 0,
+      format: "money",
+      total: true,
+    },
+    {
+      header: "Hoàn phí thẻ",
+      value: (r) => Number(r.refundedCardFee) || 0,
+      format: "money",
+      total: true,
+    },
+    { header: "Tổng hoàn đơn cũ", value: (r) => Number(r.returnTotal) || 0, format: "money", total: true },
     { header: "Tiền hàng đổi", value: (r) => Number(r.exchangeTotal) || 0, format: "money", total: true },
     {
       header: "Chênh lệch (+ thu thêm / − hoàn khách)",
