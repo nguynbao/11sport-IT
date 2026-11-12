@@ -186,6 +186,30 @@ authStaffRouter.get('/staff', async (req, res, next) => {
       .map(({ passwordHash, ...rest }) => {
         const isSelf = req.user && String(rest._id) === String(req.user.userId);
         const showSalary = canViewAllSalaries || isSelf;
+        if (!showSalary) {
+          // Người không có quyền: chỉ trả thông tin công khai, ẩn toàn bộ hồ sơ nhạy cảm
+          const {
+            dateOfBirth, gender, nationality, citizenId, citizenIssueDate, citizenIssuePlace,
+            address, permanentAddress, currentAddress, school, major, bankAccount,
+            contractStartDate, contractEndDate, internContractNumber, probationContractNumber,
+            officialContractNumber, probationStartDate, probationMonths, fulltimeStartDate,
+            contractFileUrl, contractFileName, bhxhStartDate, bhxhEndDate, recordedLeaveDays,
+            baseSalary, allowance, bonus, insurance,
+            ...publicInfo
+          } = rest as any;
+          return {
+            ...publicInfo,
+            address: '',
+            permanentAddress: '',
+            currentAddress: '',
+            bankAccount: '',
+            recordedLeaveDays: 0,
+            baseSalary: 0,
+            allowance: 0,
+            bonus: 0,
+            insurance: 0,
+          } as any;
+        }
         const permAddr = (rest as any).permanentAddress || rest.address || '';
         const currAddr = (rest as any).currentAddress || '';
         return {

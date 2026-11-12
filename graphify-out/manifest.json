@@ -270,9 +270,9 @@
     "semantic_hash": ""
   },
   "server/src/routes/authStaff.ts": {
-    "mtime": 1794464005.6416435,
-    "seen": 1794464249.899035,
-    "ast_hash": "d67ab7f378fa75f2bafb7b8f2de9eabd",
+    "mtime": 1794464987.9272563,
+    "seen": 1794465033.180305,
+    "ast_hash": "dc69cbddec5563faaefa731a9d20a47d",
     "semantic_hash": ""
   },
   "server/src/routes/categories.ts": {
