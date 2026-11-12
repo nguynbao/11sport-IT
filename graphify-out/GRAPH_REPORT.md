@@ -1,17 +1,17 @@
 # Graph Report - 11sport-IT  (2026-11-12)
 
 ## Corpus Check
-- 163 files · ~368,242 words
+- 163 files · ~368,187 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 11 file(s) not represented in the graph (top: (none) 3, .example 3, .css 2)
 
 ## Summary
-- 1625 nodes · 3937 edges · 88 communities (78 shown, 10 thin omitted)
+- 1625 nodes · 3938 edges · 88 communities (78 shown, 10 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 40 edges (avg confidence: 0.93)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `202878b9`
+- Built from commit: `efb52080`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -102,9 +102,9 @@
 ## God Nodes (most connected - your core abstractions)
 1. `ApiError` - 44 edges
 2. `ImportTab()` - 31 edges
-3. `InventoryModule()` - 30 edges
-4. `apiRequest()` - 30 edges
-5. `PosTab()` - 30 edges
+3. `PosTab()` - 31 edges
+4. `InventoryModule()` - 30 edges
+5. `apiRequest()` - 30 edges
 6. `apiRequest()` - 30 edges
 7. `createApp()` - 25 edges
 8. `seedDatabaseIfNeeded()` - 25 edges
@@ -141,12 +141,12 @@ Cohesion: 0.25
 Nodes (14): attendanceConfigRepo, leaveRequestRepo, shiftHandoverRepo, attendanceRouter, extractClientIp(), fetchCurrentPublicWanIp(), getEnvAttendanceConfig(), isIpAllowed() (+6 more)
 
 ### Community 3 - "web/src/lib/barcodeScanner.ts"
-Cohesion: 0.16
-Nodes (32): 2.14 Mã Con Theo Thuộc Tính Biến Thể (`variantCode`) — In Tem & Quét Kiểm Kho / Bán Hàng POS *(v3.2)*, Tiến độ dự án 11 Sport, ColorInputWithPicker(), ColorSwatchBadge(), getColorBoxBorderStyle(), inferColorHexesFromText(), normalizeTextForColorMatch(), resolveVariantColorHexes() (+24 more)
+Cohesion: 0.17
+Nodes (32): Tiến độ dự án 11 Sport, ColorInputWithPicker(), ColorSwatchBadge(), getColorBoxBorderStyle(), inferColorHexesFromText(), normalizeTextForColorMatch(), resolveVariantColorHexes(), sanitizeHexList() (+24 more)
 
 ### Community 4 - "web/src/app/page.tsx"
 Cohesion: 0.14
-Nodes (38): getDefaultTabForRole(), getRoleDisplayName(), isAttendanceOnlyRole(), TABS_CONFIG, WebPosHomePage(), AccountProfileTab(), ContractFilePreviewModal(), CustomerTab() (+30 more)
+Nodes (36): getDefaultTabForRole(), getRoleDisplayName(), isAttendanceOnlyRole(), TABS_CONFIG, WebPosHomePage(), AccountProfileTab(), ContractFilePreviewModal(), CustomerTab() (+28 more)
 
 ### Community 5 - "ref_next"
 Cohesion: 0.17
@@ -198,7 +198,7 @@ Nodes (18): applyManualOffForStaffDate(), attendanceTimesheetRouter, buildTimesh
 
 ### Community 17 - "web/src/components/BarcodeLabelModal.tsx"
 Cohesion: 0.11
-Nodes (27): BarcodeLabelItem, BarcodeLabelModal(), BarcodeLabelModalProps, CODE128_PATTERNS, encodeCode128Bars(), encodeCode128RawPattern(), escapeHtml(), FIXED_LABEL_CONFIG (+19 more)
+Nodes (26): BarcodeLabelItem, BarcodeLabelModal(), BarcodeLabelModalProps, CODE128_PATTERNS, encodeCode128Bars(), encodeCode128RawPattern(), escapeHtml(), FIXED_LABEL_CONFIG (+18 more)
 
 ### Community 18 - "Đặc tả yêu cầu: Hệ thống Chấm công & Quản trị Nhân sự (HRM & Shift Handover)"
 Cohesion: 0.08
@@ -241,8 +241,8 @@ Cohesion: 0.13
 Nodes (14): generateValue, key, sync, value, services, buildCommand, envVars, healthCheckPath (+6 more)
 
 ### Community 28 - "CameraScannerModal.tsx"
-Cohesion: 0.24
-Nodes (15): 2. Bảng Ma trận Test Cases chi tiết (AC-01 đến AC-07 & Biên/Lỗi), CameraScannerModal(), CameraScannerModalProps, compressImageToDataUrl(), createEmptyOcrItem(), loadImageFromFile(), mapApiItems(), mergeOcrItemsList() (+7 more)
+Cohesion: 0.27
+Nodes (14): CameraScannerModal(), CameraScannerModalProps, compressImageToDataUrl(), createEmptyOcrItem(), loadImageFromFile(), mapApiItems(), mergeOcrItemsList(), PreviewKind (+6 more)
 
 ### Community 29 - "TagCheckScannerModal.tsx"
 Cohesion: 0.20
@@ -282,7 +282,7 @@ Nodes (11): 1. Kiến trúc Thông tin & Luồng người dùng (User Flows), 2.
 
 ### Community 39 - "PosTab.tsx"
 Cohesion: 0.11
-Nodes (23): PushProductsReportResponse, CartItem, createDraft(), createEmptyDraftData(), DraftOrder, DraftOrderData, generateDraftId(), getCartLineKey() (+15 more)
+Nodes (27): 2.14 Mã Con Theo Thuộc Tính Biến Thể (`variantCode`) — In Tem & Quét Kiểm Kho / Bán Hàng POS *(v3.2)*, 2. Bảng Ma trận Test Cases chi tiết (AC-01 đến AC-07 & Biên/Lỗi), PushProductsReportResponse, CartItem, createDraft(), createEmptyDraftData(), DraftOrder, DraftOrderData (+19 more)
 
 ### Community 40 - "cms"
 Cohesion: 0.22
@@ -448,7 +448,7 @@ Nodes (4): 2.1 `server/.env.example`, 2.2 `web/.env.example` (POS & Kho - Port 3
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `StockMovement` connect `StockMovement` to `Tài liệu Triển khai & Vận hành (Deployment & Runbook) - 11Sport v1.0`, `web/src/lib/barcodeScanner.ts`, `InventoryModule.tsx`, `cms/src/lib/api.ts`, `ref_react`, `3. Quy tắc Nghiệp vụ đã chốt (Business Rules)`, `CameraScannerModal.tsx`?**
+- **Why does `StockMovement` connect `StockMovement` to `Tài liệu Triển khai & Vận hành (Deployment & Runbook) - 11Sport v1.0`, `web/src/lib/barcodeScanner.ts`, `InventoryModule.tsx`, `cms/src/lib/api.ts`, `ref_react`, `PosTab.tsx`, `3. Quy tắc Nghiệp vụ đã chốt (Business Rules)`?**
   _High betweenness centrality (0.181) - this node is a cross-community bridge._
 - **Are the 4 inferred relationships involving `ImportTab()` (e.g. with `2.14 Mã Con Theo Thuộc Tính Biến Thể (`variantCode`) — In Tem & Quét Kiểm Kho / Bán Hàng POS *(v3.2)*` and `Tiến độ dự án 11 Sport`) actually correct?**
   _`ImportTab()` has 4 INFERRED edges - model-reasoned connections that need verification._
@@ -458,7 +458,7 @@ _Questions this graph is uniquely positioned to answer:_
   _Cohesion score 0.05518394648829431 - nodes in this community are weakly interconnected._
 - **Why does `2.6 Trả / Đổi hàng (`/returns`)` connect `StockMovement` to `productsInventory.ts`, `2. Danh sách Endpoints`?**
   _High betweenness centrality (0.164) - this node is a cross-community bridge._
+- **Are the 2 inferred relationships involving `PosTab()` (e.g. with `2.14 Mã Con Theo Thuộc Tính Biến Thể (`variantCode`) — In Tem & Quét Kiểm Kho / Bán Hàng POS *(v3.2)*` and `2. Bảng Ma trận Test Cases chi tiết (AC-01 đến AC-07 & Biên/Lỗi)`) actually correct?**
+  _`PosTab()` has 2 INFERRED edges - model-reasoned connections that need verification._
 - **Should `cms/src/app/page.tsx` be split into smaller, more focused modules?**
   _Cohesion score 0.12624584717607973 - nodes in this community are weakly interconnected._
-- **Why does `executeUnpackSetToRetail()` connect `productsInventory.ts` to `returns.ts`, `ordersCustomers.ts`, `ApiError`, `StockMovement`?**
-  _High betweenness centrality (0.162) - this node is a cross-community bridge._

@@ -132,6 +132,7 @@ interface DraftOrderData {
   hasCardFee: boolean;
   cardFeePercent?: number;
   note: string;
+  editingServerDraftOrder?: Order | null;
 }
 
 interface DraftOrder extends DraftOrderData {
@@ -154,6 +155,7 @@ const createEmptyDraftData = (): DraftOrderData => ({
   hasCardFee: true,
   cardFeePercent: 1.8,
   note: DEFAULT_NOTE,
+  editingServerDraftOrder: null,
 });
 
 const generateDraftId = () =>
@@ -169,7 +171,8 @@ const isDraftEmpty = (d: DraftOrderData) =>
   d.cart.length === 0 &&
   d.giftCart.length === 0 &&
   !d.customerPhone.trim() &&
-  !d.customerName.trim();
+  !d.customerName.trim() &&
+  !d.editingServerDraftOrder;
 
 const INITIAL_DRAFT_ID = "draft_initial";
 
@@ -286,6 +289,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     hasCardFee,
     cardFeePercent,
     note,
+    editingServerDraftOrder,
   });
 
   const applyDraftData = (d: DraftOrderData) => {
@@ -293,6 +297,9 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     setGiftCart(d.giftCart || []);
     setBillDiscountType(d.billDiscountType || "NONE");
     setBillDiscountValue(Number(d.billDiscountValue) || 0);
+    setIsManualBillDiscount((Number(d.billDiscountValue) || 0) > 0);
+    setAutoBillPromoName("");
+    setAppliedPromosSummary([]);
     setCustomerPhone(d.customerPhone || "");
     setCustomerName(d.customerName || "");
     setIsExistingCustomer(!!d.isExistingCustomer);
@@ -303,6 +310,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     setHasCardFee(true);
     setCardFeePercent(Number(d.cardFeePercent) === 4 ? 4 : 1.8);
     setNote(typeof d.note === "string" ? d.note : DEFAULT_NOTE);
+    setEditingServerDraftOrder(d.editingServerDraftOrder || null);
     setShowSplitDropdown(false);
     setLookingUp(false);
     setErrorMsg("");
@@ -329,6 +337,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
             hasCardFee,
             cardFeePercent,
             note,
+            editingServerDraftOrder,
           }
           : d
       ),
@@ -349,6 +358,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       hasCardFee,
       cardFeePercent,
       note,
+      editingServerDraftOrder,
     ]
   );
 
@@ -477,28 +487,20 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     removeDraft(draftId);
   };
 
-  const reservedInOtherDrafts = useMemo(() => {
-    const map = new Map<string, number>();
-    drafts.forEach((d) => {
-      if (d.id === activeDraftId) return;
-      (d.cart || []).forEach((c) =>
-        map.set(c.product._id, (map.get(c.product._id) || 0) + c.quantity)
-      );
-      (d.giftCart || []).forEach((g) =>
-        map.set(g.product._id, (map.get(g.product._id) || 0) + g.quantity)
-      );
-    });
+  const catalogById = useMemo(() => {
+    const map = new Map<string, Product>();
+    allCatalogProducts.forEach((p) => map.set(p._id, p));
+    products.forEach((p) => map.set(p._id, p));
     return map;
-  }, [drafts, activeDraftId]);
+  }, [allCatalogProducts, products]);
 
   useEffect(() => {
-    if (products.length === 0) return;
-    const byId = new Map(products.map((p) => [p._id, p]));
+    if (catalogById.size === 0) return;
     const refresh = <T extends { product: Product }>(items: T[]): T[] => {
       if (!Array.isArray(items)) return [];
       let changed = false;
       const next = items.map((it) => {
-        const fresh = byId.get(it.product._id);
+        const fresh = catalogById.get(it.product._id);
         if (fresh && fresh !== it.product) {
           changed = true;
           return { ...it, product: fresh };
@@ -516,7 +518,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
         return c === d.cart && g === d.giftCart ? d : { ...d, cart: c, giftCart: g };
       })
     );
-  }, [products]);
+  }, [catalogById]);
 
   const getDirectFloor1Stock = (p: Product): number => {
     const f1 = Number(p.stockFloor1);
@@ -624,6 +626,13 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       setProducts(list);
       if (!debouncedSearch.trim()) {
         setAllCatalogProducts(list);
+      } else {
+        setAllCatalogProducts((prev) => {
+          if (prev.length === 0) return list;
+          const byId = new Map(prev.map((p) => [p._id, p]));
+          list.forEach((p) => byId.set(p._id, p));
+          return Array.from(byId.values());
+        });
       }
     } catch (err: any) {
       setErrorMsg(err?.message || "Không thể tải danh sách sản phẩm");
@@ -1052,6 +1061,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       const autoGifts: GiftCartItem[] = [];
       for (const [gid, entry] of Array.from(autoGiftMap.entries())) {
         const foundProd =
+          catalogById.get(gid) ||
           products.find((p) => p._id === gid) ||
           ({
             _id: gid,
@@ -1923,45 +1933,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     }
   };
 
-  const getDraftOrderStockShortages = (ord: Order) => {
-    if (products.length === 0) return [];
-    const reqMap = new Map<
-      string,
-      { name: string; unit: string; requested: number }
-    >();
-    for (const it of ord.items || []) {
-      const pid = String(it.productId || "");
-      const qty = Math.max(1, Number(it.quantity) || 1);
-      const prev = reqMap.get(pid);
-      if (prev) {
-        prev.requested += qty;
-      } else {
-        reqMap.set(pid, {
-          name: it.productName || "Sản phẩm",
-          unit: it.unit || "Cái",
-          requested: qty,
-        });
-      }
-    }
-    const shortages: {
-      name: string;
-      unit: string;
-      requested: number;
-      available: number;
-    }[] = [];
-    for (const [pid, info] of Array.from(reqMap.entries())) {
-      const prod = products.find((p) => p._id === pid);
-      const available = prod ? getFloor1Stock(prod) : 0;
-      if (available < info.requested) {
-        shortages.push({
-          ...info,
-          available,
-        });
-      }
-    }
-    return shortages;
-  };
-
   const handleLoadServerDraftToPos = (ord: Order) => {
     setErrorMsg("");
     setSuccessMsg("");
@@ -1970,7 +1941,9 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
 
     for (const it of ord.items || []) {
       const prodId = String(it.productId || "");
+      const fallbackQty = Math.max(1, Number(it.quantity) || 1);
       const foundProd =
+        catalogById.get(prodId) ||
         products.find((p) => p._id === prodId) ||
         ({
           _id: prodId,
@@ -1979,8 +1952,8 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
           categoryId: "",
           unit: it.unit || "Cái",
           sellingPrice: Number(it.originalUnitPrice ?? it.unitPrice) || 0,
-          stockFloor1: 0,
-          stock: 0,
+          stockFloor1: fallbackQty,
+          stock: fallbackQty,
         } as Product);
 
       if (it.isGift || it.discountType === "GIFT") {
@@ -2003,37 +1976,69 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       }
     }
 
-    setEditingServerDraftOrder(ord);
-    setCart(saleItems);
-    setGiftCart(giftItems);
-    setBillDiscountType((ord.billDiscountType as DiscountType) || "NONE");
-    setBillDiscountValue(Number(ord.billDiscountValue) || 0);
-    setCustomerPhone(ord.customerPhone ? formatPhone(ord.customerPhone) : "");
-    setCustomerName(
-      ord.customerName === "Khách lẻ (Bản nháp)" ? "" : ord.customerName || ""
+    const draftData: DraftOrderData = {
+      cart: saleItems,
+      giftCart: giftItems,
+      billDiscountType: (ord.billDiscountType as DiscountType) || "NONE",
+      billDiscountValue: Number(ord.billDiscountValue) || 0,
+      customerPhone: ord.customerPhone ? formatPhone(ord.customerPhone) : "",
+      customerName:
+        ord.customerName === "Khách lẻ (Bản nháp)" ? "" : ord.customerName || "",
+      isExistingCustomer: false,
+      customerOrders: [],
+      paymentMethod: (ord.paymentMethod as PaymentMethodType) || "CASH",
+      splitPayments: Array.isArray(ord.splitPayments)
+        ? (ord.splitPayments as SplitPaymentItem[])
+        : [],
+      debtDueDate: ord.debtDueDate
+        ? new Date(ord.debtDueDate).toISOString().slice(0, 10)
+        : "",
+      hasCardFee: true,
+      cardFeePercent: Number(ord.cardFeePercent) === 4 ? 4 : 1.8,
+      note: ord.note || DEFAULT_NOTE,
+      editingServerDraftOrder: ord,
+    };
+
+    const current = getCurrentDraftData();
+    const existingTab = liveDrafts.find(
+      (d) => d.editingServerDraftOrder?._id === ord._id
     );
-    setPaymentMethod((ord.paymentMethod as PaymentMethodType) || "CASH");
-    setSplitPayments(Array.isArray(ord.splitPayments) ? (ord.splitPayments as SplitPaymentItem[]) : []);
-    setDebtDueDate(
-      ord.debtDueDate ? new Date(ord.debtDueDate).toISOString().slice(0, 10) : ""
-    );
-    setHasCardFee(true);
-    setCardFeePercent(Number(ord.cardFeePercent) === 4 ? 4 : 1.8);
-    setNote(ord.note || DEFAULT_NOTE);
+
+    if (existingTab) {
+      setDrafts((prev) =>
+        prev.map((d) => {
+          if (d.id === existingTab.id) return { ...d, ...draftData };
+          if (d.id === activeDraftId) return { ...d, ...current };
+          return d;
+        })
+      );
+      applyDraftData(draftData);
+      setActiveDraftId(existingTab.id);
+      activeDraftIdRef.current = existingTab.id;
+    } else if (!isDraftEmpty(current) && drafts.length < MAX_DRAFTS) {
+      const nextSeq = drafts.reduce((m, d) => Math.max(m, d.seq), 0) + 1;
+      const newTab: DraftOrder = {
+        id: generateDraftId(),
+        seq: nextSeq,
+        ...draftData,
+      };
+      setDrafts((prev) => [
+        ...prev.map((d) => (d.id === activeDraftId ? { ...d, ...current } : d)),
+        newTab,
+      ]);
+      applyDraftData(draftData);
+      setActiveDraftId(newTab.id);
+      activeDraftIdRef.current = newTab.id;
+    } else {
+      setDrafts((prev) =>
+        prev.map((d) => (d.id === activeDraftId ? { ...d, ...draftData } : d))
+      );
+      applyDraftData(draftData);
+    }
+
     setSuccessMsg(
       `Đang mở bản nháp ${ord.orderCode || ord.code} (Người tạo: ${ord.createdByName || "Nhân viên"}).`
     );
-    const shortages = getDraftOrderStockShortages(ord);
-    if (shortages.length > 0) {
-      setErrorMsg(
-        `Lưu ý: Trong kho Tầng 1 hiện không đủ hàng cho bản nháp này: ${shortages
-          .map(
-            (s) =>
-              `${s.name} (Tồn T1 còn ${s.available} ${s.unit}, đơn cần ${s.requested} ${s.unit})`
-          )
-          .join("; ")}. Vui lòng chỉnh lại số lượng hoặc xuất thêm hàng xuống Tầng 1 trước khi chốt thanh toán.`
-      );
-    }
   };
 
   const handleQuickConfirmServerDraft = async (ord: Order) => {
@@ -2056,7 +2061,12 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
           customerPhone: ord.customerPhone || "0000000000",
         }),
       });
-      if (editingServerDraftOrder?._id === ord._id) {
+      const editingTab = liveDrafts.find(
+        (d) => d.editingServerDraftOrder?._id === ord._id
+      );
+      if (editingTab) {
+        removeDraft(editingTab.id);
+      } else if (editingServerDraftOrder?._id === ord._id) {
         setEditingServerDraftOrder(null);
       }
       setSuccessMsg(
@@ -2082,7 +2092,12 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     setErrorMsg("");
     try {
       await apiRequest(`/orders/${ord._id}`, { method: "DELETE" });
-      if (editingServerDraftOrder?._id === ord._id) {
+      const editingTab = liveDrafts.find(
+        (d) => d.editingServerDraftOrder?._id === ord._id
+      );
+      if (editingTab) {
+        removeDraft(editingTab.id);
+      } else if (editingServerDraftOrder?._id === ord._id) {
         setEditingServerDraftOrder(null);
       }
       setSuccessMsg(`Đã xóa bản nháp hóa đơn ${code}.`);
@@ -2324,11 +2339,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                   <span>KM: {mp.name}</span>
                 </span>
               ))}
-            </div>
-          )}
-          {(reservedInOtherDrafts.get(p._id) || 0) > 0 && (
-            <div className="mt-1 inline-block text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
-              ⏳ Đơn khác đang giữ: {reservedInOtherDrafts.get(p._id)} {p.unit}
             </div>
           )}
         </div>
@@ -2735,7 +2745,9 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
               <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
                 {savedDraftOrders.map((ord) => {
                   const code = ord.orderCode || ord.code || "";
-                  const isBeingEdited = editingServerDraftOrder?._id === ord._id;
+                  const isBeingEdited =
+                    editingServerDraftOrder?._id === ord._id ||
+                    liveDrafts.some((d) => d.editingServerDraftOrder?._id === ord._id);
                   const totalQty = (ord.items || []).reduce(
                     (s, it) => s + (Number(it.quantity) || 0),
                     0
@@ -2782,21 +2794,6 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                             {ord.createdByName || "Nhân viên bán hàng"}
                           </strong>
                         </span>
-                        {(() => {
-                          const shortages = getDraftOrderStockShortages(ord);
-                          if (shortages.length === 0) return null;
-                          return (
-                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-red-100 text-red-700 border border-red-300">
-                              ⚠️ Hết/thiếu tồn Kho T1:{" "}
-                              {shortages
-                                .map(
-                                  (s) =>
-                                    `${s.name} (còn ${s.available}/${s.requested})`
-                                )
-                                .join(", ")}
-                            </span>
-                          );
-                        })()}
                       </div>
 
                       <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-200/80">
@@ -2888,7 +2885,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
               </div>
               <button
                 type="button"
-                onClick={() => setEditingServerDraftOrder(null)}
+                onClick={() => removeDraft(activeDraftId)}
                 className="px-2.5 py-1 rounded-lg bg-white border border-amber-300 hover:bg-amber-100 text-amber-900 font-bold text-[11px] shrink-0"
               >
                 Thoát sửa nháp
