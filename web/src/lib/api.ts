@@ -1702,13 +1702,16 @@ export type MyCalendarCellCode =
   | "UNSCHEDULED"
   | "FUTURE";
 
-export type LeaveRequestType = "WFH" | "OFF" | "LATE" | "EARLY" | "PAID_LEAVE";
+export type LeaveRequestType = "WFH" | "OFF" | "LATE" | "EARLY" | "PAID_LEAVE" | "CHANGE_OFF";
 export type LeaveRequestStatus = "PENDING" | "APPROVED" | "REJECTED";
 
 export interface MyCalendarLeave {
   id: string;
   type: LeaveRequestType;
   status: LeaveRequestStatus;
+  date?: string;
+  fromDate?: string;
+  sourceOffType?: "OFF" | "PAID_LEAVE";
   reason: string;
   reviewNote?: string;
 }
@@ -1808,6 +1811,8 @@ export async function fetchMyCalendarApi(month: number, year: number): Promise<M
 export async function createLeaveRequestApi(data: {
   type: LeaveRequestType;
   date: string;
+  fromDate?: string;
+  sourceLeaveId?: string;
   reason: string;
 }): Promise<any> {
   const res = await apiRequest("/leave-requests", {
@@ -1821,6 +1826,9 @@ export interface MyLeaveRequest {
   _id: string;
   type: LeaveRequestType;
   date: string;
+  fromDate?: string;
+  sourceLeaveId?: string;
+  sourceOffType?: "OFF" | "PAID_LEAVE";
   reason: string;
   status: LeaveRequestStatus;
   reviewNote?: string;

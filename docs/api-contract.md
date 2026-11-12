@@ -904,11 +904,19 @@
     - **Để dành & Cộng dồn ngày phép**: Ngày phép có lương (`PAID_LEAVE`, vẫn tính `+1 công` hưởng lương) có thể **để dành lại và cộng dồn** qua các tháng tiếp theo (không bị mất khi hết tháng).
     - **Dùng ngày phép liên tiếp & Tạo đơn trước 3 tuần**: Nhân viên có thể dùng ngày phép cộng dồn liên tiếp tối đa **1 tuần (7 ngày)**, với điều kiện **từ 2 ngày phép trở đi** (trong cùng tuần / đợt nghỉ) hoặc **nghỉ từ 3 ngày trở đi trong 1 tuần** bắt buộc phải **tạo đơn trước tối thiểu 3 tuần (21 ngày)** (`400 ADVANCE_NOTICE_REQUIRED`).
 - `POST /api/v1/leave-requests`
-  - Tạo đơn (`type: "WFH" | "OFF" | "LATE" | "EARLY" | "PAID_LEAVE"`), `date`, `reason`.
+  - Tạo đơn (`type: "WFH" | "OFF" | "LATE" | "EARLY" | "PAID_LEAVE" | "CHANGE_OFF"`), `date`, `reason`, và (khi `type === "CHANGE_OFF"`) `fromDate`, `sourceLeaveId?`, `sourceOffType?` (`"OFF" | "PAID_LEAVE"`).
   - `reason`: bắt buộc, **tối đa 100 ký tự** (sau khi bỏ khoảng trắng đầu/cuối) → vượt quá trả `400 REASON_TOO_LONG`.
   - Cả nhân viên khối `OFFICE` và khối `SALES` đều được phép nộp đơn `WFH` (Làm việc từ xa).
   - `PAID_LEAVE` (Nghỉ phép có lương): chỉ hợp đồng `FULLTIME` (`400 PAID_LEAVE_NOT_ELIGIBLE`); kiểm tra theo **quỹ ngày phép tích lũy** (gồm ngày phép từ giai đoạn thử việc 1–2 tháng + 1 ngày phép/tháng chính thức trừ đi các ngày phép đã dùng/đang chờ duyệt; vượt quá trả `400 PAID_LEAVE_QUOTA_EXCEEDED`). Khi dùng từ **2 ngày phép trở đi** trong tuần (tối đa liên tiếp 1 tuần = 7 ngày), bắt buộc ngày nghỉ phải cách ngày tạo đơn tối thiểu **21 ngày (3 tuần)** (`400 ADVANCE_NOTICE_REQUIRED`).
   - `OFF` = nghỉ không lương (không tính công). Với nhân viên `SALES`: tổng số ngày nghỉ không lương trong tháng (`YYYY-MM`, tính gộp các ngày có lịch phân ca `shiftCode === "OFF"` và các đơn `type === "OFF"` đang chờ duyệt/đã duyệt theo ngày phân biệt, không tính ngày có `PAID_LEAVE` đã duyệt) tối đa **4 ngày/tháng** (`400 SALES_OFF_QUOTA_EXCEEDED`). Nếu xin nghỉ từ **3 ngày trở đi trong 1 tuần** (tổng ngày nghỉ `OFF` + `PAID_LEAVE` trong tuần >= 3 ngày), bắt buộc phải tạo đơn trước tối thiểu **21 ngày (3 tuần)** (`400 ADVANCE_NOTICE_REQUIRED`).
+  - `CHANGE_OFF` (**Xin chuyển ngày off / Đổi ngày nghỉ**):
+    - Dùng khi nhân viên đã có ngày nghỉ (`OFF` không lương, `PAID_LEAVE` phép có lương đang `PENDING`/`APPROVED`, hoặc lịch phân ca `shiftCode === "OFF"` đối với khối `SALES`) tại ngày cũ `fromDate` (VD: `2026-11-20`) nhưng có việc đột xuất muốn xin chuyển sang nghỉ vào ngày mới `date` (VD: `2026-11-19`).
+    - Kiểm tra hợp lệ:
+      1. `fromDate` và `date` phải định dạng `YYYY-MM-DD` và `fromDate !== date` (`400 INVALID_CHANGE_OFF_DATES`).
+      2. Tại ngày `fromDate`, nhân viên phải thực sự đang có đơn nghỉ (`OFF` hoặc `PAID_LEAVE` ở trạng thái `PENDING`/`APPROVED`) hoặc lịch phân ca `OFF` (`400 SOURCE_OFF_NOT_FOUND`).
+      3. Tại ngày mới `date`, nhân viên chưa có đơn nghỉ (`OFF`/`PAID_LEAVE`) đang chờ/đã duyệt hoặc lịch phân ca `OFF` (`400 TARGET_DATE_ALREADY_OFF`), và chưa có đơn `CHANGE_OFF` đang `PENDING` trùng ngày (`400 DUPLICATE_REQUEST`).
+      4. Khi kiểm tra hạn mức tháng (`SALES_MAX_UNPAID_OFF_PER_MONTH` hoặc quỹ phép `PAID_LEAVE`), hệ thống **loại trừ ngày nghỉ gốc `fromDate` (`excludeShiftDates` / `excludeLeaveId`)** vì đây là hoán đổi 1-1 ngày nghỉ, không làm phát sinh thêm ngày nghỉ mới trong cùng tháng.
+    - Trạng thái ban đầu của đơn `CHANGE_OFF` là `PENDING` (chờ HR duyệt). Trong thời gian chờ HR duyệt, ngày nghỉ gốc `fromDate` vẫn giữ nguyên.
   - Lỗi `400 DUPLICATE_REQUEST` nếu đã có đơn cùng loại, cùng ngày đang chờ duyệt hoặc đã duyệt.
 - `GET /api/v1/leave-requests`
   - HR xem danh sách đơn chờ duyệt; nhân viên xem danh sách đơn của mình (sắp xếp ngày mới nhất trước).
@@ -916,6 +924,11 @@
   - Nhân viên tự hủy đơn của mình khi còn `PENDING`. Đơn đã duyệt/từ chối trả `400 REQUEST_ALREADY_REVIEWED`; đơn của người khác trả `403`.
 - `PATCH /api/v1/leave-requests/:id`
   - HR duyệt hoặc từ chối đơn: `{ "status": "APPROVED" | "REJECTED", "reviewNote": "string" }`.
+  - **Khi HR duyệt (`status = "APPROVED"`) đơn `type === "CHANGE_OFF"`**:
+    - Hệ thống tự động chuyển ngày nghỉ từ `fromDate` sang `date`:
+      - Nếu ngày `fromDate` có đơn nghỉ (`OFF` hoặc `PAID_LEAVE`): cập nhật ngày của đơn nghỉ đó từ `fromDate` sang `date` với trạng thái `APPROVED` (nếu chưa có đơn riêng mà là lịch phân ca `OFF` của `SALES` thì tạo đơn `OFF`/`PAID_LEAVE` `APPROVED` tại ngày `date` và gỡ nghỉ tại `fromDate`).
+      - Với nhân viên khối `SALES`: tự động hoán đổi/cập nhật bảng phân ca (`ShiftAssignment`) — ngày mới `date` chuyển thành `shiftCode: "OFF"` (`isOffRequested: true`), còn ngày cũ `fromDate` chuyển sang ca làm việc (lấy ca làm việc hiện có của ngày `date` nếu là `SHIFT_1 | SHIFT_2 | BOTH`, hoặc mặc định `SHIFT_1`, `isOffRequested: false`).
+    - Nếu HR từ chối (`status = "REJECTED"`): giữ nguyên ngày nghỉ cũ `fromDate` và lịch phân ca hiện tại.
 
 #### C. Xếp ca & Bàn giao Kho Tầng 1 (`/shifts`)
 - `POST /api/v1/shifts/preferences`
