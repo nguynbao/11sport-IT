@@ -655,7 +655,7 @@ export default function ShiftHandoverModule() {
               {/* Admin / Quản lý xác nhận hộ hoặc ghi chú xử lý */}
               <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
                 <label className="block font-bold text-slate-700">
-                  Ghi chú xác nhận / đối soát của Quản lý (Admin / HR / Kế toán)
+                  Ghi chú xác nhận / đối soát của Quản lý (Admin / Kế toán)
                 </label>
                 <input
                   type="text"
