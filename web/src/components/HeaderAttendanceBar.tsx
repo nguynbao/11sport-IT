@@ -80,12 +80,16 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
   const applyPendingIncomingHandover = useCallback(
     (incoming: ShiftHandoverRecord | null | undefined, forceOpenPopup = false) => {
       const today = localDateStr();
+      const yesterday = localDateStr(new Date(Date.now() - 86400000));
       const isValidIncoming =
         incoming &&
         incoming.status === "PENDING" &&
         currentUser &&
-        (String(incoming.date) < today ||
-          String(incoming.fromStaffId) !== String(currentUser._id));
+        String(incoming.fromStaffId) !== String(currentUser._id) &&
+        (!incoming.toStaffId || String(incoming.toStaffId) === String(currentUser._id)) &&
+        ((String(incoming.date) === today && incoming.shiftCode === "SHIFT_1") ||
+          (String(incoming.date) === yesterday &&
+            (incoming.shiftCode === "SHIFT_2" || incoming.shiftCode === "BOTH")));
 
       if (isValidIncoming && incoming) {
         setPendingHandoverToConfirm(incoming);
@@ -106,19 +110,8 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
     async (forceOpenPopup = false) => {
       if (!currentUser || currentUser.role !== "SALES") return;
       try {
-        const today = localDateStr();
         const res = await fetchHandoversApi({ status: "PENDING" });
-        const pending =
-          res.pendingIncomingHandover ||
-          (Array.isArray(res.items)
-            ? res.items.find(
-                (h) =>
-                  h.status === "PENDING" &&
-                  (String(h.date) < today ||
-                    String(h.fromStaffId) !== String(currentUser._id))
-              ) || null
-            : null);
-        applyPendingIncomingHandover(pending, forceOpenPopup);
+        applyPendingIncomingHandover(res.pendingIncomingHandover || null, forceOpenPopup);
       } catch {
         // ignore
       }

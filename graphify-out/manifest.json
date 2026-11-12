@@ -648,9 +648,9 @@
     "semantic_hash": ""
   },
   "docs/api-contract.md": {
-    "mtime": 1794450598.5251682,
-    "seen": 1794450939.276076,
-    "ast_hash": "be06fed273bb41e51d6562f245885c2a",
+    "mtime": 1794459835.5176487,
+    "seen": 1794460384.22854,
+    "ast_hash": "c28031ddfc78f13f67f090059209059f",
     "semantic_hash": ""
   },
   "docs/design/design-system.md": {
@@ -810,9 +810,9 @@
     "semantic_hash": ""
   },
   "server/src/routes/attendance.ts": {
-    "mtime": 1794452001.7293038,
-    "seen": 1794452561.0855072,
-    "ast_hash": "291ba4613de74d9b3d26235740290b13",
+    "mtime": 1794460070.0563242,
+    "seen": 1794460384.228364,
+    "ast_hash": "0c52f15f35243d03cf6730248ba706e8",
     "semantic_hash": ""
   },
   "server/src/routes/holidays.ts": {
@@ -828,21 +828,21 @@
     "semantic_hash": ""
   },
   "server/src/routes/shifts.ts": {
-    "mtime": 1794451989.1642992,
-    "seen": 1794452561.085568,
-    "ast_hash": "f1336043ffd93057eeab0016a5e65d55",
+    "mtime": 1794459998.6739845,
+    "seen": 1794460384.228394,
+    "ast_hash": "eb769342094dceb4413daf3f81df719a",
     "semantic_hash": ""
   },
   "server/tests/hrm-attendance.test.ts": {
-    "mtime": 1794450886.2745008,
-    "seen": 1794450939.275969,
-    "ast_hash": "c434e85d9b0080a48852691bcf7c74db",
+    "mtime": 1794460148.6693904,
+    "seen": 1794460384.228432,
+    "ast_hash": "2fa4ea55caea192b288142f130a16fb3",
     "semantic_hash": ""
   },
   "web/src/components/AttendanceModal.tsx": {
-    "mtime": 1794452512.4309988,
-    "seen": 1794452561.085773,
-    "ast_hash": "0f4be54ba9d2d753513d9f09bb333956",
+    "mtime": 1794460104.414993,
+    "seen": 1794460384.228479,
+    "ast_hash": "439c216e4d73233d4b692d8d4867e937",
     "semantic_hash": ""
   },
   "web/src/components/FridayShiftRegistrationModal.tsx": {
@@ -894,9 +894,9 @@
     "semantic_hash": ""
   },
   "web/src/components/HeaderAttendanceBar.tsx": {
-    "mtime": 1794452508.7687624,
-    "seen": 1794452561.085813,
-    "ast_hash": "438c1cbbe9c53e6099adaf98b570b98e",
+    "mtime": 1794460102.4777462,
+    "seen": 1794460384.2284958,
+    "ast_hash": "3674142e2a3ba7597cfe3725a45c945d",
     "semantic_hash": ""
   },
   "cms/src/components/AttendanceTimesheetModule.tsx": {

@@ -174,6 +174,27 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
       .send({ username: 'sales2', password: 'password123' });
     const sales2Token = sales2Login.body.data.token;
 
+    // Tạo phiếu PENDING tồn đọng từ 3 ngày trước -> Phải tự động hết hạn (STORE_CLOSED) và KHÔNG chặn checkout
+    const threeDaysAgo = new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10);
+    const staleHandover = await request(app)
+      .post('/api/v1/shifts/handover')
+      .set('Authorization', `Bearer ${sales2Token}`)
+      .send({
+        date: threeDaysAgo,
+        shiftCode: 'SHIFT_2',
+        cashBalance: 9900000,
+        discrepancies: [],
+        notes: 'Phiếu cũ từ 3 ngày trước quên xác nhận',
+      });
+    expect(staleHandover.status).toBe(201);
+
+    // Khi chưa có phiếu tối hôm qua, chỉ có phiếu từ 3 ngày trước -> Ca 1 (sales1) KHÔNG bị coi là có pendingIncomingHandover
+    const checkStaleOnly = await request(app)
+      .get('/api/v1/shifts/handover')
+      .set('Authorization', `Bearer ${salesToken}`);
+    expect(checkStaleOnly.status).toBe(200);
+    expect(checkStaleOnly.body.meta.pendingIncomingHandover).toBeNull();
+
     // Giả lập tối hôm qua Ca 2 (sales2) đã lập phiếu bàn giao kết ca tối để giao cho Ca 1 sáng nay
     const yesterdayDate = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
     const prevNightHandover = await request(app)
@@ -297,6 +318,45 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
       .send({ forceEarly: true, earlyReason: 'Đã xác nhận bàn giao Ca 1 và lập phiếu kết ca tối' });
     expect(sales2CheckoutAfterConfirm.status).toBe(200);
     expect(sales2CheckoutAfterConfirm.body.data.attendance.checkOutTime).toBeDefined();
+
+    // Kiểm tra phân quyền & giới hạn dữ liệu GET /shifts/handover:
+    // 1. Nhân viên MARKETING không được phép xem danh sách phiếu bàn giao ca (403 FORBIDDEN)
+    const mktHandoverRes = await request(app)
+      .get('/api/v1/shifts/handover')
+      .set('Authorization', `Bearer ${marketingToken}`);
+    expect(mktHandoverRes.status).toBe(403);
+
+    // 2. Nhân viên SALES khác (sales3, làm SHIFT_2) không được xem số tiền bàn giao (cashBalance) của các phiếu giữa sales1 & sales2
+    const sales3Create = await request(app)
+      .post('/api/v1/staff')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        username: 'sales3',
+        password: 'password123',
+        fullName: 'Lê Thị Ca Khác',
+        role: 'SALES',
+        department: 'SALES',
+      });
+    expect(sales3Create.status).toBe(201);
+    const sales3Login = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ username: 'sales3', password: 'password123' });
+    const sales3Token = sales3Login.body.data.token;
+
+    const listForSales3 = await request(app)
+      .get('/api/v1/shifts/handover')
+      .set('Authorization', `Bearer ${sales3Token}`);
+    expect(listForSales3.status).toBe(200);
+    // sales3 chưa tạo hay nhận phiếu nào, và phiếu SHIFT_2 hôm nay là kết ca tối dành cho sáng mai nên sales3 không thấy phiếu nào của sales1/sales2
+    expect(listForSales3.body.data.length).toBe(0);
+    expect(listForSales3.body.meta.pendingIncomingHandover).toBeNull();
+
+    // 3. Quản lý (ADMIN / HR) xem được toàn bộ danh sách phiếu bàn giao
+    const listForAdmin = await request(app)
+      .get('/api/v1/shifts/handover')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(listForAdmin.status).toBe(200);
+    expect(listForAdmin.body.data.length).toBeGreaterThanOrEqual(3);
   });
 
   it('5. Cấu hình Ngày lễ: HR thêm ngày lễ, xem danh sách trên Calendar, và xóa ngày lễ', async () => {

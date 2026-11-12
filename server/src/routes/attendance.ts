@@ -13,6 +13,11 @@ import {
 import { ApiError } from '../utils/errors';
 import { ShiftCode } from '../models/Attendance';
 import { getLateToleranceMinutes } from './attendanceTimesheet';
+import {
+  expireStalePendingHandovers,
+  isSalesStaffUser,
+  resolvePendingIncomingHandoverForSales,
+} from './shifts';
 
 export const attendanceRouter = Router();
 
@@ -436,24 +441,15 @@ attendanceRouter.post('/attendance/check-out', async (req, res, next) => {
     if (attendance.department === 'SALES' && !isWfh) {
       const utcTodayStr = new Date().toISOString().slice(0, 10);
       const todayCandidates = new Set([todayStr, utcTodayStr]);
-      const allHandovers = await shiftHandoverRepo.find({});
+      const allHandovers = await expireStalePendingHandovers(todayStr);
 
-      // Bắt buộc xác nhận phiếu bàn giao ca của ca trước trước khi được kết ca:
-      // - Trong cùng ngày: Phiếu Ca 1 (SHIFT_1) của nhân viên khác giao cho Ca 2
-      // - Từ ngày hôm trước (h.date < todayStr): Phiếu kết ca tối hôm trước (SHIFT_2 / BOTH) giao cho Ca 1 sáng hôm sau
-      const pendingIncoming = (allHandovers as any[])
-        .filter((h) => {
-          if (h.status !== 'PENDING') return false;
-          if (todayCandidates.has(String(h.date))) {
-            return h.shiftCode === 'SHIFT_1' && String(h.fromStaffId) !== String(user.userId);
-          }
-          return String(h.date || '') < todayStr;
-        })
-        .sort((a, b) => {
-          const dateCmp = String(b.date || '').localeCompare(String(a.date || ''));
-          if (dateCmp !== 0) return dateCmp;
-          return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
-        })[0];
+      // Bắt buộc xác nhận đúng phiếu bàn giao ca đang chờ của ca liền trước (khớp ca/người nhận, không lấy phiếu cũ quá hạn)
+      const pendingIncoming = resolvePendingIncomingHandoverForSales({
+        allHandovers,
+        userId: String(user.userId),
+        todayLocal: todayStr,
+        receivingShiftCode: effectiveShiftCode,
+      });
 
       if (pendingIncoming) {
         const isFromPrevDay = !todayCandidates.has(String(pendingIncoming.date));
@@ -632,35 +628,34 @@ attendanceRouter.get('/attendance/today', async (req, res, next) => {
 
     const utcTodayStr = new Date().toISOString().slice(0, 10);
     const todayCandidates = new Set([todayStr, utcTodayStr]);
-    const allHandovers = await shiftHandoverRepo.find({});
+    const isSales = isSalesStaffUser(user) || attendance?.department === 'SALES';
+    const allHandovers = isSales ? await expireStalePendingHandovers(todayStr) : [];
 
-    const targetShiftCode = attendance
+    const activeShiftCode: 'SHIFT_1' | 'SHIFT_2' | 'BOTH' | null = attendance
       ? attendance.shiftCode
       : assignedShift && assignedShift.shiftCode !== 'OFF'
         ? assignedShift.shiftCode
-        : 'SHIFT_1';
+        : null;
 
-    const handover = (allHandovers as any[]).find(
-      (h) =>
-        todayCandidates.has(String(h.date)) &&
-        String(h.fromStaffId) === String(user.userId) &&
-        h.shiftCode === targetShiftCode
-    );
+    const targetShiftCode = activeShiftCode || 'SHIFT_1';
 
-    const pendingIncomingHandover =
-      (allHandovers as any[])
-        .filter((h) => {
-          if (h.status !== 'PENDING') return false;
-          if (todayCandidates.has(String(h.date))) {
-            return String(h.fromStaffId) !== String(user.userId);
-          }
-          return String(h.date || '') < todayStr;
+    const handover = isSales
+      ? (allHandovers as any[]).find(
+          (h) =>
+            todayCandidates.has(String(h.date)) &&
+            String(h.fromStaffId) === String(user.userId) &&
+            h.shiftCode === targetShiftCode
+        )
+      : null;
+
+    const pendingIncomingHandover = isSales
+      ? resolvePendingIncomingHandoverForSales({
+          allHandovers,
+          userId: String(user.userId),
+          todayLocal: todayStr,
+          receivingShiftCode: activeShiftCode,
         })
-        .sort((a, b) => {
-          const dateCmp = String(b.date || '').localeCompare(String(a.date || ''));
-          if (dateCmp !== 0) return dateCmp;
-          return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
-        })[0] || null;
+      : null;
 
     res.json({
       data: {

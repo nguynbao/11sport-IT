@@ -112,11 +112,9 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
     try {
       const res = await apiRequest<any>("/shifts/handover?status=PENDING");
       const rawData = res.data;
-      const items = Array.isArray(rawData) ? rawData : Array.isArray(rawData?.items) ? rawData.items : [];
       const pending =
         res.meta?.pendingIncomingHandover ||
         rawData?.pendingIncomingHandover ||
-        items.find((h: any) => h.status === "PENDING" && String(h.fromStaffId) !== String(currentUser?._id)) ||
         null;
       if (pending && String(pending.fromStaffId) !== String(currentUser?._id)) {
         setPendingHandoverToConfirm(pending);
@@ -132,6 +130,8 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
         if (openPopupImmediately) {
           setShowIncomingInspectionModal(true);
         }
+      } else {
+        setPendingHandoverToConfirm(null);
       }
     } catch {
       // ignore

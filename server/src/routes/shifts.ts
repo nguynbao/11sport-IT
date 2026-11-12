@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import {
+  attendanceRepo,
   categoryRepo,
   leaveRequestRepo,
   productRepo,
@@ -1115,11 +1116,133 @@ export async function computeDailyHandoverCheck(targetDate?: string) {
   };
 }
 
+export const HANDOVER_MANAGER_ROLES = new Set(['ADMIN', 'MANAGER', 'HR', 'ACCOUNTANT']);
+
+export function isHandoverManagerRole(role?: string): boolean {
+  return Boolean(role && HANDOVER_MANAGER_ROLES.has(String(role).toUpperCase()));
+}
+
+export function isSalesStaffUser(user?: { role?: string; department?: string } | null): boolean {
+  if (!user) return false;
+  return (
+    String(user.role || '').toUpperCase() === 'SALES' ||
+    String(user.department || '').toUpperCase() === 'SALES'
+  );
+}
+
+/**
+ * Tự động đánh dấu hết hiệu lực chờ ('STORE_CLOSED') cho các phiếu PENDING đã quá hạn (> 1 ngày)
+ * hoặc đã bị thay thế bởi phiếu bàn giao của ca mới hơn, tránh tồn đọng phiếu cũ chặn checkout.
+ */
+export async function expireStalePendingHandovers(todayLocal = getTodayLocalStr()): Promise<any[]> {
+  const todayUtc = new Date().toISOString().slice(0, 10);
+  const todaySet = new Set([todayLocal, todayUtc]);
+  const yesterdayLocal = addDaysStr(todayLocal, -1);
+  const yesterdayUtc = addDaysStr(todayUtc, -1);
+  const minValidDate = yesterdayLocal < yesterdayUtc ? yesterdayLocal : yesterdayUtc;
+
+  const allHandovers = (await shiftHandoverRepo.find({})) as any[];
+  const hasAnyHandoverToday = allHandovers.some((h) => todaySet.has(String(h.date)));
+  const hasClosingHandoverToday = allHandovers.some(
+    (h) => todaySet.has(String(h.date)) && (h.shiftCode === 'SHIFT_2' || h.shiftCode === 'BOTH')
+  );
+
+  for (const h of allHandovers) {
+    if (h.status !== 'PENDING') continue;
+    const hDate = String(h.date || '');
+    const isTooOld = !hDate || hDate < minValidDate;
+    const isPrevDaySuperseded = !todaySet.has(hDate) && hasAnyHandoverToday;
+    const isPrevDayShift1Expired = !todaySet.has(hDate) && h.shiftCode === 'SHIFT_1';
+    const isTodayShift1Superseded =
+      todaySet.has(hDate) && h.shiftCode === 'SHIFT_1' && hasClosingHandoverToday;
+
+    if (isTooOld || isPrevDaySuperseded || isPrevDayShift1Expired || isTodayShift1Superseded) {
+      h.status = 'STORE_CLOSED';
+      await shiftHandoverRepo.updateById(h._id, { status: 'STORE_CLOSED' });
+    }
+  }
+
+  return allHandovers;
+}
+
+/**
+ * Tìm đúng phiếu bàn giao ca đang chờ (`PENDING`) áp dụng cho nhân viên `userId` và ca nhận `receivingShiftCode`:
+ * - Không lấy phiếu cũ quá ngày hôm qua (`date < yesterday`) hoặc đã bị ca mới hơn thay thế.
+ * - Phiếu `SHIFT_1` cùng ngày (`today`) chỉ giao cho nhân viên ca chiều/tối (`SHIFT_2` hoặc `BOTH`).
+ * - Phiếu kết ca tối hôm qua (`yesterday`, `SHIFT_2` / `BOTH`) chỉ giao cho nhân viên mở cửa ca sáng hôm nay (`SHIFT_1` hoặc `BOTH`) khi hôm nay chưa có phiếu mới.
+ * - Nếu phiếu đã gán `toStaffId` thì chỉ áp dụng cho đúng `toStaffId` đó.
+ */
+export function resolvePendingIncomingHandoverForSales(params: {
+  allHandovers: any[];
+  userId: string;
+  todayLocal?: string;
+  receivingShiftCode?: 'SHIFT_1' | 'SHIFT_2' | 'BOTH' | null;
+}): any | null {
+  const {
+    allHandovers,
+    userId,
+    todayLocal = getTodayLocalStr(),
+    receivingShiftCode = null,
+  } = params;
+  const todayUtc = new Date().toISOString().slice(0, 10);
+  const todaySet = new Set([todayLocal, todayUtc]);
+  const yesterdayLocal = addDaysStr(todayLocal, -1);
+  const yesterdayUtc = addDaysStr(todayUtc, -1);
+  const yesterdaySet = new Set([yesterdayLocal, yesterdayUtc]);
+
+  const hasAnyHandoverToday = allHandovers.some((h) => todaySet.has(String(h.date)));
+  const hasClosingHandoverToday = allHandovers.some(
+    (h) => todaySet.has(String(h.date)) && (h.shiftCode === 'SHIFT_2' || h.shiftCode === 'BOTH')
+  );
+
+  return (
+    allHandovers
+      .filter((h) => {
+        if (h.status !== 'PENDING') return false;
+        if (String(h.fromStaffId) === String(userId)) return false;
+        if (h.toStaffId && String(h.toStaffId) !== String(userId)) return false;
+
+        const hDate = String(h.date || '');
+
+        // 1. Phiếu lập trong ngày hôm nay: chỉ phiếu Ca 1 (SHIFT_1) giao sang Ca 2 / BOTH
+        if (todaySet.has(hDate)) {
+          if (h.shiftCode !== 'SHIFT_1') return false;
+          if (hasClosingHandoverToday) return false;
+          if (receivingShiftCode && receivingShiftCode === 'SHIFT_1') {
+            return false;
+          }
+          return true;
+        }
+
+        // 2. Phiếu lập từ tối hôm qua (exact yesterday): chỉ phiếu kết ca tối (SHIFT_2 / BOTH) giao cho Ca 1 / BOTH sáng nay
+        if (yesterdaySet.has(hDate)) {
+          if (h.shiftCode !== 'SHIFT_2' && h.shiftCode !== 'BOTH') return false;
+          if (hasAnyHandoverToday) return false;
+          if (receivingShiftCode && receivingShiftCode === 'SHIFT_2') {
+            return false;
+          }
+          return true;
+        }
+
+        // 3. Mọi phiếu từ >= 2 ngày trước đều đã hết hạn
+        return false;
+      })
+      .sort((a, b) => {
+        const dateCmp = String(b.date || '').localeCompare(String(a.date || ''));
+        if (dateCmp !== 0) return dateCmp;
+        return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+      })[0] || null
+  );
+}
+
 // GET /api/v1/shifts/handover/daily-check (Lấy danh mục kiểm kết ca random theo ngày: luôn là Vợt + ...)
 shiftsRouter.get('/shifts/handover/daily-check', async (req, res, next) => {
   try {
     const user = req.user;
     if (!user) throw new ApiError(401, 'UNAUTHORIZED', 'Vui lòng đăng nhập');
+    if (!isHandoverManagerRole(user.role) && !isSalesStaffUser(user)) {
+      throw new ApiError(403, 'FORBIDDEN', 'Bạn không có quyền truy cập danh mục bàn giao ca');
+    }
 
     const dateQuery = typeof req.query.date === 'string' ? req.query.date.trim() : undefined;
     const dailyCheck = await computeDailyHandoverCheck(dateQuery);
@@ -1141,32 +1264,69 @@ shiftsRouter.get('/shifts/handover', async (req, res, next) => {
     const user = req.user;
     if (!user) throw new ApiError(401, 'UNAUTHORIZED', 'Vui lòng đăng nhập');
 
+    const isManager = isHandoverManagerRole(user.role);
+    const isSales = isSalesStaffUser(user);
+    if (!isManager && !isSales) {
+      throw new ApiError(
+        403,
+        'FORBIDDEN',
+        'Chỉ Quản lý (Admin/HR/Kế toán) hoặc Nhân viên Bán hàng mới có quyền xem phiếu bàn giao ca'
+      );
+    }
+
     const { date, from, to, status, shiftCode, staffId, onlyDiscrepancy, search } = req.query;
-    const allHandovers = await shiftHandoverRepo.find({});
-
     const todayLocal = getTodayLocalStr();
-    const todayUtc = new Date().toISOString().slice(0, 10);
+    const allHandovers = await expireStalePendingHandovers(todayLocal);
 
-    // Tìm phiếu đang PENDING từ ca trước cần nhân viên ca hiện tại xác nhận:
-    // 1) Cùng ngày hôm nay: phiếu PENDING của nhân viên ca trước (fromStaffId !== user.userId)
-    // 2) Từ ngày hôm trước (h.date < todayLocal): phiếu kết ca tối hôm trước giao cho Ca 1 sáng hôm nay
-    const pendingIncomingHandover =
-      (allHandovers as any[])
-        .filter((h) => {
-          if (h.status !== 'PENDING') return false;
-          const isToday = h.date === todayLocal || h.date === todayUtc;
-          if (isToday) {
-            return String(h.fromStaffId) !== String(user.userId);
-          }
-          return String(h.date || '') < todayLocal;
+    // Xác định ca làm việc hôm nay của nhân viên SALES (nếu có) để tìm đúng phiếu bàn giao cần nhận
+    let receivingShiftCode: 'SHIFT_1' | 'SHIFT_2' | 'BOTH' | null = null;
+    if (isSales) {
+      const todayAttendance = await attendanceRepo.findOne({
+        staffId: user.userId,
+        date: todayLocal,
+      });
+      const todayAssigned =
+        (await shiftAssignmentRepo.findOne({ staffId: String(user.userId), date: todayLocal })) ||
+        (await shiftAssignmentRepo.findOne({ staffId: user.userId, date: todayLocal }));
+
+      if (
+        todayAttendance &&
+        (todayAttendance.shiftCode === 'SHIFT_1' ||
+          todayAttendance.shiftCode === 'SHIFT_2' ||
+          todayAttendance.shiftCode === 'BOTH')
+      ) {
+        receivingShiftCode = todayAttendance.shiftCode;
+      } else if (
+        todayAssigned &&
+        (todayAssigned.shiftCode === 'SHIFT_1' ||
+          todayAssigned.shiftCode === 'SHIFT_2' ||
+          todayAssigned.shiftCode === 'BOTH')
+      ) {
+        receivingShiftCode = todayAssigned.shiftCode;
+      }
+    }
+
+    const pendingIncomingHandover = isSales
+      ? resolvePendingIncomingHandoverForSales({
+          allHandovers,
+          userId: String(user.userId),
+          todayLocal,
+          receivingShiftCode,
         })
-        .sort((a, b) => {
-          const dateCmp = String(b.date || '').localeCompare(String(a.date || ''));
-          if (dateCmp !== 0) return dateCmp;
-          return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
-        })[0] || null;
+      : null;
 
-    let filtered = [...(allHandovers as any[])];
+    // Bảo mật phân quyền dữ liệu:
+    // - Quản lý (ADMIN / MANAGER / HR / ACCOUNTANT): được xem toàn bộ danh sách phiếu bàn giao
+    // - Nhân viên SALES: chỉ được xem các phiếu do chính họ tạo (fromStaffId), do chính họ nhận (toStaffId),
+    //   hoặc đúng 1 phiếu pendingIncomingHandover đang chờ ca của họ xác nhận (không lộ cashBalance của người khác)
+    let filtered = isManager
+      ? [...allHandovers]
+      : allHandovers.filter(
+          (h) =>
+            String(h.fromStaffId) === String(user.userId) ||
+            String(h.toStaffId) === String(user.userId) ||
+            (pendingIncomingHandover && String(h._id) === String(pendingIncomingHandover._id))
+        );
 
     if (typeof date === 'string' && date.trim()) {
       const d = date.trim();
@@ -1184,7 +1344,7 @@ shiftsRouter.get('/shifts/handover', async (req, res, next) => {
     if (typeof shiftCode === 'string' && shiftCode.trim() && shiftCode !== 'ALL') {
       filtered = filtered.filter((h) => String(h.shiftCode) === shiftCode.trim().toUpperCase());
     }
-    if (typeof staffId === 'string' && staffId.trim()) {
+    if (isManager && typeof staffId === 'string' && staffId.trim()) {
       const sid = staffId.trim();
       filtered = filtered.filter(
         (h) => String(h.fromStaffId) === sid || String(h.toStaffId) === sid
@@ -1248,6 +1408,9 @@ shiftsRouter.post('/shifts/handover', async (req, res, next) => {
   try {
     const user = req.user;
     if (!user) throw new ApiError(401, 'UNAUTHORIZED', 'Vui lòng đăng nhập');
+    if (!isHandoverManagerRole(user.role) && !isSalesStaffUser(user)) {
+      throw new ApiError(403, 'FORBIDDEN', 'Chỉ Nhân viên Bán hàng hoặc Quản lý mới được lập phiếu bàn giao ca');
+    }
 
     const {
       date,
@@ -1306,6 +1469,21 @@ shiftsRouter.post('/shifts/handover', async (req, res, next) => {
     // đều tạo phiếu với status: 'PENDING' để ca kế tiếp nhận thông báo xác nhận.
     const initialStatus = 'PENDING';
 
+    // Khi lập phiếu bàn giao mới cho effectiveDate, đóng các phiếu PENDING cũ từ những ngày trước (< effectiveDate)
+    // hoặc phiếu SHIFT_1 cùng ngày nếu đang lập phiếu kết ca tối (SHIFT_2 / BOTH)
+    const prevPendingList = (await shiftHandoverRepo.find({ status: 'PENDING' })) as any[];
+    for (const oldPending of prevPendingList) {
+      const oldDate = String(oldPending.date || '');
+      const shouldExpireOld =
+        oldDate < effectiveDate ||
+        (oldDate === effectiveDate &&
+          oldPending.shiftCode === 'SHIFT_1' &&
+          (shiftCode === 'SHIFT_2' || shiftCode === 'BOTH'));
+      if (shouldExpireOld) {
+        await shiftHandoverRepo.updateById(oldPending._id, { status: 'STORE_CLOSED' });
+      }
+    }
+
     const existing = await shiftHandoverRepo.findOne({
       date: effectiveDate,
       fromStaffId: user.userId,
@@ -1345,16 +1523,31 @@ shiftsRouter.post('/shifts/handover', async (req, res, next) => {
   }
 });
 
-// POST /api/v1/shifts/handover/:id/confirm (Sales Ca 2 hoặc Admin xác nhận nhận bàn giao ca)
+// POST /api/v1/shifts/handover/:id/confirm (Sales ca nhận hoặc Quản lý xác nhận nhận bàn giao ca)
 shiftsRouter.post('/shifts/handover/:id/confirm', async (req, res, next) => {
   try {
     const user = req.user;
     if (!user) throw new ApiError(401, 'UNAUTHORIZED', 'Vui lòng đăng nhập');
 
+    const isManager = isHandoverManagerRole(user.role);
+    const isSales = isSalesStaffUser(user);
+    if (!isManager && !isSales) {
+      throw new ApiError(403, 'FORBIDDEN', 'Bạn không có quyền xác nhận phiếu bàn giao ca');
+    }
+
     const { id } = req.params;
     const handover = await shiftHandoverRepo.findById(id);
     if (!handover) {
       throw new ApiError(404, 'HANDOVER_NOT_FOUND', 'Không tìm thấy biên bản bàn giao ca');
+    }
+
+    if (!isManager) {
+      if (String(handover.fromStaffId) === String(user.userId)) {
+        throw new ApiError(403, 'FORBIDDEN', 'Người lập phiếu bàn giao không thể tự xác nhận phiếu của chính mình');
+      }
+      if (handover.toStaffId && String(handover.toStaffId) !== String(user.userId)) {
+        throw new ApiError(403, 'FORBIDDEN', 'Phiếu bàn giao này đã được chỉ định cho nhân viên khác');
+      }
     }
 
     const { accept = true, note = '' } = req.body || {};
@@ -1390,7 +1583,7 @@ shiftsRouter.post('/shifts/handover/:id/confirm', async (req, res, next) => {
 shiftsRouter.delete('/shifts/handover/:id', async (req, res, next) => {
   try {
     const user = req.user;
-    if (!user || !['ADMIN', 'HR', 'ACCOUNTANT'].includes(user.role)) {
+    if (!user || !isHandoverManagerRole(user.role)) {
       throw new ApiError(403, 'FORBIDDEN', 'Chỉ Quản trị viên / HR / Kế toán mới có quyền xóa phiếu bàn giao ca');
     }
 

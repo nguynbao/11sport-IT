@@ -919,8 +919,17 @@
       - **Danh mục đi kèm xoay vòng ngẫu nhiên theo ngày**: 1 danh mục trong các danh mục còn lại (`Giày`, `Phụ kiện`, `Thời trang`, `Bóng thi đấu`... — `companionCategory`), ví dụ: `Vợt + Giày`, `Vợt + Phụ kiện`, `Vợt + Thời trang`, `Vợt + Bóng thi đấu`.
   - Response: `{ "data": { "date": "2026-11-12", "categoryLabel": "Vợt + Phụ kiện", "checkedCategories": ["Vợt", "Phụ kiện"], "primaryCategory": { "_id": "...", "code": "VOT", "name": "Vợt", "productCount": 24 }, "companionCategory": { "_id": "...", "code": "PHU_KIEN", "name": "Phụ kiện", "productCount": 25 }, "availableCompanionCategories": [...], "products": [...] }, "meta": { "totalProducts": 49 } }`
 - `GET /api/v1/shifts/handover`
-  - Query: `?date=YYYY-MM-DD&from=YYYY-MM-DD&to=YYYY-MM-DD&status=PENDING|ACCEPTED|STORE_CLOSED&shiftCode=SHIFT_1|SHIFT_2|BOTH&staffId=...&onlyDiscrepancy=true|false&search=...`
-  - Dành cho nhân viên `SALES` (kiểm tra phiếu bàn giao đang chờ xác nhận từ ca trước) và Quản trị viên `ADMIN` / `HR` / `ACCOUNTANT` trên CMS (quản lý, tra cứu, lọc lịch sử các phiếu bàn giao ca).
+  - Query: `?date=YYYY-MM-DD&from=YYYY-MM-DD&to=YYYY-MM-DD&status=PENDING|ACCEPTED|DISCREPANCY_REPORTED|STORE_CLOSED&shiftCode=SHIFT_1|SHIFT_2|BOTH&staffId=...&onlyDiscrepancy=true|false&search=...`
+  - **Phân quyền & Bảo mật dữ liệu phía máy chủ**:
+    - Nhóm Quản lý (`ADMIN`, `MANAGER`, `HR`, `ACCOUNTANT`): được phép tra cứu, lọc toàn bộ danh sách phiếu bàn giao ca.
+    - Nhân viên `SALES` (hoặc `department === "SALES"`): **chỉ nhận được các phiếu liên quan trực tiếp đến chính họ** (`fromStaffId === user.userId`, `toStaffId === user.userId`, hoặc đúng phiếu `pendingIncomingHandover` của ca liền trước đang chờ ca của họ nhận bàn giao). Không trả về `cashBalance`, ghi chú hay lịch sử chênh lệch của các ca khác không liên quan.
+    - Các vai trò khác (`MARKETING`, v.v.): trả lỗi `403 FORBIDDEN`.
+  - **Giới hạn `pendingIncomingHandover` & Chặn Check-out (`INCOMING_HANDOVER_CONFIRM_REQUIRED`)**:
+    - Chỉ xét phiếu `PENDING` của **ca liền trước chưa bị thay thế bởi phiếu mới hơn** và **trong phạm vi tối đa từ ngày hôm qua (`yesterday`) đến hôm nay (`today`)**; mọi phiếu `PENDING` cũ hơn (`date < yesterday`) hoặc đã có phiếu ca sau tạo mới đều hết hiệu lực chờ và không chặn Check-out.
+    - Khớp đúng ca/người nhận:
+      - Phiếu `SHIFT_1` cùng ngày (`date === today`) chỉ áp dụng cho nhân viên nhận ca chiều/tối (`SHIFT_2` hoặc `BOTH`, `fromStaffId !== user.userId`).
+      - Phiếu kết ca tối hôm qua (`date === yesterday`, `shiftCode === "SHIFT_2" | "BOTH"`) chỉ áp dụng cho nhân viên nhận ca mở cửa sáng hôm nay (`SHIFT_1` hoặc `BOTH`) khi trong ngày `today` chưa có phiếu bàn giao mới nào.
+      - Nếu phiếu đã gắn `toStaffId` thì chỉ áp dụng cho đúng `toStaffId` đó.
   - Response: `{ "data": [ShiftHandover], "meta": { "total", "pendingCount", "acceptedCount", "storeClosedCount", "discrepancyHandoverCount", "pendingIncomingHandover" } }`
 - `POST /api/v1/shifts/handover`
   - Nhân viên Bán hàng (`SALES`) tạo phiếu kết ca & bàn giao Kho Tầng 1:
