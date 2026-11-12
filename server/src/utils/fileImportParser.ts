@@ -40,6 +40,30 @@ function decodeXmlEntities(str: string): string {
  */
 function extractZipEntries(buffer: Buffer): Map<string, string> {
   const entries = new Map<string, string>();
+
+  // 1. Quét Central Directory (0x02014b50) ở cuối file ZIP để biết chính xác compressedSize theo localHeaderOffset
+  //    (hỗ trợ cả file .xlsx xuất từ Excel / Google Sheets bật bit 3 Data Descriptor có compressedSize = 0 ở Local Header)
+  const centralSizes = new Map<number, { compressedSize: number; compressionMethod: number; fileName: string }>();
+  let cdOffset = 0;
+  while (cdOffset + 46 <= buffer.length) {
+    if (buffer.readUInt32LE(cdOffset) !== 0x02014b50) {
+      cdOffset++;
+      continue;
+    }
+    const compressionMethod = buffer.readUInt16LE(cdOffset + 10);
+    const compressedSize = buffer.readUInt32LE(cdOffset + 20);
+    const fileNameLen = buffer.readUInt16LE(cdOffset + 28);
+    const extraLen = buffer.readUInt16LE(cdOffset + 30);
+    const commentLen = buffer.readUInt16LE(cdOffset + 32);
+    const localHeaderOffset = buffer.readUInt32LE(cdOffset + 42);
+    const nameStart = cdOffset + 46;
+    if (nameStart + fileNameLen <= buffer.length) {
+      const fileName = buffer.slice(nameStart, nameStart + fileNameLen).toString('utf8');
+      centralSizes.set(localHeaderOffset, { compressedSize, compressionMethod, fileName });
+    }
+    cdOffset = nameStart + fileNameLen + extraLen + commentLen;
+  }
+
   let offset = 0;
 
   while (offset + 30 <= buffer.length) {
@@ -50,8 +74,9 @@ function extractZipEntries(buffer: Buffer): Map<string, string> {
     }
 
     const flags = buffer.readUInt16LE(offset + 6);
-    const compressionMethod = buffer.readUInt16LE(offset + 8);
-    const compressedSize = buffer.readUInt32LE(offset + 18);
+    const cdInfo = centralSizes.get(offset);
+    const compressionMethod = cdInfo ? cdInfo.compressionMethod : buffer.readUInt16LE(offset + 8);
+    const compressedSize = cdInfo && cdInfo.compressedSize > 0 ? cdInfo.compressedSize : buffer.readUInt32LE(offset + 18);
     const fileNameLen = buffer.readUInt16LE(offset + 26);
     const extraLen = buffer.readUInt16LE(offset + 28);
 
@@ -61,7 +86,7 @@ function extractZipEntries(buffer: Buffer): Map<string, string> {
 
     const fileName = buffer.slice(nameStart, nameStart + fileNameLen).toString('utf8');
 
-    // Nếu bit 3 của flags được bật (data descriptor), tìm signature tiếp theo nếu compressedSize = 0
+    // Nếu bit 3 của flags được bật (data descriptor) và không có Central Directory, tìm signature tiếp theo
     let actualCompressedSize = compressedSize;
     if ((flags & 0x08) !== 0 && actualCompressedSize === 0) {
       let nextSig = dataStart;
@@ -179,9 +204,36 @@ export function parseCsvTextToMatrix(csvText: string): string[][] {
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean);
+  if (lines.length === 0) return [];
+
+  // Xác định ký tự phân cách cột thống nhất từ dòng đầu tiên (ngoài dấu ngoặc kép)
+  const countUnquoted = (line: string, sep: string): number => {
+    let count = 0;
+    let inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      if (line[i] === '"') {
+        if (inQ && line[i + 1] === '"') i++;
+        else inQ = !inQ;
+      } else if (line[i] === sep && !inQ) {
+        count++;
+      }
+    }
+    return count;
+  };
+
+  const firstLine = lines[0];
+  const tabCount = countUnquoted(firstLine, '\t');
+  const semiCount = countUnquoted(firstLine, ';');
+  const commaCount = countUnquoted(firstLine, ',');
+  const defaultDelimiter =
+    tabCount > semiCount && tabCount > commaCount
+      ? '\t'
+      : semiCount > commaCount
+        ? ';'
+        : ',';
 
   return lines.map((line) => {
-    const delimiter = line.includes('\t') ? '\t' : line.includes(';') && !line.includes(',') ? ';' : ',';
+    const delimiter = defaultDelimiter;
     const result: string[] = [];
     let current = '';
     let inQuotes = false;

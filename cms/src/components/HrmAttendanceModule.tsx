@@ -114,7 +114,7 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
     } else if (activeTab === "LEAVE_REQUESTS") {
       loadRequests();
     }
-  }, [activeTab, calendarYear]);
+  }, [activeTab, calendarYear, reqFilterStatus, reqFilterType]);
 
   const loadHolidays = async (yearParam = calendarYear) => {
     setLoading(true);
@@ -831,7 +831,7 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
             <div>
               <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
                 <FileText className="w-6 h-6 text-emerald-600" />
-                Phê Duyệt Đơn Từ (WFH, Nghỉ phép, Đi trễ/Về sớm)
+                Phê Duyệt Đơn Từ (WFH, Nghỉ phép, Đổi ngày off, Đi trễ/Về sớm)
               </h2>
             </div>
 
@@ -845,9 +845,10 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
                 <option value="ALL">Tất cả loại đơn</option>
                 <option value="WFH">Làm việc từ xa (WFH)</option>
                 <option value="OFF">Xin nghỉ (OFF)</option>
+                <option value="PAID_LEAVE">Nghỉ phép có lương</option>
+                <option value="CHANGE_OFF">Xin chuyển ngày off</option>
                 <option value="LATE">Xin đi trễ</option>
                 <option value="EARLY">Xin về sớm</option>
-                <option value="PAID_LEAVE">Nghỉ phép có lương</option>
               </select>
 
               <select
@@ -884,7 +885,20 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
                 <tbody className="divide-y divide-slate-100">
                   {requests.map((r) => (
                     <tr key={r._id} className="hover:bg-slate-50/80 transition">
-                      <td className="py-3.5 px-4 font-mono font-semibold text-slate-900">{r.date}</td>
+                      <td className="py-3.5 px-4 font-mono font-semibold text-slate-900">
+                        {r.type === "CHANGE_OFF" && r.fromDate ? (
+                          <div className="space-y-0.5">
+                            <div className="text-xs text-slate-500">
+                              Từ: <span className="line-through">{r.fromDate}</span>
+                            </div>
+                            <div className="text-indigo-700 font-bold">
+                              → Sang: {r.date}
+                            </div>
+                          </div>
+                        ) : (
+                          r.date
+                        )}
+                      </td>
                       <td className="py-3.5 px-4">
                         <div className="font-semibold text-slate-900">{r.staffName}</div>
                         <div className="text-xs text-slate-400 font-mono">{r.staffCode}</div>
@@ -901,24 +915,28 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
                       </td>
                       <td className="py-3.5 px-4">
                         <span
-                          className={`px-2.5 py-1 rounded-lg text-xs font-bold ${r.type === "WFH"
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold inline-block ${r.type === "WFH"
                             ? "bg-purple-100 text-purple-800"
                             : r.type === "PAID_LEAVE"
                               ? "bg-teal-100 text-teal-800"
-                              : r.type === "OFF"
-                                ? "bg-rose-100 text-rose-800"
-                                : "bg-amber-100 text-amber-800"
+                              : r.type === "CHANGE_OFF"
+                                ? "bg-indigo-100 text-indigo-800"
+                                : r.type === "OFF"
+                                  ? "bg-rose-100 text-rose-800"
+                                  : "bg-amber-100 text-amber-800"
                             }`}
                         >
                           {r.type === "WFH"
                             ? "🏠 Làm việc từ xa (WFH)"
                             : r.type === "PAID_LEAVE"
                               ? "Nghỉ phép có lương"
-                              : r.type === "OFF"
-                                ? "Xin nghỉ không lương"
-                                : r.type === "LATE"
-                                  ? "Đi trễ"
-                                  : "Về sớm"}
+                              : r.type === "CHANGE_OFF"
+                                ? `🔄 Xin chuyển ngày off (${r.sourceOffType === "PAID_LEAVE" ? "Phép" : "OFF"})`
+                                : r.type === "OFF"
+                                  ? "Xin nghỉ không lương"
+                                  : r.type === "LATE"
+                                    ? "Đi trễ"
+                                    : "Về sớm"}
                         </span>
                       </td>
                       <td className="py-3.5 px-4 w-[260px] max-w-[260px]">

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app';
-import { connectDatabase, clearDatabase, staffRepo, shiftAssignmentRepo, attendanceRepo } from '../src/config/db';
+import { connectDatabase, clearDatabase, staffRepo, shiftAssignmentRepo, attendanceRepo, leaveRequestRepo } from '../src/config/db';
 import { seedDatabaseIfNeeded } from '../src/config/seed';
 
 describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
@@ -976,5 +976,194 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
     expect(sortedRes.status).toBe(200);
     expect(sortedRes.body.data.length).toBeGreaterThanOrEqual(1);
     expect(sortedRes.body.data[0]._id).toBe(staffId);
+  });
+
+  it('14. Xin chuyển ngày off (CHANGE_OFF): đổi ngày off từ 20/11 sang 19/11 cần HR duyệt và tự động đồng bộ lịch nghỉ/phân ca', async () => {
+    const salesCreate = await request(app)
+      .post('/api/v1/staff')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        username: 'sales_change_off',
+        password: 'password123',
+        fullName: 'Nhân Viên Đổi Ngày Off',
+        role: 'SALES',
+        department: 'SALES',
+        contractType: 'FULLTIME',
+        contractStartDate: '2026-01-01',
+      });
+    expect(salesCreate.status).toBe(201);
+    const staffId = salesCreate.body.data._id;
+
+    const loginRes = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ username: 'sales_change_off', password: 'password123' });
+    const empToken = loginRes.body.data.token;
+
+    // 14.1 Nhân viên xin OFF vào ngày 2026-11-20 và được HR duyệt
+    const createOff20 = await request(app)
+      .post('/api/v1/leave-requests')
+      .set('Authorization', `Bearer ${empToken}`)
+      .send({
+        type: 'OFF',
+        date: '2026-11-20',
+        reason: 'Xin off ngày 20/11 việc cá nhân',
+      });
+    expect(createOff20.status).toBe(201);
+    const off20Id = createOff20.body.data._id;
+
+    const approveOff20 = await request(app)
+      .patch(`/api/v1/leave-requests/${off20Id}`)
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({ status: 'APPROVED', reviewNote: 'Đồng ý cho nghỉ 20/11' });
+    expect(approveOff20.status).toBe(200);
+
+    // Giả lập lịch phân ca tuần: ngày 19/11 làm SHIFT_2, ngày 20/11 nghỉ OFF
+    await shiftAssignmentRepo.create({
+      weekStart: '2026-11-16',
+      date: '2026-11-19',
+      dayOfWeek: 4,
+      staffId: String(staffId),
+      staffCode: salesCreate.body.data.code,
+      staffName: 'Nhân Viên Đổi Ngày Off',
+      shiftCode: 'SHIFT_2',
+      preferenceShift: 'SHIFT_2',
+      isOffRequested: false,
+      assignedBy: 'HR',
+    });
+    await shiftAssignmentRepo.create({
+      weekStart: '2026-11-16',
+      date: '2026-11-20',
+      dayOfWeek: 5,
+      staffId: String(staffId),
+      staffCode: salesCreate.body.data.code,
+      staffName: 'Nhân Viên Đổi Ngày Off',
+      shiftCode: 'OFF',
+      preferenceShift: 'OFF',
+      isOffRequested: true,
+      assignedBy: 'HR',
+    });
+
+    // 14.2 Nếu xin đổi từ một ngày không phải ngày off (VD: 2026-11-18) -> bị chặn 400 SOURCE_OFF_NOT_FOUND
+    const invalidChange = await request(app)
+      .post('/api/v1/leave-requests')
+      .set('Authorization', `Bearer ${empToken}`)
+      .send({
+        type: 'CHANGE_OFF',
+        fromDate: '2026-11-18',
+        date: '2026-11-19',
+        reason: 'Đổi nhầm ngày chưa xin off',
+      });
+    expect(invalidChange.status).toBe(400);
+    expect(invalidChange.body.code).toBe('SOURCE_OFF_NOT_FOUND');
+
+    // 14.3 Nhân viên có chuyện đột xuất, xin chuyển ngày off từ 2026-11-20 sang 2026-11-19 -> PENDING
+    const reqChange1 = await request(app)
+      .post('/api/v1/leave-requests')
+      .set('Authorization', `Bearer ${empToken}`)
+      .send({
+        type: 'CHANGE_OFF',
+        fromDate: '2026-11-20',
+        date: '2026-11-19',
+        sourceLeaveId: off20Id,
+        reason: 'Có việc đột xuất gia đình ngày 19/11',
+      });
+    expect(reqChange1.status).toBe(201);
+    expect(reqChange1.body.data.type).toBe('CHANGE_OFF');
+    expect(reqChange1.body.data.fromDate).toBe('2026-11-20');
+    expect(reqChange1.body.data.date).toBe('2026-11-19');
+    expect(reqChange1.body.data.status).toBe('PENDING');
+    const changeReq1Id = reqChange1.body.data._id;
+
+    // Khi HR chưa duyệt (hoặc từ chối), ngày 20/11 vẫn là ngày nghỉ, ngày 19/11 vẫn đi làm
+    const rejectChange1 = await request(app)
+      .patch(`/api/v1/leave-requests/${changeReq1Id}`)
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({ status: 'REJECTED', reviewNote: 'Chưa bố trí được người thay ngày 19/11' });
+    expect(rejectChange1.status).toBe(200);
+
+    const calAfterReject = await request(app)
+      .get('/api/v1/attendance/my-calendar?month=11&year=2026')
+      .set('Authorization', `Bearer ${empToken}`);
+    expect(calAfterReject.body.data.row.cells['2026-11-20'].code).toBe('LEAVE');
+    expect(calAfterReject.body.data.row.cells['2026-11-19'].code).not.toBe('LEAVE');
+
+    // 14.4 Nhân viên gửi lại đơn xin chuyển ngày off từ 2026-11-20 sang 2026-11-19 và được HR DUYỆT (APPROVED)
+    const reqChange2 = await request(app)
+      .post('/api/v1/leave-requests')
+      .set('Authorization', `Bearer ${empToken}`)
+      .send({
+        type: 'CHANGE_OFF',
+        fromDate: '2026-11-20',
+        date: '2026-11-19',
+        sourceLeaveId: off20Id,
+        reason: 'Đã nhờ đồng nghiệp trực thay ngày 19/11, xin đổi off 20/11 sang 19/11',
+      });
+    expect(reqChange2.status).toBe(201);
+    const changeReq2Id = reqChange2.body.data._id;
+
+    const approveChange2 = await request(app)
+      .patch(`/api/v1/leave-requests/${changeReq2Id}`)
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({ status: 'APPROVED', reviewNote: 'HR duyệt đổi ngày off sang 19/11' });
+    expect(approveChange2.status).toBe(200);
+    expect(approveChange2.body.data.status).toBe('APPROVED');
+
+    // Kiểm tra đơn nghỉ gốc đã được chuyển sang ngày 2026-11-19 (APPROVED)
+    const updatedOriginalLeave: any = await leaveRequestRepo.findById(off20Id);
+    expect(updatedOriginalLeave.date).toBe('2026-11-19');
+    expect(updatedOriginalLeave.status).toBe('APPROVED');
+
+    // Kiểm tra lịch phân ca đã tự động hoán đổi: 19/11 là OFF, 20/11 là SHIFT_2
+    const shift19: any = await shiftAssignmentRepo.findOne({ staffId: String(staffId), date: '2026-11-19' });
+    const shift20: any = await shiftAssignmentRepo.findOne({ staffId: String(staffId), date: '2026-11-20' });
+    expect(shift19.shiftCode).toBe('OFF');
+    expect(shift20.shiftCode).toBe('SHIFT_2');
+
+    // Kiểm tra trên Lịch công cá nhân: ngày 19/11 là LEAVE, ngày 20/11 không còn là LEAVE/DAY_OFF
+    const calAfterApprove = await request(app)
+      .get('/api/v1/attendance/my-calendar?month=11&year=2026')
+      .set('Authorization', `Bearer ${empToken}`);
+    expect(calAfterApprove.body.data.row.cells['2026-11-19'].code).toBe('LEAVE');
+    expect(calAfterApprove.body.data.row.cells['2026-11-20'].code).not.toBe('LEAVE');
+    expect(calAfterApprove.body.data.row.cells['2026-11-20'].code).not.toBe('DAY_OFF');
+    expect(calAfterApprove.body.data.row.cells['2026-11-20'].shiftCode).toBe('SHIFT_2');
+
+    // 14.5 Nếu trong lúc đơn CHANGE_OFF đang chờ HR duyệt mà ngày đích phát sinh đơn nghỉ khác -> chặn 400 TARGET_DATE_ALREADY_OFF khi duyệt
+    const reqChangeConflict = await request(app)
+      .post('/api/v1/leave-requests')
+      .set('Authorization', `Bearer ${empToken}`)
+      .send({
+        type: 'CHANGE_OFF',
+        fromDate: '2026-11-19',
+        date: '2026-11-21',
+        sourceLeaveId: off20Id,
+        reason: 'Xin đổi tiếp từ 19/11 sang 21/11',
+      });
+    expect(reqChangeConflict.status).toBe(201);
+    const conflictChangeId = reqChangeConflict.body.data._id;
+
+    // Giả lập phát sinh đơn nghỉ phép năm (PAID_LEAVE) ở ngày đích 2026-11-21 trước khi HR duyệt đơn CHANGE_OFF
+    const otherLeaveOnTarget = await leaveRequestRepo.create({
+      staffId: String(staffId),
+      staffCode: salesCreate.body.data.code,
+      staffName: 'Nhân Viên Đổi Ngày Off',
+      department: 'SALES',
+      type: 'PAID_LEAVE',
+      date: '2026-11-21',
+      reason: 'Nghỉ phép năm ngày 21/11',
+      status: 'APPROVED',
+    });
+
+    const approveConflictRes = await request(app)
+      .patch(`/api/v1/leave-requests/${conflictChangeId}`)
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({ status: 'APPROVED', reviewNote: 'Thử duyệt khi ngày đích đã có đơn nghỉ khác' });
+    expect(approveConflictRes.status).toBe(400);
+    expect(approveConflictRes.body.code).toBe('TARGET_DATE_ALREADY_OFF');
+
+    // Đảm bảo đơn gốc vẫn giữ nguyên ở ngày 2026-11-19, không bị chuyển đè sang 2026-11-21
+    const stillAt19: any = await leaveRequestRepo.findById(off20Id);
+    expect(stillAt19.date).toBe('2026-11-19');
+    await leaveRequestRepo.deleteById(String((otherLeaveOnTarget as any)._id));
   });
 });

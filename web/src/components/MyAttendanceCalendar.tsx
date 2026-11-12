@@ -192,6 +192,7 @@ const LEGEND: MyCalendarCellCode[] = [
 const LEAVE_TYPE_LABEL: Record<LeaveRequestType, string> = {
   PAID_LEAVE: "Nghỉ phép có lương",
   OFF: "Xin off",
+  CHANGE_OFF: "Xin chuyển ngày off",
   LATE: "Xin đi trễ",
   EARLY: "Xin về sớm",
   WFH: "Làm từ xa (WFH)",
@@ -247,7 +248,12 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<{ day: MyCalendarDay; cell: MyCalendarCell } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [leaveModal, setLeaveModal] = useState<{ date?: string; type?: LeaveRequestType } | null>(null);
+  const [leaveModal, setLeaveModal] = useState<{
+    date?: string;
+    fromDate?: string;
+    sourceLeaveId?: string;
+    type?: LeaveRequestType;
+  } | null>(null);
   const [leaveReloadKey, setLeaveReloadKey] = useState(0);
   const [showShiftRegModal, setShowShiftRegModal] = useState(false);
   const [myShiftSchedule, setMyShiftSchedule] = useState<MyShiftScheduleData | null>(null);
@@ -361,6 +367,13 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
           <MyLeaveRequestsPanel
             reloadKey={leaveReloadKey}
             onCreate={() => setLeaveModal({})}
+            onRequestChangeOff={(l) =>
+              setLeaveModal({
+                type: "CHANGE_OFF",
+                fromDate: l.date,
+                sourceLeaveId: l._id,
+              })
+            }
             onChanged={afterLeaveChange}
           />
         </aside>
@@ -864,6 +877,8 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
           department={data?.row?.department || currentUser.department || "OFFICE"}
           contractType={data?.row?.contractType || currentUser.contractType}
           defaultDate={leaveModal.date}
+          defaultFromDate={leaveModal.fromDate}
+          defaultSourceLeaveId={leaveModal.sourceLeaveId}
           defaultType={leaveModal.type}
           onClose={() => setLeaveModal(null)}
           onSubmitted={(msg) => {
@@ -881,6 +896,14 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
           contractType={data.row.contractType}
           multiplier={multiplier}
           onClose={() => setSelected(null)}
+          onRequestChangeOff={(fromDate, sourceLeaveId) => {
+            setSelected(null);
+            setLeaveModal({
+              type: "CHANGE_OFF",
+              fromDate,
+              sourceLeaveId,
+            });
+          }}
           onSubmitted={(msg) => {
             setSelected(null);
             afterLeaveChange(msg);
@@ -1048,6 +1071,7 @@ function DayDetailModal({
   contractType,
   multiplier,
   onClose,
+  onRequestChangeOff,
   onSubmitted,
 }: {
   day: MyCalendarDay;
@@ -1056,12 +1080,23 @@ function DayDetailModal({
   contractType?: string;
   multiplier: number;
   onClose: () => void;
+  onRequestChangeOff?: (fromDate: string, sourceLeaveId?: string) => void;
   onSubmitted: (msg: string) => void;
 }) {
   const paidLeaveAllowed = isPaidLeaveEligible(contractType);
   const st = cell.code === "HOLIDAY" && !cell.isPaidHoliday ? STATUS.DAY_OFF : STATUS[cell.code];
   const [yy, mm, dd] = day.date.split("-");
   const leaveTypes: LeaveRequestType[] = ["PAID_LEAVE", "OFF", "WFH", "LATE", "EARLY"];
+  const activeOffLeave = (cell.leaveRequests || []).find(
+    (l) =>
+      (l.type === "OFF" || l.type === "PAID_LEAVE") &&
+      (l.status === "APPROVED" || l.status === "PENDING")
+  );
+  const canChangeOffFromThisDay =
+    Boolean(activeOffLeave) ||
+    cell.code === "LEAVE" ||
+    cell.code === "PAID_LEAVE" ||
+    (department === "SALES" && cell.code === "DAY_OFF");
 
   const [showForm, setShowForm] = useState(false);
   const [type, setType] = useState<LeaveRequestType>(cell.code === "ABSENT" ? "OFF" : "EARLY");
@@ -1208,7 +1243,11 @@ function DayDetailModal({
               {cell.leaveRequests!.map((l) => (
                 <div key={l.id} className="p-2 rounded-lg border border-slate-200 text-xs">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-bold text-slate-800">{LEAVE_TYPE_LABEL[l.type]}</span>
+                    <span className="font-bold text-slate-800">
+                      {l.type === "CHANGE_OFF" && l.fromDate
+                        ? `Xin chuyển ngày off (${l.fromDate.split("-").reverse().join("/")} → ${(l.date || day.date).split("-").reverse().join("/")})`
+                        : LEAVE_TYPE_LABEL[l.type]}
+                    </span>
                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${LEAVE_STATUS[l.status]?.cls}`}>
                       {LEAVE_STATUS[l.status]?.label}
                     </span>
@@ -1218,6 +1257,18 @@ function DayDetailModal({
                 </div>
               ))}
             </div>
+          )}
+
+          {/* Nút xin chuyển ngày off sang ngày khác (khi ngày này là ngày nghỉ / đã xin off) */}
+          {canChangeOffFromThisDay && onRequestChangeOff && (
+            <button
+              type="button"
+              onClick={() => onRequestChangeOff(day.date, activeOffLeave?.id)}
+              className="w-full py-2.5 rounded-xl border-2 border-indigo-200 bg-indigo-50 text-indigo-800 hover:bg-indigo-100 text-xs font-bold flex items-center justify-center gap-1.5 transition"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Xin chuyển ngày off {dd}/{mm} sang ngày khác
+            </button>
           )}
 
           {/* Gửi đơn */}

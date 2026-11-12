@@ -157,6 +157,7 @@ describe('HR Quick Excel/CSV Import & Extended Staff Profile Fields', () => {
     const csvSample = [
       'BẮT ĐẦU,KẾT THÚC,HỌ TÊN,NGÀY SINH,GIỚI TÍNH,QUỐC TỊCH,CMND,NGÀY CẤP,NƠI CẤP,ĐỊA CHỈ THƯỜNG CHÚ,ĐỊA CHỈ HIỆN TẠI,TRƯỜNG HỌC,CHUYÊN NGÀNH,VỊ TRÍ,LOẠI HỢP ĐỒNG,SỐ HĐ,,,SDT,BỘ PHẬN,BHXH,,,Lương,Số ngày nghỉ,STK',
       ',,,,,,,,,,,,,,,HDTT,HĐTV,HDXDTH,,,NGÀY ĐÓNG,MỨC ĐÓNG,NGÀY NGHỈ,,,',
+      '01/11/2026,31/12/2026,Nguyễn Văn Mẫu,15/08/2001,Nam,Việt Nam,48201001234,10/05/2022,Cục CS QLHC về TTXH,"Hải Châu, Đà Nẵng","Thanh Khê, Đà Nẵng",ĐH Kinh tế Đà Nẵng,Quản trị kinh doanh,Nhân viên bán hàng,Thử việc,,HĐTV-001/2026,,905123456,Bán hàng,01/11/2026,5.300.000 ₫,,7.500.000 ₫,0,1903686868 - Techcombank',
       '01/10/2026,01/10/2027,Lê Minh Khôi,20/11/2000,Nam,Việt Nam,048200001122,12/06/2021,CA Đà Nẵng,Thanh Khê,Liên Chiểu,ĐH Bách Khoa,CNTT,Tư vấn bán hàng,Chính thức,,,HDXDTH-12/2026,0912345678,Bán hàng,01/10/2026,5300000,,7800000,2,0041000999999 - VCB',
     ].join('\n');
 
@@ -171,8 +172,38 @@ describe('HR Quick Excel/CSV Import & Extended Staff Profile Fields', () => {
       .set('Authorization', `Bearer ${hrToken}`)
       .send({ fileName: 'mau.csv', csvText: csvSample });
     expect(okRes.status).toBe(200);
-    expect(okRes.body.meta.total).toBe(1);
+    expect(okRes.body.meta.total).toBe(2);
     expect(okRes.body.data.rows[0]).toMatchObject({
+      suggestedUsername: 'maunv',
+      contractStartDate: '2026-11-01',
+      contractEndDate: '2026-12-31',
+      fullName: 'Nguyễn Văn Mẫu',
+      dateOfBirth: '2001-08-15',
+      gender: 'Nam',
+      nationality: 'Việt Nam',
+      citizenId: '048201001234',
+      citizenIssueDate: '2022-05-10',
+      citizenIssuePlace: 'Cục CS QLHC về TTXH',
+      permanentAddress: 'Hải Châu, Đà Nẵng',
+      currentAddress: 'Thanh Khê, Đà Nẵng',
+      school: 'ĐH Kinh tế Đà Nẵng',
+      major: 'Quản trị kinh doanh',
+      positionTitle: 'Nhân viên bán hàng',
+      role: 'SALES',
+      department: 'SALES',
+      contractType: 'PROBATION',
+      internContractNumber: '',
+      probationContractNumber: 'HĐTV-001/2026',
+      officialContractNumber: '',
+      phone: '0905123456',
+      bhxhStartDate: '2026-11-01',
+      insurance: 5300000,
+      bhxhEndDate: '',
+      baseSalary: 7500000,
+      recordedLeaveDays: 0,
+      bankAccount: '1903686868 - Techcombank',
+    });
+    expect(okRes.body.data.rows[1]).toMatchObject({
       suggestedUsername: 'khoilm',
       fullName: 'Lê Minh Khôi',
       role: 'SALES',

@@ -20,6 +20,7 @@ import {
   BadgeCheck,
   Lock,
   ChevronDown,
+  ArrowLeftRight,
 } from "lucide-react";
 
 export const CONTRACT_LABEL: Record<string, string> = {
@@ -53,6 +54,12 @@ export const LEAVE_TYPE_META: Record<
     cls: "bg-sky-100 text-sky-800 border-sky-300",
     icon: <CalendarOff className="w-4 h-4" />,
   },
+  CHANGE_OFF: {
+    label: "Xin chuyển ngày off",
+    desc: "Đổi ngày nghỉ đã xin • Cần HR duyệt",
+    cls: "bg-indigo-100 text-indigo-800 border-indigo-300",
+    icon: <ArrowLeftRight className="w-4 h-4" />,
+  },
   WFH: {
     label: "Làm từ xa (WFH)",
     desc: "Làm việc online, chấm công từ xa",
@@ -85,18 +92,21 @@ function pad(n: number) {
 function toDateStr(d: Date) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
-function fmtDate(s: string) {
+function fmtDate(s?: string) {
+  if (!s) return "";
   const [y, m, d] = s.split("-");
   return `${d}/${m}/${y}`;
 }
 
 // ---------------------------------------------------------------------------
-// Modal tạo đơn (hỗ trợ nghỉ / WFH nhiều ngày liên tiếp)
+// Modal tạo đơn (hỗ trợ nghỉ / WFH nhiều ngày liên tiếp & xin chuyển ngày off)
 // ---------------------------------------------------------------------------
 export function LeaveRequestModal({
   department,
   contractType,
   defaultDate,
+  defaultFromDate,
+  defaultSourceLeaveId,
   defaultType,
   onClose,
   onSubmitted,
@@ -104,16 +114,19 @@ export function LeaveRequestModal({
   department: string;
   contractType?: string;
   defaultDate?: string;
+  defaultFromDate?: string;
+  defaultSourceLeaveId?: string;
   defaultType?: LeaveRequestType;
   onClose: () => void;
   onSubmitted: (msg: string) => void;
 }) {
   const isFulltime = isPaidLeaveEligible(contractType);
   const contractLabel = CONTRACT_LABEL[contractType || ""] || "Chưa cập nhật";
-  // Luôn hiển thị đủ các loại đơn (kể cả WFH cho cả Văn phòng & Bán hàng); KHOÁ "Nghỉ phép có lương" nếu chưa phải nhân viên Chính thức
+  // Luôn hiển thị đủ các loại đơn (kể cả WFH và Xin chuyển ngày off); KHOÁ "Nghỉ phép có lương" nếu chưa phải nhân viên Chính thức
   const types: LeaveRequestType[] = [
     "PAID_LEAVE",
     "OFF",
+    "CHANGE_OFF",
     "WFH",
     "LATE",
     "EARLY",
@@ -128,9 +141,33 @@ export function LeaveRequestModal({
   );
   const [fromDate, setFromDate] = useState(defaultDate || today);
   const [toDate, setToDate] = useState(defaultDate || today);
+  const [changeFromDate, setChangeFromDate] = useState(defaultFromDate || defaultDate || today);
+  const [changeToDate, setChangeToDate] = useState(defaultDate && defaultFromDate && defaultDate !== defaultFromDate ? defaultDate : today);
+  const [selectedSourceLeaveId, setSelectedSourceLeaveId] = useState<string | undefined>(defaultSourceLeaveId);
+  const [existingOffRequests, setExistingOffRequests] = useState<MyLeaveRequest[]>([]);
   const [reason, setReason] = useState("");
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (type !== "CHANGE_OFF") return;
+    fetchMyLeaveRequestsApi()
+      .then((res) => {
+        const activeOffs = (res || []).filter(
+          (l) =>
+            (l.type === "OFF" || l.type === "PAID_LEAVE") &&
+            (l.status === "APPROVED" || l.status === "PENDING")
+        );
+        setExistingOffRequests(activeOffs);
+        if (!defaultFromDate && activeOffs.length > 0) {
+          setChangeFromDate(activeOffs[0].date);
+          setSelectedSourceLeaveId(activeOffs[0]._id);
+        }
+      })
+      .catch(() => {
+        // ignore
+      });
+  }, [type, defaultFromDate]);
 
   const allowRange = type === "PAID_LEAVE" || type === "OFF" || type === "WFH";
 
@@ -154,6 +191,37 @@ export function LeaveRequestModal({
       setErr("Vui lòng nhập lý do.");
       return;
     }
+
+    if (type === "CHANGE_OFF") {
+      if (!changeFromDate || !changeToDate) {
+        setErr("Vui lòng chọn đầy đủ ngày off hiện tại và ngày off mới muốn chuyển sang.");
+        return;
+      }
+      if (changeFromDate === changeToDate) {
+        setErr("Ngày off mới phải khác với ngày off ban đầu.");
+        return;
+      }
+      setSending(true);
+      setErr(null);
+      try {
+        await createLeaveRequestApi({
+          type: "CHANGE_OFF",
+          fromDate: changeFromDate,
+          date: changeToDate,
+          sourceLeaveId: selectedSourceLeaveId,
+          reason: reason.trim(),
+        });
+        onSubmitted(
+          `Đã gửi đơn xin chuyển ngày off (${fmtDate(changeFromDate)} → ${fmtDate(changeToDate)}), chờ HR duyệt`
+        );
+      } catch (e: any) {
+        setErr(e?.message || "Không gửi được đơn chuyển ngày off");
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
     if (allowRange && toDate < fromDate) {
       setErr("Ngày kết thúc phải sau hoặc bằng ngày bắt đầu.");
       return;
@@ -257,39 +325,108 @@ export function LeaveRequestModal({
               Nhân viên Sales có tối đa <b>4 ngày nghỉ không lương (OFF)/tháng</b>. Khi đăng ký ca tuần mặc định chỉ được nghỉ tối đa <b>2 ngày/tuần</b> (1 ngày OFF + 1 ngày phép); nếu muốn nghỉ <b>từ 3 ngày trở đi trong 1 tuần</b> thì bắt buộc phải <b>tạo đơn trước tối thiểu 3 tuần (21 ngày)</b>.
             </p>
           )}
+          {type === "CHANGE_OFF" && (
+            <div className="space-y-2">
+              <p className="text-[11px] text-indigo-800 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1.5">
+                <b>Xin chuyển ngày off:</b> Dùng khi bạn đã xin off / có lịch off vào một ngày (VD: 20/11) nhưng có việc đột xuất muốn đổi sang nghỉ ngày khác (VD: 19/11). Đơn đổi ngày off sẽ <b>cần HR duyệt</b> mới có hiệu lực.
+              </p>
+              {existingOffRequests.length > 0 && (
+                <div className="space-y-1">
+                  <div className="text-[11px] font-semibold text-slate-600">
+                    Chọn nhanh ngày đã xin nghỉ của bạn:
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {existingOffRequests.slice(0, 8).map((item) => {
+                      const isSelected = changeFromDate === item.date;
+                      return (
+                        <button
+                          key={item._id}
+                          type="button"
+                          onClick={() => {
+                            setChangeFromDate(item.date);
+                            setSelectedSourceLeaveId(item._id);
+                          }}
+                          className={`px-2 py-1 rounded-lg border text-[11px] font-bold transition ${isSelected
+                            ? "bg-indigo-600 border-indigo-600 text-white"
+                            : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                            }`}
+                        >
+                          {fmtDate(item.date)} ({item.type === "PAID_LEAVE" ? "Phép" : "OFF"})
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
-          <div className={`grid gap-2 ${allowRange ? "grid-cols-2" : "grid-cols-1"}`}>
-            <label className="text-xs font-semibold text-slate-600">
-              {allowRange ? "Từ ngày *" : "Ngày *"}
-              <input
-                type="date"
-                required
-                value={fromDate}
-                onChange={(e) => {
-                  setFromDate(e.target.value);
-                  if (toDate < e.target.value) setToDate(e.target.value);
-                }}
-                className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-            </label>
-            {allowRange && (
+          {type === "CHANGE_OFF" ? (
+            <div className="grid grid-cols-2 gap-2">
               <label className="text-xs font-semibold text-slate-600">
-                Đến ngày *
+                Ngày off hiện tại (cần đổi) *
                 <input
                   type="date"
                   required
-                  min={fromDate}
-                  value={toDate}
-                  onChange={(e) => setToDate(e.target.value)}
+                  value={changeFromDate}
+                  onChange={(e) => {
+                    setChangeFromDate(e.target.value);
+                    const matched = existingOffRequests.find((r) => r.date === e.target.value);
+                    setSelectedSourceLeaveId(matched?._id);
+                  }}
+                  className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </label>
+              <label className="text-xs font-semibold text-slate-600">
+                Đổi sang nghỉ ngày *
+                <input
+                  type="date"
+                  required
+                  value={changeToDate}
+                  onChange={(e) => setChangeToDate(e.target.value)}
+                  className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </label>
+            </div>
+          ) : (
+            <div className={`grid gap-2 ${allowRange ? "grid-cols-2" : "grid-cols-1"}`}>
+              <label className="text-xs font-semibold text-slate-600">
+                {allowRange ? "Từ ngày *" : "Ngày *"}
+                <input
+                  type="date"
+                  required
+                  value={fromDate}
+                  onChange={(e) => {
+                    setFromDate(e.target.value);
+                    if (toDate < e.target.value) setToDate(e.target.value);
+                  }}
                   className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </label>
-            )}
-          </div>
-          {allowRange && dates.length > 1 && (
+              {allowRange && (
+                <label className="text-xs font-semibold text-slate-600">
+                  Đến ngày *
+                  <input
+                    type="date"
+                    required
+                    min={fromDate}
+                    value={toDate}
+                    onChange={(e) => setToDate(e.target.value)}
+                    className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </label>
+              )}
+            </div>
+          )}
+          {type !== "CHANGE_OFF" && allowRange && dates.length > 1 && (
             <p className="text-[11px] text-emerald-700 font-semibold">
               Sẽ tạo {dates.length} đơn cho {dates.length} ngày làm việc
               {department === "OFFICE" ? " (đã bỏ Chủ nhật)" : ""}.
+            </p>
+          )}
+          {type === "CHANGE_OFF" && changeFromDate && changeToDate && changeFromDate !== changeToDate && (
+            <p className="text-[11px] text-indigo-700 font-semibold">
+              Xin chuyển ngày nghỉ từ <b>{fmtDate(changeFromDate)}</b> sang nghỉ ngày <b>{fmtDate(changeToDate)}</b> (cần HR duyệt).
             </p>
           )}
 
@@ -339,10 +476,12 @@ type LeaveFilter = "ALL" | "PENDING" | "APPROVED" | "REJECTED";
 export function MyLeaveRequestsPanel({
   reloadKey,
   onCreate,
+  onRequestChangeOff,
   onChanged,
 }: {
   reloadKey: number;
   onCreate: () => void;
+  onRequestChangeOff?: (leave: MyLeaveRequest) => void;
   onChanged: (msg: string) => void;
 }) {
   const [list, setList] = useState<MyLeaveRequest[]>([]);
@@ -462,8 +601,12 @@ export function MyLeaveRequestsPanel({
                       {meta.icon}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block text-[11px] font-bold text-slate-900 truncate">{meta.label}</span>
-                      <span className="block text-[10px] text-slate-500 font-mono">{fmtDate(l.date)}</span>
+                      <span className="block text-[11px] font-bold text-slate-900 truncate">{meta?.label || l.type}</span>
+                      <span className="block text-[10px] text-slate-500 font-mono">
+                        {l.type === "CHANGE_OFF" && l.fromDate
+                          ? `${fmtDate(l.fromDate)} → ${fmtDate(l.date)}`
+                          : fmtDate(l.date)}
+                      </span>
                     </span>
                     <span className={`shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold ${st.cls}`}>{st.label}</span>
                     <ChevronDown
@@ -473,6 +616,12 @@ export function MyLeaveRequestsPanel({
 
                   {open && (
                     <div className="px-3 pb-2.5 pt-1 bg-slate-50 space-y-1.5 text-[11px]">
+                      {l.type === "CHANGE_OFF" && l.fromDate && (
+                        <div className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded px-2 py-1">
+                          Chuyển ngày nghỉ ({l.sourceOffType === "PAID_LEAVE" ? "Phép có lương" : "OFF không lương"}):{" "}
+                          <b>{fmtDate(l.fromDate)}</b> → <b>{fmtDate(l.date)}</b>
+                        </div>
+                      )}
                       <div>
                         <span className="text-slate-400">Lý do: </span>
                         <span className="text-slate-700 break-words">{l.reason}</span>
@@ -483,16 +632,30 @@ export function MyLeaveRequestsPanel({
                           <span className="text-slate-600 italic break-words">{l.reviewNote}</span>
                         </div>
                       )}
-                      {l.status === "PENDING" && (
-                        <button
-                          type="button"
-                          onClick={() => cancel(l._id)}
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-rose-200 text-rose-600 hover:bg-rose-50 text-[10px] font-bold"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                          Hủy đơn
-                        </button>
-                      )}
+                      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                        {(l.type === "OFF" || l.type === "PAID_LEAVE") &&
+                          (l.status === "APPROVED" || l.status === "PENDING") &&
+                          onRequestChangeOff && (
+                            <button
+                              type="button"
+                              onClick={() => onRequestChangeOff(l)}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 text-[10px] font-bold"
+                            >
+                              <ArrowLeftRight className="w-3 h-3" />
+                              Đổi ngày off
+                            </button>
+                          )}
+                        {l.status === "PENDING" && (
+                          <button
+                            type="button"
+                            onClick={() => cancel(l._id)}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-rose-200 text-rose-600 hover:bg-rose-50 text-[10px] font-bold"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            Hủy đơn
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )}
                 </li>
