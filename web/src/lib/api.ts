@@ -1336,13 +1336,76 @@ export async function checkOutApi(params?: {
   return res.data;
 }
 
+export interface ShiftHandoverDiscrepancy {
+  productCode: string;
+  productName?: string;
+  categoryName?: string;
+  expected: number;
+  actual: number;
+  note?: string;
+}
+
+export interface ShiftHandoverRecord {
+  _id: string;
+  date: string;
+  shiftCode: "SHIFT_1" | "SHIFT_2" | "BOTH";
+  fromStaffId: string;
+  fromStaffName: string;
+  toStaffId?: string;
+  toStaffName?: string;
+  cashBalance: number;
+  checkedCategories?: string[];
+  totalCheckedProducts?: number;
+  discrepancies: ShiftHandoverDiscrepancy[];
+  status: "PENDING" | "ACCEPTED" | "DISCREPANCY_REPORTED" | "STORE_CLOSED";
+  notes?: string;
+  confirmNote?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface DailyHandoverCategoryInfo {
+  _id: string;
+  name: string;
+  slug: string;
+}
+
+export interface DailyHandoverProductItem {
+  _id: string;
+  code: string;
+  name: string;
+  unit: string;
+  categoryId: string;
+  categoryName: string;
+  categorySlug: string;
+  isPrimaryCategory: boolean;
+  stockQtyFloor1: number;
+  variants: Array<{
+    sku: string;
+    size?: string;
+    color?: string;
+    stockQtyFloor1: number;
+  }>;
+}
+
+export interface DailyHandoverCheckData {
+  date: string;
+  primaryCategory: DailyHandoverCategoryInfo | null;
+  companionCategory: DailyHandoverCategoryInfo | null;
+  checkedCategories: string[];
+  checkedCategoryLabel: string;
+  totalCheckedProducts: number;
+  products: DailyHandoverProductItem[];
+}
+
 export async function getTodayAttendanceApi(): Promise<{
   date: string;
   attendance: AttendanceData | null;
   assignedShift?: "SHIFT_1" | "SHIFT_2" | "BOTH" | "OFF" | null;
   isWfhToday: boolean;
   isEarlyApprovedToday?: boolean;
-  handoverStatus: "PENDING" | "ACCEPTED" | null;
+  handoverStatus: "PENDING" | "ACCEPTED" | "DISCREPANCY_REPORTED" | "STORE_CLOSED" | null;
+  pendingIncomingHandover?: ShiftHandoverRecord | null;
 }> {
   const res = await apiRequest<{
     date: string;
@@ -1350,31 +1413,85 @@ export async function getTodayAttendanceApi(): Promise<{
     assignedShift?: "SHIFT_1" | "SHIFT_2" | "BOTH" | "OFF" | null;
     isWfhToday: boolean;
     isEarlyApprovedToday?: boolean;
-    handoverStatus: "PENDING" | "ACCEPTED" | null;
+    handoverStatus: "PENDING" | "ACCEPTED" | "DISCREPANCY_REPORTED" | "STORE_CLOSED" | null;
+    pendingIncomingHandover?: ShiftHandoverRecord | null;
   }>("/attendance/today");
   return res.data;
+}
+
+export async function fetchDailyHandoverCheckApi(date?: string): Promise<DailyHandoverCheckData> {
+  const query = date ? `?date=${encodeURIComponent(date)}` : "";
+  const res = await apiRequest<DailyHandoverCheckData>(`/shifts/handover/daily-check${query}`);
+  return res.data;
+}
+
+export async function fetchHandoversApi(params?: {
+  date?: string;
+  from?: string;
+  to?: string;
+  status?: string;
+  shiftCode?: string;
+}): Promise<{
+  items: ShiftHandoverRecord[];
+  pendingIncomingHandover: ShiftHandoverRecord | null;
+}> {
+  const searchParams = new URLSearchParams();
+  if (params?.date) searchParams.set("date", params.date);
+  if (params?.from) searchParams.set("from", params.from);
+  if (params?.to) searchParams.set("to", params.to);
+  if (params?.status) searchParams.set("status", params.status);
+  if (params?.shiftCode) searchParams.set("shiftCode", params.shiftCode);
+  const qs = searchParams.toString();
+  const res = await apiRequest<any>(`/shifts/handover${qs ? `?${qs}` : ""}`);
+  const items: ShiftHandoverRecord[] = Array.isArray(res.data)
+    ? res.data
+    : Array.isArray(res.data?.items)
+    ? res.data.items
+    : [];
+  const pendingIncomingHandover: ShiftHandoverRecord | null =
+    (res as any).meta?.pendingIncomingHandover ?? res.data?.pendingIncomingHandover ?? null;
+  return { items, pendingIncomingHandover };
 }
 
 export async function createHandoverApi(data: {
   date?: string;
   shiftCode?: "SHIFT_1" | "SHIFT_2" | "BOTH";
   cashBalance: number;
-  discrepancies: Array<{ productCode: string; expected: number; actual: number; note?: string }>;
+  checkedCategories?: string[];
+  totalCheckedProducts?: number;
+  discrepancies: Array<{
+    productCode: string;
+    productName?: string;
+    categoryName?: string;
+    expected: number;
+    actual: number;
+    note?: string;
+  }>;
   notes?: string;
-}): Promise<any> {
-  const res = await apiRequest("/shifts/handover", {
+}): Promise<{ handover: ShiftHandoverRecord; message: string }> {
+  const res = await apiRequest<any>("/shifts/handover", {
     method: "POST",
     body: JSON.stringify(data),
   });
-  return res.data;
+  const handover = (res.data?.handover || res.data) as ShiftHandoverRecord;
+  const message = String((res as any).meta?.message || res.data?.message || "Đã gửi phiếu bàn giao ca!");
+  return { handover, message };
 }
 
-export async function confirmHandoverApi(id: string, accept: boolean, note?: string): Promise<any> {
-  const res = await apiRequest(`/shifts/handover/${id}/confirm`, {
+export async function confirmHandoverApi(
+  id: string,
+  accept: boolean,
+  note?: string
+): Promise<{ handover: ShiftHandoverRecord; message: string }> {
+  const res = await apiRequest<any>(`/shifts/handover/${id}/confirm`, {
     method: "POST",
     body: JSON.stringify({ accept, note }),
   });
-  return res.data;
+  const handover = (res.data?.handover || res.data) as ShiftHandoverRecord;
+  const message = String(
+    (res as any).meta?.message || res.data?.message || "Đã xác nhận thông tin bàn giao ca!"
+  );
+  return { handover, message };
 }
 
 export async function submitShiftPreferencesApi(data: {

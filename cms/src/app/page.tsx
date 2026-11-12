@@ -19,6 +19,7 @@ import StaffActivityModule from "@/components/StaffActivityModule";
 import PromotionModule from "@/components/PromotionModule";
 import DebtManagementModule from "@/components/DebtManagementModule";
 import HrmAttendanceModule from "@/components/HrmAttendanceModule";
+import ShiftHandoverModule from "@/components/ShiftHandoverModule";
 import MarketingPushProductsModule from "@/components/MarketingPushProductsModule";
 import AccountProfileModule from "@/components/AccountProfileModule";
 import ServiceManagementModule from "@/components/ServiceManagementModule";
@@ -45,6 +46,7 @@ import {
   ChevronRight,
   X,
   CalendarCheck,
+  ClipboardCheck,
   Rocket,
   Wrench,
 } from "lucide-react";
@@ -57,6 +59,7 @@ type CmsModuleType =
   | "SERVICES"
   | "STAFF"
   | "ACTIVITY"
+  | "SHIFT_HANDOVERS"
   | "PROMOTIONS"
   | "DEBTS"
   | "HRM"
@@ -119,6 +122,12 @@ const CMS_MENU_ITEMS: {
       icon: CalendarCheck,
     },
     {
+      id: "SHIFT_HANDOVERS",
+      label: "Quản lý Phiếu Bàn Giao Ca",
+      desc: "Theo dõi biên bản chốt két, kiểm hàng Tầng 1 theo ngày (Vợt + ...) & xác nhận Ca 1 - Ca 2",
+      icon: ClipboardCheck,
+    },
+    {
       id: "ACTIVITY",
       label: "Hoạt động NV (Bán hàng / Kiểm kho)",
       desc: "Nhật ký hiệu suất bán hàng & kiểm đếm kho theo nhân sự",
@@ -139,9 +148,21 @@ const CMS_MENU_ITEMS: {
   ];
 
 const ROLE_ALLOWED_MODULES: Record<string, CmsModuleType[]> = {
-  ADMIN: ["REVENUE", "INVENTORY", "CATEGORIES", "ORDERS", "SERVICES", "STAFF", "ACTIVITY", "PROMOTIONS", "DEBTS", "PROFILE"],
-  ACCOUNTANT: ["REVENUE", "INVENTORY", "CATEGORIES", "ORDERS", "SERVICES", "DEBTS", "PROFILE"],
-  HR: ["HRM", "PROFILE"],
+  ADMIN: [
+    "REVENUE",
+    "INVENTORY",
+    "CATEGORIES",
+    "ORDERS",
+    "SERVICES",
+    "STAFF",
+    "SHIFT_HANDOVERS",
+    "ACTIVITY",
+    "PROMOTIONS",
+    "DEBTS",
+    "PROFILE",
+  ],
+  ACCOUNTANT: ["REVENUE", "INVENTORY", "CATEGORIES", "ORDERS", "SERVICES", "SHIFT_HANDOVERS", "DEBTS", "PROFILE"],
+  HR: ["HRM", "SHIFT_HANDOVERS", "PROFILE"],
   MARKETING: ["PUSH_PRODUCTS", "PROFILE"],
 };
 
@@ -647,6 +668,7 @@ export default function CmsDashboardPage() {
         {effectiveModule === "SERVICES" && <ServiceManagementModule />}
         {effectiveModule === "STAFF" && <StaffModule mode="ADMIN_LOCK_ONLY" />}
         {effectiveModule === "HRM" && <HrmAttendanceModule currentUser={adminUser} />}
+        {effectiveModule === "SHIFT_HANDOVERS" && <ShiftHandoverModule />}
         {effectiveModule === "ACTIVITY" && <StaffActivityModule />}
         {effectiveModule === "PROMOTIONS" && <PromotionModule />}
         {effectiveModule === "DEBTS" && (

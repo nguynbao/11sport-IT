@@ -4,10 +4,12 @@ import React, { useState, useEffect } from "react";
 import {
   StaffUser,
   AttendanceData,
+  DailyHandoverProductItem,
   checkInApi,
   checkOutApi,
   getTodayAttendanceApi,
   confirmHandoverApi,
+  fetchDailyHandoverCheckApi,
   apiRequest,
 } from "@/lib/api";
 import {
@@ -43,6 +45,9 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
   const [showHandoverModal, setShowHandoverModal] = useState(false);
   const [showFridayModal, setShowFridayModal] = useState(false);
   const [pendingHandoverToConfirm, setPendingHandoverToConfirm] = useState<any | null>(null);
+  const [incomingCheckProducts, setIncomingCheckProducts] = useState<DailyHandoverProductItem[]>([]);
+  const [incomingCheckCategories, setIncomingCheckCategories] = useState<string[]>([]);
+  const [showIncomingInspectionModal, setShowIncomingInspectionModal] = useState(false);
 
   // Thông tin mạng IP Wi-Fi chấm công lấy từ /attendance/config
   const [officeName, setOfficeName] = useState<string>("11Sport Showroom & Văn phòng");
@@ -103,13 +108,30 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
     }
   };
 
-  const checkPendingHandover = async () => {
+  const checkPendingHandover = async (openPopupImmediately = false) => {
     try {
-      const res = await apiRequest<any[]>("/shifts/handover");
-      // Nếu có biên bản đang PENDING của hôm nay
-      const pending = Array.isArray(res.data) ? res.data.find((h: any) => h.status === "PENDING") : null;
-      if (pending && pending.fromStaffId !== currentUser?._id) {
+      const res = await apiRequest<any>("/shifts/handover?status=PENDING");
+      const rawData = res.data;
+      const items = Array.isArray(rawData) ? rawData : Array.isArray(rawData?.items) ? rawData.items : [];
+      const pending =
+        res.meta?.pendingIncomingHandover ||
+        rawData?.pendingIncomingHandover ||
+        items.find((h: any) => h.status === "PENDING" && String(h.fromStaffId) !== String(currentUser?._id)) ||
+        null;
+      if (pending && String(pending.fromStaffId) !== String(currentUser?._id)) {
         setPendingHandoverToConfirm(pending);
+        try {
+          const checkData = await fetchDailyHandoverCheckApi(pending.date);
+          setIncomingCheckProducts(Array.isArray(checkData.products) ? checkData.products : []);
+          setIncomingCheckCategories(
+            Array.isArray(checkData.checkedCategories) ? checkData.checkedCategories : []
+          );
+        } catch {
+          setIncomingCheckProducts([]);
+        }
+        if (openPopupImmediately) {
+          setShowIncomingInspectionModal(true);
+        }
       }
     } catch {
       // ignore
@@ -128,9 +150,9 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
       setStatusMsg({ type: "success", text: res.message });
       setAttendance(res.attendance);
 
-      // Nếu là Sales: kiểm tra bàn giao ca kế tiếp
+      // Nếu là Sales: kiểm tra bàn giao ca kế tiếp và mở ngay popup kiểm tra hàng
       if (currentUser?.role === "SALES") {
-        checkPendingHandover();
+        await checkPendingHandover(true);
       }
     } catch (err: any) {
       setStatusMsg({ type: "error", text: err.message || "Lỗi khi chấm công vào ca" });
@@ -241,27 +263,48 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
 
           {/* Banner thông báo Ca trước bàn giao đang chờ duyệt */}
           {pendingHandoverToConfirm && (
-            <div className="p-4 bg-amber-50 border border-amber-300 rounded-2xl space-y-2">
+            <div className="p-4 bg-amber-50 border border-amber-300 rounded-2xl space-y-2.5">
               <div className="font-bold text-amber-900 flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 text-amber-600" />
                 Ca trước ({pendingHandoverToConfirm.fromStaffName}) đã gửi bàn giao Kho Tầng 1!
               </div>
               <p className="text-slate-600">
-                Tiền mặt: <strong>{pendingHandoverToConfirm.cashBalance?.toLocaleString("vi-VN")} ₫</strong> • Hàng
-                lệch: <strong>{pendingHandoverToConfirm.discrepancies?.length || 0} mã</strong>.
+                Tiền mặt: <strong>{pendingHandoverToConfirm.cashBalance?.toLocaleString("vi-VN")} ₫</strong> • Nhóm
+                kiểm: <strong>{(incomingCheckCategories.length ? incomingCheckCategories : ["Vợt"]).join(" + ")}</strong>{" "}
+                ({incomingCheckProducts.length} mã).
               </p>
+
+              {(showIncomingInspectionModal || incomingCheckProducts.length > 0) && (
+                <div className="border border-amber-200 rounded-xl bg-white max-h-44 overflow-y-auto divide-y divide-slate-100">
+                  {incomingCheckProducts.map((p) => (
+                    <div key={p._id} className="p-2 flex items-center justify-between text-[11px]">
+                      <div>
+                        <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-bold mr-1.5">
+                          {p.categoryName}
+                        </span>
+                        <span className="font-bold text-slate-900">{p.name}</span>{" "}
+                        <span className="font-mono text-slate-500">({p.code})</span>
+                      </div>
+                      <div className="font-mono font-bold text-emerald-700 shrink-0">
+                        Tồn T1: {p.stockQtyFloor1} {p.unit || "cây"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div className="flex gap-2 pt-1">
                 <button
                   onClick={() => handleConfirmIncomingHandover(true)}
-                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-xs transition"
+                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-xs transition cursor-pointer"
                 >
-                  ✓ Đồng ý nhận ca
+                  ✓ Đã kiểm hàng & Đồng ý nhận ca
                 </button>
                 <button
                   onClick={() => handleConfirmIncomingHandover(false)}
-                  className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold shadow-xs transition"
+                  className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold shadow-xs transition cursor-pointer"
                 >
-                  ✕ Từ chối
+                  ✕ Báo lệch / Từ chối
                 </button>
               </div>
             </div>

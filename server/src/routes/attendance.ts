@@ -434,17 +434,45 @@ attendanceRouter.post('/attendance/check-out', async (req, res, next) => {
 
     // 1. Kiểm tra bàn giao ca cho nhân viên SALES khi bấm Check-out (bỏ qua nếu hôm nay làm việc từ xa WFH)
     if (attendance.department === 'SALES' && !isWfh) {
-      const handover =
-        (await shiftHandoverRepo.findOne({
-          date: todayStr,
-          fromStaffId: user.userId,
-          shiftCode: effectiveShiftCode,
-        })) ||
-        (await shiftHandoverRepo.findOne({
-          date: todayStr,
-          fromStaffId: user.userId,
-          shiftCode: attendance.shiftCode,
-        }));
+      const utcTodayStr = new Date().toISOString().slice(0, 10);
+      const todayCandidates = new Set([todayStr, utcTodayStr]);
+      const allHandovers = await shiftHandoverRepo.find({});
+
+      // Bắt buộc xác nhận phiếu bàn giao ca của ca trước trước khi được kết ca:
+      // - Trong cùng ngày: Phiếu Ca 1 (SHIFT_1) của nhân viên khác giao cho Ca 2
+      // - Từ ngày hôm trước (h.date < todayStr): Phiếu kết ca tối hôm trước (SHIFT_2 / BOTH) giao cho Ca 1 sáng hôm sau
+      const pendingIncoming = (allHandovers as any[])
+        .filter((h) => {
+          if (h.status !== 'PENDING') return false;
+          if (todayCandidates.has(String(h.date))) {
+            return h.shiftCode === 'SHIFT_1' && String(h.fromStaffId) !== String(user.userId);
+          }
+          return String(h.date || '') < todayStr;
+        })
+        .sort((a, b) => {
+          const dateCmp = String(b.date || '').localeCompare(String(a.date || ''));
+          if (dateCmp !== 0) return dateCmp;
+          return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+        })[0];
+
+      if (pendingIncoming) {
+        const isFromPrevDay = !todayCandidates.has(String(pendingIncoming.date));
+        throw new ApiError(
+          400,
+          'INCOMING_HANDOVER_CONFIRM_REQUIRED',
+          isFromPrevDay
+            ? `Bạn chưa xác nhận phiếu bàn giao ca tối ngày ${pendingIncoming.date} từ ${pendingIncoming.fromStaffName}. Vui lòng xác nhận thông tin bàn giao trước khi kết ca!`
+            : `Bạn chưa xác nhận phiếu bàn giao ca từ ${pendingIncoming.fromStaffName}. Vui lòng xác nhận thông tin bàn giao trước khi kết ca!`,
+          { pendingHandoverId: String(pendingIncoming._id) }
+        );
+      }
+
+      const handover = (allHandovers as any[]).find(
+        (h) =>
+          todayCandidates.has(String(h.date)) &&
+          String(h.fromStaffId) === String(user.userId) &&
+          (h.shiftCode === effectiveShiftCode || h.shiftCode === attendance.shiftCode)
+      );
 
       if (!handover) {
         throw new ApiError(
@@ -602,15 +630,37 @@ attendanceRouter.get('/attendance/today', async (req, res, next) => {
       (await shiftAssignmentRepo.findOne({ staffId: String(user.userId), date: todayStr })) ||
       (await shiftAssignmentRepo.findOne({ staffId: user.userId, date: todayStr }));
 
-    const handover = await shiftHandoverRepo.findOne({
-      date: todayStr,
-      fromStaffId: user.userId,
-      shiftCode: attendance
-        ? attendance.shiftCode
-        : assignedShift && assignedShift.shiftCode !== 'OFF'
-          ? assignedShift.shiftCode
-          : 'SHIFT_1',
-    });
+    const utcTodayStr = new Date().toISOString().slice(0, 10);
+    const todayCandidates = new Set([todayStr, utcTodayStr]);
+    const allHandovers = await shiftHandoverRepo.find({});
+
+    const targetShiftCode = attendance
+      ? attendance.shiftCode
+      : assignedShift && assignedShift.shiftCode !== 'OFF'
+        ? assignedShift.shiftCode
+        : 'SHIFT_1';
+
+    const handover = (allHandovers as any[]).find(
+      (h) =>
+        todayCandidates.has(String(h.date)) &&
+        String(h.fromStaffId) === String(user.userId) &&
+        h.shiftCode === targetShiftCode
+    );
+
+    const pendingIncomingHandover =
+      (allHandovers as any[])
+        .filter((h) => {
+          if (h.status !== 'PENDING') return false;
+          if (todayCandidates.has(String(h.date))) {
+            return String(h.fromStaffId) !== String(user.userId);
+          }
+          return String(h.date || '') < todayStr;
+        })
+        .sort((a, b) => {
+          const dateCmp = String(b.date || '').localeCompare(String(a.date || ''));
+          if (dateCmp !== 0) return dateCmp;
+          return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+        })[0] || null;
 
     res.json({
       data: {
@@ -620,6 +670,7 @@ attendanceRouter.get('/attendance/today', async (req, res, next) => {
         isWfhToday: Boolean(approvedWfh),
         isEarlyApprovedToday: Boolean(approvedEarly),
         handoverStatus: handover ? handover.status : null,
+        pendingIncomingHandover,
       },
       meta: {},
     });
