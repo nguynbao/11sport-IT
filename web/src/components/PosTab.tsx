@@ -124,6 +124,8 @@ interface DraftOrderData {
   giftCart: GiftCartItem[];
   billDiscountType: DiscountType;
   billDiscountValue: number;
+  billDiscountInputMode?: "NONE" | "PERCENT" | "AMOUNT" | "PRICE";
+  billCustomPriceText?: string;
   customerPhone: string;
   customerName: string;
   isExistingCustomer: boolean;
@@ -285,6 +287,8 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     giftCart,
     billDiscountType,
     billDiscountValue,
+    billDiscountInputMode,
+    billCustomPriceText,
     customerPhone,
     customerName,
     isExistingCustomer,
@@ -305,14 +309,17 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     setBillDiscountType(loadedBillDiscountType);
     setBillDiscountValue(Number(d.billDiscountValue) || 0);
     setBillDiscountInputMode(
-      loadedBillDiscountType === "PERCENT"
-        ? "PERCENT"
-        : loadedBillDiscountType === "AMOUNT"
-          ? "AMOUNT"
-          : "NONE"
+      d.billDiscountInputMode ||
+        (loadedBillDiscountType === "PERCENT"
+          ? "PERCENT"
+          : loadedBillDiscountType === "AMOUNT"
+            ? "AMOUNT"
+            : "NONE")
     );
-    setBillCustomPriceText("");
-    setIsManualBillDiscount((Number(d.billDiscountValue) || 0) > 0);
+    setBillCustomPriceText(d.billCustomPriceText || "");
+    setIsManualBillDiscount(
+      (Number(d.billDiscountValue) || 0) > 0 || d.billDiscountInputMode === "PRICE"
+    );
     setAutoBillPromoName("");
     setAppliedPromosSummary([]);
     setCustomerPhone(d.customerPhone || "");
@@ -342,6 +349,8 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
             giftCart,
             billDiscountType,
             billDiscountValue,
+            billDiscountInputMode,
+            billCustomPriceText,
             customerPhone,
             customerName,
             isExistingCustomer,
@@ -363,6 +372,8 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       giftCart,
       billDiscountType,
       billDiscountValue,
+      billDiscountInputMode,
+      billCustomPriceText,
       customerPhone,
       customerName,
       isExistingCustomer,
@@ -1735,19 +1746,60 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     0
   );
 
+  // Tự động tính lại giảm giá Bill khi giỏ hàng (subtotal) thay đổi mà nhân viên đang nhập giá Bill mục tiêu (PRICE)
+  useEffect(() => {
+    if (billDiscountInputMode !== "PRICE" || !billCustomPriceText) return;
+    if (subtotal <= 0) {
+      setBillDiscountType("NONE");
+      setBillDiscountInputMode("NONE");
+      setBillCustomPriceText("");
+      setBillDiscountValue(0);
+      setIsManualBillDiscount(false);
+      return;
+    }
+    const rawTarget = parseNumberDots(billCustomPriceText);
+    const clampedTarget = Math.min(subtotal, Math.max(0, rawTarget));
+    const recomputedDiscount = Math.max(0, subtotal - clampedTarget);
+    const nextType: DiscountType = recomputedDiscount > 0 ? "AMOUNT" : "NONE";
+    const formattedTarget = formatNumberDots(clampedTarget);
+
+    if (billDiscountType !== nextType) {
+      setBillDiscountType(nextType);
+    }
+    if (billDiscountValue !== recomputedDiscount) {
+      setBillDiscountValue(recomputedDiscount);
+    }
+    if (billCustomPriceText !== formattedTarget) {
+      setBillCustomPriceText(formattedTarget);
+    }
+  }, [
+    subtotal,
+    billDiscountInputMode,
+    billCustomPriceText,
+    billDiscountType,
+    billDiscountValue,
+  ]);
+
   const cleanBillDiscountValue =
-    billDiscountType === "PERCENT"
-      ? Math.min(100, Math.max(0, billDiscountValue))
-      : billDiscountType === "AMOUNT"
-        ? Math.min(subtotal, Math.max(0, Math.round(billDiscountValue)))
-        : 0;
+    billDiscountInputMode === "PRICE" && billCustomPriceText !== ""
+      ? Math.max(
+          0,
+          subtotal - Math.min(subtotal, Math.max(0, parseNumberDots(billCustomPriceText)))
+        )
+      : billDiscountType === "PERCENT"
+        ? Math.min(100, Math.max(0, billDiscountValue))
+        : billDiscountType === "AMOUNT"
+          ? Math.min(subtotal, Math.max(0, Math.round(billDiscountValue)))
+          : 0;
 
   const billDiscountAmount =
-    billDiscountType === "PERCENT"
-      ? Math.round((subtotal * cleanBillDiscountValue) / 100)
-      : billDiscountType === "AMOUNT"
-        ? cleanBillDiscountValue
-        : 0;
+    billDiscountInputMode === "PRICE" && billCustomPriceText !== ""
+      ? cleanBillDiscountValue
+      : billDiscountType === "PERCENT"
+        ? Math.round((subtotal * cleanBillDiscountValue) / 100)
+        : billDiscountType === "AMOUNT"
+          ? cleanBillDiscountValue
+          : 0;
 
   const afterBillDiscount = Math.max(0, subtotal - billDiscountAmount);
   const cardFee =
@@ -3578,8 +3630,9 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                   setBillDiscountValue(0);
                   setBillDiscountInputMode("NONE");
                   setBillCustomPriceText("");
+                  setIsManualBillDiscount(false);
                 }}
-                className={`py-2 px-2 rounded-lg border text-xs font-bold transition ${billDiscountType === "NONE"
+                className={`py-2 px-2 rounded-lg border text-xs font-bold transition ${billDiscountType === "NONE" && billDiscountInputMode !== "PRICE"
                   ? "bg-slate-900 text-white border-slate-900"
                   : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
                   }`}
@@ -3593,6 +3646,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                   setBillDiscountValue(0);
                   setBillDiscountInputMode("PERCENT");
                   setBillCustomPriceText("");
+                  setIsManualBillDiscount(true);
                 }}
                 className={`py-2 px-2 rounded-lg border text-xs font-bold transition ${billDiscountType === "PERCENT"
                   ? "bg-rose-600 text-white border-rose-700"
@@ -3607,8 +3661,9 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                   setBillDiscountType("AMOUNT");
                   setBillDiscountInputMode("AMOUNT");
                   setBillCustomPriceText("");
+                  setIsManualBillDiscount(true);
                 }}
-                className={`py-2 px-2 rounded-lg border text-xs font-bold transition ${billDiscountType === "AMOUNT"
+                className={`py-2 px-2 rounded-lg border text-xs font-bold transition ${billDiscountType === "AMOUNT" && billDiscountInputMode !== "PRICE"
                   ? "bg-rose-600 text-white border-rose-700"
                   : "bg-white text-slate-700 border-slate-300 hover:bg-rose-50"
                   }`}
@@ -3627,11 +3682,12 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                   min={0}
                   max={100}
                   value={billDiscountValue || ""}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    setIsManualBillDiscount(true);
                     setBillDiscountValue(
                       Math.min(100, Math.max(0, Number(e.target.value)))
-                    )
-                  }
+                    );
+                  }}
                   placeholder="VD: 10"
                   className="w-24 px-3 py-1.5 rounded-lg border border-rose-300 font-mono font-bold text-right text-sm bg-white"
                 />
@@ -3656,6 +3712,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                         : ""
                     }
                     onChange={(e) => {
+                      setIsManualBillDiscount(true);
                       setBillDiscountInputMode("AMOUNT");
                       setBillCustomPriceText("");
                       setBillDiscountValue(parseNumberDots(e.target.value));
@@ -3690,6 +3747,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                       setBillDiscountInputMode("NONE");
                       setBillCustomPriceText("");
                       setBillDiscountValue(0);
+                      setIsManualBillDiscount(false);
                       return;
                     }
                     const enteredPrice = Math.min(
@@ -3697,6 +3755,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                       Math.max(0, Number(digits) || 0)
                     );
                     const computedDiscount = Math.max(0, subtotal - enteredPrice);
+                    setIsManualBillDiscount(true);
                     setBillDiscountType(computedDiscount > 0 ? "AMOUNT" : "NONE");
                     setBillDiscountInputMode("PRICE");
                     setBillCustomPriceText(formatNumberDots(enteredPrice));
