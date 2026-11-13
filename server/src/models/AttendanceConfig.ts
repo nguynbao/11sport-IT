@@ -9,6 +9,7 @@ export interface IAttendanceConfig extends Document {
   allowedIps: string[];
   requireGps: boolean;
   requireIp: boolean;
+  handoverWeeklySchedule?: Record<string, string[]>;
   updatedBy?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -31,6 +32,7 @@ const AttendanceConfigSchema = new Schema<IAttendanceConfig>(
     },
     requireGps: { type: Boolean, default: false },
     requireIp: { type: Boolean, default: true },
+    handoverWeeklySchedule: { type: Schema.Types.Mixed, default: {} },
     updatedBy: { type: String, default: '' },
   },
   { timestamps: true }

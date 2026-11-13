@@ -3,6 +3,7 @@ import mongoose, { Schema, Document } from 'mongoose';
 export type ServiceOrderStatus = 'RECEIVED' | 'IN_PROGRESS' | 'READY' | 'RETURNED' | 'CANCELLED';
 export type ServicePaymentStatus = 'UNPAID' | 'PARTIAL' | 'PAID';
 export type ServicePaymentMethod = 'CASH' | 'BANKING' | 'CARD';
+export type ServiceDiscountType = 'NONE' | 'PERCENT' | 'AMOUNT';
 
 export interface IServiceOrderItem {
   serviceTypeId: string;
@@ -12,6 +13,9 @@ export interface IServiceOrderItem {
   defaultPrice: number;
   unitPrice: number;
   quantity: number;
+  discountType?: ServiceDiscountType;
+  discountValue?: number;
+  discountAmount?: number;
   lineTotal: number;
   itemNote: string;
 }
@@ -20,6 +24,7 @@ export interface IServicePaymentRecord {
   _id?: string;
   amount: number;
   method: ServicePaymentMethod;
+  cardFee?: number;
   note?: string;
   paidAt: Date;
   collectedBy: string;
@@ -35,6 +40,15 @@ export interface IServiceOrder extends Document {
   dueAt: Date;
   returnedAt?: Date | null;
   items: IServiceOrderItem[];
+  rawSubtotal?: number;
+  itemDiscountTotal?: number;
+  subtotal?: number;
+  billDiscountType?: ServiceDiscountType;
+  billDiscountValue?: number;
+  billDiscountAmount?: number;
+  hasCardFee?: boolean;
+  cardFeePercent?: number;
+  cardFee?: number;
   totalAmount: number;
   paidAmount: number;
   remainingAmount: number;
@@ -60,6 +74,9 @@ const ServiceOrderItemSchema = new Schema<IServiceOrderItem>(
     defaultPrice: { type: Number, default: 0 },
     unitPrice: { type: Number, required: true, default: 0 },
     quantity: { type: Number, required: true, default: 1 },
+    discountType: { type: String, enum: ['NONE', 'PERCENT', 'AMOUNT'], default: 'NONE' },
+    discountValue: { type: Number, default: 0 },
+    discountAmount: { type: Number, default: 0 },
     lineTotal: { type: Number, required: true, default: 0 },
     itemNote: { type: String, default: '' },
   },
@@ -71,6 +88,7 @@ const ServicePaymentRecordSchema = new Schema<IServicePaymentRecord>(
     _id: { type: String, default: '' },
     amount: { type: Number, required: true },
     method: { type: String, enum: ['CASH', 'BANKING', 'CARD'], default: 'CASH' },
+    cardFee: { type: Number, default: 0 },
     note: { type: String, default: '' },
     paidAt: { type: Date, default: Date.now },
     collectedBy: { type: String, default: '' },
@@ -89,6 +107,15 @@ const ServiceOrderSchema = new Schema<IServiceOrder>(
     dueAt: { type: Date, required: true, index: true },
     returnedAt: { type: Date, default: null },
     items: { type: [ServiceOrderItemSchema], default: [] },
+    rawSubtotal: { type: Number, default: 0 },
+    itemDiscountTotal: { type: Number, default: 0 },
+    subtotal: { type: Number, default: 0 },
+    billDiscountType: { type: String, enum: ['NONE', 'PERCENT', 'AMOUNT'], default: 'NONE' },
+    billDiscountValue: { type: Number, default: 0 },
+    billDiscountAmount: { type: Number, default: 0 },
+    hasCardFee: { type: Boolean, default: false },
+    cardFeePercent: { type: Number, default: 0 },
+    cardFee: { type: Number, default: 0 },
     totalAmount: { type: Number, required: true, default: 0 },
     paidAmount: { type: Number, required: true, default: 0 },
     remainingAmount: { type: Number, required: true, default: 0, index: true },

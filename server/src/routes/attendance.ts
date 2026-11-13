@@ -438,6 +438,7 @@ attendanceRouter.post('/attendance/check-out', async (req, res, next) => {
         : attendance.shiftCode;
 
     // 1. Kiểm tra bàn giao ca cho nhân viên SALES khi bấm Check-out (bỏ qua nếu hôm nay làm việc từ xa WFH)
+    let matchedHandover: any = null;
     if (attendance.department === 'SALES' && !isWfh) {
       const utcTodayStr = new Date().toISOString().slice(0, 10);
       const todayCandidates = new Set([todayStr, utcTodayStr]);
@@ -463,18 +464,19 @@ attendanceRouter.post('/attendance/check-out', async (req, res, next) => {
         );
       }
 
-      const handover = (allHandovers as any[]).find(
+      matchedHandover = (allHandovers as any[]).find(
         (h) =>
+          h.status !== 'DRAFT' &&
           todayCandidates.has(String(h.date)) &&
           String(h.fromStaffId) === String(user.userId) &&
           (h.shiftCode === effectiveShiftCode || h.shiftCode === attendance.shiftCode)
       );
 
-      if (!handover) {
+      if (!matchedHandover) {
         throw new ApiError(
           400,
           'HANDOVER_REQUIRED',
-          'Vui lòng lập biên bản bàn giao Kho Tầng 1 trước khi Check-out kết ca!'
+          'Vui lòng xác nhận gửi biên bản bàn giao Kho Tầng 1 trước khi Check-out kết ca!'
         );
       }
     }
@@ -487,8 +489,16 @@ attendanceRouter.post('/attendance/check-out', async (req, res, next) => {
     });
 
     const now = new Date();
-    const currentHours = now.getHours();
-    const currentMinutes = now.getMinutes();
+    // Tính giờ Check-out theo đúng thời điểm nhân viên bấm xác nhận gửi bàn giao ca (nếu đã gửi phiếu trước đó)
+    // Cho dù nhân viên ca sau đếm lại trễ 15 phút thì giờ của người bấm gửi vẫn giữ nguyên
+    const effectiveOutTime = attendance.pendingCheckOutTime
+      ? new Date(attendance.pendingCheckOutTime)
+      : matchedHandover?.submittedAt
+        ? new Date(matchedHandover.submittedAt)
+        : now;
+
+    const currentHours = effectiveOutTime.getHours();
+    const currentMinutes = effectiveOutTime.getMinutes();
     const totalMinutesNow = currentHours * 60 + currentMinutes;
 
     // Giờ kết thúc ca:
@@ -500,7 +510,9 @@ attendanceRouter.post('/attendance/check-out', async (req, res, next) => {
     let overtimeStatus: 'NONE' | 'PENDING' | 'APPROVED' | 'REJECTED' =
       (attendance as any).overtimeStatus || 'NONE';
     let overtimeApprovedMinutes = Number((attendance as any).overtimeApprovedMinutes || 0);
-    let cleanLateCheckoutReason = String(lateCheckoutReason || '').trim();
+    let cleanLateCheckoutReason = String(
+      lateCheckoutReason || attendance.lateCheckoutReason || matchedHandover?.lateCheckoutReason || ''
+    ).trim();
 
     if (totalMinutesNow < shiftEndMinutes) {
       earlyMinutes = shiftEndMinutes - totalMinutesNow;
@@ -556,9 +568,42 @@ attendanceRouter.post('/attendance/check-out', async (req, res, next) => {
       }
     }
 
-    // 2. Tính toán tổng giờ làm việc thực tế
+    // Nếu là Ca 1 (SHIFT_1) vừa gửi bàn giao sang Ca 2 và đang chờ Ca 2 xác nhận (khi gọi từ giao diện với requireConfirmation = true):
+    // Ghi nhận ngay mốc giờ bấm gửi (pendingCheckOutTime = effectiveOutTime), chỉ hoàn tất checkOutTime khi Ca 2 bấm xác nhận!
+    if (
+      req.body?.requireConfirmation === true &&
+      attendance.department === 'SALES' &&
+      !isWfh &&
+      effectiveShiftCode === 'SHIFT_1' &&
+      matchedHandover &&
+      matchedHandover.status === 'PENDING'
+    ) {
+      const pendingUpdated = await attendanceRepo.updateById(attendance._id, {
+        shiftCode: effectiveShiftCode,
+        pendingCheckOutTime: effectiveOutTime,
+        earlyMinutes,
+        lateCheckoutMinutes,
+        lateCheckoutReason: cleanLateCheckoutReason,
+        overtimeStatus,
+        overtimeApprovedMinutes,
+      });
+
+      res.json({
+        data: {
+          attendance: pendingUpdated,
+          awaitingHandoverConfirm: true,
+          waitingConfirmation: true,
+          message:
+            'Đã chốt giờ ra ca lúc gửi bàn giao! Khi nhân viên Ca 2 xác nhận, bạn sẽ được hoàn tất Check-out (giờ ra ca vẫn tính đúng lúc bạn bấm gửi).',
+        },
+        meta: {},
+      });
+      return;
+    }
+
+    // 2. Tính toán tổng giờ làm việc thực tế (tính đến đúng thời điểm bấm xác nhận gửi bàn giao effectiveOutTime)
     const startMs = new Date(attendance.workStartTime).getTime();
-    const endMs = now.getTime();
+    const endMs = effectiveOutTime.getTime();
     let rawHours = Math.max(0, (endMs - startMs) / (1000 * 60 * 60));
 
     // 3. Tự động trừ giờ nghỉ trưa (12:00 - 13:00 = 1 giờ; sáng 08:30-12:00, chiều 13:00-17:30) cho khối OFFICE
@@ -575,7 +620,8 @@ attendanceRouter.post('/attendance/check-out', async (req, res, next) => {
 
     const updated = await attendanceRepo.updateById(attendance._id, {
       shiftCode: effectiveShiftCode,
-      checkOutTime: now,
+      checkOutTime: effectiveOutTime,
+      pendingCheckOutTime: effectiveOutTime,
       earlyMinutes,
       lateCheckoutMinutes,
       lateCheckoutReason: cleanLateCheckoutReason,
@@ -665,6 +711,7 @@ attendanceRouter.get('/attendance/today', async (req, res, next) => {
         isWfhToday: Boolean(approvedWfh),
         isEarlyApprovedToday: Boolean(approvedEarly),
         handoverStatus: handover ? handover.status : null,
+        currentShiftHandover: handover || null,
         pendingIncomingHandover,
       },
       meta: {},

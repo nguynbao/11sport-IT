@@ -417,6 +417,8 @@ export interface ServiceType {
   updatedAt?: string;
 }
 
+export type ServiceDiscountType = "NONE" | "PERCENT" | "AMOUNT";
+
 export interface ServiceOrderItem {
   serviceTypeId: string;
   serviceCode: string;
@@ -425,6 +427,9 @@ export interface ServiceOrderItem {
   defaultPrice: number;
   unitPrice: number;
   quantity: number;
+  discountType?: ServiceDiscountType;
+  discountValue?: number;
+  discountAmount?: number;
   lineTotal: number;
   itemNote?: string;
 }
@@ -433,6 +438,7 @@ export interface ServicePaymentRecord {
   _id?: string;
   amount: number;
   method: ServicePaymentMethod;
+  cardFee?: number;
   note?: string;
   paidAt: string;
   collectedBy?: string;
@@ -449,6 +455,15 @@ export interface ServiceOrder {
   dueAt: string;
   returnedAt?: string | null;
   items: ServiceOrderItem[];
+  rawSubtotal?: number;
+  itemDiscountTotal?: number;
+  subtotal?: number;
+  billDiscountType?: ServiceDiscountType;
+  billDiscountValue?: number;
+  billDiscountAmount?: number;
+  hasCardFee?: boolean;
+  cardFeePercent?: number;
+  cardFee?: number;
   totalAmount: number;
   paidAmount: number;
   remainingAmount: number;
@@ -2048,6 +2063,14 @@ export interface ShiftHandoverDiscrepancy {
   note?: string;
 }
 
+export interface ShiftHandoverCategoryCount {
+  categoryId?: string;
+  categoryName: string;
+  expectedTotalQty: number;
+  actualTotalQty: number;
+  note?: string;
+}
+
 export interface ShiftHandoverRecord {
   _id: string;
   date: string;
@@ -2059,21 +2082,39 @@ export interface ShiftHandoverRecord {
   cashBalance: number;
   checkedCategories?: string[];
   totalCheckedProducts?: number;
+  categoryCounts?: ShiftHandoverCategoryCount[];
   discrepancies: ShiftHandoverDiscrepancy[];
-  status: "PENDING" | "ACCEPTED" | "DISCREPANCY_REPORTED" | "STORE_CLOSED";
+  status: "DRAFT" | "PENDING" | "ACCEPTED" | "DISCREPANCY_REPORTED" | "STORE_CLOSED";
   notes?: string;
   confirmNote?: string;
+  submittedAt?: string;
+  lateCheckoutReason?: string;
+  lateCheckoutMinutes?: number;
   createdAt?: string;
   updatedAt?: string;
 }
 
+export interface DailyHandoverCategorySummary {
+  categoryId: string;
+  categoryName: string;
+  categorySlug: string;
+  isPrimaryCategory: boolean;
+  productCount: number;
+  expectedTotalQty: number;
+  unit: string;
+}
+
 export interface DailyHandoverCheckData {
   date: string;
+  weekday?: number;
   primaryCategory: { _id: string; name: string; slug: string } | null;
   companionCategory: { _id: string; name: string; slug: string } | null;
   checkedCategories: string[];
   checkedCategoryLabel: string;
   totalCheckedProducts: number;
+  totalExpectedQty?: number;
+  categorySummaries?: DailyHandoverCategorySummary[];
+  weeklySchedule?: Record<string, string[]>;
   products: Array<{
     _id: string;
     code: string;
@@ -2085,6 +2126,48 @@ export interface DailyHandoverCheckData {
     isPrimaryCategory: boolean;
     stockQtyFloor1: number;
   }>;
+}
+
+export interface HandoverScheduleConfigData {
+  weeklySchedule: Record<string, string[]>;
+  primaryCategory: any;
+  availableCategories: Array<{
+    _id: string;
+    code?: string;
+    name: string;
+    slug?: string;
+    productCount?: number;
+    expectedTotalQty?: number;
+    isPrimary?: boolean;
+  }>;
+}
+
+export async function fetchHandoverScheduleConfigApi(): Promise<HandoverScheduleConfigData> {
+  const res = await apiRequest<any>("/shifts/handover/schedule-config");
+  const raw = res.data || {};
+  const list = Array.isArray(raw.availableCategories)
+    ? raw.availableCategories
+    : Array.isArray(raw.availableCompanionCategories)
+    ? raw.availableCompanionCategories
+    : [];
+  return {
+    weeklySchedule: raw.weeklySchedule || {},
+    primaryCategory: raw.primaryCategory || null,
+    availableCategories: list,
+  };
+}
+
+export async function updateHandoverScheduleConfigApi(
+  weeklySchedule: Record<string, string[]>
+): Promise<{ weeklySchedule: Record<string, string[]>; message?: string }> {
+  const res = await apiRequest<any>("/shifts/handover/schedule-config", {
+    method: "PUT",
+    body: JSON.stringify({ weeklySchedule }),
+  });
+  return {
+    weeklySchedule: res.data?.weeklySchedule || weeklySchedule,
+    message: (res as any).meta?.message || res.data?.message,
+  };
 }
 
 export async function fetchShiftHandoversApi(params?: {
