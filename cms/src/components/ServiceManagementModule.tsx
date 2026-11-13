@@ -135,6 +135,8 @@ export default function ServiceManagementModule() {
   const [collectOrder, setCollectOrder] = useState<ServiceOrder | null>(null);
   const [collectAmount, setCollectAmount] = useState<number>(0);
   const [collectMethod, setCollectMethod] = useState<ServicePaymentMethod>("CASH");
+  const [collectHasCardFee, setCollectHasCardFee] = useState<boolean>(false);
+  const [collectCardFeePercent, setCollectCardFeePercent] = useState<string>("1.8");
   const [collectNote, setCollectNote] = useState<string>("");
   const [markReturnedOnCollect, setMarkReturnedOnCollect] = useState<boolean>(false);
 
@@ -312,7 +314,7 @@ export default function ServiceManagementModule() {
   };
 
   // ==========================
-  // HANDLERS: ĐƠN DỊCH VỤ
+  // HANDLERS: ĐƠN DỊCH VỤ (ADMIN CẬP NHẬT TRẠNG THÁI & THU TIỀN)
   // ==========================
   const handleStatusChange = async (
     order: ServiceOrder,
@@ -321,7 +323,10 @@ export default function ServiceManagementModule() {
     if (nextStatus === "RETURNED" && order.remainingAmount > 0) {
       setCollectOrder(order);
       setCollectAmount(order.remainingAmount);
-      setCollectMethod(order.paymentMethod || "CASH");
+      const defaultPm = order.paymentMethod || "CASH";
+      setCollectMethod(defaultPm);
+      setCollectHasCardFee(defaultPm === "CARD");
+      setCollectCardFeePercent("1.8");
       setCollectNote("Thu nốt tiền khi trả đồ cho khách");
       setMarkReturnedOnCollect(true);
       return;
@@ -344,7 +349,10 @@ export default function ServiceManagementModule() {
   const handleOpenCollectModal = (order: ServiceOrder, markReturned = false) => {
     setCollectOrder(order);
     setCollectAmount(order.remainingAmount);
-    setCollectMethod(order.paymentMethod || "CASH");
+    const defaultPm = order.paymentMethod || "CASH";
+    setCollectMethod(defaultPm);
+    setCollectHasCardFee(defaultPm === "CARD");
+    setCollectCardFeePercent("1.8");
     setCollectNote(
       markReturned ? "Thu tiền khi trả đồ cho khách" : "Thu thêm tiền đơn dịch vụ"
     );
@@ -355,6 +363,8 @@ export default function ServiceManagementModule() {
     e.preventDefault();
     if (!collectOrder) return;
     setErrorMsg("");
+    const useCardFee = collectMethod === "CARD";
+    const pct = useCardFee ? Math.max(0, Number(collectCardFeePercent) || 0) : 0;
     try {
       if (markReturnedOnCollect) {
         await apiRequest(`/service-orders/${collectOrder._id}/status`, {
@@ -363,11 +373,13 @@ export default function ServiceManagementModule() {
             status: "RETURNED",
             collectAmount,
             paymentMethod: collectMethod,
+            hasCardFee: useCardFee,
+            cardFeePercent: pct,
             paymentNote: collectNote.trim(),
           }),
         });
         setSuccessMsg(
-          `Đã trả đồ & thu ${formatVND(collectAmount)} cho đơn ${collectOrder.orderCode}`
+          `Đã trả đồ & thu tiền cho đơn ${collectOrder.orderCode}`
         );
       } else {
         await apiRequest(`/service-orders/${collectOrder._id}/payments`, {
@@ -375,11 +387,13 @@ export default function ServiceManagementModule() {
           body: JSON.stringify({
             amount: collectAmount,
             method: collectMethod,
+            hasCardFee: useCardFee,
+            cardFeePercent: pct,
             note: collectNote.trim(),
           }),
         });
         setSuccessMsg(
-          `Đã ghi nhận thu ${formatVND(collectAmount)} cho đơn ${collectOrder.orderCode}`
+          `Đã ghi nhận thu tiền cho đơn ${collectOrder.orderCode}`
         );
       }
       setCollectOrder(null);
@@ -765,7 +779,11 @@ export default function ServiceManagementModule() {
                                     • {it.serviceName}
                                   </span>{" "}
                                   <span className="text-slate-500">
-                                    ({it.quantity} {it.unit} × {formatVND(it.unitPrice)})
+                                    ({it.quantity} {it.unit} × {formatVND(it.unitPrice)}
+                                    {(Number(it.discountAmount) || 0) > 0
+                                      ? ` - Giảm ${formatVND(it.discountAmount)}`
+                                      : ""}
+                                    )
                                   </span>
                                   {it.itemNote && (
                                     <div className="text-[11px] text-indigo-700 pl-2">
@@ -809,6 +827,30 @@ export default function ServiceManagementModule() {
                             <div className="font-mono font-extrabold text-sm text-slate-900">
                               {formatVND(ord.totalAmount)}
                             </div>
+                            {((Number(ord.itemDiscountTotal) || 0) +
+                              (Number(ord.billDiscountAmount) || 0) >
+                              0 ||
+                              (Number(ord.cardFee) || 0) > 0) && (
+                              <div className="text-[10px] font-mono text-slate-500 space-y-0.5">
+                                {(Number(ord.itemDiscountTotal) || 0) +
+                                  (Number(ord.billDiscountAmount) || 0) >
+                                  0 && (
+                                  <div className="text-amber-700">
+                                    Giảm: -
+                                    {formatVND(
+                                      (Number(ord.itemDiscountTotal) || 0) +
+                                        (Number(ord.billDiscountAmount) || 0)
+                                    )}
+                                  </div>
+                                )}
+                                {(Number(ord.cardFee) || 0) > 0 && (
+                                  <div className="text-indigo-700">
+                                    Phí thẻ ({ord.cardFeePercent || 1.8}%): +
+                                    {formatVND(ord.cardFee)}
+                                  </div>
+                                )}
+                              </div>
+                            )}
                             <div className="text-[11px] text-emerald-700 font-mono">
                               Đã thu: {formatVND(ord.paidAmount)}
                             </div>
@@ -843,30 +885,67 @@ export default function ServiceManagementModule() {
                           </td>
 
                           <td className="py-3 px-3 align-top text-right whitespace-nowrap">
-                            <div className="flex items-center justify-end gap-1.5">
-                              {ord.remainingAmount > 0 &&
-                                ord.status !== "CANCELLED" && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleOpenCollectModal(ord, false)}
-                                    className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1"
-                                    title="Thu tiền dịch vụ"
-                                  >
-                                    <Wallet className="w-3.5 h-3.5" /> Thu tiền
-                                  </button>
-                                )}
+                            <div className="flex flex-wrap items-center justify-end gap-1.5">
+                              {/* Bước 1: Đã nhận đồ -> Bắt đầu làm */}
+                              {ord.status === "RECEIVED" && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleStatusChange(ord, "IN_PROGRESS")
+                                  }
+                                  className="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold flex items-center gap-1"
+                                  title="Bước 1: Bắt đầu xử lý dịch vụ"
+                                >
+                                  <Play className="w-3.5 h-3.5" /> Bắt đầu làm
+                                </button>
+                              )}
 
-                              {ord.status !== "RETURNED" &&
-                                ord.status !== "CANCELLED" && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleStatusChange(ord, "RETURNED")}
-                                    className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold flex items-center gap-1"
-                                    title="Xác nhận trả đồ cho khách"
-                                  >
-                                    <PackageCheck className="w-3.5 h-3.5" /> Trả đồ
-                                  </button>
-                                )}
+                              {/* Bước 2: Đang xử lý -> Đã xong */}
+                              {ord.status === "IN_PROGRESS" && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleStatusChange(ord, "READY")}
+                                  className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1"
+                                  title="Bước 2: Xác nhận đã làm xong, chờ khách lấy"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5" /> Đã xong
+                                </button>
+                              )}
+
+                              {/* Bước 3: Đã xong (Chờ lấy) -> Thu tiền & Trả đồ (nếu còn tiền) hoặc Trả đồ (nếu đã thu đủ) */}
+                              {ord.status === "READY" && ord.remainingAmount > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenCollectModal(ord, true)}
+                                  className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1"
+                                  title="Bước 3: Thu tiền & Trả đồ cho khách"
+                                >
+                                  <Wallet className="w-3.5 h-3.5" /> Thu tiền &amp; Trả đồ
+                                </button>
+                              )}
+
+                              {ord.status === "READY" && ord.remainingAmount <= 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleStatusChange(ord, "RETURNED")}
+                                  className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold flex items-center gap-1"
+                                  title="Bước 3: Xác nhận trả đồ cho khách"
+                                >
+                                  <PackageCheck className="w-3.5 h-3.5" /> Trả đồ
+                                </button>
+                              )}
+
+                              {/* Trường hợp đã trả đồ nhưng còn công nợ */}
+                              {ord.status === "RETURNED" && ord.remainingAmount > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenCollectModal(ord, false)}
+                                  className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1"
+                                  title="Thu nốt tiền dịch vụ"
+                                >
+                                  <Wallet className="w-3.5 h-3.5" /> Thu tiền
+                                </button>
+                              )}
 
                               <button
                                 type="button"
@@ -1204,9 +1283,11 @@ export default function ServiceManagementModule() {
                     <button
                       key={pm.id}
                       type="button"
-                      onClick={() =>
-                        setCollectMethod(pm.id as ServicePaymentMethod)
-                      }
+                      onClick={() => {
+                        const m = pm.id as ServicePaymentMethod;
+                        setCollectMethod(m);
+                        setCollectHasCardFee(m === "CARD");
+                      }}
                       className={`py-2 px-2 rounded-lg text-xs font-bold border ${
                         collectMethod === pm.id
                           ? "bg-emerald-600 text-white border-emerald-600"
@@ -1218,6 +1299,83 @@ export default function ServiceManagementModule() {
                   ))}
                 </div>
               </div>
+
+              {collectMethod === "CARD" && (
+                <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-xs space-y-1.5">
+                  <div className="text-[11px] font-bold text-amber-900">
+                    Phí quẹt thẻ (tính trên {formatVND(collectAmount)}):
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                    <label
+                      className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer text-xs font-semibold transition ${
+                        Number(collectCardFeePercent) === 4
+                          ? "bg-amber-600 text-white border-amber-600 shadow-xs"
+                          : "bg-white text-slate-800 border-amber-200 hover:bg-amber-100/50"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="cmsServiceCollectCardFeeType"
+                        checked={Number(collectCardFeePercent) === 4}
+                        onChange={() => {
+                          setCollectHasCardFee(true);
+                          setCollectCardFeePercent("4");
+                        }}
+                        className="accent-amber-600"
+                      />
+                      <span>
+                        Khách nước ngoài 4% (+
+                        {formatVND(Math.round(collectAmount * 0.04))})
+                      </span>
+                    </label>
+                    <label
+                      className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer text-xs font-semibold transition ${
+                        Number(collectCardFeePercent) !== 4
+                          ? "bg-amber-600 text-white border-amber-600 shadow-xs"
+                          : "bg-white text-slate-800 border-amber-200 hover:bg-amber-100/50"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="cmsServiceCollectCardFeeType"
+                        checked={Number(collectCardFeePercent) !== 4}
+                        onChange={() => {
+                          setCollectHasCardFee(true);
+                          setCollectCardFeePercent("1.8");
+                        }}
+                        className="accent-amber-600"
+                      />
+                      <span>
+                        Khách Việt 1.8% (+
+                        {formatVND(Math.round(collectAmount * 0.018))})
+                      </span>
+                    </label>
+                  </div>
+                  <div className="flex justify-between text-amber-800 pt-0.5">
+                    <span>
+                      Phí thẻ (+{collectCardFeePercent}%): +
+                      {formatVND(
+                        Math.round(
+                          (collectAmount *
+                            Math.max(0, Number(collectCardFeePercent) || 0)) /
+                            100
+                        )
+                      )}
+                    </span>
+                    <strong className="font-mono">
+                      Tổng quẹt:{" "}
+                      {formatVND(
+                        collectAmount +
+                          Math.round(
+                            (collectAmount *
+                              Math.max(0, Number(collectCardFeePercent) || 0)) /
+                              100
+                          )
+                      )}
+                    </strong>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">

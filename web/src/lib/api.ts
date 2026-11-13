@@ -420,6 +420,8 @@ export interface ServiceType {
   updatedAt?: string;
 }
 
+export type ServiceDiscountType = "NONE" | "PERCENT" | "AMOUNT";
+
 export interface ServiceOrderItem {
   serviceTypeId: string;
   serviceCode: string;
@@ -428,6 +430,9 @@ export interface ServiceOrderItem {
   defaultPrice: number;
   unitPrice: number;
   quantity: number;
+  discountType?: ServiceDiscountType;
+  discountValue?: number;
+  discountAmount?: number;
   lineTotal: number;
   itemNote?: string;
 }
@@ -436,6 +441,7 @@ export interface ServicePaymentRecord {
   _id?: string;
   amount: number;
   method: ServicePaymentMethod;
+  cardFee?: number;
   note?: string;
   paidAt: string;
   collectedBy?: string;
@@ -452,6 +458,15 @@ export interface ServiceOrder {
   dueAt: string;
   returnedAt?: string | null;
   items: ServiceOrderItem[];
+  rawSubtotal?: number;
+  itemDiscountTotal?: number;
+  subtotal?: number;
+  billDiscountType?: ServiceDiscountType;
+  billDiscountValue?: number;
+  billDiscountAmount?: number;
+  hasCardFee?: boolean;
+  cardFeePercent?: number;
+  cardFee?: number;
   totalAmount: number;
   paidAmount: number;
   remainingAmount: number;
@@ -1395,6 +1410,7 @@ export interface AttendanceData {
   checkInTime: string;
   workStartTime: string;
   checkOutTime?: string;
+  pendingCheckOutTime?: string;
   checkInType: "STANDARD" | "WFH";
   status: "ON_TIME" | "LATE" | "EARLY_LEAVE" | "COMPLETED";
   lateMinutes: number;
@@ -1423,14 +1439,16 @@ export async function checkOutApi(params?: {
   forceEarly?: boolean;
   earlyReason?: string;
   lateCheckoutReason?: string;
-}): Promise<{ attendance: AttendanceData; message: string }> {
-  const res = await apiRequest<{ attendance: AttendanceData; message: string }>(
-    "/attendance/check-out",
-    {
-      method: "POST",
-      body: JSON.stringify(params || {}),
-    }
-  );
+  requireConfirmation?: boolean;
+}): Promise<{ attendance: AttendanceData; awaitingHandoverConfirm?: boolean; message: string }> {
+  const res = await apiRequest<{
+    attendance: AttendanceData;
+    awaitingHandoverConfirm?: boolean;
+    message: string;
+  }>("/attendance/check-out", {
+    method: "POST",
+    body: JSON.stringify(params || {}),
+  });
   return res.data;
 }
 
@@ -1440,6 +1458,17 @@ export interface ShiftHandoverDiscrepancy {
   categoryName?: string;
   expected: number;
   actual: number;
+  note?: string;
+}
+
+export interface ShiftHandoverCategoryCount {
+  categoryId?: string;
+  categoryCode: string;
+  categoryName: string;
+  expectedTotalQty: number;
+  actualTotalQty: number;
+  unit?: string;
+  productCount?: number;
   note?: string;
 }
 
@@ -1454,18 +1483,37 @@ export interface ShiftHandoverRecord {
   cashBalance: number;
   checkedCategories?: string[];
   totalCheckedProducts?: number;
+  categoryCounts?: ShiftHandoverCategoryCount[];
   discrepancies: ShiftHandoverDiscrepancy[];
-  status: "PENDING" | "ACCEPTED" | "DISCREPANCY_REPORTED" | "STORE_CLOSED";
+  status: "DRAFT" | "PENDING" | "ACCEPTED" | "DISCREPANCY_REPORTED" | "STORE_CLOSED";
+  submittedAt?: string;
+  acceptedAt?: string;
   notes?: string;
   confirmNote?: string;
+  lateCheckoutReason?: string;
+  lateCheckoutMinutes?: number;
   createdAt?: string;
   updatedAt?: string;
 }
 
 export interface DailyHandoverCategoryInfo {
   _id: string;
+  code?: string;
   name: string;
   slug: string;
+  unit?: string;
+  productCount?: number;
+  expectedTotalQty?: number;
+}
+
+export interface DailyHandoverCategorySummary {
+  categoryId: string;
+  categoryCode: string;
+  categoryName: string;
+  isPrimaryCategory: boolean;
+  unit: string;
+  productCount: number;
+  expectedTotalQty: number;
 }
 
 export interface DailyHandoverProductItem {
@@ -1488,11 +1536,15 @@ export interface DailyHandoverProductItem {
 
 export interface DailyHandoverCheckData {
   date: string;
+  weekday?: number;
   primaryCategory: DailyHandoverCategoryInfo | null;
   companionCategory: DailyHandoverCategoryInfo | null;
   checkedCategories: string[];
   checkedCategoryLabel: string;
   totalCheckedProducts: number;
+  totalExpectedQty?: number;
+  categorySummaries?: DailyHandoverCategorySummary[];
+  weeklySchedule?: Record<string, string[]>;
   products: DailyHandoverProductItem[];
 }
 
@@ -1502,7 +1554,8 @@ export async function getTodayAttendanceApi(): Promise<{
   assignedShift?: "SHIFT_1" | "SHIFT_2" | "BOTH" | "OFF" | null;
   isWfhToday: boolean;
   isEarlyApprovedToday?: boolean;
-  handoverStatus: "PENDING" | "ACCEPTED" | "DISCREPANCY_REPORTED" | "STORE_CLOSED" | null;
+  handoverStatus: "DRAFT" | "PENDING" | "ACCEPTED" | "DISCREPANCY_REPORTED" | "STORE_CLOSED" | null;
+  currentShiftHandover?: ShiftHandoverRecord | null;
   pendingIncomingHandover?: ShiftHandoverRecord | null;
 }> {
   const res = await apiRequest<{
@@ -1511,7 +1564,8 @@ export async function getTodayAttendanceApi(): Promise<{
     assignedShift?: "SHIFT_1" | "SHIFT_2" | "BOTH" | "OFF" | null;
     isWfhToday: boolean;
     isEarlyApprovedToday?: boolean;
-    handoverStatus: "PENDING" | "ACCEPTED" | "DISCREPANCY_REPORTED" | "STORE_CLOSED" | null;
+    handoverStatus: "DRAFT" | "PENDING" | "ACCEPTED" | "DISCREPANCY_REPORTED" | "STORE_CLOSED" | null;
+    currentShiftHandover?: ShiftHandoverRecord | null;
     pendingIncomingHandover?: ShiftHandoverRecord | null;
   }>("/attendance/today");
   return res.data;
@@ -1554,10 +1608,12 @@ export async function fetchHandoversApi(params?: {
 export async function createHandoverApi(data: {
   date?: string;
   shiftCode?: "SHIFT_1" | "SHIFT_2" | "BOTH";
+  isDraft?: boolean;
   cashBalance: number;
   checkedCategories?: string[];
   totalCheckedProducts?: number;
-  discrepancies: Array<{
+  categoryCounts?: ShiftHandoverCategoryCount[];
+  discrepancies?: Array<{
     productCode: string;
     productName?: string;
     categoryName?: string;
@@ -1566,6 +1622,8 @@ export async function createHandoverApi(data: {
     note?: string;
   }>;
   notes?: string;
+  lateCheckoutReason?: string;
+  requireLateReason?: boolean;
 }): Promise<{ handover: ShiftHandoverRecord; message: string }> {
   const res = await apiRequest<any>("/shifts/handover", {
     method: "POST",

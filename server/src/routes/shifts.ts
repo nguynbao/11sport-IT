@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import {
+  attendanceConfigRepo,
   attendanceRepo,
   categoryRepo,
   leaveRequestRepo,
@@ -967,13 +968,36 @@ function pickDailyCompanionIndex(dateStr: string, count: number): number {
   return perm[posInCycle];
 }
 
+export interface HandoverCategorySummary {
+  categoryId: string;
+  categoryCode: string;
+  categoryName: string;
+  isPrimaryCategory: boolean;
+  unit: string;
+  productCount: number;
+  expectedTotalQty: number;
+}
+
+const HANDOVER_SCHEDULE_CONFIG_KEY = 'HANDOVER_SCHEDULE_CONFIG';
+
+export async function getStoredHandoverWeeklySchedule(): Promise<Record<string, string[]>> {
+  const doc = await attendanceConfigRepo.findOne({ key: HANDOVER_SCHEDULE_CONFIG_KEY });
+  if (doc && doc.handoverWeeklySchedule && typeof doc.handoverWeeklySchedule === 'object') {
+    return doc.handoverWeeklySchedule as Record<string, string[]>;
+  }
+  return {};
+}
+
 export async function computeDailyHandoverCheck(targetDate?: string) {
   const dateStr =
     targetDate && /^\d{4}-\d{2}-\d{2}$/.test(targetDate) ? targetDate : getTodayLocalStr();
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const weekday = new Date(y || 2026, (m || 1) - 1, d || 1).getDay(); // 0: CN, 1: T2 ... 6: T7
 
-  const [categories, allProducts] = await Promise.all([
+  const [categories, allProducts, storedWeeklySchedule] = await Promise.all([
     categoryRepo.find({}),
     productRepo.find({}),
+    getStoredHandoverWeeklySchedule(),
   ]);
 
   const catMap = new Map(categories.map((c: any) => [String(c._id), c]));
@@ -1038,39 +1062,52 @@ export async function computeDailyHandoverCheck(targetDate?: string) {
     )
     .map((p: any) => ({ ...p, isPrimaryCategory: true }));
 
+  const primaryExpectedTotalQty = primaryProducts.reduce(
+    (sum: number, p: any) => sum + (Number(p.stockQtyFloor1 ?? p.stockFloor1) || 0),
+    0
+  );
+
   const primaryCategory = {
     _id: racketCatDoc ? String(racketCatDoc._id) : 'VOT',
     code: racketCatDoc?.code || 'VOT',
     slug: String(racketCatDoc?.code || 'vot').toLowerCase(),
     name: racketCatDoc?.name || 'Vợt',
+    unit: primaryProducts[0]?.unit || 'Cái',
     productCount: primaryProducts.length,
+    expectedTotalQty: primaryExpectedTotalQty,
   };
 
   // Xây dựng danh sách các Category đi kèm (ngoài Vợt)
   const nonRacketCategories = activeCategories
     .filter((c: any) => !isRacketCategory(c.code, c.name))
     .map((c: any) => {
-      const count = floor1Products.filter(
+      const catProds = floor1Products.filter(
         (p: any) =>
           String(p.categoryId) === String(c._id) ||
           (c.code && String(p.categoryCode).toUpperCase() === String(c.code).toUpperCase()) ||
           stripVnAccents(p.categoryName) === stripVnAccents(c.name)
-      ).length;
+      );
+      const expectedTotalQty = catProds.reduce(
+        (sum: number, p: any) => sum + (Number(p.stockQtyFloor1 ?? p.stockFloor1) || 0),
+        0
+      );
       return {
         _id: String(c._id),
         code: String(c.code || ''),
         slug: String(c.code || '').toLowerCase(),
         name: String(c.name || ''),
-        productCount: count,
+        unit: catProds[0]?.unit || 'Cái',
+        productCount: catProds.length,
+        expectedTotalQty,
       };
     })
     .sort((a, b) => a.code.localeCompare(b.code));
 
   const nonEmptyCompanions = nonRacketCategories.filter((c) => c.productCount > 0);
   const defaultFallbackCompanions = [
-    { _id: 'GIAY', code: 'GIAY', slug: 'giay', name: 'Giày', productCount: 0 },
-    { _id: 'PHU_KIEN', code: 'PHU_KIEN', slug: 'phu_kien', name: 'Phụ kiện', productCount: 0 },
-    { _id: 'THOI_TRANG', code: 'THOI_TRANG', slug: 'thoi_trang', name: 'Thời trang', productCount: 0 },
+    { _id: 'GIAY', code: 'GIAY', slug: 'giay', name: 'Giày', unit: 'Đôi', productCount: 0, expectedTotalQty: 0 },
+    { _id: 'BONG_THI_DAU', code: 'BONG_THI_DAU', slug: 'bong_thi_dau', name: 'Bóng thi đấu', unit: 'Hộp', productCount: 0, expectedTotalQty: 0 },
+    { _id: 'PHU_KIEN', code: 'PHU_KIEN', slug: 'phu_kien', name: 'Phụ kiện', unit: 'Cái', productCount: 0, expectedTotalQty: 0 },
   ];
 
   const availableCompanionCategories =
@@ -1080,43 +1117,148 @@ export async function computeDailyHandoverCheck(targetDate?: string) {
         ? nonRacketCategories
         : defaultFallbackCompanions;
 
-  const pickedIdx = pickDailyCompanionIndex(dateStr, availableCompanionCategories.length);
-  const companionCategory = availableCompanionCategories[pickedIdx] || null;
+  // Xây dựng lịch cố định theo Thứ trong tuần (0..6): ưu tiên cấu hình của Quản lý, nếu chưa có thì phân bổ cố định theo Thứ
+  const allCompanionCandidates =
+    nonRacketCategories.length > 0 ? nonRacketCategories : defaultFallbackCompanions;
 
-  const companionProducts = companionCategory
-    ? floor1Products
-      .filter(
-        (p: any) =>
-          !primaryProducts.some((vp: any) => String(vp._id) === String(p._id)) &&
-          (String(p.categoryId) === String(companionCategory._id) ||
-            (companionCategory.code &&
-              String(p.categoryCode).toUpperCase() ===
-              String(companionCategory.code).toUpperCase()) ||
-            stripVnAccents(p.categoryName) === stripVnAccents(companionCategory.name))
-      )
-      .map((p: any) => ({ ...p, isPrimaryCategory: false }))
-    : [];
+  const resolveCompanionDisplayName = (rawToken: string): string => {
+    const token = String(rawToken || '').trim();
+    if (!token) return '';
+    const upper = token.toUpperCase();
+    const norm = stripVnAccents(token);
+    const matched =
+      allCompanionCandidates.find(
+        (c) =>
+          String(c._id) === token ||
+          String(c.code).toUpperCase() === upper ||
+          stripVnAccents(c.name) === norm
+      ) || null;
+    return matched ? matched.name : token;
+  };
+
+  const resolvedWeeklySchedule: Record<string, string[]> = {};
+  for (let wd = 0; wd <= 6; wd++) {
+    const key = String(wd);
+    const customList = Array.isArray(storedWeeklySchedule[key])
+      ? storedWeeklySchedule[key]
+          .map((x) => resolveCompanionDisplayName(String(x || '')))
+          .filter(Boolean)
+      : [];
+    if (customList.length > 0) {
+      resolvedWeeklySchedule[key] = customList;
+    } else if (availableCompanionCategories.length > 0) {
+      // Lịch cố định mặc định theo thứ (T2=0, T3=1, T4=2, T5=0, T6=1, T7=0, CN=2...)
+      const defaultIdx =
+        wd === 1 || wd === 4 || wd === 6
+          ? 0
+          : wd === 2 || wd === 5
+            ? 1 % availableCompanionCategories.length
+            : 2 % availableCompanionCategories.length;
+      const picked = availableCompanionCategories[defaultIdx] || availableCompanionCategories[0];
+      resolvedWeeklySchedule[key] = [picked.name || picked.code];
+    } else {
+      resolvedWeeklySchedule[key] = [];
+    }
+  }
+
+  const configuredCodesForToday = resolvedWeeklySchedule[String(weekday)] || [];
+  let selectedCompanions = configuredCodesForToday
+    .map((token) => {
+      const upper = token.toUpperCase();
+      const norm = stripVnAccents(token);
+      return (
+        availableCompanionCategories.find(
+          (c) =>
+            String(c._id) === token ||
+            String(c.code).toUpperCase() === upper ||
+            stripVnAccents(c.name) === norm
+        ) ||
+        nonRacketCategories.find(
+          (c) =>
+            String(c._id) === token ||
+            String(c.code).toUpperCase() === upper ||
+            stripVnAccents(c.name) === norm
+        ) ||
+        null
+      );
+    })
+    .filter(Boolean) as typeof availableCompanionCategories;
+
+  if (selectedCompanions.length === 0 && availableCompanionCategories.length > 0) {
+    const pickedIdx = pickDailyCompanionIndex(dateStr, availableCompanionCategories.length);
+    if (availableCompanionCategories[pickedIdx]) {
+      selectedCompanions = [availableCompanionCategories[pickedIdx]];
+    }
+  }
+
+  const companionCategory = selectedCompanions[0] || null;
+
+  const companionProducts =
+    selectedCompanions.length > 0
+      ? floor1Products
+          .filter(
+            (p: any) =>
+              !primaryProducts.some((vp: any) => String(vp._id) === String(p._id)) &&
+              selectedCompanions.some(
+                (comp) =>
+                  String(p.categoryId) === String(comp._id) ||
+                  (comp.code &&
+                    String(p.categoryCode).toUpperCase() === String(comp.code).toUpperCase()) ||
+                  stripVnAccents(p.categoryName) === stripVnAccents(comp.name)
+              )
+          )
+          .map((p: any) => ({ ...p, isPrimaryCategory: false }))
+      : [];
 
   const selectedProducts = [...primaryProducts, ...companionProducts];
-  const checkedCategories = companionCategory
-    ? [primaryCategory.name, companionCategory.name]
-    : [primaryCategory.name];
+  const checkedCategories = [
+    primaryCategory.name,
+    ...selectedCompanions.map((c) => c.name),
+  ];
   const categoryLabel = checkedCategories.join(' + ');
+
+  const categorySummaries: HandoverCategorySummary[] = [
+    {
+      categoryId: primaryCategory._id,
+      categoryCode: primaryCategory.code,
+      categoryName: primaryCategory.name,
+      isPrimaryCategory: true,
+      unit: primaryCategory.unit || 'Cái',
+      productCount: primaryCategory.productCount,
+      expectedTotalQty: primaryCategory.expectedTotalQty,
+    },
+    ...selectedCompanions.map((comp) => ({
+      categoryId: comp._id,
+      categoryCode: comp.code || comp.name,
+      categoryName: comp.name,
+      isPrimaryCategory: false,
+      unit: comp.unit || 'Cái',
+      productCount: comp.productCount,
+      expectedTotalQty: comp.expectedTotalQty,
+    })),
+  ];
+
+  const totalExpectedQty = categorySummaries.reduce((sum, c) => sum + c.expectedTotalQty, 0);
 
   return {
     date: dateStr,
+    weekday,
     categoryLabel,
     checkedCategoryLabel: categoryLabel,
     checkedCategories,
     totalCheckedProducts: selectedProducts.length,
+    totalExpectedQty,
+    categorySummaries,
+    weeklySchedule: resolvedWeeklySchedule,
     primaryCategory,
     companionCategory,
-    availableCompanionCategories,
+    availableCompanionCategories:
+      nonRacketCategories.length > 0 ? nonRacketCategories : defaultFallbackCompanions,
     products: selectedProducts,
   };
 }
 
-export const HANDOVER_MANAGER_ROLES = new Set(['ADMIN', 'MANAGER', 'ACCOUNTANT']);
+export const HANDOVER_MANAGER_ROLES = new Set(['ADMIN', 'MANAGER', 'ACCOUNTANT', 'HR']);
 
 export function isHandoverManagerRole(role?: string): boolean {
   return Boolean(role && HANDOVER_MANAGER_ROLES.has(String(role).toUpperCase()));
@@ -1142,23 +1284,34 @@ export async function expireStalePendingHandovers(todayLocal = getTodayLocalStr(
   const minValidDate = yesterdayLocal < yesterdayUtc ? yesterdayLocal : yesterdayUtc;
 
   const allHandovers = (await shiftHandoverRepo.find({})) as any[];
-  const hasAnyHandoverToday = allHandovers.some((h) => todaySet.has(String(h.date)));
-  const hasClosingHandoverToday = allHandovers.some(
-    (h) => todaySet.has(String(h.date)) && (h.shiftCode === 'SHIFT_2' || h.shiftCode === 'BOTH')
+  const submittedHandoversToday = allHandovers.filter(
+    (h) => h.status !== 'DRAFT' && todaySet.has(String(h.date))
   );
+  const hasAnyHandoverToday = submittedHandoversToday.length > 0;
+  const latestClosingTodayMs = submittedHandoversToday
+    .filter((h) => h.shiftCode === 'SHIFT_2' || h.shiftCode === 'BOTH')
+    .reduce((maxMs, h) => {
+      const t = new Date(h.submittedAt || h.updatedAt || h.createdAt || 0).getTime();
+      return t > maxMs ? t : maxMs;
+    }, 0);
 
   for (const h of allHandovers) {
     if (h.status !== 'PENDING') continue;
     const hDate = String(h.date || '');
+    const hTimeMs = new Date(h.submittedAt || h.updatedAt || h.createdAt || 0).getTime();
     const isTooOld = !hDate || hDate < minValidDate;
     const isPrevDaySuperseded = !todaySet.has(hDate) && hasAnyHandoverToday;
     const isPrevDayShift1Expired = !todaySet.has(hDate) && h.shiftCode === 'SHIFT_1';
     const isTodayShift1Superseded =
-      todaySet.has(hDate) && h.shiftCode === 'SHIFT_1' && hasClosingHandoverToday;
+      todaySet.has(hDate) &&
+      h.shiftCode === 'SHIFT_1' &&
+      latestClosingTodayMs > 0 &&
+      latestClosingTodayMs > hTimeMs;
 
     if (isTooOld || isPrevDaySuperseded || isPrevDayShift1Expired || isTodayShift1Superseded) {
       h.status = 'STORE_CLOSED';
       await shiftHandoverRepo.updateById(h._id, { status: 'STORE_CLOSED' });
+      await finalizeAttendanceCheckoutFromHandover(h);
     }
   }
 
@@ -1190,10 +1343,16 @@ export function resolvePendingIncomingHandoverForSales(params: {
   const yesterdayUtc = addDaysStr(todayUtc, -1);
   const yesterdaySet = new Set([yesterdayLocal, yesterdayUtc]);
 
-  const hasAnyHandoverToday = allHandovers.some((h) => todaySet.has(String(h.date)));
-  const hasClosingHandoverToday = allHandovers.some(
-    (h) => todaySet.has(String(h.date)) && (h.shiftCode === 'SHIFT_2' || h.shiftCode === 'BOTH')
+  const submittedHandoversToday = allHandovers.filter(
+    (h) => h.status !== 'DRAFT' && todaySet.has(String(h.date))
   );
+  const hasAnyHandoverToday = submittedHandoversToday.length > 0;
+  const latestClosingTodayMs = submittedHandoversToday
+    .filter((h) => h.shiftCode === 'SHIFT_2' || h.shiftCode === 'BOTH')
+    .reduce((maxMs, h) => {
+      const t = new Date(h.submittedAt || h.updatedAt || h.createdAt || 0).getTime();
+      return t > maxMs ? t : maxMs;
+    }, 0);
 
   return (
     allHandovers
@@ -1203,11 +1362,12 @@ export function resolvePendingIncomingHandoverForSales(params: {
         if (h.toStaffId && String(h.toStaffId) !== String(userId)) return false;
 
         const hDate = String(h.date || '');
+        const hTimeMs = new Date(h.submittedAt || h.updatedAt || h.createdAt || 0).getTime();
 
         // 1. Phiếu lập trong ngày hôm nay: chỉ phiếu Ca 1 (SHIFT_1) giao sang Ca 2 / BOTH
         if (todaySet.has(hDate)) {
           if (h.shiftCode !== 'SHIFT_1') return false;
-          if (hasClosingHandoverToday) return false;
+          if (latestClosingTodayMs > 0 && latestClosingTodayMs > hTimeMs) return false;
           if (receivingShiftCode && receivingShiftCode === 'SHIFT_1') {
             return false;
           }
@@ -1235,7 +1395,212 @@ export function resolvePendingIncomingHandoverForSales(params: {
   );
 }
 
-// GET /api/v1/shifts/handover/daily-check (Lấy danh mục kiểm kết ca random theo ngày: luôn là Vợt + ...)
+export async function finalizeAttendanceCheckoutFromHandover(handover: any): Promise<any | null> {
+  if (!handover || !handover.fromStaffId || !handover.date) return null;
+  const att = await attendanceRepo.findOne({
+    staffId: handover.fromStaffId,
+    date: String(handover.date),
+  });
+  if (!att || att.checkOutTime) return att || null;
+
+  const effectiveOutDate = att.pendingCheckOutTime
+    ? new Date(att.pendingCheckOutTime)
+    : handover.submittedAt
+      ? new Date(handover.submittedAt)
+      : new Date();
+
+  const assignedShift =
+    (await shiftAssignmentRepo.findOne({
+      staffId: String(handover.fromStaffId),
+      date: String(handover.date),
+    })) ||
+    (await shiftAssignmentRepo.findOne({
+      staffId: handover.fromStaffId,
+      date: String(handover.date),
+    }));
+
+  const effectiveShiftCode =
+    assignedShift &&
+    (assignedShift.shiftCode === 'SHIFT_1' ||
+      assignedShift.shiftCode === 'SHIFT_2' ||
+      assignedShift.shiftCode === 'BOTH')
+      ? assignedShift.shiftCode
+      : att.shiftCode;
+
+  const shiftEndMinutes = effectiveShiftCode === 'SHIFT_1' ? 17 * 60 + 30 : 21 * 60;
+  const totalMinutesOut = effectiveOutDate.getHours() * 60 + effectiveOutDate.getMinutes();
+
+  let earlyMinutes = Number(att.earlyMinutes || 0);
+  if (totalMinutesOut < shiftEndMinutes) {
+    earlyMinutes = shiftEndMinutes - totalMinutesOut;
+  } else {
+    earlyMinutes = 0;
+  }
+
+  let lateCheckoutMinutes = Number(att.lateCheckoutMinutes || handover.lateCheckoutMinutes || 0);
+  let cleanLateCheckoutReason = String(
+    att.lateCheckoutReason || handover.lateCheckoutReason || ''
+  ).trim();
+  let overtimeStatus: 'NONE' | 'PENDING' | 'APPROVED' | 'REJECTED' =
+    (att as any).overtimeStatus || 'NONE';
+  let overtimeApprovedMinutes = Number((att as any).overtimeApprovedMinutes || 0);
+
+  if (totalMinutesOut > shiftEndMinutes && effectiveShiftCode !== 'BOTH') {
+    const diffLate = totalMinutesOut - shiftEndMinutes;
+    if (diffLate > 5) {
+      lateCheckoutMinutes = diffLate;
+      if (overtimeStatus !== 'APPROVED') {
+        overtimeStatus = 'PENDING';
+        overtimeApprovedMinutes = 0;
+      }
+    }
+  }
+
+  const startMs = new Date(att.workStartTime).getTime();
+  const endMs = effectiveOutDate.getTime();
+  let rawHours = Math.max(0, (endMs - startMs) / (1000 * 60 * 60));
+  let lunchPauseMinutes = 0;
+  if (att.department === 'OFFICE' && effectiveShiftCode === 'SHIFT_1') {
+    lunchPauseMinutes = 60;
+    rawHours = Math.max(0, rawHours - 1);
+  }
+
+  const finalStatus = earlyMinutes > 0 ? 'EARLY_LEAVE' : 'COMPLETED';
+  const noteParts: string[] = [];
+  if (att.notes) noteParts.push(String(att.notes));
+  if (
+    cleanLateCheckoutReason &&
+    !String(att.notes || '').includes(cleanLateCheckoutReason)
+  ) {
+    noteParts.push(
+      `Lý do check-out trễ (${lateCheckoutMinutes}p): ${cleanLateCheckoutReason}`
+    );
+  }
+
+  return attendanceRepo.updateById(att._id, {
+    shiftCode: effectiveShiftCode,
+    checkOutTime: effectiveOutDate,
+    earlyMinutes,
+    lateCheckoutMinutes,
+    lateCheckoutReason: cleanLateCheckoutReason,
+    overtimeStatus,
+    overtimeApprovedMinutes,
+    lunchPauseMinutes,
+    totalWorkHours: Number(rawHours.toFixed(2)),
+    status: finalStatus,
+    notes: noteParts.join(' | '),
+  });
+}
+
+// GET /api/v1/shifts/handover/schedule-config (Lấy cấu hình lịch kiểm hàng cố định theo Thứ trong tuần)
+shiftsRouter.get('/shifts/handover/schedule-config', async (req, res, next) => {
+  try {
+    const user = req.user;
+    if (!user) throw new ApiError(401, 'UNAUTHORIZED', 'Vui lòng đăng nhập');
+    if (!isHandoverManagerRole(user.role) && !isSalesStaffUser(user)) {
+      throw new ApiError(403, 'FORBIDDEN', 'Bạn không có quyền truy cập cấu hình lịch kiểm hàng');
+    }
+
+    const dailyCheck = await computeDailyHandoverCheck();
+    res.json({
+      data: {
+        weeklySchedule: dailyCheck.weeklySchedule,
+        primaryCategory: dailyCheck.primaryCategory,
+        availableCompanionCategories: dailyCheck.availableCompanionCategories,
+        availableCategories: dailyCheck.availableCompanionCategories.map((c: any) => ({
+          _id: c._id,
+          code: c.code,
+          name: c.name,
+          slug: c.slug,
+          productCount: c.productCount,
+          expectedTotalQty: c.expectedTotalQty,
+          isPrimary: false,
+        })),
+      },
+      meta: {},
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/v1/shifts/handover/schedule-config (Quản lý cấu hình danh mục kiểm hàng cố định theo Thứ: luôn là Vợt + ...)
+shiftsRouter.put('/shifts/handover/schedule-config', async (req, res, next) => {
+  try {
+    const user = req.user;
+    if (!user) throw new ApiError(401, 'UNAUTHORIZED', 'Vui lòng đăng nhập');
+    if (!isHandoverManagerRole(user.role)) {
+      throw new ApiError(
+        403,
+        'FORBIDDEN',
+        'Chỉ Quản lý (Admin / HR / Kế toán) mới được cấu hình lịch kiểm hàng cố định theo ngày'
+      );
+    }
+
+    const rawSchedule = req.body?.weeklySchedule;
+    if (!rawSchedule || typeof rawSchedule !== 'object') {
+      throw new ApiError(400, 'VALIDATION_ERROR', 'Dữ liệu cấu hình lịch kiểm theo thứ không hợp lệ');
+    }
+
+    const normalizedSchedule: Record<string, string[]> = {};
+    for (let wd = 0; wd <= 6; wd++) {
+      const key = String(wd);
+      const val = rawSchedule[key];
+      const list = Array.isArray(val)
+        ? val.map((x: any) => String(x || '').trim()).filter(Boolean)
+        : typeof val === 'string' && val.trim()
+          ? [val.trim()]
+          : [];
+      normalizedSchedule[key] = list;
+    }
+
+    const existing = await attendanceConfigRepo.findOne({ key: HANDOVER_SCHEDULE_CONFIG_KEY });
+    if (existing) {
+      await attendanceConfigRepo.updateById(existing._id, {
+        handoverWeeklySchedule: normalizedSchedule,
+        updatedBy: user.fullName || user.username,
+      });
+    } else {
+      await attendanceConfigRepo.create({
+        key: HANDOVER_SCHEDULE_CONFIG_KEY,
+        officeName: 'Cấu hình lịch kiểm hàng bàn giao ca',
+        officeLat: 0,
+        officeLng: 0,
+        maxDistanceMeters: 50,
+        allowedIps: [],
+        requireGps: false,
+        requireIp: true,
+        handoverWeeklySchedule: normalizedSchedule,
+        updatedBy: user.fullName || user.username,
+      });
+    }
+
+    const updatedDailyCheck = await computeDailyHandoverCheck();
+    res.json({
+      data: {
+        weeklySchedule: updatedDailyCheck.weeklySchedule,
+        primaryCategory: updatedDailyCheck.primaryCategory,
+        availableCompanionCategories: updatedDailyCheck.availableCompanionCategories,
+        availableCategories: updatedDailyCheck.availableCompanionCategories.map((c: any) => ({
+          _id: c._id,
+          code: c.code,
+          name: c.name,
+          slug: c.slug,
+          productCount: c.productCount,
+          expectedTotalQty: c.expectedTotalQty,
+          isPrimary: false,
+        })),
+      },
+      meta: {
+        message: 'Đã lưu cấu hình lịch kiểm hàng cố định theo ngày trong tuần!',
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/v1/shifts/handover/daily-check (Lấy danh mục kiểm kết ca cố định theo ngày: luôn là Vợt + ...)
 shiftsRouter.get('/shifts/handover/daily-check', async (req, res, next) => {
   try {
     const user = req.user;
@@ -1251,6 +1616,7 @@ shiftsRouter.get('/shifts/handover/daily-check', async (req, res, next) => {
       data: dailyCheck,
       meta: {
         totalProducts: dailyCheck.products.length,
+        totalExpectedQty: dailyCheck.totalExpectedQty,
       },
     });
   } catch (err) {
@@ -1354,7 +1720,9 @@ shiftsRouter.get('/shifts/handover', async (req, res, next) => {
       filtered = filtered.filter(
         (h) =>
           h.status === 'DISCREPANCY_REPORTED' ||
-          (Array.isArray(h.discrepancies) && h.discrepancies.some((d: any) => d.actual !== d.expected))
+          (Array.isArray(h.discrepancies) && h.discrepancies.some((d: any) => d.actual !== d.expected)) ||
+          (Array.isArray(h.categoryCounts) &&
+            h.categoryCounts.some((c: any) => Number(c.actualTotalQty) !== Number(c.expectedTotalQty)))
       );
     }
     if (typeof search === 'string' && search.trim()) {
@@ -1380,17 +1748,23 @@ shiftsRouter.get('/shifts/handover', async (req, res, next) => {
       return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
     });
 
+    const draftCount = filtered.filter((h) => h.status === 'DRAFT').length;
     const pendingCount = filtered.filter((h) => h.status === 'PENDING').length;
     const acceptedCount = filtered.filter((h) => h.status === 'ACCEPTED').length;
     const storeClosedCount = filtered.filter((h) => h.status === 'STORE_CLOSED').length;
     const discrepancyHandoverCount = filtered.filter(
-      (h) => Array.isArray(h.discrepancies) && h.discrepancies.some((d: any) => d.actual !== d.expected)
+      (h) =>
+        h.status === 'DISCREPANCY_REPORTED' ||
+        (Array.isArray(h.discrepancies) && h.discrepancies.some((d: any) => d.actual !== d.expected)) ||
+        (Array.isArray(h.categoryCounts) &&
+          h.categoryCounts.some((c: any) => Number(c.actualTotalQty) !== Number(c.expectedTotalQty)))
     ).length;
 
     res.json({
       data: filtered,
       meta: {
         total: filtered.length,
+        draftCount,
         pendingCount,
         acceptedCount,
         storeClosedCount,
@@ -1403,7 +1777,7 @@ shiftsRouter.get('/shifts/handover', async (req, res, next) => {
   }
 });
 
-// POST /api/v1/shifts/handover (Sales tạo biên bản kết ca & bàn giao Kho Tầng 1)
+// POST /api/v1/shifts/handover (Sales lưu nháp trong ca hoặc xác nhận gửi biên bản kết ca & bàn giao Kho Tầng 1)
 shiftsRouter.post('/shifts/handover', async (req, res, next) => {
   try {
     const user = req.user;
@@ -1415,11 +1789,14 @@ shiftsRouter.post('/shifts/handover', async (req, res, next) => {
     const {
       date,
       shiftCode = 'SHIFT_1',
+      isDraft = false,
       cashBalance = 0,
       checkedCategories,
       totalCheckedProducts,
+      categoryCounts,
       discrepancies = [],
       notes = '',
+      lateCheckoutReason = '',
     } = req.body || {};
 
     const effectiveDate =
@@ -1435,14 +1812,51 @@ shiftsRouter.post('/shifts/handover', async (req, res, next) => {
     const resolvedTotalChecked =
       typeof totalCheckedProducts === 'number' && totalCheckedProducts >= 0
         ? totalCheckedProducts
-        : dailyCheck.products.length;
+        : dailyCheck.totalExpectedQty || dailyCheck.products.length;
+
+    const normalizedCategoryCounts = Array.isArray(categoryCounts) && categoryCounts.length > 0
+      ? categoryCounts.map((c: any) => {
+          const summaryMatch = dailyCheck.categorySummaries.find(
+            (s) =>
+              s.categoryCode === c?.categoryCode ||
+              stripVnAccents(s.categoryName) === stripVnAccents(c?.categoryName)
+          );
+          const expectedTotalQty =
+            typeof c?.expectedTotalQty === 'number'
+              ? Number(c.expectedTotalQty)
+              : summaryMatch?.expectedTotalQty ?? 0;
+          const actualTotalQty =
+            typeof c?.actualTotalQty === 'number'
+              ? Math.max(0, Number(c.actualTotalQty))
+              : expectedTotalQty;
+          return {
+            categoryId: String(c?.categoryId || summaryMatch?.categoryId || ''),
+            categoryCode: String(c?.categoryCode || summaryMatch?.categoryCode || 'CAT').toUpperCase(),
+            categoryName: String(c?.categoryName || summaryMatch?.categoryName || 'Danh mục'),
+            expectedTotalQty,
+            actualTotalQty,
+            unit: String(c?.unit || summaryMatch?.unit || 'Cái'),
+            productCount: Number(c?.productCount ?? summaryMatch?.productCount ?? 0),
+            note: String(c?.note || '').trim(),
+          };
+        })
+      : dailyCheck.categorySummaries.map((s) => ({
+          categoryId: s.categoryId,
+          categoryCode: s.categoryCode,
+          categoryName: s.categoryName,
+          expectedTotalQty: s.expectedTotalQty,
+          actualTotalQty: s.expectedTotalQty,
+          unit: s.unit,
+          productCount: s.productCount,
+          note: '',
+        }));
 
     const allProducts = await productRepo.find({});
     const prodByCode = new Map(
       allProducts.map((p: any) => [String(p.code || '').toUpperCase(), p])
     );
 
-    const normalizedDiscrepancies = (Array.isArray(discrepancies) ? discrepancies : []).map(
+    let normalizedDiscrepancies = (Array.isArray(discrepancies) ? discrepancies : []).map(
       (d: any) => {
         const code = String(d?.productCode || '').trim().toUpperCase();
         const prod = prodByCode.get(code);
@@ -1465,33 +1879,101 @@ shiftsRouter.post('/shifts/handover', async (req, res, next) => {
       }
     );
 
-    // Mọi ca kết thúc (Ca 1 giao cho Ca 2 cùng ngày, hoặc Ca tối SHIFT_2/BOTH giao cho Ca 1 sáng hôm sau)
-    // đều tạo phiếu với status: 'PENDING' để ca kế tiếp nhận thông báo xác nhận.
-    const initialStatus = 'PENDING';
+    // Nếu kiểm theo tổng số lượng danh mục mà có chênh lệch tổng và chưa truyền discrepancies chi tiết -> tự động ghi nhận vào discrepancies
+    if (normalizedDiscrepancies.length === 0) {
+      normalizedDiscrepancies = normalizedCategoryCounts
+        .filter((c) => c.actualTotalQty !== c.expectedTotalQty)
+        .map((c) => {
+          const diff = c.actualTotalQty - c.expectedTotalQty;
+          const defaultNote =
+            diff > 0
+              ? `Thừa +${diff} ${c.unit || 'Cái'}`
+              : `Thiếu ${diff} ${c.unit || 'Cái'}`;
+          return {
+            productCode: `TONG_${c.categoryCode}`,
+            productName: `Tổng ${c.categoryName}`,
+            categoryName: c.categoryName,
+            expected: c.expectedTotalQty,
+            actual: c.actualTotalQty,
+            note: c.note ? `${defaultNote} (${c.note})` : defaultNote,
+          };
+        });
+    }
 
-    // Khi lập phiếu bàn giao mới cho effectiveDate, đóng các phiếu PENDING cũ từ những ngày trước (< effectiveDate)
-    // hoặc phiếu SHIFT_1 cùng ngày nếu đang lập phiếu kết ca tối (SHIFT_2 / BOTH)
-    const prevPendingList = (await shiftHandoverRepo.find({ status: 'PENDING' })) as any[];
-    for (const oldPending of prevPendingList) {
-      const oldDate = String(oldPending.date || '');
-      const shouldExpireOld =
-        oldDate < effectiveDate ||
-        (oldDate === effectiveDate &&
-          oldPending.shiftCode === 'SHIFT_1' &&
-          (shiftCode === 'SHIFT_2' || shiftCode === 'BOTH'));
-      if (shouldExpireOld) {
-        await shiftHandoverRepo.updateById(oldPending._id, { status: 'STORE_CLOSED' });
+    const now = new Date();
+    const targetStatus: 'DRAFT' | 'PENDING' = isDraft ? 'DRAFT' : 'PENDING';
+    const cleanLateReason = String(lateCheckoutReason || '').trim();
+    let computedLateMinutes = 0;
+
+    // Khi nhân viên xác nhận gửi phiếu bàn giao thật (không phải bản nháp) cho ngày hôm nay:
+    // Ghi nhận ngay thời điểm bấm xác nhận gửi (pendingCheckOutTime = now) để tính đúng giờ cho người bấm gửi
+    if (!isDraft && effectiveDate === getTodayLocalStr(now)) {
+      const todayAtt = await attendanceRepo.findOne({
+        staffId: user.userId,
+        date: effectiveDate,
+      });
+
+      if (todayAtt && !todayAtt.checkOutTime) {
+        const effectiveShiftCode = todayAtt.shiftCode || shiftCode;
+        const shiftEndMinutes = effectiveShiftCode === 'SHIFT_1' ? 17 * 60 + 30 : 21 * 60;
+        const totalMinutesNow = now.getHours() * 60 + now.getMinutes();
+        const diffLateOut = totalMinutesNow - shiftEndMinutes;
+
+        if (diffLateOut > 5 && effectiveShiftCode !== 'BOTH') {
+          computedLateMinutes = diffLateOut;
+          const finalReason = cleanLateReason || String(todayAtt.lateCheckoutReason || '').trim();
+          // Nếu gửi từ giao diện kiểm hàng có truyền checkLateCheckout === true mà chưa có lý do -> yêu cầu nhập lý do
+          if (req.body?.requireLateReason && !finalReason) {
+            throw new ApiError(
+              400,
+              'LATE_CHECKOUT_REASON_REQUIRED',
+              `Bạn đang gửi bàn giao & check-out trễ ${diffLateOut} phút (quá 5 phút sau giờ kết thúc ca). Vui lòng nhập lý do check-out trễ!`,
+              { lateCheckoutMinutes: String(diffLateOut) }
+            );
+          }
+        }
+
+        // Chốt cứng mốc giờ bấm xác nhận gửi bàn giao vào bản ghi chấm công (nếu chưa chốt trước đó)
+        const lockedOutTime = todayAtt.pendingCheckOutTime
+          ? new Date(todayAtt.pendingCheckOutTime)
+          : now;
+        await attendanceRepo.updateById(todayAtt._id, {
+          pendingCheckOutTime: lockedOutTime,
+          ...(computedLateMinutes > 0 ? { lateCheckoutMinutes: computedLateMinutes } : {}),
+          ...(cleanLateReason ? { lateCheckoutReason: cleanLateReason } : {}),
+        });
       }
     }
 
-    const existing = await shiftHandoverRepo.findOne({
+    if (!isDraft) {
+      // Khi lập phiếu bàn giao chính thức cho effectiveDate, đóng các phiếu PENDING cũ từ những ngày trước (< effectiveDate)
+      // hoặc phiếu SHIFT_1 cùng ngày nếu đang lập phiếu kết ca tối (SHIFT_2 / BOTH)
+      const prevPendingList = (await shiftHandoverRepo.find({ status: 'PENDING' })) as any[];
+      for (const oldPending of prevPendingList) {
+        const oldDate = String(oldPending.date || '');
+        const shouldExpireOld =
+          oldDate < effectiveDate ||
+          (oldDate === effectiveDate &&
+            oldPending.shiftCode === 'SHIFT_1' &&
+            (shiftCode === 'SHIFT_2' || shiftCode === 'BOTH'));
+        if (shouldExpireOld) {
+          await shiftHandoverRepo.updateById(oldPending._id, { status: 'STORE_CLOSED' });
+          await finalizeAttendanceCheckoutFromHandover(oldPending);
+        }
+      }
+    }
+
+    // Tìm phiếu DRAFT hoặc PENDING hiện có của nhân viên trong cùng ngày & ca để cập nhật lên
+    const allForStaffToday = (await shiftHandoverRepo.find({
       date: effectiveDate,
       fromStaffId: user.userId,
       shiftCode,
-      status: initialStatus,
-    });
+    })) as any[];
+    const existing = allForStaffToday.find(
+      (h) => h.status === 'DRAFT' || h.status === 'PENDING'
+    );
 
-    const payload = {
+    const payload: any = {
       date: effectiveDate,
       shiftCode,
       fromStaffId: user.userId,
@@ -1500,9 +1982,15 @@ shiftsRouter.post('/shifts/handover', async (req, res, next) => {
       cashBalance: Number(cashBalance) || 0,
       checkedCategories: resolvedCheckedCategories,
       totalCheckedProducts: resolvedTotalChecked,
+      categoryCounts: normalizedCategoryCounts,
       discrepancies: normalizedDiscrepancies,
-      status: initialStatus as 'PENDING',
+      status: targetStatus,
       notes: String(notes || '').trim(),
+      ...(cleanLateReason ? { lateCheckoutReason: cleanLateReason } : {}),
+      ...(computedLateMinutes > 0 ? { lateCheckoutMinutes: computedLateMinutes } : {}),
+      ...(!isDraft
+        ? { submittedAt: existing?.submittedAt ? existing.submittedAt : now }
+        : {}),
     };
 
     const handover = existing
@@ -1512,9 +2000,10 @@ shiftsRouter.post('/shifts/handover', async (req, res, next) => {
     res.status(201).json({
       data: handover,
       meta: {
-        message:
-          shiftCode === 'SHIFT_1'
-            ? 'Phiếu kết ca đã được gửi! Ca 2 sẽ nhận được thông báo xác nhận bàn giao.'
+        message: isDraft
+          ? 'Đã lưu bản nháp kiểm hàng trong ca! Bạn có thể cập nhật tiếp bất cứ lúc nào trước giờ tan ca.'
+          : shiftCode === 'SHIFT_1'
+            ? 'Đã chốt giờ gửi bàn giao ca! Khi Ca 2 xác nhận, bạn sẽ hoàn tất Check-out (giờ ra ca vẫn tính đúng lúc bạn bấm gửi).'
             : 'Đã lập phiếu kết ca tối! Ca 1 sáng hôm sau sẽ nhận được thông báo xác nhận bàn giao.',
       },
     });
@@ -1566,9 +2055,14 @@ shiftsRouter.post('/shifts/handover/:id/confirm', async (req, res, next) => {
         : handover.notes,
     });
 
+    // Khi ca sau xác nhận phiếu bàn giao -> tự động hoàn tất Check-out cho nhân viên Ca 1
+    // với thời gian Check-out được giữ nguyên đúng thời điểm nhân viên Ca 1 bấm gửi bàn giao (pendingCheckOutTime / submittedAt)
+    const finalizedFromStaffAttendance = await finalizeAttendanceCheckoutFromHandover(updated || handover);
+
     res.json({
       data: updated,
       meta: {
+        finalizedFromStaffAttendance,
         message: accept
           ? 'Đã xác nhận thông tin bàn giao ca thành công!'
           : 'Đã ghi nhận báo lệch thông tin bàn giao ca.',

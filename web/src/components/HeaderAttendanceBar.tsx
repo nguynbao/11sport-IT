@@ -5,7 +5,8 @@ import {
   StaffUser,
   AttendanceData,
   ShiftHandoverRecord,
-  DailyHandoverProductItem,
+  DailyHandoverCheckData,
+  DailyHandoverCategorySummary,
   checkInApi,
   checkOutApi,
   getTodayAttendanceApi,
@@ -25,7 +26,8 @@ import {
   Boxes,
   X,
   BellRing,
-  Search,
+  Plus,
+  Minus,
 } from "lucide-react";
 import ShiftHandoverModal from "./ShiftHandoverModal";
 import FridayShiftRegistrationModal from "./FridayShiftRegistrationModal";
@@ -51,7 +53,9 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
   const [isLunchPaused, setIsLunchPaused] = useState<boolean>(false);
   const [feedback, setFeedback] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
-  // Bàn giao ca cho Sales (chỉ hiện khi cần thiết)
+  // Bàn giao ca & Nút Kiểm hàng luôn hiển thị cạnh đồng hồ cho Sales
+  const [dailyCheckInfo, setDailyCheckInfo] = useState<DailyHandoverCheckData | null>(null);
+  const [currentShiftHandover, setCurrentShiftHandover] = useState<ShiftHandoverRecord | null>(null);
   const [showHandoverModal, setShowHandoverModal] = useState(false);
   const [showFridayModal, setShowFridayModal] = useState(false);
   const [pendingHandoverToConfirm, setPendingHandoverToConfirm] = useState<ShiftHandoverRecord | null>(null);
@@ -61,13 +65,11 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
   const [confirmingHandover, setConfirmingHandover] = useState(false);
   const dismissedHandoverIdsRef = useRef<Set<string>>(new Set());
 
-  // Danh sách sản phẩm kiểm tra khi Nhận ca (Vợt + Nhóm ngẫu nhiên của ca bàn giao)
-  const [incomingCheckProducts, setIncomingCheckProducts] = useState<DailyHandoverProductItem[]>([]);
+  // Danh sách tổng số lượng theo danh mục khi Nhận ca (Vợt + ...)
+  const [incomingSummaries, setIncomingSummaries] = useState<DailyHandoverCategorySummary[]>([]);
   const [incomingCheckCategories, setIncomingCheckCategories] = useState<string[]>([]);
   const [incomingCheckLoading, setIncomingCheckLoading] = useState(false);
-  const [incomingActualCounts, setIncomingActualCounts] = useState<Record<string, number>>({});
-  const [incomingCategoryFilter, setIncomingCategoryFilter] = useState<string>("ALL");
-  const [incomingSearchTerm, setIncomingSearchTerm] = useState<string>("");
+  const [incomingActualTotals, setIncomingActualTotals] = useState<Record<string, number>>({});
 
   const [lateCheckoutModal, setLateCheckoutModal] = useState<{ lateMinutes: number } | null>(null);
   const [lateCheckoutReasonInput, setLateCheckoutReasonInput] = useState("");
@@ -93,7 +95,6 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
 
       if (isValidIncoming && incoming) {
         setPendingHandoverToConfirm(incoming);
-        // Nếu bấm Nhận ca (forceOpenPopup) hoặc nhân viên chưa bấm "Để sau" -> bật popup kiểm tra ngay
         if (forceOpenPopup || !dismissedHandoverIdsRef.current.has(incoming._id)) {
           setShowIncomingHandoverPopup(true);
         }
@@ -110,8 +111,20 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
     async (forceOpenPopup = false) => {
       if (!currentUser || currentUser.role !== "SALES") return;
       try {
-        const res = await fetchHandoversApi({ status: "PENDING" });
-        applyPendingIncomingHandover(res.pendingIncomingHandover || null, forceOpenPopup);
+        const [todayRes, handoverRes] = await Promise.all([
+          getTodayAttendanceApi().catch(() => null),
+          fetchHandoversApi({ status: "PENDING" }).catch(() => null),
+        ]);
+
+        if (todayRes) {
+          setAttendance(todayRes.attendance);
+          if (todayRes.currentShiftHandover) {
+            setCurrentShiftHandover(todayRes.currentShiftHandover);
+          }
+        }
+        if (handoverRes) {
+          applyPendingIncomingHandover(handoverRes.pendingIncomingHandover || null, forceOpenPopup);
+        }
       } catch {
         // ignore
       }
@@ -119,45 +132,60 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
     [currentUser, applyPendingIncomingHandover]
   );
 
-  // Tải danh sách sản phẩm kiểm tra (Vợt + Nhóm ngẫu nhiên) của phiếu bàn giao đang chờ xác nhận
+  // Tải thông tin tổng số lượng kiểm tra (Vợt + ...) của phiếu bàn giao đang chờ xác nhận
   useEffect(() => {
     if (!showIncomingHandoverPopup || !pendingHandoverToConfirm) return;
     let cancelled = false;
-    const loadIncomingChecklist = async () => {
+    const loadIncomingSummary = async () => {
       setIncomingCheckLoading(true);
       try {
         const checkData = await fetchDailyHandoverCheckApi(pendingHandoverToConfirm.date);
         if (cancelled) return;
-        const prods = Array.isArray(checkData.products) ? checkData.products : [];
-        setIncomingCheckProducts(prods);
+
+        let catSummaries: DailyHandoverCategorySummary[] = Array.isArray(checkData.categorySummaries)
+          ? checkData.categorySummaries
+          : [];
+
+        if (catSummaries.length === 0) {
+          const prods = Array.isArray(checkData.products) ? checkData.products : [];
+          const cats = Array.isArray(checkData.checkedCategories)
+            ? checkData.checkedCategories
+            : ["Vợt"];
+          catSummaries = cats.map((catName, idx) => {
+            const matching = prods.filter((p) => p.categoryName === catName);
+            return {
+              categoryId: catName,
+              categoryCode: catName.toUpperCase(),
+              categoryName: catName,
+              isPrimaryCategory: idx === 0,
+              unit: matching[0]?.unit || "Cái",
+              productCount: matching.length,
+              expectedTotalQty: matching.reduce(
+                (sum, p) => sum + (Number(p.stockQtyFloor1) || 0),
+                0
+              ),
+            };
+          });
+        }
+
+        setIncomingSummaries(catSummaries);
         setIncomingCheckCategories(
           Array.isArray(checkData.checkedCategories) && checkData.checkedCategories.length > 0
             ? checkData.checkedCategories
             : Array.isArray(pendingHandoverToConfirm.checkedCategories)
             ? pendingHandoverToConfirm.checkedCategories
-            : []
+            : ["Vợt"]
         );
 
-        // Khởi tạo số lượng kiểm thực tế: mặc định lấy số lượng ca trước bàn giao (nếu có lệch) hoặc tồn Tầng 1
-        const discrepancyMap = new Map<string, number>();
-        if (Array.isArray(pendingHandoverToConfirm.discrepancies)) {
-          for (const d of pendingHandoverToConfirm.discrepancies) {
-            if (d.productCode) discrepancyMap.set(String(d.productCode), Number(d.actual));
-          }
+        const initTotals: Record<string, number> = {};
+        for (const s of catSummaries) {
+          const key = s.categoryCode || s.categoryName;
+          initTotals[key] = 0;
         }
-        const initialCounts: Record<string, number> = {};
-        for (const p of prods) {
-          const reported =
-            discrepancyMap.get(String(p.code)) ??
-            Number(p.stockQtyFloor1 || 0);
-          initialCounts[p._id] = reported;
-        }
-        setIncomingActualCounts(initialCounts);
-        setIncomingCategoryFilter("ALL");
-        setIncomingSearchTerm("");
+        setIncomingActualTotals(initTotals);
       } catch {
         if (!cancelled) {
-          setIncomingCheckProducts([]);
+          setIncomingSummaries([]);
         }
       } finally {
         if (!cancelled) {
@@ -165,7 +193,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
         }
       }
     };
-    loadIncomingChecklist();
+    loadIncomingSummary();
     return () => {
       cancelled = true;
     };
@@ -175,10 +203,21 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
     if (!currentUser || currentUser.role === "ADMIN") return;
     setLoading(true);
     try {
-      const todayRes = await getTodayAttendanceApi();
+      const [todayRes, checkData] = await Promise.all([
+        getTodayAttendanceApi(),
+        currentUser.role === "SALES" || currentUser.department === "SALES"
+          ? fetchDailyHandoverCheckApi().catch(() => null)
+          : Promise.resolve(null),
+      ]);
       setAttendance(todayRes.attendance);
       setIsWfhToday(todayRes.isWfhToday);
       setIsEarlyApprovedToday(Boolean(todayRes.isEarlyApprovedToday));
+      if (todayRes.currentShiftHandover) {
+        setCurrentShiftHandover(todayRes.currentShiftHandover);
+      }
+      if (checkData) {
+        setDailyCheckInfo(checkData);
+      }
 
       if (currentUser.role === "SALES") {
         if (todayRes.pendingIncomingHandover) {
@@ -198,7 +237,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
     loadData();
   }, [loadData]);
 
-  // Tự động kiểm tra định kỳ khi Ca 2 đang trong ca làm việc để hiển thị ngay popup khi Ca 1 vừa gửi phiếu kết ca
+  // Tự động kiểm tra định kỳ khi Sales đang trong ca làm việc (hoặc đang chờ Ca 2 xác nhận để hoàn tất Check-out)
   useEffect(() => {
     if (!currentUser || currentUser.role !== "SALES") return;
     const isWorkingNow = Boolean(attendance && !attendance.checkOutTime);
@@ -220,7 +259,6 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
   }, [currentUser, attendance, pollPendingHandover]);
 
   // Qua 00:00 sang ngày mới: reset đồng hồ & tải lại trạng thái chấm công của ngày mới
-  // (ca hôm trước quên check-out sẽ được ghi nhận "Quên check-out" trên bảng công, không đếm tiếp)
   const dayRef = useRef<string>(localDateStr());
   useEffect(() => {
     const watcher = setInterval(() => {
@@ -228,6 +266,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
       if (today !== dayRef.current) {
         dayRef.current = today;
         setAttendance(null);
+        setCurrentShiftHandover(null);
         setElapsedText("00:00:00");
         setIsLunchPaused(false);
         loadData();
@@ -237,6 +276,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
   }, [loadData]);
 
   // Tính toán đồng hồ chạy trực tiếp mỗi giây khi đã Check-in
+  // Khi nhân viên đã bấm xác nhận gửi bàn giao ca (pendingCheckOutTime đã ghi nhận), đồng hồ dừng đúng tại mốc bấm gửi!
   useEffect(() => {
     if (!attendance?.checkInTime) {
       setElapsedText("00:00:00");
@@ -244,7 +284,6 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
       return;
     }
 
-    // Bản ghi không phải của hôm nay (quên check-out từ hôm trước) -> không đếm tiếp, reset về 00:00:00
     if (attendance.date && attendance.date !== localDateStr()) {
       setElapsedText("00:00:00");
       setIsLunchPaused(false);
@@ -253,7 +292,6 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
     }
 
     const computeElapsed = () => {
-      // Đồng hồ đang chạy mà vừa qua 00:00 -> dừng & reset ngay
       if (!attendance.checkOutTime && attendance.date && attendance.date !== localDateStr()) {
         setElapsedText("00:00:00");
         setIsLunchPaused(false);
@@ -262,13 +300,13 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
       }
       const startRaw = attendance.workStartTime || attendance.checkInTime;
       const startTime = new Date(startRaw);
-      const endTime = attendance.checkOutTime ? new Date(attendance.checkOutTime) : new Date();
+      const lockedOutRaw = attendance.checkOutTime || attendance.pendingCheckOutTime;
+      const endTime = lockedOutRaw ? new Date(lockedOutRaw) : new Date();
 
       const isOffice =
         currentUser?.department === "OFFICE" ||
         (currentUser?.role && currentUser.role !== "SALES");
 
-      // Kiểm tra giờ nghỉ trưa 12:00 - 13:00 (1 tiếng: sáng 08:30-12:00, chiều 13:00-17:30) đối với khối Văn phòng
       const lunchStart = new Date(endTime);
       lunchStart.setHours(12, 0, 0, 0);
       const lunchEnd = new Date(endTime);
@@ -279,7 +317,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
       let deductMs = 0;
 
       if (isOffice) {
-        if (!attendance.checkOutTime && endTime >= lunchStart && endTime < lunchEnd) {
+        if (!lockedOutRaw && endTime >= lunchStart && endTime < lunchEnd) {
           pausedNow = true;
           effectiveEnd = lunchStart;
         } else if (endTime >= lunchEnd && startTime < lunchEnd) {
@@ -304,13 +342,13 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
     };
 
     computeElapsed();
-    if (!attendance.checkOutTime) {
+    if (!attendance.checkOutTime && !attendance.pendingCheckOutTime) {
       const timer = setInterval(computeElapsed, 1000);
       return () => clearInterval(timer);
     }
   }, [attendance, currentUser]);
 
-  // Bấm nút PLAY -> Check-in trực tiếp trên Header (Kiểm tra theo IP mạng Wi-Fi phía server)
+  // Bấm nút PLAY -> Check-in trực tiếp trên Header
   const handlePlayCheckIn = async () => {
     if (actionLoading) return;
     setActionLoading(true);
@@ -321,6 +359,8 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
       showNotice("ok", "Đã bắt đầu tính giờ ca làm việc!");
       if (currentUser?.role === "SALES") {
         dismissedHandoverIdsRef.current.clear();
+        const checkData = await fetchDailyHandoverCheckApi().catch(() => null);
+        if (checkData) setDailyCheckInfo(checkData);
         await pollPendingHandover(true);
       }
     } catch (err: any) {
@@ -335,11 +375,12 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
     forceEarly = false,
     earlyReason = "",
     lateCheckoutReason = "",
-    bypassClientPendingCheck = false
+    bypassClientPendingCheck = false,
+    submittedHandoverOverride?: ShiftHandoverRecord | null
   ) => {
     if (actionLoading) return;
 
-    // Nếu là nhân viên SALES đang còn phiếu bàn giao ca từ Ca trước chưa xác nhận -> bắt buộc mở popup xác nhận trước khi kết ca
+    // 1. Nếu là nhân viên SALES đang còn phiếu bàn giao ca từ Ca trước chưa xác nhận -> bắt buộc mở popup xác nhận trước
     if (!bypassClientPendingCheck && currentUser?.role === "SALES" && pendingHandoverToConfirm) {
       setMustConfirmBeforeCheckout(true);
       setShowIncomingHandoverPopup(true);
@@ -347,7 +388,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
       return;
     }
 
-    // Kiểm tra đã đủ giờ kết thúc ca chưa (Ca 1: 17:30, Ca 2 & Ca 1+2 BOTH: 21:00)
+    // 2. Kiểm tra đã đủ giờ kết thúc ca chưa (Ca 1: 17:30, Ca 2 & BOTH: 21:00)
     const now = new Date();
     const totalMinutesNow = now.getHours() * 60 + now.getMinutes();
     const isEnd21 = attendance?.shiftCode === "SHIFT_2" || attendance?.shiftCode === "BOTH";
@@ -361,17 +402,38 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
       const remainStr = rHours > 0 ? `${rHours} giờ ${rMins} phút` : `${rMins} phút`;
       showNotice(
         "err",
-        `Chưa đủ giờ kết thúc ca (${shiftEndLabel} - còn ${remainStr}), chưa thể bàn giao ca & Check-out!`
+        `Chưa tới giờ tan ca (${shiftEndLabel} - còn ${remainStr}). Bạn có thể bấm nút "Kiểm hàng" cạnh đồng hồ để lưu bản nháp trước!`
       );
       return;
     }
 
-    // Nhân viên Bán hàng làm 1 ca (SHIFT_1 / SHIFT_2) check-out trễ > 5 phút phải nhập lý do để HR xem xét
+    // 3. Nếu là nhân viên SALES (không phải WFH) đến giờ tan ca bấm Check-out mà chưa xác nhận gửi bàn giao ca (hoặc đang là bản nháp DRAFT) -> Hiển thị ngay bản bàn giao ca để xác nhận gửi
+    const effectiveHandover = submittedHandoverOverride ?? currentShiftHandover;
+    const isSalesOnSite =
+      (currentUser?.role === "SALES" || currentUser?.department === "SALES") && !isWfhToday;
+    if (isSalesOnSite && (!effectiveHandover || effectiveHandover.status === "DRAFT")) {
+      setShowHandoverModal(true);
+      return;
+    }
+
+    // 4. Kiểm tra lý do check-out trễ > 5 phút (tính theo thời điểm bấm gửi bàn giao nếu đã có)
     const isSalesOneShift =
       (currentUser?.department === "SALES" || currentUser?.role === "SALES") &&
       attendance?.shiftCode !== "BOTH";
-    const diffLateOut = totalMinutesNow - shiftEndMinutes;
-    if (isSalesOneShift && diffLateOut > 5 && !lateCheckoutReason.trim()) {
+    const refTime = attendance?.pendingCheckOutTime
+      ? new Date(attendance.pendingCheckOutTime)
+      : effectiveHandover?.submittedAt
+      ? new Date(effectiveHandover.submittedAt)
+      : now;
+    const refMinutes = refTime.getHours() * 60 + refTime.getMinutes();
+    const diffLateOut = refMinutes - shiftEndMinutes;
+    const finalLateReason =
+      lateCheckoutReason.trim() ||
+      attendance?.lateCheckoutReason ||
+      effectiveHandover?.lateCheckoutReason ||
+      "";
+
+    if (isSalesOneShift && diffLateOut > 5 && !finalLateReason) {
       setLateCheckoutModal({ lateMinutes: diffLateOut });
       return;
     }
@@ -382,12 +444,27 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
       const res = await checkOutApi({
         forceEarly: forceEarly || isEarlyApprovedToday,
         earlyReason: earlyReason || (isEarlyApprovedToday ? "Đã được HR duyệt về sớm" : ""),
-        lateCheckoutReason: lateCheckoutReason.trim() || undefined,
+        lateCheckoutReason: finalLateReason || undefined,
+        requireConfirmation: true,
       });
       setAttendance(res.attendance);
       setLateCheckoutModal(null);
       setLateCheckoutReasonInput("");
-      showNotice("ok", `Đã kết thúc ca (${res.attendance.totalWorkHours}h)!`);
+
+      if (res.awaitingHandoverConfirm) {
+        const lockedTimeStr = res.attendance.pendingCheckOutTime
+          ? new Date(res.attendance.pendingCheckOutTime).toLocaleTimeString("vi-VN", {
+              hour: "2-digit",
+              minute: "2-digit",
+            })
+          : shiftEndLabel;
+        showNotice(
+          "ok",
+          `Đã chốt giờ ra ca (${lockedTimeStr}) & gửi bàn giao! Khi Ca 2 xác nhận bạn sẽ hoàn tất Check-out.`
+        );
+      } else {
+        showNotice("ok", `Đã kết thúc ca (${res.attendance.totalWorkHours}h)!`);
+      }
 
       const today = new Date();
       if (today.getDay() === 5 && currentUser?.role === "SALES") {
@@ -426,19 +503,20 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
     try {
       const shouldContinueCheckout = mustConfirmBeforeCheckout;
 
-      // Ghi nhận thêm nếu ca nhận kiểm đếm thực tế phát hiện lệch so với tồn Tầng 1
-      const receiverDiscrepancies = incomingCheckProducts
-        .map((p) => {
-          const expected = Number(p.stockQtyFloor1 || 0);
-          const actual = incomingActualCounts[p._id] ?? expected;
-          return { p, expected, actual };
+      // Ghi nhận nếu Ca nhận kiểm đếm tổng số lượng thực tế có chênh lệch
+      const receiverDiffs = incomingSummaries
+        .map((s) => {
+          const key = s.categoryCode || s.categoryName;
+          const expected = s.expectedTotalQty;
+          const actual = incomingActualTotals[key] ?? expected;
+          return { s, expected, actual };
         })
         .filter((x) => x.actual !== x.expected);
 
       let finalConfirmNote = confirmNoteInput.trim();
-      if (receiverDiscrepancies.length > 0) {
-        const diffSummary = receiverDiscrepancies
-          .map((x) => `${x.p.code} (HT:${x.expected} -> Kiểm nhận:${x.actual})`)
+      if (receiverDiffs.length > 0) {
+        const diffSummary = receiverDiffs
+          .map((x) => `Tổng ${x.s.categoryName} (Tồn T1:${x.expected} -> Kiểm nhận:${x.actual})`)
           .join(", ");
         finalConfirmNote = finalConfirmNote
           ? `${finalConfirmNote} | Kiểm nhận ca lệch: ${diffSummary}`
@@ -453,7 +531,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
       showNotice(
         "ok",
         accept
-          ? `Đã kiểm tra & xác nhận nhận ca từ ${pendingHandoverToConfirm.fromStaffName}!`
+          ? `Đã xác nhận nhận bàn giao ca từ ${pendingHandoverToConfirm.fromStaffName}!`
           : "Đã ghi nhận báo lệch thông tin bàn giao ca!"
       );
       setPendingHandoverToConfirm(null);
@@ -475,6 +553,29 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
 
   const isWorking = Boolean(attendance && !attendance.checkOutTime);
   const isCompleted = Boolean(attendance && attendance.checkOutTime);
+  const isSalesStaff =
+    currentUser.role === "SALES" || currentUser.department === "SALES";
+  const isAwaitingNextShiftConfirm = Boolean(
+    isWorking &&
+      attendance?.pendingCheckOutTime &&
+      currentShiftHandover?.status === "PENDING"
+  );
+
+  const now = new Date();
+  const totalMinutesNow = now.getHours() * 60 + now.getMinutes();
+  const isEnd21 = attendance?.shiftCode === "SHIFT_2" || attendance?.shiftCode === "BOTH";
+  const shiftEndMinutes = isEnd21 ? 21 * 60 : 17 * 60 + 30;
+  const shiftEndLabel = isEnd21 ? "21:00" : "17:30";
+  const canConfirmCheckoutNow =
+    totalMinutesNow >= shiftEndMinutes || isEarlyApprovedToday;
+
+  // Nhãn hiển thị trên nút Kiểm hàng cạnh đồng hồ đếm giờ (VD: "Vợt (151) + Giày (106)")
+  const checkButtonSummaryText =
+    dailyCheckInfo?.categorySummaries && dailyCheckInfo.categorySummaries.length > 0
+      ? dailyCheckInfo.categorySummaries
+          .map((s) => `${s.categoryName} (${s.expectedTotalQty})`)
+          .join(" + ")
+      : dailyCheckInfo?.checkedCategoryLabel || "Vợt + ...";
 
   const activeCheckCategories =
     incomingCheckCategories.length > 0
@@ -484,31 +585,9 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
       ? pendingHandoverToConfirm.checkedCategories
       : ["Vợt"];
 
-  const filteredIncomingProducts = incomingCheckProducts.filter((p) => {
-    const expected = Number(p.stockQtyFloor1 || 0);
-    const actual = incomingActualCounts[p._id] ?? expected;
-    if (incomingCategoryFilter === "DIFF" && actual === expected) return false;
-    if (
-      incomingCategoryFilter !== "ALL" &&
-      incomingCategoryFilter !== "DIFF" &&
-      p.categoryName !== incomingCategoryFilter
-    ) {
-      return false;
-    }
-    if (incomingSearchTerm.trim()) {
-      const q = incomingSearchTerm.trim().toLowerCase();
-      return (
-        String(p.name || "").toLowerCase().includes(q) ||
-        String(p.code || "").toLowerCase().includes(q)
-      );
-    }
-    return true;
-  });
-
-  const incomingDiffCount = incomingCheckProducts.filter((p) => {
-    const expected = Number(p.stockQtyFloor1 || 0);
-    const actual = incomingActualCounts[p._id] ?? expected;
-    return actual !== expected;
+  const incomingDiffCount = incomingSummaries.filter((s) => {
+    const key = s.categoryCode || s.categoryName;
+    return (incomingActualTotals[key] ?? 0) !== s.expectedTotalQty;
   }).length;
 
   return (
@@ -525,7 +604,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
           </span>
         )}
 
-        {/* Chưa Check-in: Nút PLAY + Đồng hồ 00:00:00 (Tự động nhận Ca theo giờ Check-in) */}
+        {/* Chưa Check-in: Nút PLAY + Đồng hồ 00:00:00 */}
         {!attendance && !loading && (
           <button
             type="button"
@@ -539,15 +618,23 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
           </button>
         )}
 
-        {/* Đang trong ca: Nút PAUSE + Đồng hồ đếm giờ HH:MM:SS */}
+        {/* Đang trong ca: Nút PAUSE + Đồng hồ đếm giờ HH:MM:SS + Nút KIỂM HÀNG luôn ở cạnh đồng hồ */}
         {isWorking && (
           <>
             <button
               type="button"
               onClick={() => handlePauseCheckOut(false)}
               disabled={actionLoading}
-              title="Bấm Pause để kết thúc ca (Check-out)"
-              className="p-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-extrabold text-xs flex items-center justify-center shadow-md transition cursor-pointer"
+              title={
+                isAwaitingNextShiftConfirm
+                  ? "Đã chốt giờ gửi bàn giao - Đang chờ Ca 2 xác nhận"
+                  : "Bấm Pause để kết thúc ca (Check-out)"
+              }
+              className={`p-1.5 rounded-xl font-extrabold text-xs flex items-center justify-center shadow-md transition cursor-pointer disabled:opacity-50 ${
+                isAwaitingNextShiftConfirm
+                  ? "bg-sky-500 hover:bg-sky-400 text-slate-950"
+                  : "bg-amber-500 hover:bg-amber-400 text-slate-950"
+              }`}
             >
               <Pause className="w-3.5 h-3.5 fill-current" />
             </button>
@@ -555,13 +642,56 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
             <div className="flex items-center gap-2 px-1.5 py-0.5">
               <span
                 className={`w-2 h-2 rounded-full ${
-                  isLunchPaused ? "bg-amber-400" : "bg-emerald-400 animate-pulse"
+                  isAwaitingNextShiftConfirm
+                    ? "bg-sky-400"
+                    : isLunchPaused
+                    ? "bg-amber-400"
+                    : "bg-emerald-400 animate-pulse"
                 }`}
               />
               <span className="font-mono font-black text-sm sm:text-base text-emerald-400 tracking-wider">
                 {elapsedText}
               </span>
             </div>
+
+            {/* Nút Kiểm hàng luôn hiển thị cạnh đồng hồ đếm giờ cho nhân viên Sales */}
+            {isSalesStaff && !isWfhToday && (
+              <div className="flex items-center pl-2 border-l border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setShowHandoverModal(true)}
+                  title="Mở bảng Kiểm hàng (Tổng số lượng mặt hàng kiểm trong ngày, Tiền mặt trong quầy & Lý do)"
+                  className={`px-2.5 py-1 rounded-xl text-[11px] font-extrabold flex items-center gap-1.5 shadow-sm transition cursor-pointer ${
+                    isAwaitingNextShiftConfirm
+                      ? "bg-sky-500/20 border border-sky-400/40 text-sky-300 hover:bg-sky-500/30"
+                      : currentShiftHandover?.status === "DRAFT"
+                      ? "bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 hover:bg-emerald-500/30"
+                      : "bg-slate-700 hover:bg-slate-600 text-slate-100 border border-slate-600"
+                  }`}
+                >
+                  <Boxes className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span className="truncate max-w-[200px]">
+                    Kiểm hàng: {checkButtonSummaryText}
+                  </span>
+                  {isAwaitingNextShiftConfirm ? (
+                    <span className="px-1.5 py-0.5 rounded bg-sky-500 text-slate-950 text-[10px] font-black">
+                      Chờ Ca 2 (
+                      {attendance?.pendingCheckOutTime
+                        ? new Date(attendance.pendingCheckOutTime).toLocaleTimeString("vi-VN", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : shiftEndLabel}
+                      )
+                    </span>
+                  ) : currentShiftHandover?.status === "DRAFT" ? (
+                    <span className="px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 text-[10px] font-black">
+                      Nháp
+                    </span>
+                  ) : null}
+                </button>
+              </div>
+            )}
           </>
         )}
 
@@ -582,7 +712,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
           </div>
         )}
 
-        {/* Nếu Sales có phiếu bàn giao từ ca trước (Ca 1 giao Ca 2 cùng ngày hoặc Ca tối giao Ca 1 sáng hôm sau) đang chờ xác nhận */}
+        {/* Nếu Sales có phiếu bàn giao từ ca trước đang chờ xác nhận */}
         {pendingHandoverToConfirm && (
           <div className="flex items-center gap-1 pl-2 border-l border-slate-700">
             <button
@@ -606,7 +736,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
         )}
       </div>
 
-      {/* Thông báo nhỏ gọn ngay dưới thanh Header (không mở popup) */}
+      {/* Thông báo nhỏ gọn ngay dưới thanh Header */}
       {feedback && (
         <div
           className={`absolute top-full mt-1.5 z-50 whitespace-nowrap px-3 py-1.5 rounded-xl text-xs font-bold shadow-lg flex items-center gap-1.5 border ${
@@ -624,10 +754,10 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
         </div>
       )}
 
-      {/* Popup Kiểm Tra & Xác Nhận Bàn Giao Ca (Hiển thị đầy đủ danh sách Vợt + Nhóm ngẫu nhiên để kiểm đếm khi Nhận ca) */}
+      {/* Popup Kiểm Tra & Xác Nhận Bàn Giao Ca (Hiển thị Tổng số lượng theo mặt hàng kiểm trong ngày) */}
       {showIncomingHandoverPopup && pendingHandoverToConfirm && (
         <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 text-slate-900">
-          <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[92vh] shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-xl w-full max-h-[92vh] shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-fade-in">
             {/* Header */}
             <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
@@ -642,8 +772,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
                       : "Kiểm Tra & Nhận Bàn Giao Từ Ca 1"}
                   </h3>
                   <p className="text-xs text-slate-300 mt-0.5">
-                    Người bàn giao: <b className="text-emerald-400">{pendingHandoverToConfirm.fromStaffName}</b> • Ngày{" "}
-                    {pendingHandoverToConfirm.date} • Nhóm kiểm:{" "}
+                    Người bàn giao: <b className="text-emerald-400">{pendingHandoverToConfirm.fromStaffName}</b> • Nhóm kiểm:{" "}
                     <b className="text-amber-300">{activeCheckCategories.join(" + ")}</b>
                   </p>
                 </div>
@@ -669,220 +798,143 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
                     </div>
                     <p className="mt-0.5 text-rose-700">
                       Bạn chưa xác nhận phiếu bàn giao từ{" "}
-                      {pendingHandoverToConfirm.date !== localDateStr() ||
-                      pendingHandoverToConfirm.shiftCode !== "SHIFT_1"
-                        ? `Ca tối ngày ${pendingHandoverToConfirm.date}`
-                        : "Ca 1"}{" "}
-                      ({pendingHandoverToConfirm.fromStaffName}). Vui lòng kiểm tra danh sách bên dưới và bấm{" "}
-                      <b>Xác nhận thông tin bàn giao</b> để tiếp tục kết ca.
+                      <b>{pendingHandoverToConfirm.fromStaffName}</b>. Vui lòng kiểm tra tổng số lượng bên dưới và bấm{" "}
+                      <b>Xác nhận nhận ca</b>.
                     </p>
                   </div>
                 </div>
               ) : (
                 <div className="p-3 bg-sky-50 border border-sky-200 text-sky-900 rounded-2xl">
-                  {pendingHandoverToConfirm.date !== localDateStr() ||
-                  pendingHandoverToConfirm.shiftCode !== "SHIFT_1" ? (
-                    <>
-                      Ca tối ngày <b>{pendingHandoverToConfirm.date}</b> đã lập phiếu bàn giao cho Ca 1 sáng nay. Vui lòng kiểm tra{" "}
-                      <b>tiền mặt trong két</b> và <b>danh sách sản phẩm ({activeCheckCategories.join(" + ")})</b> bên dưới rồi bấm{" "}
-                      <b>Xác nhận nhận ca</b> (hoặc bấm <b>Để sau</b> nếu muốn kiểm hàng sau).
-                    </>
-                  ) : (
-                    <>
-                      Ca 1 vừa hoàn tất phiếu kết ca. Vui lòng kiểm tra <b>tiền mặt trong két</b> và{" "}
-                      <b>danh sách sản phẩm ({activeCheckCategories.join(" + ")})</b> bên dưới rồi bấm{" "}
-                      <b>Xác nhận nhận ca</b> (hoặc bấm <b>Để sau</b> nếu muốn kiểm hàng sau).
-                    </>
-                  )}
+                  Vui lòng kiểm tra <b>tiền mặt trong quầy</b> và <b>tổng số lượng ({activeCheckCategories.join(" + ")})</b> do{" "}
+                  <b>{pendingHandoverToConfirm.fromStaffName}</b> bàn giao rồi bấm <b>Xác nhận nhận ca</b> (khi bạn xác nhận, ca trước sẽ hoàn tất Check-out theo đúng giờ họ đã bấm gửi).
                 </div>
               )}
 
-              {/* Thông tin tiền mặt & danh mục kiểm */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="p-3.5 bg-amber-50/70 border border-amber-200 rounded-2xl space-y-1">
-                  <div className="flex items-center gap-1.5 text-amber-800 font-bold">
-                    <Coins className="w-4 h-4 text-amber-600" />
-                    <span>Tiền mặt trong két bàn giao</span>
-                  </div>
-                  <div className="font-mono text-lg font-black text-amber-950">
-                    {Number(pendingHandoverToConfirm.cashBalance || 0).toLocaleString("vi-VN")} đ
-                  </div>
+              {/* Thông tin tiền mặt trong quầy */}
+              <div className="p-3.5 bg-amber-50/70 border border-amber-200 rounded-2xl flex items-center justify-between">
+                <div className="flex items-center gap-2 text-amber-900 font-bold">
+                  <Coins className="w-4 h-4 text-amber-600" />
+                  <span>Tiền mặt trong quầy bàn giao:</span>
                 </div>
-
-                <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-2xl space-y-1">
-                  <div className="flex items-center gap-1.5 text-emerald-800 font-bold">
-                    <Boxes className="w-4 h-4 text-emerald-600" />
-                    <span>Nhóm hàng kiểm tra nhận ca</span>
-                  </div>
-                  <div className="font-extrabold text-sm text-emerald-950">
-                    {activeCheckCategories.join(" + ")}
-                  </div>
-                  <div className="text-[11px] text-emerald-700">
-                    Tổng cộng {incomingCheckProducts.length || pendingHandoverToConfirm.totalCheckedProducts || 0} mã tại Tầng 1
-                  </div>
+                <div className="font-mono text-base font-black text-amber-950">
+                  {Number(pendingHandoverToConfirm.cashBalance || 0).toLocaleString("vi-VN")} đ
                 </div>
               </div>
 
-              {/* Ghi chú từ ca trước */}
+              {/* Lý do / Ghi chú từ ca trước */}
               {pendingHandoverToConfirm.notes && (
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                  <span className="font-bold text-slate-700">Ghi chú từ ca trước: </span>
+                  <span className="font-bold text-slate-700">Lý do / Ghi chú từ ca trước: </span>
                   <span className="text-slate-800">{pendingHandoverToConfirm.notes}</span>
                 </div>
               )}
 
-              {/* DANH SÁCH SẢN PHẨM KIỂM TRA NHẬN CA (Vợt + Nhóm ngẫu nhiên) */}
-              <div className="space-y-2.5 border border-slate-200 rounded-2xl p-3.5 bg-slate-50/60">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="font-extrabold text-slate-900 flex items-center gap-1.5">
-                    <Boxes className="w-4 h-4 text-emerald-600" />
-                    <span>
-                      Danh sách sản phẩm kiểm tra nhận ca ({activeCheckCategories.join(" + ")})
-                    </span>
-                  </div>
+              {/* BẢNG TỔNG SỐ LƯỢNG MẶT HÀNG KIỂM TRONG NGÀY */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-extrabold text-slate-900">
+                    Tổng số lượng mặt hàng kiểm ({activeCheckCategories.join(" + ")})
+                  </span>
                   {incomingDiffCount > 0 ? (
                     <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold text-[11px]">
-                      Đang lệch {incomingDiffCount} mã
+                      Đang lệch {incomingDiffCount} nhóm
                     </span>
                   ) : (
                     <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[11px]">
-                      Khớp 100% ({incomingCheckProducts.length} mã)
+                      Khớp tồn Tầng 1
                     </span>
                   )}
                 </div>
 
-                {/* Bộ lọc nhóm & ô tìm kiếm */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setIncomingCategoryFilter("ALL")}
-                      className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition cursor-pointer ${
-                        incomingCategoryFilter === "ALL"
-                          ? "bg-slate-900 text-white"
-                          : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-100"
-                      }`}
-                    >
-                      Tất cả ({incomingCheckProducts.length})
-                    </button>
-                    {activeCheckCategories.map((cat) => {
-                      const count = incomingCheckProducts.filter((p) => p.categoryName === cat).length;
-                      return (
-                        <button
-                          key={cat}
-                          type="button"
-                          onClick={() => setIncomingCategoryFilter(cat)}
-                          className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition cursor-pointer ${
-                            incomingCategoryFilter === cat
-                              ? "bg-emerald-600 text-white"
-                              : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-100"
-                          }`}
-                        >
-                          {cat} ({count})
-                        </button>
-                      );
-                    })}
-                    {incomingDiffCount > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setIncomingCategoryFilter("DIFF")}
-                        className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition cursor-pointer ${
-                          incomingCategoryFilter === "DIFF"
-                            ? "bg-amber-600 text-white"
-                            : "bg-amber-50 border border-amber-200 text-amber-800"
-                        }`}
-                      >
-                        Đang lệch ({incomingDiffCount})
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="relative sm:w-52">
-                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      value={incomingSearchTerm}
-                      onChange={(e) => setIncomingSearchTerm(e.target.value)}
-                      placeholder="Tìm tên hoặc mã SP..."
-                      className="w-full pl-8 pr-2.5 py-1 bg-white border border-slate-200 rounded-lg text-[11px] outline-none focus:ring-2 focus:ring-emerald-500"
-                    />
-                  </div>
-                </div>
-
-                {/* Bảng sản phẩm kiểm đếm */}
                 {incomingCheckLoading ? (
-                  <div className="py-8 text-center text-slate-400 font-semibold">
-                    Đang tải danh sách sản phẩm kiểm tra Kho Tầng 1...
-                  </div>
-                ) : filteredIncomingProducts.length === 0 ? (
                   <div className="py-6 text-center text-slate-400">
-                    Không có sản phẩm nào trong bộ lọc này.
+                    Đang tải tổng số lượng kiểm tra...
                   </div>
                 ) : (
-                  <div className="border border-slate-200 rounded-xl bg-white divide-y divide-slate-100 max-h-60 overflow-y-auto">
-                    {filteredIncomingProducts.map((p) => {
-                      const expected = Number(p.stockQtyFloor1 || 0);
-                      const actual = incomingActualCounts[p._id] ?? expected;
+                  <div className="space-y-2">
+                    {incomingSummaries.map((item) => {
+                      const key = item.categoryCode || item.categoryName;
+                      const expected = item.expectedTotalQty;
+                      const actual = incomingActualTotals[key] ?? 0;
                       const isDiff = actual !== expected;
+                      const prevReported = Array.isArray(pendingHandoverToConfirm.categoryCounts)
+                        ? pendingHandoverToConfirm.categoryCounts.find(
+                            (c) =>
+                              c.categoryCode === item.categoryCode ||
+                              c.categoryName === item.categoryName
+                          )?.actualTotalQty
+                        : undefined;
+
                       return (
                         <div
-                          key={p._id}
-                          className={`p-2.5 flex items-center justify-between gap-2 ${
-                            isDiff ? "bg-amber-50/70" : "hover:bg-slate-50"
+                          key={key}
+                          className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 ${
+                            isDiff
+                              ? "bg-amber-50/70 border-amber-300"
+                              : "bg-slate-50 border-slate-200"
                           }`}
                         >
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-bold text-[10px]">
-                                {p.categoryName}
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="px-2.5 py-0.5 rounded-lg bg-emerald-600 text-white font-extrabold text-xs">
+                                {item.categoryName}
                               </span>
-                              <span className="font-bold text-slate-900 truncate">{p.name}</span>
+                              <span className="font-bold text-slate-700">
+                                Tổng tất cả size, màu
+                              </span>
                             </div>
-                            <div className="text-[11px] text-slate-500 font-mono mt-0.5">
-                              Mã: {p.code} • Tồn HT Tầng 1: <b className="text-slate-800">{expected}</b>{" "}
-                              {p.unit || "cây"}
+                            <div className="mt-1 text-slate-600 flex flex-wrap items-center gap-2">
+                              <span>
+                                Tồn Tầng 1 đối chiếu:{" "}
+                                <b className="font-mono text-slate-900">{expected}</b>{" "}
+                                {item.unit || "Cái"}
+                              </span>
+                              {typeof prevReported === "number" && (
+                                <span className="text-emerald-800 font-semibold">
+                                  • Ca trước đếm:{" "}
+                                  <b className="font-mono">{prevReported}</b>
+                                </span>
+                              )}
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-1.5 shrink-0">
+                          <div className="flex items-center gap-1 bg-white border border-slate-300 p-1 rounded-xl">
                             <button
                               type="button"
                               onClick={() =>
-                                setIncomingActualCounts((prev) => ({
+                                setIncomingActualTotals((prev) => ({
                                   ...prev,
-                                  [p._id]: Math.max(0, (prev[p._id] ?? expected) - 1),
+                                  [key]: Math.max(0, (prev[key] ?? 0) - 1),
                                 }))
                               }
-                              className="w-6 h-6 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 font-bold text-slate-700 flex items-center justify-center cursor-pointer"
+                              className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-700 cursor-pointer"
                             >
-                              -
+                              <Minus className="w-3.5 h-3.5" />
                             </button>
                             <input
                               type="text"
                               inputMode="numeric"
-                              value={String(actual)}
+                              value={actual}
                               onChange={(e) => {
                                 const digits = e.target.value.replace(/\D/g, "");
                                 const val = digits ? parseInt(digits, 10) : 0;
-                                setIncomingActualCounts((prev) => ({ ...prev, [p._id]: val }));
+                                setIncomingActualTotals((prev) => ({ ...prev, [key]: val }));
                               }}
-                              className={`w-12 text-center py-1 rounded-lg border font-mono font-bold text-xs outline-none ${
-                                isDiff
-                                  ? "border-amber-400 bg-amber-50 text-amber-900"
-                                  : "border-slate-200 bg-slate-50 text-slate-900"
+                              className={`w-14 text-center font-mono font-black text-sm outline-none ${
+                                isDiff ? "text-amber-700" : "text-emerald-700"
                               }`}
                             />
                             <button
                               type="button"
                               onClick={() =>
-                                setIncomingActualCounts((prev) => ({
+                                setIncomingActualTotals((prev) => ({
                                   ...prev,
-                                  [p._id]: (prev[p._id] ?? expected) + 1,
+                                  [key]: (prev[key] ?? 0) + 1,
                                 }))
                               }
-                              className="w-6 h-6 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 font-bold text-slate-700 flex items-center justify-center cursor-pointer"
+                              className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-700 cursor-pointer"
                             >
-                              +
+                              <Plus className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         </div>
@@ -895,13 +947,13 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
               {/* Ghi chú xác nhận của Ca nhận */}
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
-                  Ghi chú kiểm tra của Ca nhận (tuỳ chọn)
+                  Lý do / Ghi chú của Ca nhận (có thể ghi hoặc không)
                 </label>
                 <input
                   type="text"
                   value={confirmNoteInput}
                   onChange={(e) => setConfirmNoteInput(e.target.value)}
-                  placeholder="VD: Đã kiểm đủ tiền két và hàng trưng bày Tầng 1..."
+                  placeholder="VD: Đã đếm đủ tổng số lượng và tiền mặt..."
                   className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
@@ -914,7 +966,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
                 onClick={handleDismissIncomingHandover}
                 className="px-3.5 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold transition cursor-pointer"
               >
-                Để sau (Tắt popup kiểm hàng sau)
+                Để sau
               </button>
 
               <div className="flex items-center gap-2">
@@ -947,11 +999,26 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
         <ShiftHandoverModal
           currentUser={currentUser}
           shiftCode={attendance?.shiftCode || "SHIFT_1"}
+          existingHandover={currentShiftHandover}
+          canConfirmCheckout={canConfirmCheckoutNow}
+          shiftEndLabel={shiftEndLabel}
           onClose={() => setShowHandoverModal(false)}
-          onSuccess={async () => {
+          onSavedDraft={(draft) => {
+            setCurrentShiftHandover(draft);
+            showNotice("ok", "Đã lưu bản nháp kiểm hàng trong ca!");
+          }}
+          onSuccess={async (submittedHandover, lateReasonFromModal) => {
             setShowHandoverModal(false);
-            showNotice("ok", "Đã gửi biên bản bàn giao Kho Tầng 1!");
-            await handlePauseCheckOut(false, "", lateCheckoutReasonInput, true);
+            if (submittedHandover) {
+              setCurrentShiftHandover(submittedHandover);
+            }
+            await handlePauseCheckOut(
+              false,
+              "",
+              lateReasonFromModal || lateCheckoutReasonInput,
+              true,
+              submittedHandover
+            );
           }}
         />
       )}
@@ -964,8 +1031,8 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
               Check-out trễ {lateCheckoutModal.lateMinutes} phút sau giờ kết ca
             </div>
             <p className="text-slate-600 leading-relaxed">
-              Quy định chỉ cho phép check-out trễ tối đa <b>5 phút</b>. Vì bạn check-out sau 5 phút, vui lòng nhập{" "}
-              <b>lý do check-out trễ</b> để HR xem xét có tính thời gian này vào tăng ca hay không:
+              Quy định chỉ cho phép check-out trễ tối đa <b>5 phút</b>. Vì bạn gửi phiếu / check-out sau 5 phút, vui lòng nhập{" "}
+              <b>lý do check-out trễ</b> để HR xem xét:
             </p>
             <textarea
               rows={3}

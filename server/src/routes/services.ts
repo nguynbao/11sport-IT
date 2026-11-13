@@ -6,6 +6,7 @@ import { filterAndRankBySearch, normalizePhoneDigits } from '../utils/search';
 import {
   IServiceOrderItem,
   IServicePaymentRecord,
+  ServiceDiscountType,
   ServiceOrderStatus,
   ServicePaymentMethod,
   ServicePaymentStatus,
@@ -491,6 +492,125 @@ servicesRouter.get('/service-orders/:id', async (req, res, next) => {
   }
 });
 
+async function normalizeAndPriceServiceItems(
+  rawItems: any[],
+  options?: {
+    billDiscountType?: string;
+    billDiscountValue?: number;
+    paymentMethod?: string;
+    hasCardFee?: boolean;
+    cardFeePercent?: number;
+  }
+) {
+  const normalizedItems: IServiceOrderItem[] = [];
+  let rawSubtotal = 0;
+  let itemDiscountTotal = 0;
+  let subtotal = 0;
+
+  for (const rawItem of rawItems) {
+    let st = null;
+    if (rawItem.serviceTypeId) {
+      st = await serviceTypeRepo.findById(String(rawItem.serviceTypeId));
+    }
+    const serviceName = String(rawItem.serviceName || st?.name || '').trim();
+    if (!serviceName) {
+      throw new ApiError(400, 'INVALID_SERVICE_ITEM', 'Tên dịch vụ không được để trống');
+    }
+    const serviceCode = String(
+      rawItem.serviceCode || st?.code || normalizeServiceCode(`DV_${serviceName}`)
+    ).trim();
+    const unit = String(rawItem.unit || st?.unit || 'Cây').trim();
+    const defaultPrice = Math.max(
+      0,
+      Math.round(Number(rawItem.defaultPrice ?? st?.defaultPrice ?? 0))
+    );
+    const unitPrice =
+      rawItem.unitPrice !== undefined && rawItem.unitPrice !== null && rawItem.unitPrice !== ''
+        ? Math.max(0, Math.round(Number(rawItem.unitPrice) || 0))
+        : defaultPrice;
+    const quantity = Math.max(1, Math.round(Number(rawItem.quantity) || 1));
+    const grossLine = unitPrice * quantity;
+
+    const discountType: ServiceDiscountType = ['NONE', 'PERCENT', 'AMOUNT'].includes(
+      String(rawItem.discountType || '').toUpperCase()
+    )
+      ? (String(rawItem.discountType).toUpperCase() as ServiceDiscountType)
+      : 'NONE';
+    const discountValue = Math.max(0, Number(rawItem.discountValue) || 0);
+    let discountAmount = 0;
+    if (discountType === 'PERCENT') {
+      discountAmount = Math.min(
+        grossLine,
+        Math.round((grossLine * Math.min(100, discountValue)) / 100)
+      );
+    } else if (discountType === 'AMOUNT') {
+      discountAmount = Math.min(grossLine, Math.round(discountValue));
+    }
+    const lineTotal = Math.max(0, grossLine - discountAmount);
+
+    rawSubtotal += grossLine;
+    itemDiscountTotal += discountAmount;
+    subtotal += lineTotal;
+
+    normalizedItems.push({
+      serviceTypeId: st ? String(st._id) : String(rawItem.serviceTypeId || ''),
+      serviceCode,
+      serviceName,
+      unit,
+      defaultPrice,
+      unitPrice,
+      quantity,
+      discountType,
+      discountValue,
+      discountAmount,
+      lineTotal,
+      itemNote: String(rawItem.itemNote || '').trim(),
+    });
+  }
+
+  const billDiscountType: ServiceDiscountType = ['NONE', 'PERCENT', 'AMOUNT'].includes(
+    String(options?.billDiscountType || '').toUpperCase()
+  )
+    ? (String(options?.billDiscountType).toUpperCase() as ServiceDiscountType)
+    : 'NONE';
+  const billDiscountValue = Math.max(0, Number(options?.billDiscountValue) || 0);
+  let billDiscountAmount = 0;
+  if (billDiscountType === 'PERCENT') {
+    billDiscountAmount = Math.min(
+      subtotal,
+      Math.round((subtotal * Math.min(100, billDiscountValue)) / 100)
+    );
+  } else if (billDiscountType === 'AMOUNT') {
+    billDiscountAmount = Math.min(subtotal, Math.round(billDiscountValue));
+  }
+  const afterBillDiscount = Math.max(0, subtotal - billDiscountAmount);
+
+  const isCard = String(options?.paymentMethod || '').toUpperCase() === 'CARD';
+  const hasCardFee = Boolean(options?.hasCardFee && isCard);
+  const cardFeePercent = hasCardFee
+    ? options?.cardFeePercent !== undefined && options?.cardFeePercent !== null
+      ? Math.max(0, Number(options.cardFeePercent) || 0)
+      : 1.8
+    : 0;
+  const cardFee = hasCardFee ? Math.round((afterBillDiscount * cardFeePercent) / 100) : 0;
+  const totalAmount = afterBillDiscount + cardFee;
+
+  return {
+    normalizedItems,
+    rawSubtotal,
+    itemDiscountTotal,
+    subtotal,
+    billDiscountType,
+    billDiscountValue,
+    billDiscountAmount,
+    afterBillDiscount,
+    hasCardFee,
+    cardFeePercent,
+    cardFee,
+    totalAmount,
+  };
+}
+
 // POST /api/v1/service-orders
 servicesRouter.post('/service-orders', async (req, res, next) => {
   try {
@@ -501,6 +621,10 @@ servicesRouter.post('/service-orders', async (req, res, next) => {
       receivedAt,
       dueAt,
       items,
+      billDiscountType,
+      billDiscountValue,
+      hasCardFee,
+      cardFeePercent,
       paidAmount,
       paymentMethod,
       note,
@@ -541,50 +665,31 @@ servicesRouter.post('/service-orders', async (req, res, next) => {
       );
     }
 
-    const normalizedItems: IServiceOrderItem[] = [];
-    let totalAmount = 0;
-
-    for (const rawItem of items) {
-      let st = null;
-      if (rawItem.serviceTypeId) {
-        st = await serviceTypeRepo.findById(String(rawItem.serviceTypeId));
-      }
-      const serviceName = String(rawItem.serviceName || st?.name || '').trim();
-      if (!serviceName) {
-        throw new ApiError(400, 'INVALID_SERVICE_ITEM', 'Tên dịch vụ không được để trống');
-      }
-      const serviceCode = String(
-        rawItem.serviceCode || st?.code || normalizeServiceCode(`DV_${serviceName}`)
-      ).trim();
-      const unit = String(rawItem.unit || st?.unit || 'Cây').trim();
-      const defaultPrice = Math.max(
-        0,
-        Math.round(Number(rawItem.defaultPrice ?? st?.defaultPrice ?? 0))
-      );
-      const unitPrice =
-        rawItem.unitPrice !== undefined && rawItem.unitPrice !== null && rawItem.unitPrice !== ''
-          ? Math.max(0, Math.round(Number(rawItem.unitPrice) || 0))
-          : defaultPrice;
-      const quantity = Math.max(1, Math.round(Number(rawItem.quantity) || 1));
-      const lineTotal = unitPrice * quantity;
-      totalAmount += lineTotal;
-
-      normalizedItems.push({
-        serviceTypeId: st ? String(st._id) : String(rawItem.serviceTypeId || ''),
-        serviceCode,
-        serviceName,
-        unit,
-        defaultPrice,
-        unitPrice,
-        quantity,
-        lineTotal,
-        itemNote: String(rawItem.itemNote || '').trim(),
-      });
-    }
-
     const method: ServicePaymentMethod = ['CASH', 'BANKING', 'CARD'].includes(paymentMethod)
       ? paymentMethod
       : 'CASH';
+
+    const pricing = await normalizeAndPriceServiceItems(items, {
+      billDiscountType,
+      billDiscountValue,
+      paymentMethod: method,
+      hasCardFee: method === 'CARD' ? (hasCardFee !== undefined ? Boolean(hasCardFee) : false) : false,
+      cardFeePercent,
+    });
+
+    const {
+      normalizedItems,
+      rawSubtotal,
+      itemDiscountTotal,
+      subtotal,
+      billDiscountType: resolvedBillDiscountType,
+      billDiscountValue: resolvedBillDiscountValue,
+      billDiscountAmount,
+      hasCardFee: resolvedHasCardFee,
+      cardFeePercent: resolvedCardFeePercent,
+      cardFee,
+      totalAmount,
+    } = pricing;
 
     const requestedPaid =
       paidAmount !== undefined && paidAmount !== null
@@ -603,6 +708,7 @@ servicesRouter.post('/service-orders', async (req, res, next) => {
         _id: `sp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         amount: finalPaid,
         method,
+        cardFee: finalPaid >= totalAmount ? cardFee : 0,
         note: finalPaid >= totalAmount ? 'Thanh toán đủ lúc gửi đồ' : 'Đặt cọc lúc gửi đồ',
         paidAt: new Date(),
         collectedBy: actorId,
@@ -622,6 +728,15 @@ servicesRouter.post('/service-orders', async (req, res, next) => {
       dueAt: parsedDueAt,
       returnedAt: null,
       items: normalizedItems,
+      rawSubtotal,
+      itemDiscountTotal,
+      subtotal,
+      billDiscountType: resolvedBillDiscountType,
+      billDiscountValue: resolvedBillDiscountValue,
+      billDiscountAmount,
+      hasCardFee: resolvedHasCardFee,
+      cardFeePercent: resolvedCardFeePercent,
+      cardFee,
       totalAmount,
       paidAmount: finalPaid,
       remainingAmount,
@@ -648,7 +763,7 @@ servicesRouter.post('/service-orders', async (req, res, next) => {
 // PATCH /api/v1/service-orders/:id
 servicesRouter.patch('/service-orders/:id', async (req, res, next) => {
   try {
-    const actor = await requireServiceRoles(req, SERVICE_ORDER_ALLOWED_ROLES);
+    const actor = await requireServiceRoles(req, SERVICE_TYPE_MANAGE_ROLES);
     const { id } = req.params;
     const existing = await serviceOrderRepo.findById(id);
     if (!existing) {
@@ -661,6 +776,11 @@ servicesRouter.patch('/service-orders/:id', async (req, res, next) => {
       receivedAt,
       dueAt,
       items,
+      billDiscountType,
+      billDiscountValue,
+      hasCardFee,
+      cardFeePercent,
+      paymentMethod,
       note,
       status,
     } = req.body || {};
@@ -725,61 +845,62 @@ servicesRouter.patch('/service-orders/:id', async (req, res, next) => {
       }
     }
 
-    if (Array.isArray(items) && items.length > 0) {
-      const normalizedItems: IServiceOrderItem[] = [];
-      let totalAmount = 0;
+    const shouldReprice =
+      (Array.isArray(items) && items.length > 0) ||
+      billDiscountType !== undefined ||
+      billDiscountValue !== undefined ||
+      hasCardFee !== undefined ||
+      cardFeePercent !== undefined;
 
-      for (const rawItem of items) {
-        let st = null;
-        if (rawItem.serviceTypeId) {
-          st = await serviceTypeRepo.findById(String(rawItem.serviceTypeId));
-        }
-        const serviceName = String(rawItem.serviceName || st?.name || '').trim();
-        if (!serviceName) {
-          throw new ApiError(400, 'INVALID_SERVICE_ITEM', 'Tên dịch vụ không được để trống');
-        }
-        const serviceCode = String(
-          rawItem.serviceCode || st?.code || normalizeServiceCode(`DV_${serviceName}`)
-        ).trim();
-        const unit = String(rawItem.unit || st?.unit || 'Cây').trim();
-        const defaultPrice = Math.max(
-          0,
-          Math.round(Number(rawItem.defaultPrice ?? st?.defaultPrice ?? 0))
-        );
-        const unitPrice = Math.max(0, Math.round(Number(rawItem.unitPrice ?? defaultPrice) || 0));
-        const quantity = Math.max(1, Math.round(Number(rawItem.quantity) || 1));
-        const lineTotal = unitPrice * quantity;
-        totalAmount += lineTotal;
+    if (shouldReprice) {
+      const sourceItems =
+        Array.isArray(items) && items.length > 0 ? items : existing.items || [];
+      const effectiveMethod: ServicePaymentMethod = ['CASH', 'BANKING', 'CARD'].includes(
+        paymentMethod
+      )
+        ? paymentMethod
+        : existing.paymentMethod || 'CASH';
 
-        normalizedItems.push({
-          serviceTypeId: st ? String(st._id) : String(rawItem.serviceTypeId || ''),
-          serviceCode,
-          serviceName,
-          unit,
-          defaultPrice,
-          unitPrice,
-          quantity,
-          lineTotal,
-          itemNote: String(rawItem.itemNote || '').trim(),
-        });
-      }
+      const pricing = await normalizeAndPriceServiceItems(sourceItems, {
+        billDiscountType:
+          billDiscountType !== undefined ? billDiscountType : existing.billDiscountType,
+        billDiscountValue:
+          billDiscountValue !== undefined ? billDiscountValue : existing.billDiscountValue,
+        paymentMethod: effectiveMethod,
+        hasCardFee:
+          hasCardFee !== undefined ? Boolean(hasCardFee) : Boolean(existing.hasCardFee),
+        cardFeePercent:
+          cardFeePercent !== undefined ? cardFeePercent : existing.cardFeePercent,
+      });
 
       const currentPaid = Number(existing.paidAmount) || 0;
-      if (totalAmount < currentPaid) {
+      if (pricing.totalAmount < currentPaid) {
         throw new ApiError(
           400,
           'TOTAL_BELOW_PAID_AMOUNT',
-          `Tổng tiền mới (${totalAmount.toLocaleString('vi-VN')} VND) không được nhỏ hơn số tiền khách đã thanh toán (${currentPaid.toLocaleString('vi-VN')} VND)`,
+          `Tổng tiền mới (${pricing.totalAmount.toLocaleString('vi-VN')} VND) không được nhỏ hơn số tiền khách đã thanh toán (${currentPaid.toLocaleString('vi-VN')} VND)`,
           {
             totalAmount: 'Không được nhỏ hơn số tiền đã thu',
           }
         );
       }
-      const remainingAmount = Math.max(0, totalAmount - currentPaid);
-      updateData.items = normalizedItems;
-      updateData.totalAmount = totalAmount;
+      const remainingAmount = Math.max(0, pricing.totalAmount - currentPaid);
+      updateData.items = pricing.normalizedItems;
+      updateData.rawSubtotal = pricing.rawSubtotal;
+      updateData.itemDiscountTotal = pricing.itemDiscountTotal;
+      updateData.subtotal = pricing.subtotal;
+      updateData.billDiscountType = pricing.billDiscountType;
+      updateData.billDiscountValue = pricing.billDiscountValue;
+      updateData.billDiscountAmount = pricing.billDiscountAmount;
+      updateData.hasCardFee = pricing.hasCardFee;
+      updateData.cardFeePercent = pricing.cardFeePercent;
+      updateData.cardFee = pricing.cardFee;
+      updateData.totalAmount = pricing.totalAmount;
       updateData.remainingAmount = remainingAmount;
-      updateData.paymentStatus = computePaymentStatus(totalAmount, currentPaid);
+      updateData.paymentStatus = computePaymentStatus(pricing.totalAmount, currentPaid);
+      if (paymentMethod && ['CASH', 'BANKING', 'CARD'].includes(paymentMethod)) {
+        updateData.paymentMethod = paymentMethod;
+      }
     }
 
     updateData.updatedBy = actor.userId;
@@ -796,6 +917,8 @@ servicesRouter.patch('/service-orders/:id', async (req, res, next) => {
 });
 
 // PATCH /api/v1/service-orders/:id/status
+// - ADMIN / ACCOUNTANT: được chuyển mọi trạng thái xử lý (RECEIVED -> IN_PROGRESS -> READY -> RETURNED / CANCELLED)
+// - SALES: chỉ được xác nhận lấy tiền & trả đồ (RETURNED) khi đơn đã được Admin xác nhận làm xong (existing.status === 'READY')
 servicesRouter.patch('/service-orders/:id/status', async (req, res, next) => {
   try {
     const actor = await requireServiceRoles(req, SERVICE_ORDER_ALLOWED_ROLES);
@@ -805,7 +928,14 @@ servicesRouter.patch('/service-orders/:id/status', async (req, res, next) => {
       throw new ApiError(404, 'SERVICE_ORDER_NOT_FOUND', 'Không tìm thấy đơn dịch vụ');
     }
 
-    const { status, collectAmount, paymentMethod, paymentNote } = req.body || {};
+    const {
+      status,
+      collectAmount,
+      paymentMethod,
+      hasCardFee,
+      cardFeePercent,
+      paymentNote,
+    } = req.body || {};
     const validStatuses: ServiceOrderStatus[] = [
       'RECEIVED',
       'IN_PROGRESS',
@@ -815,6 +945,17 @@ servicesRouter.patch('/service-orders/:id/status', async (req, res, next) => {
     ];
     if (!validStatuses.includes(status)) {
       throw new ApiError(400, 'INVALID_STATUS', 'Trạng thái xử lý không hợp lệ');
+    }
+
+    const isAdminOrAccountant = SERVICE_TYPE_MANAGE_ROLES.includes(actor.role);
+    if (!isAdminOrAccountant) {
+      if (existing.status !== 'READY' || status !== 'RETURNED') {
+        throw new ApiError(
+          403,
+          'FORBIDDEN',
+          'Chỉ Quản lý (Admin) mới được cập nhật tiến độ xử lý. Nhân viên bán hàng chỉ được xác nhận lấy tiền & trả đồ khi đơn hàng đã làm xong.'
+        );
+      }
     }
 
     const actorId = actor.userId;
@@ -838,15 +979,27 @@ servicesRouter.patch('/service-orders/:id/status', async (req, res, next) => {
         const method: ServicePaymentMethod = ['CASH', 'BANKING', 'CARD'].includes(paymentMethod)
           ? paymentMethod
           : existing.paymentMethod || 'CASH';
-        const nextPaid = (Number(existing.paidAmount) || 0) + actualCollect;
-        const totalAmount = Number(existing.totalAmount) || 0;
+
+        const applyExtraCardFee =
+          method === 'CARD' && Boolean(hasCardFee);
+        const pct = applyExtraCardFee
+          ? cardFeePercent !== undefined
+            ? Math.max(0, Number(cardFeePercent) || 0)
+            : 1.8
+          : 0;
+        const extraCardFee = applyExtraCardFee ? Math.round((actualCollect * pct) / 100) : 0;
+
+        const totalAmount = (Number(existing.totalAmount) || 0) + extraCardFee;
+        const paidThisTime = actualCollect + extraCardFee;
+        const nextPaid = (Number(existing.paidAmount) || 0) + paidThisTime;
         const nextRemaining = Math.max(0, totalAmount - nextPaid);
         const nextPayments: IServicePaymentRecord[] = [
           ...(existing.payments || []),
           {
             _id: `sp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-            amount: actualCollect,
+            amount: paidThisTime,
             method,
+            cardFee: extraCardFee,
             note: String(paymentNote || 'Thu tiền khi trả đồ cho khách').trim(),
             paidAt: new Date(),
             collectedBy: actorId,
@@ -854,6 +1007,12 @@ servicesRouter.patch('/service-orders/:id/status', async (req, res, next) => {
           },
         ];
 
+        if (extraCardFee > 0) {
+          updateData.hasCardFee = true;
+          updateData.cardFeePercent = pct;
+          updateData.cardFee = (Number(existing.cardFee) || 0) + extraCardFee;
+          updateData.totalAmount = totalAmount;
+        }
         updateData.paidAmount = nextPaid;
         updateData.remainingAmount = nextRemaining;
         updateData.paymentStatus = computePaymentStatus(totalAmount, nextPaid);
@@ -882,7 +1041,7 @@ servicesRouter.post('/service-orders/:id/payments', async (req, res, next) => {
       throw new ApiError(404, 'SERVICE_ORDER_NOT_FOUND', 'Không tìm thấy đơn dịch vụ');
     }
 
-    const { amount, method, note } = req.body || {};
+    const { amount, method, hasCardFee, cardFeePercent, markReturned, note } = req.body || {};
     const parsedAmount = Math.round(Number(amount) || 0);
     if (parsedAmount <= 0) {
       throw new ApiError(400, 'INVALID_PAYMENT_AMOUNT', 'Số tiền thu phải lớn hơn 0');
@@ -898,11 +1057,21 @@ servicesRouter.post('/service-orders/:id/payments', async (req, res, next) => {
       ? method
       : 'CASH';
 
+    const applyExtraCardFee =
+      payMethod === 'CARD' && Boolean(hasCardFee);
+    const pct = applyExtraCardFee
+      ? cardFeePercent !== undefined
+        ? Math.max(0, Number(cardFeePercent) || 0)
+        : 1.8
+      : 0;
+    const extraCardFee = applyExtraCardFee ? Math.round((collectAmount * pct) / 100) : 0;
+
     const actorId = actor.userId;
     const actorName = actor.fullName;
 
-    const nextPaid = (Number(existing.paidAmount) || 0) + collectAmount;
-    const totalAmount = Number(existing.totalAmount) || 0;
+    const totalAmount = (Number(existing.totalAmount) || 0) + extraCardFee;
+    const paidThisTime = collectAmount + extraCardFee;
+    const nextPaid = (Number(existing.paidAmount) || 0) + paidThisTime;
     const nextRemaining = Math.max(0, totalAmount - nextPaid);
     const nextPaymentStatus = computePaymentStatus(totalAmount, nextPaid);
 
@@ -910,8 +1079,9 @@ servicesRouter.post('/service-orders/:id/payments', async (req, res, next) => {
       ...(existing.payments || []),
       {
         _id: `sp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-        amount: collectAmount,
+        amount: paidThisTime,
         method: payMethod,
+        cardFee: extraCardFee,
         note: String(note || 'Thu tiền đơn dịch vụ').trim(),
         paidAt: new Date(),
         collectedBy: actorId,
@@ -919,7 +1089,7 @@ servicesRouter.post('/service-orders/:id/payments', async (req, res, next) => {
       },
     ];
 
-    const updated = await serviceOrderRepo.updateById(id, {
+    const patchFields: Record<string, any> = {
       paidAmount: nextPaid,
       remainingAmount: nextRemaining,
       paymentStatus: nextPaymentStatus,
@@ -927,7 +1097,19 @@ servicesRouter.post('/service-orders/:id/payments', async (req, res, next) => {
       payments: nextPayments,
       updatedBy: actorId,
       updatedByName: actorName,
-    });
+    };
+    if (Boolean(markReturned) && existing.status === 'READY') {
+      patchFields.status = 'RETURNED';
+      patchFields.returnedAt = existing.returnedAt || new Date();
+    }
+    if (extraCardFee > 0) {
+      patchFields.hasCardFee = true;
+      patchFields.cardFeePercent = pct;
+      patchFields.cardFee = (Number(existing.cardFee) || 0) + extraCardFee;
+      patchFields.totalAmount = totalAmount;
+    }
+
+    const updated = await serviceOrderRepo.updateById(id, patchFields);
 
     res.json({
       data: enrichServiceOrder(updated),

@@ -15,6 +15,7 @@ export interface IAttendance extends Document {
   checkInTime: Date;
   workStartTime: Date;
   checkOutTime?: Date;
+  pendingCheckOutTime?: Date;
   checkInType: AttendanceCheckInType;
   latitude?: number;
   longitude?: number;
@@ -48,6 +49,7 @@ const AttendanceSchema = new Schema<IAttendance>(
     checkInTime: { type: Date, required: true },
     workStartTime: { type: Date, required: true },
     checkOutTime: { type: Date },
+    pendingCheckOutTime: { type: Date },
     checkInType: { type: String, enum: ['STANDARD', 'WFH'], default: 'STANDARD' },
     latitude: { type: Number },
     longitude: { type: Number },

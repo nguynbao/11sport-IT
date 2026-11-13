@@ -852,12 +852,15 @@
       - **Khối Văn phòng (`OFFICE`)**: Tự check-out muộn sau `17:30` không tự động tính tăng ca; chỉ được tính tăng ca khi **được HR yêu cầu / phê duyệt** (`overtimeStatus: "APPROVED"`).
     - Nếu nhân viên là `SALES` (không phải `WFH`) khi bấm nút Pause (Check-out):
       1. **Kiểm tra xác nhận bàn giao từ ca trước**: Nếu trong ngày đang có phiếu bàn giao của ca trước (`status === "PENDING"`, `fromStaffId !== user.userId`) mà nhân viên hiện tại chưa xác nhận -> Trả lỗi `400 INCOMING_HANDOVER_CONFIRM_REQUIRED` kèm `{ pendingHandoverId }` để giao diện tự động bật lại Popup xác nhận phiếu bàn giao ca trước (nhân viên bắt buộc phải xác nhận thông tin bàn giao của ca trước thì mới được phép kết ca).
-      2. **Kiểm tra lập phiếu kết ca của ca hiện tại**: Nếu nhân viên chưa lập phiếu kết ca & bàn giao Kho Tầng 1 của ca mình, trả lỗi `400 HANDOVER_REQUIRED` để giao diện tự động mở popup Kết ca (`ShiftHandoverModal`). Sau khi gửi phiếu kết ca, hệ thống tự động hoàn tất Check-out.
+      2. **Kiểm tra lập phiếu kết ca của ca hiện tại**: Nếu nhân viên chưa lập phiếu kết ca & bàn giao Kho Tầng 1 của ca mình (hoặc phiếu mới đang ở trạng thái bản nháp `DRAFT`), trả lỗi `400 HANDOVER_REQUIRED` để giao diện tự động mở popup Kiểm hàng & Kết ca (`ShiftHandoverModal`).
+      3. **Tính giờ Check-out theo đúng thời điểm nhân viên bấm xác nhận gửi bàn giao ca (`submittedAt` / `pendingCheckOutTime`)**:
+         - Khi nhân viên Ca 1 bấm xác nhận gửi bàn giao ca lúc tan ca (ví dụ `17:30`), hệ thống ghi nhận ngay thời điểm bấm gửi vào `pendingCheckOutTime` (và kiểm tra `lateCheckoutReason` nếu bấm gửi trễ > 5 phút sau giờ tan ca).
+         - Khi nhân viên Ca 2 xác nhận phiếu bàn giao (dù Ca 2 đếm lại trễ 15 phút, ví dụ `17:45`), hệ thống hoàn tất Check-out cho Ca 1 nhưng **vẫn tính giờ Check-out (`checkOutTime`) và tổng giờ công (`totalWorkHours`) theo đúng thời điểm Ca 1 bấm xác nhận gửi bàn giao (`17:30`)**.
     - Tự động trừ giờ nghỉ trưa: Với nhân viên `OFFICE`, khoảng thời gian `12:00 - 13:00` (1h; ca sáng `08:30 - 12:00`, ca chiều `13:00 - 17:30`) được tự động loại khỏi giờ làm thực tế.
-  - Response: `{ "data": { "attendance": { "id": "...", "checkOutTime": "...", "totalWorkHours": 8, "status": "COMPLETED | EARLY_LEAVE", "lateCheckoutMinutes": 0, "lateCheckoutReason": "", "overtimeStatus": "NONE | PENDING | APPROVED | REJECTED", "overtimeApprovedMinutes": 0 } } }`
+  - Response: `{ "data": { "attendance": { "id": "...", "checkOutTime": "...", "pendingCheckOutTime"?: "...", "totalWorkHours": 8, "status": "COMPLETED | EARLY_LEAVE", "lateCheckoutMinutes": 0, "lateCheckoutReason": "", "overtimeStatus": "NONE | PENDING | APPROVED | REJECTED", "overtimeApprovedMinutes": 0 } } }`
 
 - `GET /api/v1/attendance/today`
-  - Trả về trạng thái chấm công của nhân viên hôm nay, ca được phân công, trạng thái WFH, trạng thái phiếu bàn giao ca của bản thân (`handoverStatus`), và phiếu bàn giao đang chờ xác nhận từ ca trước (`pendingIncomingHandover`).
+  - Trả về trạng thái chấm công của nhân viên hôm nay, ca được phân công, trạng thái WFH, trạng thái phiếu bàn giao ca của bản thân (`handoverStatus`, `currentShiftHandover`), và phiếu bàn giao đang chờ xác nhận từ ca trước (`pendingIncomingHandover`).
 
 - `GET /api/v1/attendance/history`
   - Query: `?month=11&year=2026&staffId=...` (lọc đúng theo tháng/năm nếu truyền).
@@ -968,18 +971,25 @@
   - HR kích hoạt tự động xếp ca dựa trên preferences Thứ 6: `{ "weekStart": "2026-11-09" }`.
 - `PUT /api/v1/shifts/assign`
   - HR kéo - thả (Drag & Drop) hoặc chỉnh sửa phân ca: `{ "shiftAssignmentId": "...", "staffId": "...", "date": "...", "shiftCode": "SHIFT_1 | SHIFT_2" }`.
+- `GET /api/v1/shifts/handover/schedule-config` (Role `ADMIN`, `MANAGER`, `HR`, `ACCOUNTANT`, `SALES`)
+  - Trả về cấu hình lịch kiểm hàng kết ca cố định theo từng Thứ trong tuần (`0` = Chủ Nhật, `1` = Thứ 2 .. `6` = Thứ 7) và danh sách các danh mục hàng hóa tại Tầng 1 có thể chọn đi kèm với `Vợt`.
+- `PUT /api/v1/shifts/handover/schedule-config` (Role `ADMIN`, `MANAGER`, `HR`, `ACCOUNTANT`)
+  - Quản lý tự cấu hình danh mục kiểm hàng cố định theo từng Thứ trong tuần (mỗi ngày luôn cố định `Vợt` + danh mục đi kèm được cấu hình cho thứ đó).
+  - Body: `{ "weeklySchedule": { "1": ["GIAY"], "2": ["BONG_THI_DAU"], "3": ["PHU_KIEN"], "4": ["GIAY"], "5": ["BONG_THI_DAU"], "6": ["GIAY"], "0": ["PHU_KIEN"] } }`.
 - `GET /api/v1/shifts/handover/daily-check`
   - Query: `?date=2026-11-12` (mặc định ngày hiện tại theo giờ địa phương).
-  - **Quy tắc Random Danh mục Kiểm Kết Ca theo ngày (`Vợt + ...`)**:
-    - Mỗi ngày hệ thống tự động chọn ngẫu nhiên tất định (deterministic theo ngày `YYYY-MM-DD`) **2 nhóm danh mục** tại Kho Tầng 1 để nhân viên kiểm đếm khi kết ca:
+  - **Quy tắc Danh mục Kiểm Kết Ca Cố Định Theo Ngày (`Vợt + ...`) & Tổng Số Lượng Tầng 1**:
+    - Mỗi ngày trong tuần hệ thống lấy theo cấu hình lịch cố định theo Thứ của Quản lý (nếu chưa cấu hình thì xoay vòng cố định theo thứ):
       - **Danh mục bắt buộc cố định (luôn có)**: `Vợt` (`primaryCategory`).
-      - **Danh mục đi kèm xoay vòng ngẫu nhiên theo ngày**: 1 danh mục trong các danh mục còn lại (`Giày`, `Phụ kiện`, `Thời trang`, `Bóng thi đấu`... — `companionCategory`), ví dụ: `Vợt + Giày`, `Vợt + Phụ kiện`, `Vợt + Thời trang`, `Vợt + Bóng thi đấu`.
-  - Response: `{ "data": { "date": "2026-11-12", "categoryLabel": "Vợt + Phụ kiện", "checkedCategories": ["Vợt", "Phụ kiện"], "primaryCategory": { "_id": "...", "code": "VOT", "name": "Vợt", "productCount": 24 }, "companionCategory": { "_id": "...", "code": "PHU_KIEN", "name": "Phụ kiện", "productCount": 25 }, "availableCompanionCategories": [...], "products": [...] }, "meta": { "totalProducts": 49 } }`
+      - **Danh mục đi kèm cố định theo Thứ trong tuần**: Danh mục được Quản lý cấu hình cho thứ đó (`companionCategory`), ví dụ: `Vợt + Giày`, `Vợt + Bóng thi đấu`, `Vợt + Phụ kiện`.
+    - Trả về `categorySummaries`: Danh sách tổng hợp số lượng tồn Tầng 1 của từng mặt hàng kiểm trong ngày (**tổng số lượng tất cả bao gồm size, màu, không cần ghi chi tiết từng mã**):
+      - `{ categoryId, categoryCode, categoryName, isPrimaryCategory, unit, productCount, expectedTotalQty }`.
+  - Response: `{ "data": { "date": "2026-11-12", "weekday": 4, "categoryLabel": "Vợt + Phụ kiện", "checkedCategories": ["Vợt", "Phụ kiện"], "categorySummaries": [{ "categoryId": "...", "categoryCode": "VOT", "categoryName": "Vợt", "isPrimaryCategory": true, "unit": "Cái", "productCount": 24, "expectedTotalQty": 151 }, ...], "primaryCategory": { ... }, "companionCategory": { ... }, "availableCompanionCategories": [...], "products": [...] }, "meta": { "totalProducts": 49 } }`
 - `GET /api/v1/shifts/handover`
-  - Query: `?date=YYYY-MM-DD&from=YYYY-MM-DD&to=YYYY-MM-DD&status=PENDING|ACCEPTED|DISCREPANCY_REPORTED|STORE_CLOSED&shiftCode=SHIFT_1|SHIFT_2|BOTH&staffId=...&onlyDiscrepancy=true|false&search=...`
+  - Query: `?date=YYYY-MM-DD&from=YYYY-MM-DD&to=YYYY-MM-DD&status=DRAFT|PENDING|ACCEPTED|DISCREPANCY_REPORTED|STORE_CLOSED&shiftCode=SHIFT_1|SHIFT_2|BOTH&staffId=...&onlyDiscrepancy=true|false&search=...`
   - **Phân quyền & Bảo mật dữ liệu phía máy chủ**:
     - Nhóm Quản lý (`ADMIN`, `MANAGER`, `HR`, `ACCOUNTANT`): được phép tra cứu, lọc toàn bộ danh sách phiếu bàn giao ca.
-    - Nhân viên `SALES` (hoặc `department === "SALES"`): **chỉ nhận được các phiếu liên quan trực tiếp đến chính họ** (`fromStaffId === user.userId`, `toStaffId === user.userId`, hoặc đúng phiếu `pendingIncomingHandover` của ca liền trước đang chờ ca của họ nhận bàn giao). Không trả về `cashBalance`, ghi chú hay lịch sử chênh lệch của các ca khác không liên quan.
+    - Nhân viên `SALES` (hoặc `department === "SALES"`): **chỉ nhận được các phiếu liên quan trực tiếp đến chính họ** (`fromStaffId === user.userId`, `toStaffId === user.userId`, bản nháp `DRAFT` cùng ca trong ngày, hoặc đúng phiếu `pendingIncomingHandover` của ca liền trước đang chờ ca của họ nhận bàn giao). Không trả về `cashBalance`, ghi chú hay lịch sử chênh lệch của các ca khác không liên quan.
     - Các vai trò khác (`MARKETING`, v.v.): trả lỗi `403 FORBIDDEN`.
   - **Giới hạn `pendingIncomingHandover` & Chặn Check-out (`INCOMING_HANDOVER_CONFIRM_REQUIRED`)**:
     - Chỉ xét phiếu `PENDING` của **ca liền trước chưa bị thay thế bởi phiếu mới hơn** và **trong phạm vi tối đa từ ngày hôm qua (`yesterday`) đến hôm nay (`today`)**; mọi phiếu `PENDING` cũ hơn (`date < yesterday`) hoặc đã có phiếu ca sau tạo mới đều hết hiệu lực chờ và không chặn Check-out.
@@ -989,17 +999,21 @@
       - Nếu phiếu đã gắn `toStaffId` thì chỉ áp dụng cho đúng `toStaffId` đó.
   - Response: `{ "data": [ShiftHandover], "meta": { "total", "pendingCount", "acceptedCount", "storeClosedCount", "discrepancyHandoverCount", "pendingIncomingHandover" } }`
 - `POST /api/v1/shifts/handover`
-  - Nhân viên Bán hàng (`SALES`) tạo phiếu kết ca & bàn giao Kho Tầng 1:
-    - Body: `{ "date"?: "2026-11-12", "shiftCode": "SHIFT_1 | SHIFT_2 | BOTH", "cashBalance": 17420000, "checkedCategories"?: ["Vợt", "Giày"], "totalCheckedProducts"?: 30, "discrepancies": [{ "productCode": "GASIA221401", "productName": "Giày Asia", "categoryName": "Giày", "expected": 10, "actual": 9, "note": "Thiếu 1" }], "notes"?: "string" }`
-    - Quy trình Bàn giao ca khép kín (Ca 1 → Ca 2 cùng ngày & Ca tối → Ca 1 sáng hôm sau):
-      - **Ca 1 (`SHIFT_1`, 08:30–17:30) giao cho Ca 2 (`SHIFT_2`, 12:00–21:00) cùng ngày**:
-        - Ca 2 đã check-in từ `12:00`. Khi Ca 1 kết ca lúc `17:30` và gửi phiếu bàn giao (`status: "PENDING"`), Ca 1 được phép Check-out ngay.
-        - Ngay khi phiếu của Ca 1 được tạo, màn hình của nhân viên Ca 2 tự động hiển thị **Popup Thông Báo Phiếu Bàn Giao Ca**. Nhân viên Ca 2 có thể bấm **Xác nhận ngay** hoặc **Tắt popup (Để sau)** để kiểm hàng sau; tuy nhiên khi Ca 2 muốn **Kết ca (Check-out)** thì bắt buộc phải xác nhận thông tin phiếu bàn giao của Ca 1 trước (`400 INCOMING_HANDOVER_CONFIRM_REQUIRED`).
-      - **Ca tối (`SHIFT_2` / `BOTH`, kết thúc 21:00) giao cho Ca 1 (`SHIFT_1` / `BOTH`) sáng hôm sau**:
-        - Khi Ca tối kết ca lúc `21:00` và gửi phiếu bàn giao (`status: "PENDING"`), phiếu này dành cho **Ca sáng ngày kế tiếp** nên Ca tối được phép Check-out ngay trong tối hôm đó.
-        - Sáng hôm sau khi nhân viên Ca 1 (`SHIFT_1` / `BOTH`) vào ca (Check-in), màn hình tự động hiển thị **Popup Thông Báo Phiếu Bàn Giao Từ Ca Tối Hôm Trước**. Nhân viên Ca 1 có thể **Xác nhận ngay** hoặc **Tắt popup để kiểm hàng sau**, nhưng bắt buộc phải xác nhận trước khi kết ca (`400 INCOMING_HANDOVER_CONFIRM_REQUIRED`).
+  - Nhân viên Bán hàng (`SALES`) lưu Bản nháp (`isDraft: true`) trong ca làm việc hoặc Xác nhận gửi phiếu bàn giao Kho Tầng 1 khi đến giờ tan ca (`isDraft: false`):
+    - Body: `{ "date"?: "2026-11-12", "shiftCode": "SHIFT_1 | SHIFT_2 | BOTH", "isDraft"?: boolean, "cashBalance": 17420000, "checkedCategories"?: ["Vợt", "Giày"], "totalCheckedProducts"?: 30, "categoryCounts"?: [{ "categoryCode": "VOT", "categoryName": "Vợt", "expectedTotalQty": 151, "actualTotalQty": 151, "unit": "Cái", "note": "" }], "discrepancies"?: [...], "notes"?: "string", "lateCheckoutReason"?: "string", "forceEarly"?: boolean, "earlyReason"?: "string" }`
+    - **Chế độ Bản nháp (`isDraft === true`)**:
+      - Lưu hoặc cập nhật phiếu ở trạng thái `status: "DRAFT"`. Nhân viên có thể mở nút **Kiểm hàng** cạnh đồng hồ đếm giờ bất cứ lúc nào trong ca để cập nhật tổng số lượng đếm được, tiền mặt trong quầy và lý do.
+    - **Chế độ Xác nhận gửi bàn giao khi tan ca (`isDraft !== true`)**:
+      - Chuyển trạng thái phiếu sang `status: "PENDING"` và ghi nhận `submittedAt = new Date()`.
+      - Nếu nhân viên gửi phiếu trễ > 5 phút sau giờ tan ca của ca 1 (`> 17:35`) hoặc ca 2 (`> 21:05`) mà chưa nhập `lateCheckoutReason`: trả lỗi `400 LATE_CHECKOUT_REASON_REQUIRED` kèm `{ lateCheckoutMinutes }` để nhân viên nhập lý do check-out trễ.
+      - Ghi nhận ngay mốc thời gian bấm xác nhận gửi bàn giao (`pendingCheckOutTime = submittedAt`) vào bản ghi chấm công `Attendance` của nhân viên để chốt đúng giờ ra ca tại thời điểm bấm gửi.
+      - **Với Ca 1 (`SHIFT_1`, 08:30–17:30) giao cho Ca 2 (`SHIFT_2`, 12:00–21:00) cùng ngày**:
+        - Gửi phiếu sang cho nhân viên Ca 2 xác nhận. Khi nhân viên Ca 2 bấm xác nhận (kể cả khi Ca 2 đếm lại trễ 15 phút, ví dụ `17:45`), Ca 1 được hoàn tất Check-out nhưng giờ Check-out của Ca 1 vẫn tính đúng vào lúc Ca 1 bấm xác nhận gửi bàn giao (`17:30`).
+      - **Với Ca tối (`SHIFT_2` / `BOTH`, kết thúc 21:00) giao cho Ca 1 (`SHIFT_1` / `BOTH`) sáng hôm sau**:
+        - Khi Ca tối gửi phiếu bàn giao (`status: "PENDING"`), Ca tối được hoàn tất Check-out theo giờ bấm gửi và phiếu chờ Ca 1 sáng hôm sau xác nhận.
 - `POST /api/v1/shifts/handover/:id/confirm`
-  - Nhân viên Ca 2 (hoặc `ADMIN` trên CMS) xác nhận thông tin phiếu bàn giao ca: `{ "accept": true, "note"?: "string" }` -> Chuyển trạng thái phiếu sang `"ACCEPTED"`, lưu `toStaffId`, `toStaffName`, `acceptedAt`, `confirmNote`.
+  - Nhân viên Ca sau (hoặc Quản lý trên CMS) xác nhận thông tin phiếu bàn giao ca: `{ "accept": true, "note"?: "string", "receiverCategoryCounts"?: [...] }` -> Chuyển trạng thái phiếu sang `"ACCEPTED"` (hoặc `"DISCREPANCY_REPORTED"` nếu `accept === false`), lưu `toStaffId`, `toStaffName`, `acceptedAt`, `confirmNote`.
+  - Đồng thời, nếu nhân viên giao ca (`fromStaffId`) đang chờ xác nhận bàn giao để hoàn tất Check-out (`pendingCheckOutTime` đã ghi nhận lúc gửi phiếu), hệ thống tự động hoàn tất Check-out cho `fromStaffId` với **`checkOutTime = pendingCheckOutTime || handover.submittedAt`** (đảm bảo tính giờ đúng lúc nhân viên Ca 1 bấm xác nhận gửi bàn giao).
 - `DELETE /api/v1/shifts/handover/:id` (Role `ADMIN`)
   - Admin xóa phiếu bàn giao ca bị lập nhầm trên CMS.
 
@@ -1089,10 +1103,17 @@
           "defaultPrice": 40000,
           "unitPrice": 50000,
           "quantity": 1,
+          "discountType": "NONE | PERCENT | AMOUNT",
+          "discountValue": 0,
+          "discountAmount": 0,
           "itemNote": "Vợt Yonex Astrox 88D, căng 11kg"
         }
       ],
-      "paidAmount": 0,
+      "billDiscountType": "NONE | PERCENT | AMOUNT",
+      "billDiscountValue": 0,
+      "hasCardFee": true,
+      "cardFeePercent": 1.8,
+      "paidAmount": 50900,
       "paymentMethod": "CASH | BANKING | CARD",
       "note": "Khách hẹn chiều mai ghé lấy"
     }
@@ -1100,14 +1121,19 @@
   - Quy tắc:
     - Bắt buộc nhập `customerName`, `customerPhone`, `dueAt` (Ngày hẹn trả) và ít nhất 1 dòng `items`.
     - `unitPrice` mặc định lấy từ `defaultPrice` của `ServiceType` nhưng cho phép nhân viên bán hàng chỉnh sửa trực tiếp trên đơn thực tế (`unitPrice >= 0`).
+    - Hỗ trợ giảm giá trên từng dòng (`discountType`: `NONE | PERCENT | AMOUNT`, `discountValue`, `discountAmount`) và giảm giá trên tổng hóa đơn (`billDiscountType`: `NONE | PERCENT | AMOUNT`, `billDiscountValue`, `billDiscountAmount`), tương tự Bán hàng POS.
+    - Hỗ trợ tính phí quẹt thẻ (`hasCardFee: boolean`, `cardFeePercent: 1.8 | 4` — **Khách Việt 1.8%** hoặc **Khách nước ngoài 4%** giống Bán hàng POS, `cardFee: number`) khi thanh toán qua `CARD` (`totalAmount = afterBillDiscount + cardFee`).
     - Hỗ trợ thu đủ tiền ngay lúc gửi (`paidAmount = totalAmount`), đặt cọc một phần (`0 < paidAmount < totalAmount`), hoặc thu tiền lúc khách nhận đồ (`paidAmount = 0`).
     - Tự động tạo mới hoặc cập nhật tên khách hàng trong bảng `Customer` theo `customerPhone`.
-- `PATCH /api/v1/service-orders/:id` (Role `ADMIN`, `ACCOUNTANT`, `SALES`)
-  - Cập nhật thông tin đơn dịch vụ (`customerName`, `customerPhone`, `receivedAt`, `dueAt`, `items`, `note`, `status`). Tự động tính lại `totalAmount`, `remainingAmount` và `paymentStatus`.
-  - **Ràng buộc nhất quán tiền đã thu**: Nếu cập nhật `items` làm tổng tiền mới thấp hơn số tiền khách đã thanh toán (`totalAmount < existing.paidAmount`), hệ thống chặn và trả lỗi `400 TOTAL_BELOW_PAID_AMOUNT` ("Tổng tiền mới không được nhỏ hơn số tiền khách đã thanh toán") để không làm lệch báo cáo doanh thu và thực thu.
-- `PATCH /api/v1/service-orders/:id/status` (Role `ADMIN`, `ACCOUNTANT`, `SALES`)
-  - Chuyển nhanh trạng thái xử lý: `{ "status": "RECEIVED | IN_PROGRESS | READY | RETURNED | CANCELLED", "collectAmount"?: number, "paymentMethod"?: "CASH | BANKING | CARD", "paymentNote"?: "string" }`.
-  - Khi chuyển sang `RETURNED`, hệ thống tự động gán `returnedAt = new Date()`. Nếu truyền kèm `collectAmount > 0` (VD: thu nốt tiền khi trả đồ cho khách), hệ thống ghi nhận luôn khoản thanh toán vào `payments`, cộng `paidAmount`, giảm `remainingAmount` và cập nhật `paymentStatus`.
+- `PATCH /api/v1/service-orders/:id` (Role `ADMIN`, `ACCOUNTANT`)
+  - Cập nhật thông tin đơn dịch vụ (`customerName`, `customerPhone`, `receivedAt`, `dueAt`, `items`, `billDiscountType`, `billDiscountValue`, `hasCardFee`, `cardFeePercent`, `note`, `status`). Tự động tính lại `subtotal`, `billDiscountAmount`, `cardFee`, `totalAmount`, `remainingAmount` và `paymentStatus`.
+  - **Ràng buộc nhất quán tiền đã thu**: Nếu cập nhật `items` hoặc giảm giá làm tổng tiền mới thấp hơn số tiền khách đã thanh toán (`totalAmount < existing.paidAmount`), hệ thống chặn và trả lỗi `400 TOTAL_BELOW_PAID_AMOUNT` ("Tổng tiền mới không được nhỏ hơn số tiền khách đã thanh toán") để không làm lệch báo cáo doanh thu và thực thu.
+- `PATCH /api/v1/service-orders/:id/status` (Role `ADMIN`, `ACCOUNTANT`, và `SALES` khi đơn đã `READY`)
+  - **Phân quyền**:
+    - Chỉ `ADMIN` / `ACCOUNTANT` trên CMS mới được phép cập nhật tiến độ xử lý (`RECEIVED`, `IN_PROGRESS`, `READY`, `CANCELLED`).
+    - Khi đơn dịch vụ đã được Admin chuyển sang **`READY` (Đã làm xong — Chờ khách lấy)**, nhân viên **`SALES`** tại quầy POS được phép xác nhận thu tiền còn lại và trả đồ cho khách (`status: "RETURNED"`, kèm `collectAmount`, `paymentMethod`, `hasCardFee`, `cardFeePercent`). Nếu đơn chưa ở trạng thái `READY`, `SALES` gọi API đổi trạng thái sẽ bị chặn `403 FORBIDDEN`.
+  - Chuyển nhanh trạng thái xử lý: `{ "status": "RECEIVED | IN_PROGRESS | READY | RETURNED | CANCELLED", "collectAmount"?: number, "paymentMethod"?: "CASH | BANKING | CARD", "hasCardFee"?: boolean, "cardFeePercent"?: number, "paymentNote"?: "string" }`.
+  - Khi chuyển sang `RETURNED`, hệ thống tự động gán `returnedAt = new Date()`. Nếu truyền kèm `collectAmount > 0` (VD: thu nốt tiền khi trả đồ cho khách, luôn hỗ trợ cộng phí quẹt thẻ `1.8%` / `4%` trên số tiền thu `collectAmount` nếu `paymentMethod === "CARD"` và `hasCardFee === true`), hệ thống ghi nhận luôn khoản thanh toán vào `payments`, cộng `paidAmount`, giảm `remainingAmount` và cập nhật `paymentStatus`.
 - `POST /api/v1/service-orders/:id/payments` (Role `ADMIN`, `ACCOUNTANT`, `SALES`)
-  - Thu thêm tiền cọc hoặc tất toán phần tiền còn lại của đơn dịch vụ:
-  - Body: `{ "amount": 50000, "method": "CASH | BANKING | CARD", "note"?: "Thu tiền khi khách nhận đồ" }`.
+  - Thu thêm tiền cọc hoặc tất toán phần tiền còn lại của đơn dịch vụ (hỗ trợ `markReturned?: boolean` khi đơn đang `READY`):
+  - Body: `{ "amount": 50000, "method": "CASH | BANKING | CARD", "hasCardFee"?: boolean, "cardFeePercent"?: number, "markReturned"?: boolean, "note"?: "Thu tiền khi khách nhận đồ" }`.

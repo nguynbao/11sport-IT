@@ -1241,4 +1241,164 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
     await leaveRequestRepo.deleteById(String((w2PaidAgain as any)._id));
     await leaveRequestRepo.deleteById(String(pendingChangeToW2.body.data._id));
   });
+
+  it('15. Kiểm hàng tổng số lượng (DRAFT -> PENDING), lịch cố định theo Thứ và giữ đúng giờ bấm gửi cho Ca 1 khi Ca 2 xác nhận trễ', async () => {
+    // 1. Quản lý (HR/Admin) cấu hình lịch kiểm hàng cố định theo Thứ trong tuần
+    const putScheduleRes = await request(app)
+      .put('/api/v1/shifts/handover/schedule-config')
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({
+        weeklySchedule: {
+          '1': ['Giày'],
+          '2': ['Áo'],
+          '3': ['Quần'],
+          '4': ['Balo'],
+          '5': ['Phụ kiện'],
+          '6': ['Giày'],
+          '0': ['Bóng'],
+        },
+      });
+    expect(putScheduleRes.status).toBe(200);
+    expect(putScheduleRes.body.data.weeklySchedule['5']).toEqual(['Phụ kiện']);
+
+    // 2. Lấy daily-check phải trả về categorySummaries tổng số lượng tồn Tầng 1 theo từng danh mục
+    const today = new Date().toISOString().slice(0, 10);
+    const dailyCheck = await request(app)
+      .get(`/api/v1/shifts/handover/daily-check?date=${today}`)
+      .set('Authorization', `Bearer ${salesToken}`);
+    expect(dailyCheck.status).toBe(200);
+    expect(Array.isArray(dailyCheck.body.data.categorySummaries)).toBe(true);
+    expect(dailyCheck.body.data.categorySummaries.length).toBeGreaterThanOrEqual(1);
+    expect(typeof dailyCheck.body.data.totalExpectedQty).toBe('number');
+
+    // 3. Tạo 2 nhân viên Ca 1 và Ca 2 cho luồng kiểm hàng nháp -> chốt gửi -> xác nhận trễ
+    const s1Create = await request(app)
+      .post('/api/v1/staff')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        username: 'sales_shift1_draft',
+        password: 'password123',
+        fullName: 'Nhân Viên Ca 1 Kiểm Nháp',
+        role: 'SALES',
+        department: 'SALES',
+      });
+    expect(s1Create.status).toBe(201);
+    const s1Id = s1Create.body.data._id;
+
+    const s2Create = await request(app)
+      .post('/api/v1/staff')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        username: 'sales_shift2_confirm',
+        password: 'password123',
+        fullName: 'Nhân Viên Ca 2 Xác Nhận Trễ',
+        role: 'SALES',
+        department: 'SALES',
+      });
+    expect(s2Create.status).toBe(201);
+
+    const s1Login = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ username: 'sales_shift1_draft', password: 'password123' });
+    const s1Token = s1Login.body.data.token;
+
+    const s2Login = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ username: 'sales_shift2_confirm', password: 'password123' });
+    const s2Token = s2Login.body.data.token;
+
+    // Cả 2 cùng check-in
+    await request(app)
+      .post('/api/v1/attendance/check-in')
+      .set('Authorization', `Bearer ${s1Token}`)
+      .send({ shiftCode: 'SHIFT_1' });
+    await request(app)
+      .post('/api/v1/attendance/check-in')
+      .set('Authorization', `Bearer ${s2Token}`)
+      .send({ shiftCode: 'SHIFT_2' });
+
+    // 4. Trong ca làm việc, Ca 1 bấm lưu Bản nháp kiểm hàng (isDraft: true)
+    const draftRes = await request(app)
+      .post('/api/v1/shifts/handover')
+      .set('Authorization', `Bearer ${s1Token}`)
+      .send({
+        date: today,
+        shiftCode: 'SHIFT_1',
+        cashBalance: 5000000,
+        isDraft: true,
+        categoryCounts: dailyCheck.body.data.categorySummaries.map((c: any) => ({
+          categoryId: c.categoryId,
+          categoryName: c.categoryName,
+          expectedTotalQty: c.expectedTotalQty,
+          actualTotalQty: c.expectedTotalQty,
+        })),
+        notes: 'Đang đếm dở trong ca',
+      });
+    expect(draftRes.status).toBe(201);
+    expect(draftRes.body.data.status).toBe('DRAFT');
+
+    // Khi mới lưu DRAFT thì Ca 1 chưa được tính là đã gửi bàn giao, bấm check-out sẽ báo HANDOVER_REQUIRED
+    const checkoutWhileDraft = await request(app)
+      .post('/api/v1/attendance/check-out')
+      .set('Authorization', `Bearer ${s1Token}`)
+      .send({ forceEarly: true, earlyReason: 'Test' });
+    expect(checkoutWhileDraft.status).toBe(400);
+    expect(checkoutWhileDraft.body.code).toBe('HANDOVER_REQUIRED');
+
+    // 5. Đến giờ tan ca (ví dụ 17:30), Ca 1 bấm xác nhận gửi bàn giao ca cho Ca 2 (isDraft: false)
+    const submitRes = await request(app)
+      .post('/api/v1/shifts/handover')
+      .set('Authorization', `Bearer ${s1Token}`)
+      .send({
+        date: today,
+        shiftCode: 'SHIFT_1',
+        cashBalance: 5500000,
+        isDraft: false,
+        categoryCounts: dailyCheck.body.data.categorySummaries.map((c: any) => ({
+          categoryId: c.categoryId,
+          categoryName: c.categoryName,
+          expectedTotalQty: c.expectedTotalQty,
+          actualTotalQty: c.expectedTotalQty,
+        })),
+        notes: 'Chốt đủ số lượng tổng giao Ca 2',
+      });
+    expect(submitRes.status).toBe(201);
+    expect(submitRes.body.data.status).toBe('PENDING');
+    expect(submitRes.body.data.submittedAt).toBeDefined();
+    const handoverId = submitRes.body.data._id;
+
+    // Giả lập mốc thời gian Ca 1 bấm xác nhận gửi bàn giao là đúng 17:30 hôm nay
+    const [y, m, d] = today.split('-').map(Number);
+    const exact1730 = new Date(y, m - 1, d, 17, 30, 0, 0);
+    const s1AttBefore = await attendanceRepo.findOne({ staffId: String(s1Id), date: today });
+    expect(s1AttBefore).toBeTruthy();
+    await attendanceRepo.updateById(String((s1AttBefore as any)._id), {
+      workStartTime: new Date(y, m - 1, d, 8, 30, 0, 0),
+      pendingCheckOutTime: exact1730,
+    });
+
+    // Khi Ca 2 chưa xác nhận và Web gọi check-out với requireConfirmation: true -> Ca 1 ở trạng thái chờ xác nhận, chưa ghi checkOutTime nhưng đã khóa pendingCheckOutTime = 17:30
+    const waitConfirmRes = await request(app)
+      .post('/api/v1/attendance/check-out')
+      .set('Authorization', `Bearer ${s1Token}`)
+      .send({ requireConfirmation: true });
+    expect(waitConfirmRes.status).toBe(200);
+    expect(waitConfirmRes.body.data.waitingConfirmation).toBe(true);
+    expect(waitConfirmRes.body.data.attendance.checkOutTime).toBeUndefined();
+
+    // 6. Giả sử 15 phút sau (17:45) Ca 2 mới đếm lại xong và bấm Xác nhận nhận ca
+    const s2ConfirmRes = await request(app)
+      .post(`/api/v1/shifts/handover/${handoverId}/confirm`)
+      .set('Authorization', `Bearer ${s2Token}`)
+      .send({ accept: true, note: 'Ca 2 đếm lại lúc 17h45 khớp đủ' });
+    expect(s2ConfirmRes.status).toBe(200);
+    expect(s2ConfirmRes.body.data.status).toBe('ACCEPTED');
+
+    // Kiểm tra bản ghi chấm công của Ca 1: đã tự động hoàn tất Check-out VÀ giờ checkOutTime vẫn tính đúng lúc 17:30 (9h công, 0 phút trễ)
+    const s1AttAfter = await attendanceRepo.findOne({ staffId: String(s1Id), date: today });
+    expect(s1AttAfter).toBeTruthy();
+    expect(new Date((s1AttAfter as any).checkOutTime).getTime()).toBe(exact1730.getTime());
+    expect((s1AttAfter as any).totalWorkHours).toBe(9);
+    expect((s1AttAfter as any).lateCheckoutMinutes || 0).toBe(0);
+  });
 });

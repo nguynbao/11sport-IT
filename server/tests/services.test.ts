@@ -150,21 +150,36 @@ describe('Service Types & Service Orders API Tests', () => {
     expect(badPatchRes.body.code).toBe('TOTAL_BELOW_PAID_AMOUNT');
   });
 
-  it('should transition status RECEIVED -> IN_PROGRESS -> READY -> RETURNED and collect remaining amount', async () => {
-    const step1 = await request(app)
+  it('should block SALES from updating processing status, allow ADMIN to mark READY, and allow SALES to collect payment & mark RETURNED when READY', async () => {
+    const salesTryStatus = await request(app)
       .patch(`/api/v1/service-orders/${serviceOrderId}/status`)
       .set('Authorization', `Bearer ${salesToken}`)
+      .send({ status: 'IN_PROGRESS' });
+    expect(salesTryStatus.status).toBe(403);
+    expect(salesTryStatus.body.code).toBe('FORBIDDEN');
+
+    const step1 = await request(app)
+      .patch(`/api/v1/service-orders/${serviceOrderId}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
       .send({ status: 'IN_PROGRESS' });
     expect(step1.status).toBe(200);
     expect(step1.body.data.status).toBe('IN_PROGRESS');
 
-    const step2 = await request(app)
+    // Khi đang IN_PROGRESS, SALES chưa được bấm RETURNED
+    const salesTryReturnWhileInProgress = await request(app)
       .patch(`/api/v1/service-orders/${serviceOrderId}/status`)
       .set('Authorization', `Bearer ${salesToken}`)
+      .send({ status: 'RETURNED', collectAmount: 50000 });
+    expect(salesTryReturnWhileInProgress.status).toBe(403);
+
+    const step2 = await request(app)
+      .patch(`/api/v1/service-orders/${serviceOrderId}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
       .send({ status: 'READY' });
     expect(step2.status).toBe(200);
     expect(step2.body.data.status).toBe('READY');
 
+    // Khi đã READY (làm xong), SALES được phép xác nhận thu tiền & trả đồ cho khách
     const step3 = await request(app)
       .patch(`/api/v1/service-orders/${serviceOrderId}/status`)
       .set('Authorization', `Bearer ${salesToken}`)
@@ -172,7 +187,7 @@ describe('Service Types & Service Orders API Tests', () => {
         status: 'RETURNED',
         collectAmount: 50000,
         paymentMethod: 'BANKING',
-        paymentNote: 'Thu nốt khi trả vợt cho khách',
+        paymentNote: 'Sales thu nốt tiền khi trả vợt cho khách',
       });
     expect(step3.status).toBe(200);
     expect(step3.body.data.status).toBe('RETURNED');
@@ -180,6 +195,50 @@ describe('Service Types & Service Orders API Tests', () => {
     expect(step3.body.data.remainingAmount).toBe(0);
     expect(step3.body.data.paymentStatus).toBe('PAID');
     expect(step3.body.data.returnedAt).toBeTruthy();
+  });
+
+  it('should support item discount, bill discount, and card fee (1.8%) on service orders just like POS sales', async () => {
+    const res = await request(app)
+      .post('/api/v1/service-orders')
+      .set('Authorization', `Bearer ${salesToken}`)
+      .send({
+        customerName: 'Lê Hoàng Thẻ',
+        customerPhone: '0988777666',
+        receivedAt: '2026-11-11',
+        dueAt: '2026-11-12',
+        items: [
+          {
+            serviceTypeId,
+            serviceCode: 'DV_DAN_VOT',
+            serviceName: 'Đan vợt cầu lông tiêu chuẩn',
+            unit: 'Cây',
+            defaultPrice: 40000,
+            unitPrice: 100000,
+            quantity: 2, // grossLine = 200.000
+            discountType: 'PERCENT',
+            discountValue: 10, // giảm 10% = 20.000 -> lineTotal = 180.000
+          },
+        ],
+        billDiscountType: 'AMOUNT',
+        billDiscountValue: 30000, // giảm thêm 30.000 -> afterBillDiscount = 150.000
+        paymentMethod: 'CARD',
+        hasCardFee: true,
+        cardFeePercent: 1.8, // 1.8% của 150.000 = 2.700 -> totalAmount = 152.700
+        paidAmount: 152700,
+      });
+
+    expect(res.status).toBe(201);
+    const ord = res.body.data;
+    expect(ord.rawSubtotal).toBe(200000);
+    expect(ord.itemDiscountTotal).toBe(20000);
+    expect(ord.subtotal).toBe(180000);
+    expect(ord.billDiscountAmount).toBe(30000);
+    expect(ord.hasCardFee).toBe(true);
+    expect(ord.cardFeePercent).toBe(1.8);
+    expect(ord.cardFee).toBe(2700);
+    expect(ord.totalAmount).toBe(152700);
+    expect(ord.paidAmount).toBe(152700);
+    expect(ord.paymentStatus).toBe('PAID');
   });
 
   it('should block deleting a service type that has existing service orders', async () => {
