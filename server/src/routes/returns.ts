@@ -514,6 +514,42 @@ async function prepareReturnExchangeCalculation(body: any) {
         size: eSize,
       });
 
+      const origExUnitPrice = Math.round(Number(product.sellingPrice) || 0);
+      const rawExDiscType = String(eItem.discountType || 'NONE').toUpperCase();
+      let exDiscType: 'NONE' | 'PERCENT' | 'AMOUNT' =
+        rawExDiscType === 'PERCENT' || rawExDiscType === 'AMOUNT' ? rawExDiscType : 'NONE';
+      let exDiscVal = Math.max(0, Number(eItem.discountValue) || 0);
+
+      // Hỗ trợ client truyền trực tiếp giá muốn bán (unitPrice < originalUnitPrice)
+      if (
+        exDiscType === 'NONE' &&
+        exDiscVal === 0 &&
+        eItem.unitPrice !== undefined &&
+        eItem.unitPrice !== null &&
+        Number(eItem.unitPrice) >= 0 &&
+        Math.round(Number(eItem.unitPrice)) < origExUnitPrice
+      ) {
+        exDiscType = 'AMOUNT';
+        exDiscVal = Math.max(0, origExUnitPrice - Math.round(Number(eItem.unitPrice)));
+      }
+
+      if (exDiscType === 'PERCENT') {
+        exDiscVal = Math.min(100, exDiscVal);
+      } else if (exDiscType === 'AMOUNT') {
+        exDiscVal = Math.min(origExUnitPrice, Math.round(exDiscVal));
+      } else {
+        exDiscVal = 0;
+      }
+
+      const exDiscPerUnit =
+        exDiscType === 'PERCENT'
+          ? Math.round((origExUnitPrice * exDiscVal) / 100)
+          : exDiscType === 'AMOUNT'
+          ? exDiscVal
+          : 0;
+      const effectiveExUnitPrice = Math.max(0, origExUnitPrice - exDiscPerUnit);
+      const exDiscAmount = exDiscPerUnit * qty;
+
       preparedExchangeItems.push({
         productId: product._id,
         productCode: product.code,
@@ -521,10 +557,14 @@ async function prepareReturnExchangeCalculation(body: any) {
         color: eColor,
         size: eSize,
         unit: product.unit || 'Cái',
-        unitPrice: product.sellingPrice,
+        originalUnitPrice: origExUnitPrice,
+        discountType: exDiscVal > 0 ? exDiscType : 'NONE',
+        discountValue: exDiscVal > 0 ? exDiscVal : 0,
+        discountAmount: exDiscAmount,
+        unitPrice: effectiveExUnitPrice,
         unitCost: Math.max(0, Math.round(Number(product.costPrice) || 0)),
         quantity: qty,
-        lineTotal: product.sellingPrice * qty,
+        lineTotal: effectiveExUnitPrice * qty,
       });
     }
 

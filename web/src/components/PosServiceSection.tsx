@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   ServiceType,
   ServiceOrder,
@@ -159,8 +159,78 @@ export default function PosServiceSection({
   const [collectNote, setCollectNote] = useState("");
   const [updatingStatusId, setUpdatingStatusId] = useState<string>("");
 
-  // Modal in phiếu dịch vụ
+  // Modal in phiếu dịch vụ (In 2 bản: Bản giao khách + Bản lưu shop, giống form hóa đơn bán hàng)
   const [printOrder, setPrintOrder] = useState<ServiceOrder | null>(null);
+  const [printPaperSize, setPrintPaperSize] = useState<"K80" | "A4">("K80");
+  const servicePrintRef = useRef<HTMLDivElement>(null);
+
+  const handlePrintServiceReceipt = () => {
+    if (!servicePrintRef.current || !printOrder) return;
+    const printContents = servicePrintRef.current.innerHTML;
+    const printWindow = window.open("", "_blank", "width=900,height=800");
+    if (!printWindow) {
+      window.print();
+      return;
+    }
+
+    const isK80 = printPaperSize === "K80";
+    printWindow.document.open();
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html lang="vi">
+        <head>
+          <meta charset="utf-8" />
+          <title>Hóa đơn dịch vụ ${printOrder.orderCode} (2 bản)</title>
+          <script src="https://cdn.tailwindcss.com"></script>
+          <style>
+            @page {
+              size: ${isK80 ? "80mm auto" : "A4 portrait"};
+              margin: ${isK80 ? "3mm" : "12mm"};
+            }
+            html, body {
+              margin: 0;
+              padding: 0;
+              background: #ffffff;
+              color: #000000;
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            .print-wrapper {
+              width: ${isK80 ? "74mm" : "100%"};
+              max-width: ${isK80 ? "74mm" : "190mm"};
+              margin: 0 auto;
+            }
+            .service-bill-copy + .service-bill-copy {
+              page-break-before: always;
+              break-before: page;
+              margin-top: 0 !important;
+            }
+            @media print {
+              .no-print-cut-line {
+                display: none !important;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="print-wrapper">
+            ${printContents}
+          </div>
+          <script>
+            window.onload = function() {
+              setTimeout(function() {
+                window.focus();
+                window.print();
+                window.close();
+              }, 350);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
 
   const fetchServiceTypes = useCallback(async () => {
     setLoadingTypes(true);
@@ -1247,111 +1317,297 @@ export default function PosServiceSection({
         </div>
       )}
 
-      {/* MODAL IN PHIẾU HẸN DỊCH VỤ */}
+      {/* MODAL IN HÓA ĐƠN / PHIẾU DỊCH VỤ (2 BẢN: KHÁCH HÀNG & SHOP — CHUẨN FORM HÓA ĐƠN K80/A4) */}
       {printOrder && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-              <h3 className="text-base font-extrabold text-slate-900">
-                Phiếu Hẹn Dịch Vụ — {printOrder.orderCode}
-              </h3>
-              <button
-                type="button"
-                onClick={() => setPrintOrder(null)}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden my-8">
+            {/* Thanh công cụ Modal */}
+            <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3.5 bg-slate-900 text-white">
+              <div className="flex items-center gap-3">
+                <span className="font-bold text-sm">
+                  Xem trước Hóa Đơn Dịch Vụ (2 bản: Khách &amp; Shop) — {printOrder.orderCode}
+                </span>
+                <div className="flex items-center bg-slate-800 rounded-lg p-0.5 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setPrintPaperSize("K80")}
+                    className={`px-2.5 py-1 rounded-md font-semibold transition ${
+                      printPaperSize === "K80"
+                        ? "bg-indigo-600 text-white"
+                        : "text-slate-300 hover:text-white"
+                    }`}
+                  >
+                    Khổ K80 (80mm)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPrintPaperSize("A4")}
+                    className={`px-2.5 py-1 rounded-md font-semibold transition ${
+                      printPaperSize === "A4"
+                        ? "bg-indigo-600 text-white"
+                        : "text-slate-300 hover:text-white"
+                    }`}
+                  >
+                    Khổ A4
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handlePrintServiceReceipt}
+                  className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition shadow"
+                >
+                  <Printer className="w-4 h-4" />
+                  In Hóa Đơn Dịch Vụ (2 Bản)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPrintOrder(null)}
+                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
-            <div id="service-receipt-print-area" className="space-y-3 text-xs text-slate-800 border border-slate-200 rounded-xl p-4 bg-slate-50/50">
-              <div className="text-center border-b border-dashed border-slate-300 pb-2">
-                <div className="font-extrabold text-base text-slate-900">
-                  11 SPORT — PHIẾU NHẬN DỊCH VỤ
-                </div>
-                <div className="font-mono font-bold text-indigo-700 mt-0.5">
-                  Mã phiếu: {printOrder.orderCode}
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <div>
-                  Khách hàng: <strong>{printOrder.customerName}</strong>
-                </div>
-                <div>
-                  Số điện thoại:{" "}
-                  <strong className="font-mono">
-                    {formatPhone(printOrder.customerPhone)}
-                  </strong>
-                </div>
-                <div>
-                  Ngày gửi: <strong>{formatShortDate(printOrder.receivedAt)}</strong>
-                </div>
-                <div>
-                  Ngày hẹn trả:{" "}
-                  <strong className="text-indigo-700">
-                    {formatShortDate(printOrder.dueAt)}
-                  </strong>
-                </div>
-              </div>
-
-              <div className="border-t border-b border-dashed border-slate-300 py-2 space-y-1.5">
-                {(printOrder.items || []).map((it, idx) => (
-                  <div key={idx} className="flex justify-between gap-2">
-                    <div>
-                      <div className="font-bold">
-                        {idx + 1}. {it.serviceName} ({it.quantity} {it.unit})
-                      </div>
-                      {it.itemNote && (
-                        <div className="text-[11px] text-slate-600">
-                          Ghi chú: {it.itemNote}
+            {/* Vùng hiển thị 2 bản hóa đơn dịch vụ */}
+            <div className="p-6 bg-slate-100 max-h-[80vh] overflow-y-auto flex justify-center">
+              <div
+                ref={servicePrintRef}
+                id="service-receipt-print-area"
+                className={`w-full ${
+                  printPaperSize === "K80" ? "max-w-[330px]" : "max-w-[680px]"
+                } space-y-6`}
+              >
+                {(
+                  [
+                    {
+                      copyIndex: 1,
+                      copyBadge: "LIÊN 1: BẢN GIAO KHÁCH",
+                      copySub: "Khách hàng giữ phiếu này để đối chiếu khi nhận đồ",
+                      isShopCopy: false,
+                    },
+                    {
+                      copyIndex: 2,
+                      copyBadge: "LIÊN 2: BẢN LƯU SHOP",
+                      copySub: "Cửa hàng giữ / kẹp cùng đồ khách gửi",
+                      isShopCopy: true,
+                    },
+                  ] as const
+                ).map((copy, cIdx) => {
+                  const isK80 = printPaperSize === "K80";
+                  const statusInfo =
+                    STATUS_BADGE_MAP[printOrder.status] || STATUS_BADGE_MAP.RECEIVED;
+                  const pmLabel =
+                    printOrder.paymentMethod === "BANKING"
+                      ? "Chuyển khoản"
+                      : printOrder.paymentMethod === "CARD"
+                        ? "Quẹt thẻ (Card)"
+                        : "Tiền mặt";
+                  return (
+                    <React.Fragment key={copy.copyIndex}>
+                      {cIdx > 0 && (
+                        <div className="no-print-cut-line flex items-center gap-2 py-1 text-[11px] font-mono font-bold text-slate-400 select-none">
+                          <div className="flex-1 border-t-2 border-dashed border-slate-300" />
+                          <span>✂ CẮT TẠI ĐÂY (TỰ ĐỘNG TÁCH 2 BẢN KHI IN)</span>
+                          <div className="flex-1 border-t-2 border-dashed border-slate-300" />
                         </div>
                       )}
-                    </div>
-                    <div className="font-mono font-bold shrink-0">
-                      {formatVND(it.lineTotal)}
-                    </div>
-                  </div>
-                ))}
-              </div>
 
-              <div className="space-y-1 text-right">
-                <div>
-                  Tổng cộng:{" "}
-                  <strong className="font-mono text-sm">
-                    {formatVND(printOrder.totalAmount)}
-                  </strong>
-                </div>
-                <div>
-                  Đã thanh toán:{" "}
-                  <strong className="font-mono text-emerald-700">
-                    {formatVND(printOrder.paidAmount)}
-                  </strong>
-                </div>
-                <div>
-                  Còn phải thu khi nhận đồ:{" "}
-                  <strong className="font-mono text-rose-600 text-sm">
-                    {formatVND(printOrder.remainingAmount)}
-                  </strong>
-                </div>
-              </div>
-            </div>
+                      <div
+                        className={`service-bill-copy bg-white text-black border border-slate-300 shadow-sm ${
+                          isK80 ? "p-3.5 text-[12px]" : "p-7 text-sm"
+                        }`}
+                      >
+                        {/* Header 11Sport giống mẫu Hóa Đơn Bán Hàng */}
+                        <div className="text-center border-b-2 border-black pb-2.5 mb-2.5">
+                          <div className="flex justify-center mb-1.5">
+                            <img
+                              src="/logo-11sport.svg"
+                              alt="11Sport Logo"
+                              className={
+                                isK80
+                                  ? "h-10 w-auto object-contain"
+                                  : "h-12 w-auto object-contain"
+                              }
+                            />
+                          </div>
+                          <p className="text-[11px] font-semibold text-black leading-snug">
+                            Địa chỉ: 24 Tố Hữu, P.Hòa Cường, TP. Đà Nẵng
+                          </p>
+                          <p className="text-[11px] font-bold text-black mt-0.5">
+                            Hotline: 076.576.3456
+                          </p>
+                          <h2
+                            className={`font-black uppercase mt-2 tracking-wide ${
+                              isK80 ? "text-sm" : "text-lg"
+                            }`}
+                          >
+                            HÓA ĐƠN / PHIẾU DỊCH VỤ
+                          </h2>
+                          <div className="mt-1 inline-block px-2.5 py-0.5 border border-black rounded font-extrabold text-[11px] uppercase tracking-wider">
+                            {copy.copyBadge}
+                          </div>
+                          <p className="text-[10px] italic text-black/80 mt-0.5">
+                            ({copy.copySub})
+                          </p>
+                        </div>
 
-            <div className="flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setPrintOrder(null)}
-                className="px-4 py-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-700"
-              >
-                Đóng
-              </button>
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold flex items-center gap-1.5"
-              >
-                <Printer className="w-4 h-4" /> In phiếu hẹn
-              </button>
+                        {/* Thông tin chung & Khách hàng */}
+                        <div className="space-y-1 text-xs border-b border-dashed border-black pb-2.5 mb-2.5">
+                          <div className="flex justify-between">
+                            <span className="font-semibold">Mã phiếu:</span>
+                            <span className="font-mono font-black text-sm">
+                              {printOrder.orderCode}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="font-semibold">Ngày lập:</span>
+                            <span className="font-mono">
+                              {formatDateTime(
+                                printOrder.createdAt || printOrder.receivedAt
+                              )}
+                            </span>
+                          </div>
+                          {printOrder.createdByName && (
+                            <div className="flex justify-between">
+                              <span className="font-semibold">Nhân viên nhận:</span>
+                              <span className="font-bold">{printOrder.createdByName}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between">
+                            <span className="font-semibold">Khách hàng:</span>
+                            <span className="font-black uppercase">
+                              {printOrder.customerName}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="font-semibold">Số ĐT:</span>
+                            <span className="font-mono font-bold">
+                              {formatPhone(printOrder.customerPhone)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="font-semibold">Ngày gửi đồ:</span>
+                            <span className="font-mono font-bold">
+                              {formatShortDate(printOrder.receivedAt)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="font-semibold">Ngày hẹn trả:</span>
+                            <span className="font-mono font-black underline">
+                              {formatShortDate(printOrder.dueAt)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="font-semibold">Trạng thái:</span>
+                            <span className="font-bold">{statusInfo.label}</span>
+                          </div>
+                        </div>
+
+                        {/* Bảng danh sách dịch vụ */}
+                        <table className="w-full text-xs border-collapse mb-3">
+                          <thead>
+                            <tr className="border-b-2 border-black text-left">
+                              <th className="py-1 font-bold">Dịch vụ</th>
+                              <th className="py-1 font-bold text-center w-9">SL</th>
+                              <th className="py-1 font-bold text-right">Đ.Giá</th>
+                              <th className="py-1 font-bold text-right">T.Tiền</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-dashed divide-slate-300">
+                            {(printOrder.items || []).map((it, idx) => (
+                              <tr key={idx} className="align-top">
+                                <td className="py-1.5 pr-1">
+                                  <div className="font-bold text-black">
+                                    {idx + 1}. {it.serviceName}
+                                  </div>
+                                  {it.itemNote && (
+                                    <div className="text-[11px] font-semibold text-black mt-0.5">
+                                      • Ghi chú: {it.itemNote}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="py-1.5 text-center font-mono font-bold">
+                                  {it.quantity}
+                                </td>
+                                <td className="py-1.5 text-right font-mono">
+                                  {formatNumberDots(it.unitPrice)}
+                                </td>
+                                <td className="py-1.5 text-right font-mono font-bold">
+                                  {formatNumberDots(it.lineTotal)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+
+                        {/* Tổng kết thanh toán */}
+                        <div className="border-t-2 border-black pt-2 space-y-1 text-xs">
+                          <div className="flex justify-between font-bold">
+                            <span>Tổng tiền dịch vụ:</span>
+                            <span className="font-mono text-sm font-black">
+                              {formatVND(printOrder.totalAmount)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Đã thanh toán ({pmLabel}):</span>
+                            <span className="font-mono font-bold">
+                              {formatVND(printOrder.paidAmount)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between font-black text-sm pt-1 border-t border-dashed border-black">
+                            <span>CÒN PHẢI THU KHI NHẬN:</span>
+                            <span className="font-mono">
+                              {formatVND(printOrder.remainingAmount)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {printOrder.note && (
+                          <div className="mt-2.5 pt-2 border-t border-dashed border-slate-400 text-[11px]">
+                            <span className="font-bold">Ghi chú phiếu: </span>
+                            <span>{printOrder.note}</span>
+                          </div>
+                        )}
+
+                        {/* Chân chữ ký / đối chiếu tùy theo bản Khách hay bản Shop */}
+                        {copy.isShopCopy ? (
+                          <div className="mt-3 pt-2 border-t border-dashed border-black text-[11px] space-y-3">
+                            <div className="grid grid-cols-2 gap-2 text-center font-bold">
+                              <div>
+                                <div>KHÁCH HÀNG KÝ GỬI</div>
+                                <div className="h-10" />
+                                <div className="font-normal text-[10px]">
+                                  (Ký &amp; ghi rõ họ tên)
+                                </div>
+                              </div>
+                              <div>
+                                <div>NHÂN VIÊN TIẾP NHẬN</div>
+                                <div className="h-10" />
+                                <div className="font-normal text-[10px]">
+                                  {printOrder.createdByName || "(Ký xác nhận)"}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-3 pt-2 border-t border-dashed border-slate-400 text-center text-[11px] space-y-0.5">
+                            <p className="font-bold">
+                              Quý khách vui lòng mang theo phiếu này khi đến nhận đồ.
+                            </p>
+                            <p className="font-bold text-black">
+                              Cảm ơn Quý khách đã tin tưởng 11Sport!
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </React.Fragment>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>

@@ -252,9 +252,9 @@
     "semantic_hash": ""
   },
   "server/src/models/ReturnExchange.ts": {
-    "mtime": 1794467569.523023,
-    "seen": 1794468136.1596239,
-    "ast_hash": "b96b3e20a929a1b6447a233d344e7cfa",
+    "mtime": 1794541249.0891457,
+    "seen": 1794541843.251467,
+    "ast_hash": "3922ea9df5625acfdc080427c2e9d34c",
     "semantic_hash": ""
   },
   "server/src/models/Staff.ts": {
@@ -318,9 +318,9 @@
     "semantic_hash": ""
   },
   "server/src/routes/returns.ts": {
-    "mtime": 1794472178.1380591,
-    "seen": 1794472359.5069828,
-    "ast_hash": "2e1366494a574de450365e0e14d5e85c",
+    "mtime": 1794541283.6537223,
+    "seen": 1794541843.251499,
+    "ast_hash": "301f0a2e574b8d966e8e246a61e324ac",
     "semantic_hash": ""
   },
   "server/src/routes/wise.ts": {
@@ -570,15 +570,15 @@
     "semantic_hash": ""
   },
   "web/src/components/PosTab.tsx": {
-    "mtime": 1794463573.5851593,
-    "seen": 1794463686.0074508,
-    "ast_hash": "8d0d1cecbef04d561379b363aa19cf6e",
+    "mtime": 1794542098.8846934,
+    "seen": 1794542720.096441,
+    "ast_hash": "7905a0e92cbc48314e58e24409b639f1",
     "semantic_hash": ""
   },
   "web/src/components/ReturnExchangeTab.tsx": {
-    "mtime": 1794469215.4636023,
-    "seen": 1794469414.2012959,
-    "ast_hash": "85b8485e825ef9821a7ee6018764ddd2",
+    "mtime": 1794542681.855152,
+    "seen": 1794542720.096443,
+    "ast_hash": "638e4851159055d0bb634411aa10627f",
     "semantic_hash": ""
   },
   "web/src/components/TagCheckScannerModal.tsx": {
@@ -594,9 +594,9 @@
     "semantic_hash": ""
   },
   "web/src/lib/api.ts": {
-    "mtime": 1794478832.6372387,
-    "seen": 1794478868.7471948,
-    "ast_hash": "487864e8210ba557762681291a052c80",
+    "mtime": 1794541329.1261077,
+    "seen": 1794541843.25162,
+    "ast_hash": "32446a40a280cc9ec6b96c9cbaa79d37",
     "semantic_hash": ""
   },
   "web/src/lib/barcodeScanner.ts": {
@@ -642,9 +642,9 @@
     "semantic_hash": ""
   },
   "docs/api-contract.md": {
-    "mtime": 1794478832.5690575,
-    "seen": 1794478868.747209,
-    "ast_hash": "60bc4736bd895d1eff76921b70d59e54",
+    "mtime": 1794541229.367246,
+    "seen": 1794541843.251633,
+    "ast_hash": "f4dcc38d35e149b95af0820dbad47da8",
     "semantic_hash": ""
   },
   "docs/design/design-system.md": {
@@ -1008,9 +1008,9 @@
     "semantic_hash": ""
   },
   "web/src/components/PosServiceSection.tsx": {
-    "mtime": 1794368468.1007817,
-    "seen": 1794369286.93764,
-    "ast_hash": "08426cca1e12fc8e6d395ca8e6bf8118",
+    "mtime": 1794541663.3008914,
+    "seen": 1794541843.2516081,
+    "ast_hash": "e30c726770ef4419244bcdbfc75b3584",
     "semantic_hash": ""
   },
   "server/tests/services.test.ts": {
