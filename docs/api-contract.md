@@ -330,7 +330,9 @@
           "productId": "...",
           "color": "Đỏ",
           "size": "XL",
-          "quantity": 1
+          "quantity": 1,
+          "discountType": "NONE | PERCENT | AMOUNT",
+          "discountValue": 150000
         }
       ]
     }
@@ -342,6 +344,12 @@
     - Hàng đổi mới (`exchangeItems`):
       - Cho phép tra cứu sản phẩm đổi theo `productId`, `code` gốc hoặc mã vạch / mã biến thể con (`variantCode` / `barcode`).
       - Chuẩn hóa phân loại `(color, size)` theo biến thể thực tế: nếu không truyền `color`/`size` khi sản phẩm chỉ có 1 biến thể khả dụng thì tự động gán biến thể đó; nếu sản phẩm có nhiều biến thể khả dụng mà không chỉ định thì trả `400 EXCHANGE_VARIANT_REQUIRED`; nếu truyền biến thể không tồn tại thì trả `400 EXCHANGE_VARIANT_NOT_FOUND`.
+      - **Hỗ trợ giảm giá & nhập giá muốn bán cho từng sản phẩm đổi mới (`discountType`, `discountValue`, `unitPrice`)**:
+        - `originalUnitPrice = product.sellingPrice` (đơn giá niêm yết của sản phẩm đổi mới).
+        - Nếu `discountType === "PERCENT"` (`0..100`): số tiền giảm trên 1 SP đổi = `Math.round(originalUnitPrice * discountValue / 100)`.
+        - Nếu `discountType === "AMOUNT"`: số tiền giảm trên 1 SP đổi = `Math.min(originalUnitPrice, Math.max(0, Math.round(discountValue)))`.
+        - Nếu client nhập trực tiếp giá muốn bán (`unitPrice` truyền lên `< originalUnitPrice` và chưa truyền `discountValue`): hệ thống tự động quy đổi `discountType = "AMOUNT"`, `discountValue = originalUnitPrice - unitPrice`.
+        - `unitPrice = Math.max(0, originalUnitPrice - discountPerUnit)` (đơn giá bán thực tế sau giảm), `discountAmount = discountPerUnit * quantity`, `lineTotal = unitPrice * quantity`.
       - Tính tồn Kho Tầng 1 khả dụng (đã cộng phần hàng `GOOD` vừa nhận lại cùng sản phẩm/biến thể trong giao dịch) và hỗ trợ **tự động tách Bộ → Lẻ** (`executeUnpackSetToRetail` tại `FLOOR_1`) nếu sản phẩm đổi là hàng lẻ liên kết `parentSetProductId` còn tồn Bộ ở Kho Tầng 1. Sau đó trừ tồn kho Tầng 1 (`-quantity`) và ghi `StockMovement` loại `EXCHANGE_OUT` (`warehouseLocation: "FLOOR_1"`).
     - Tính tiền hoàn trả kèm **phân bổ giảm giá Bill (`billDiscountAmount`)** và **hoàn lại phí quẹt thẻ (`refundedCardFee`)** *(cập nhật v4.1)*:
       - **Phân bổ giảm giá Bill cho từng dòng đơn gốc**: Với mỗi dòng không phải quà tặng có `L_i = lineTotal`, tổng `S = order.subtotal`, giảm giá bill `B = order.billDiscountAmount`, phần giảm bill phân bổ cho dòng `i` là `B_i = round(L_i / S * B)` (dòng có giá trị cuối cùng nhận phần dư để `Σ B_i = B`). Tiền hàng thuần của dòng `i` là `N_i = max(0, L_i - B_i)`.

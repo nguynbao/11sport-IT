@@ -317,6 +317,10 @@ export interface ReturnCalculateResult {
     color?: string;
     size?: string;
     unit?: string;
+    originalUnitPrice?: number;
+    discountType?: DiscountType;
+    discountValue?: number;
+    discountAmount?: number;
     unitPrice: number;
     unitCost?: number;
     quantity: number;
@@ -367,6 +371,10 @@ export interface ReturnReceipt {
     color?: string;
     size?: string;
     unit?: string;
+    originalUnitPrice?: number;
+    discountType?: DiscountType;
+    discountValue?: number;
+    discountAmount?: number;
     unitPrice: number;
     unitCost?: number;
     quantity: number;

@@ -26,6 +26,10 @@ export interface IExchangeItem {
   color?: string;
   size?: string;
   unit: string;
+  originalUnitPrice?: number;
+  discountType?: 'NONE' | 'PERCENT' | 'AMOUNT';
+  discountValue?: number;
+  discountAmount?: number;
   unitPrice: number;
   unitCost?: number;
   quantity: number;
@@ -86,6 +90,10 @@ const ExchangeItemSchema = new Schema<IExchangeItem>(
     color: { type: String, default: '' },
     size: { type: String, default: '' },
     unit: { type: String, default: 'Cái' },
+    originalUnitPrice: { type: Number },
+    discountType: { type: String, enum: ['NONE', 'PERCENT', 'AMOUNT'], default: 'NONE' },
+    discountValue: { type: Number, default: 0 },
+    discountAmount: { type: Number, default: 0 },
     unitPrice: { type: Number, required: true },
     unitCost: { type: Number },
     quantity: { type: Number, required: true },

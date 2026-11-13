@@ -8,6 +8,8 @@ import {
   ReturnCalculateResult,
   apiRequest,
   formatVND,
+  formatNumberDots,
+  parseNumberDots,
   formatDateTime,
   formatPhone,
   useDebounce,
@@ -24,6 +26,7 @@ import {
   AlertCircle,
   X,
   RefreshCw,
+  Tag,
 } from "lucide-react";
 
 interface ReturnItemForm {
@@ -62,7 +65,32 @@ interface ExchangeItemForm {
   displayName: string;
   stockFloor1: number;
   quantity: number;
+  discountType: "NONE" | "PERCENT" | "AMOUNT";
+  discountValue: number;
+  discountInputMode?: "NONE" | "PERCENT" | "AMOUNT" | "PRICE";
+  customPriceText?: string;
 }
+
+const getExchangeItemPricing = (ex: ExchangeItemForm) => {
+  const originalUnitPrice = Math.max(0, Math.round(Number(ex.product.sellingPrice) || 0));
+  const rawDiscVal = Math.max(0, Number(ex.discountValue) || 0);
+  const discountPerUnit =
+    ex.discountType === "PERCENT"
+      ? Math.round((originalUnitPrice * Math.min(100, rawDiscVal)) / 100)
+      : ex.discountType === "AMOUNT"
+        ? Math.min(originalUnitPrice, Math.round(rawDiscVal))
+        : 0;
+  const unitPrice = Math.max(0, originalUnitPrice - discountPerUnit);
+  const discountAmount = discountPerUnit * ex.quantity;
+  const lineTotal = unitPrice * ex.quantity;
+  return {
+    originalUnitPrice,
+    discountPerUnit,
+    unitPrice,
+    discountAmount,
+    lineTotal,
+  };
+};
 
 export default function ReturnExchangeTab() {
   const [orderCodeInput, setOrderCodeInput] = useState("");
@@ -330,10 +358,83 @@ export default function ReturnExchangeTab() {
           displayName: opt.displayName,
           stockFloor1: opt.stockFloor1,
           quantity: 1,
+          discountType: "NONE",
+          discountValue: 0,
+          discountInputMode: "NONE",
         },
       ];
     });
   }, []);
+
+  const handleChangeExchangeDiscount = (
+    optionKey: string,
+    discountType: "NONE" | "PERCENT" | "AMOUNT",
+    rawVal: number,
+    discountInputMode?: "NONE" | "PERCENT" | "AMOUNT" | "PRICE",
+    customPriceText?: string
+  ) => {
+    setExchangeRows((prev) =>
+      prev.map((ex) => {
+        if (ex.optionKey !== optionKey) return ex;
+        const origPrice = Math.max(0, Math.round(Number(ex.product.sellingPrice) || 0));
+        let cleanVal = Math.max(0, rawVal);
+        if (discountType === "PERCENT") {
+          cleanVal = Math.min(100, cleanVal);
+        } else if (discountType === "AMOUNT") {
+          cleanVal = Math.min(origPrice, Math.round(cleanVal));
+        } else {
+          cleanVal = 0;
+        }
+        const resolvedMode =
+          discountInputMode ||
+          (discountType === "PERCENT"
+            ? "PERCENT"
+            : discountType === "AMOUNT"
+              ? "AMOUNT"
+              : "NONE");
+        return {
+          ...ex,
+          discountType,
+          discountValue: cleanVal,
+          discountInputMode: resolvedMode,
+          customPriceText:
+            resolvedMode === "PRICE"
+              ? customPriceText !== undefined
+                ? customPriceText
+                : formatNumberDots(Math.max(0, origPrice - cleanVal))
+              : undefined,
+        };
+      })
+    );
+  };
+
+  const handleChangeExchangeDesiredPrice = (optionKey: string, rawText: string) => {
+    const digits = rawText.replace(/[^\d]/g, "");
+    setExchangeRows((prev) =>
+      prev.map((ex) => {
+        if (ex.optionKey !== optionKey) return ex;
+        const origPrice = Math.max(0, Math.round(Number(ex.product.sellingPrice) || 0));
+        if (!digits) {
+          return {
+            ...ex,
+            discountType: "NONE",
+            discountValue: 0,
+            discountInputMode: "NONE",
+            customPriceText: "",
+          };
+        }
+        const enteredPrice = Math.min(origPrice, Math.max(0, Number(digits) || 0));
+        const computedDiscount = Math.max(0, origPrice - enteredPrice);
+        return {
+          ...ex,
+          discountType: computedDiscount > 0 ? "AMOUNT" : "NONE",
+          discountValue: computedDiscount,
+          discountInputMode: "PRICE",
+          customPriceText: formatNumberDots(enteredPrice),
+        };
+      })
+    );
+  };
 
   const handleExchangeSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== "Enter") return;
@@ -387,12 +488,19 @@ export default function ReturnExchangeTab() {
             })),
             exchangeItems:
               mode === "EXCHANGE"
-                ? exchangeRows.map((ex) => ({
-                    productId: ex.product._id,
-                    color: ex.color,
-                    size: ex.size,
-                    quantity: ex.quantity,
-                  }))
+                ? exchangeRows.map((ex) => {
+                    const pricing = getExchangeItemPricing(ex);
+                    return {
+                      productId: ex.product._id,
+                      color: ex.color,
+                      size: ex.size,
+                      quantity: ex.quantity,
+                      originalUnitPrice: pricing.originalUnitPrice,
+                      discountType: ex.discountValue > 0 ? ex.discountType : "NONE",
+                      discountValue: ex.discountValue > 0 ? ex.discountValue : 0,
+                      unitPrice: pricing.unitPrice,
+                    };
+                  })
                 : [],
           }),
         });
@@ -416,6 +524,8 @@ export default function ReturnExchangeTab() {
         returnSubtotal: 0,
         refundedCardFee: 0,
         returnTotal: 0,
+        exchangeRawSubtotal: 0,
+        exchangeDiscountTotal: 0,
         exchangeTotal: 0,
         netDifference: 0,
         refundAmount: 0,
@@ -520,9 +630,20 @@ export default function ReturnExchangeTab() {
     }
 
     const calcReturnTotal = calcReturnSubtotal + calcRefundedCardFee;
+    const calcExchangeRawSubtotal =
+      mode === "EXCHANGE"
+        ? exchangeRows.reduce(
+            (sum, r) => sum + getExchangeItemPricing(r).originalUnitPrice * r.quantity,
+            0
+          )
+        : 0;
+    const calcExchangeDiscountTotal =
+      mode === "EXCHANGE"
+        ? exchangeRows.reduce((sum, r) => sum + getExchangeItemPricing(r).discountAmount, 0)
+        : 0;
     const calcExchangeTotal =
       mode === "EXCHANGE"
-        ? exchangeRows.reduce((sum, r) => sum + r.product.sellingPrice * r.quantity, 0)
+        ? exchangeRows.reduce((sum, r) => sum + getExchangeItemPricing(r).lineTotal, 0)
         : 0;
     const calcNetDifference = calcExchangeTotal - calcReturnTotal;
     const calcRefundAmount = calcNetDifference < 0 ? Math.abs(calcNetDifference) : 0;
@@ -536,6 +657,8 @@ export default function ReturnExchangeTab() {
       returnSubtotal: calcReturnSubtotal,
       refundedCardFee: calcRefundedCardFee,
       returnTotal: calcReturnTotal,
+      exchangeRawSubtotal: calcExchangeRawSubtotal,
+      exchangeDiscountTotal: calcExchangeDiscountTotal,
       exchangeTotal: calcExchangeTotal,
       netDifference: calcNetDifference,
       refundAmount: calcRefundAmount,
@@ -550,6 +673,8 @@ export default function ReturnExchangeTab() {
   const returnSubtotal = serverCalc?.returnSubtotal ?? localCalc.returnSubtotal;
   const refundedCardFee = serverCalc?.refundedCardFee ?? localCalc.refundedCardFee;
   const returnTotal = serverCalc?.returnTotal ?? localCalc.returnTotal;
+  const exchangeRawSubtotal = localCalc.exchangeRawSubtotal ?? 0;
+  const exchangeDiscountTotal = localCalc.exchangeDiscountTotal ?? 0;
   const exchangeTotal = serverCalc?.exchangeTotal ?? localCalc.exchangeTotal;
   const netDifference = serverCalc?.netDifference ?? localCalc.netDifference;
   const refundAmount = serverCalc?.refundAmount ?? localCalc.refundAmount;
@@ -596,12 +721,19 @@ export default function ReturnExchangeTab() {
         })),
         exchangeItems:
           mode === "EXCHANGE"
-            ? exchangeRows.map((ex) => ({
-                productId: ex.product._id,
-                color: ex.color,
-                size: ex.size,
-                quantity: ex.quantity,
-              }))
+            ? exchangeRows.map((ex) => {
+                const pricing = getExchangeItemPricing(ex);
+                return {
+                  productId: ex.product._id,
+                  color: ex.color,
+                  size: ex.size,
+                  quantity: ex.quantity,
+                  originalUnitPrice: pricing.originalUnitPrice,
+                  discountType: ex.discountValue > 0 ? ex.discountType : "NONE",
+                  discountValue: ex.discountValue > 0 ? ex.discountValue : 0,
+                  unitPrice: pricing.unitPrice,
+                };
+              })
             : [],
       };
 
@@ -1134,107 +1266,246 @@ export default function ReturnExchangeTab() {
                 </div>
               ) : (
                 <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white max-w-full">
-                  <table className="w-full min-w-[620px] text-xs text-left">
+                  <table className="w-full min-w-[780px] text-xs text-left">
                     <thead className="bg-slate-800 text-white uppercase">
                       <tr>
                         <th className="py-2.5 px-3">Sản phẩm đổi mới đã chọn</th>
                         <th className="py-2.5 px-3 text-right">Đơn giá</th>
+                        <th className="py-2.5 px-3">Giảm giá / Nhập giá muốn bán</th>
                         <th className="py-2.5 px-3 text-center w-36">Số lượng đổi</th>
                         <th className="py-2.5 px-3 text-right">Thành tiền</th>
                         <th className="py-2.5 px-2 w-10"></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200">
-                      {exchangeRows.map((ex, i) => (
-                        <tr key={ex.optionKey}>
-                          <td className="py-2.5 px-3">
-                            <div className="font-bold text-slate-900">{ex.displayName}</div>
-                            <div className="font-mono text-[11px] text-slate-500">
-                              {ex.variantCode || ex.product.code} · Tối đa khả dụng: {ex.stockFloor1}
-                            </div>
-                          </td>
-                          <td className="py-2.5 px-3 text-right font-mono font-semibold">
-                            {formatVND(ex.product.sellingPrice)}
-                          </td>
-                          <td className="py-2.5 px-3 text-center">
-                            <div className="inline-flex items-center gap-1">
+                      {exchangeRows.map((ex, i) => {
+                        const pricing = getExchangeItemPricing(ex);
+                        return (
+                          <tr key={ex.optionKey} className="align-top">
+                            <td className="py-2.5 px-3">
+                              <div className="font-bold text-slate-900">{ex.displayName}</div>
+                              <div className="font-mono text-[11px] text-slate-500">
+                                {ex.variantCode || ex.product.code} · Tối đa khả dụng: {ex.stockFloor1}
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-mono">
+                              {pricing.discountPerUnit > 0 ? (
+                                <div>
+                                  <div className="line-through text-slate-400 text-[11px]">
+                                    {formatVND(pricing.originalUnitPrice)}
+                                  </div>
+                                  <div className="font-bold text-emerald-700">
+                                    {formatVND(pricing.unitPrice)}
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="font-semibold">
+                                  {formatVND(pricing.originalUnitPrice)}
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <div className="flex flex-wrap items-center gap-1.5 min-w-[260px]">
+                                <select
+                                  value={ex.discountType}
+                                  onChange={(e) => {
+                                    const val = e.target.value as
+                                      | "NONE"
+                                      | "PERCENT"
+                                      | "AMOUNT";
+                                    handleChangeExchangeDiscount(
+                                      ex.optionKey,
+                                      val,
+                                      0,
+                                      val,
+                                      ""
+                                    );
+                                  }}
+                                  className="px-2 py-1 rounded border border-slate-300 bg-white text-[11px] font-semibold"
+                                >
+                                  <option value="NONE">Không giảm</option>
+                                  <option value="PERCENT">Giảm theo %</option>
+                                  <option value="AMOUNT">Giảm tiền (VND/SP)</option>
+                                </select>
+
+                                {ex.discountType === "PERCENT" && (
+                                  <div className="flex items-center gap-1">
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      max={100}
+                                      value={ex.discountValue || ""}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") e.preventDefault();
+                                      }}
+                                      onChange={(e) =>
+                                        handleChangeExchangeDiscount(
+                                          ex.optionKey,
+                                          "PERCENT",
+                                          Number(e.target.value),
+                                          "PERCENT"
+                                        )
+                                      }
+                                      placeholder="0"
+                                      className="w-16 px-2 py-1 rounded border border-rose-300 font-mono font-bold text-right text-xs bg-white"
+                                    />
+                                    <span className="font-bold text-rose-700">%</span>
+                                  </div>
+                                )}
+
+                                {ex.discountType === "AMOUNT" &&
+                                  ex.discountInputMode !== "PRICE" && (
+                                    <div className="flex items-center gap-1">
+                                      <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        value={
+                                          ex.discountValue > 0
+                                            ? formatNumberDots(ex.discountValue)
+                                            : ""
+                                        }
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") e.preventDefault();
+                                        }}
+                                        onChange={(e) =>
+                                          handleChangeExchangeDiscount(
+                                            ex.optionKey,
+                                            "AMOUNT",
+                                            parseNumberDots(e.target.value),
+                                            "AMOUNT"
+                                          )
+                                        }
+                                        placeholder="Số tiền giảm"
+                                        className="w-28 px-2 py-1 rounded border border-rose-300 font-mono font-bold text-right text-xs bg-white"
+                                      />
+                                      <span className="font-bold text-rose-700 text-[10px]">
+                                        đ/SP
+                                      </span>
+                                    </div>
+                                  )}
+
+                                {/* Ô input nhập giá muốn bán luôn hiển thị trực tiếp */}
+                                <div className="flex items-center gap-1">
+                                  <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={
+                                      ex.discountInputMode === "PRICE" &&
+                                      ex.customPriceText !== undefined
+                                        ? ex.customPriceText
+                                        : pricing.discountAmount > 0
+                                          ? formatNumberDots(pricing.unitPrice)
+                                          : ""
+                                    }
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") e.preventDefault();
+                                    }}
+                                    onChange={(e) =>
+                                      handleChangeExchangeDesiredPrice(
+                                        ex.optionKey,
+                                        e.target.value
+                                      )
+                                    }
+                                    placeholder="Nhập giá muốn bán"
+                                    className="w-36 px-2.5 py-1 rounded border border-emerald-400 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-500 font-mono font-bold text-right text-xs bg-white text-emerald-900 placeholder:font-sans placeholder:font-medium placeholder:text-slate-400"
+                                  />
+                                  <span className="text-[10px] font-bold text-slate-500">
+                                    đ/SP
+                                  </span>
+                                </div>
+
+                                {pricing.discountAmount > 0 && (
+                                  <span className="font-mono text-[11px] font-bold text-rose-600">
+                                    (−{formatVND(pricing.discountAmount)})
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-3 text-center">
+                              <div className="inline-flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  disabled={ex.quantity <= 1}
+                                  onClick={() =>
+                                    setExchangeRows((prev) =>
+                                      prev.map((r, idx) =>
+                                        idx === i
+                                          ? { ...r, quantity: Math.max(1, r.quantity - 1) }
+                                          : r
+                                      )
+                                    )
+                                  }
+                                  className="w-8 h-9 inline-flex items-center justify-center rounded border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40"
+                                >
+                                  <Minus className="w-3.5 h-3.5" />
+                                </button>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={ex.stockFloor1}
+                                  value={ex.quantity}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") e.preventDefault();
+                                  }}
+                                  onChange={(e) => {
+                                    const val = Math.min(
+                                      ex.stockFloor1,
+                                      Math.max(1, Number(e.target.value) || 1)
+                                    );
+                                    setExchangeRows((prev) =>
+                                      prev.map((r, idx) =>
+                                        idx === i ? { ...r, quantity: val } : r
+                                      )
+                                    );
+                                  }}
+                                  className="w-14 min-h-[36px] px-1.5 py-1 rounded border border-slate-300 text-center font-mono font-bold"
+                                />
+                                <button
+                                  type="button"
+                                  disabled={ex.quantity >= ex.stockFloor1}
+                                  onClick={() =>
+                                    setExchangeRows((prev) =>
+                                      prev.map((r, idx) =>
+                                        idx === i
+                                          ? {
+                                              ...r,
+                                              quantity: Math.min(ex.stockFloor1, r.quantity + 1),
+                                            }
+                                          : r
+                                      )
+                                    )
+                                  }
+                                  className="w-8 h-9 inline-flex items-center justify-center rounded border border-slate-300 bg-white hover:bg-emerald-50 hover:border-emerald-400 disabled:opacity-40"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
+                              <div>{formatVND(pricing.lineTotal)}</div>
+                              {pricing.discountAmount > 0 && (
+                                <div className="text-[11px] font-bold text-rose-600">
+                                  −{formatVND(pricing.discountAmount)}
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-2 text-center">
                               <button
                                 type="button"
-                                disabled={ex.quantity <= 1}
                                 onClick={() =>
                                   setExchangeRows((prev) =>
-                                    prev.map((r, idx) =>
-                                      idx === i
-                                        ? { ...r, quantity: Math.max(1, r.quantity - 1) }
-                                        : r
-                                    )
+                                    prev.filter((_, idx) => idx !== i)
                                   )
                                 }
-                                className="w-8 h-9 inline-flex items-center justify-center rounded border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40"
+                                className="w-9 h-9 inline-flex items-center justify-center text-red-500 hover:bg-red-50 rounded"
+                                title="Xóa dòng đổi"
                               >
-                                <Minus className="w-3.5 h-3.5" />
+                                <Trash2 className="w-4 h-4" />
                               </button>
-                              <input
-                                type="number"
-                                min={1}
-                                max={ex.stockFloor1}
-                                value={ex.quantity}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") e.preventDefault();
-                                }}
-                                onChange={(e) => {
-                                  const val = Math.min(
-                                    ex.stockFloor1,
-                                    Math.max(1, Number(e.target.value) || 1)
-                                  );
-                                  setExchangeRows((prev) =>
-                                    prev.map((r, idx) =>
-                                      idx === i ? { ...r, quantity: val } : r
-                                    )
-                                  );
-                                }}
-                                className="w-14 min-h-[36px] px-1.5 py-1 rounded border border-slate-300 text-center font-mono font-bold"
-                              />
-                              <button
-                                type="button"
-                                disabled={ex.quantity >= ex.stockFloor1}
-                                onClick={() =>
-                                  setExchangeRows((prev) =>
-                                    prev.map((r, idx) =>
-                                      idx === i
-                                        ? {
-                                            ...r,
-                                            quantity: Math.min(ex.stockFloor1, r.quantity + 1),
-                                          }
-                                        : r
-                                    )
-                                  )
-                                }
-                                className="w-8 h-9 inline-flex items-center justify-center rounded border border-slate-300 bg-white hover:bg-emerald-50 hover:border-emerald-400 disabled:opacity-40"
-                              >
-                                <Plus className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
-                          <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
-                            {formatVND(ex.product.sellingPrice * ex.quantity)}
-                          </td>
-                          <td className="py-2.5 px-2 text-center">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setExchangeRows((prev) =>
-                                  prev.filter((_, idx) => idx !== i)
-                                )
-                              }
-                              className="w-9 h-9 inline-flex items-center justify-center text-red-500 hover:bg-red-50 rounded"
-                              title="Xóa dòng đổi"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1312,12 +1583,24 @@ export default function ReturnExchangeTab() {
                 </div>
               )}
               {mode === "EXCHANGE" && (
-                <div className="flex justify-between gap-2 text-xs text-slate-300">
-                  <span>Tổng giá trị hàng đổi mới:</span>
-                  <span className="font-mono font-bold text-emerald-400">
-                    {formatVND(exchangeTotal)}
-                  </span>
-                </div>
+                <>
+                  {exchangeDiscountTotal > 0 && (
+                    <div className="flex justify-between gap-2 text-xs text-rose-300">
+                      <span>
+                        Giảm giá hàng đổi mới (Giá gốc: {formatVND(exchangeRawSubtotal)}):
+                      </span>
+                      <span className="font-mono font-bold">
+                        −{formatVND(exchangeDiscountTotal)}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex justify-between gap-2 text-xs text-slate-300">
+                    <span>Tổng giá trị hàng đổi mới (sau giảm):</span>
+                    <span className="font-mono font-bold text-emerald-400">
+                      {formatVND(exchangeTotal)}
+                    </span>
+                  </div>
+                </>
               )}
               <div className="pt-2 border-t border-slate-700 flex flex-wrap justify-between items-center gap-x-2 gap-y-1">
                 <span className="text-sm font-extrabold uppercase">

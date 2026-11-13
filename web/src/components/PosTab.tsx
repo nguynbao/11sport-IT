@@ -88,6 +88,8 @@ interface CartItem {
   quantity: number;
   discountType: DiscountType;
   discountValue: number;
+  discountInputMode?: "NONE" | "PERCENT" | "AMOUNT" | "PRICE";
+  customPriceText?: string;
   isManualDiscount?: boolean;
   autoPromoName?: string;
 }
@@ -122,6 +124,8 @@ interface DraftOrderData {
   giftCart: GiftCartItem[];
   billDiscountType: DiscountType;
   billDiscountValue: number;
+  billDiscountInputMode?: "NONE" | "PERCENT" | "AMOUNT" | "PRICE";
+  billCustomPriceText?: string;
   customerPhone: string;
   customerName: string;
   isExistingCustomer: boolean;
@@ -238,6 +242,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
   // Giảm giá Bill
   const [billDiscountType, setBillDiscountType] = useState<DiscountType>("NONE");
   const [billDiscountValue, setBillDiscountValue] = useState<number>(0);
+  const [billDiscountInputMode, setBillDiscountInputMode] = useState<
+    "NONE" | "PERCENT" | "AMOUNT" | "PRICE"
+  >("NONE");
+  const [billCustomPriceText, setBillCustomPriceText] = useState<string>("");
 
   // Thông tin khách hàng
   const [customerPhone, setCustomerPhone] = useState("");
@@ -279,6 +287,8 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     giftCart,
     billDiscountType,
     billDiscountValue,
+    billDiscountInputMode,
+    billCustomPriceText,
     customerPhone,
     customerName,
     isExistingCustomer,
@@ -295,9 +305,21 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
   const applyDraftData = (d: DraftOrderData) => {
     setCart(d.cart || []);
     setGiftCart(d.giftCart || []);
-    setBillDiscountType(d.billDiscountType || "NONE");
+    const loadedBillDiscountType = d.billDiscountType || "NONE";
+    setBillDiscountType(loadedBillDiscountType);
     setBillDiscountValue(Number(d.billDiscountValue) || 0);
-    setIsManualBillDiscount((Number(d.billDiscountValue) || 0) > 0);
+    setBillDiscountInputMode(
+      d.billDiscountInputMode ||
+        (loadedBillDiscountType === "PERCENT"
+          ? "PERCENT"
+          : loadedBillDiscountType === "AMOUNT"
+            ? "AMOUNT"
+            : "NONE")
+    );
+    setBillCustomPriceText(d.billCustomPriceText || "");
+    setIsManualBillDiscount(
+      (Number(d.billDiscountValue) || 0) > 0 || d.billDiscountInputMode === "PRICE"
+    );
     setAutoBillPromoName("");
     setAppliedPromosSummary([]);
     setCustomerPhone(d.customerPhone || "");
@@ -327,6 +349,8 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
             giftCart,
             billDiscountType,
             billDiscountValue,
+            billDiscountInputMode,
+            billCustomPriceText,
             customerPhone,
             customerName,
             isExistingCustomer,
@@ -348,6 +372,8 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
       giftCart,
       billDiscountType,
       billDiscountValue,
+      billDiscountInputMode,
+      billCustomPriceText,
       customerPhone,
       customerName,
       isExistingCustomer,
@@ -1605,7 +1631,9 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     discountType: DiscountType,
     rawVal: number,
     color?: string,
-    size?: string
+    size?: string,
+    discountInputMode?: "NONE" | "PERCENT" | "AMOUNT" | "PRICE",
+    customPriceText?: string
   ) => {
     const lineKey = getCartLineKey(productId, color, size);
     setCart((prev) =>
@@ -1620,11 +1648,63 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
         } else {
           cleanVal = 0;
         }
+        const resolvedMode =
+          discountInputMode ||
+          (discountType === "PERCENT"
+            ? "PERCENT"
+            : discountType === "AMOUNT"
+              ? "AMOUNT"
+              : "NONE");
         return {
           ...c,
           discountType,
           discountValue: cleanVal,
+          discountInputMode: resolvedMode,
+          customPriceText:
+            resolvedMode === "PRICE"
+              ? customPriceText !== undefined
+                ? customPriceText
+                : formatNumberDots(Math.max(0, origPrice - cleanVal))
+              : undefined,
           isManualDiscount: true,
+          autoPromoName: undefined,
+        };
+      })
+    );
+  };
+
+  const handleChangeItemDesiredPrice = (
+    productId: string,
+    rawText: string,
+    color?: string,
+    size?: string
+  ) => {
+    const lineKey = getCartLineKey(productId, color, size);
+    const digits = rawText.replace(/[^\d]/g, "");
+    setCart((prev) =>
+      prev.map((c) => {
+        if (getCartLineKey(c.product._id, c.color, c.size) !== lineKey) return c;
+        const origPrice = Math.round(Number(c.product.sellingPrice) || 0);
+        if (!digits) {
+          return {
+            ...c,
+            discountType: "NONE",
+            discountValue: 0,
+            discountInputMode: "NONE",
+            customPriceText: "",
+            isManualDiscount: false,
+            autoPromoName: undefined,
+          };
+        }
+        const enteredPrice = Math.min(origPrice, Math.max(0, Number(digits) || 0));
+        const computedDiscount = Math.max(0, origPrice - enteredPrice);
+        return {
+          ...c,
+          discountType: computedDiscount > 0 ? "AMOUNT" : "NONE",
+          discountValue: computedDiscount,
+          discountInputMode: "PRICE",
+          customPriceText: formatNumberDots(enteredPrice),
+          isManualDiscount: computedDiscount > 0,
           autoPromoName: undefined,
         };
       })
@@ -1666,19 +1746,60 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
     0
   );
 
+  // Tự động tính lại giảm giá Bill khi giỏ hàng (subtotal) thay đổi mà nhân viên đang nhập giá Bill mục tiêu (PRICE)
+  useEffect(() => {
+    if (billDiscountInputMode !== "PRICE" || !billCustomPriceText) return;
+    if (subtotal <= 0) {
+      setBillDiscountType("NONE");
+      setBillDiscountInputMode("NONE");
+      setBillCustomPriceText("");
+      setBillDiscountValue(0);
+      setIsManualBillDiscount(false);
+      return;
+    }
+    const rawTarget = parseNumberDots(billCustomPriceText);
+    const clampedTarget = Math.min(subtotal, Math.max(0, rawTarget));
+    const recomputedDiscount = Math.max(0, subtotal - clampedTarget);
+    const nextType: DiscountType = recomputedDiscount > 0 ? "AMOUNT" : "NONE";
+    const formattedTarget = formatNumberDots(clampedTarget);
+
+    if (billDiscountType !== nextType) {
+      setBillDiscountType(nextType);
+    }
+    if (billDiscountValue !== recomputedDiscount) {
+      setBillDiscountValue(recomputedDiscount);
+    }
+    if (billCustomPriceText !== formattedTarget) {
+      setBillCustomPriceText(formattedTarget);
+    }
+  }, [
+    subtotal,
+    billDiscountInputMode,
+    billCustomPriceText,
+    billDiscountType,
+    billDiscountValue,
+  ]);
+
   const cleanBillDiscountValue =
-    billDiscountType === "PERCENT"
-      ? Math.min(100, Math.max(0, billDiscountValue))
-      : billDiscountType === "AMOUNT"
-        ? Math.min(subtotal, Math.max(0, Math.round(billDiscountValue)))
-        : 0;
+    billDiscountInputMode === "PRICE" && billCustomPriceText !== ""
+      ? Math.max(
+          0,
+          subtotal - Math.min(subtotal, Math.max(0, parseNumberDots(billCustomPriceText)))
+        )
+      : billDiscountType === "PERCENT"
+        ? Math.min(100, Math.max(0, billDiscountValue))
+        : billDiscountType === "AMOUNT"
+          ? Math.min(subtotal, Math.max(0, Math.round(billDiscountValue)))
+          : 0;
 
   const billDiscountAmount =
-    billDiscountType === "PERCENT"
-      ? Math.round((subtotal * cleanBillDiscountValue) / 100)
-      : billDiscountType === "AMOUNT"
-        ? cleanBillDiscountValue
-        : 0;
+    billDiscountInputMode === "PRICE" && billCustomPriceText !== ""
+      ? cleanBillDiscountValue
+      : billDiscountType === "PERCENT"
+        ? Math.round((subtotal * cleanBillDiscountValue) / 100)
+        : billDiscountType === "AMOUNT"
+          ? cleanBillDiscountValue
+          : 0;
 
   const afterBillDiscount = Math.max(0, subtotal - billDiscountAmount);
   const cardFee =
@@ -3245,90 +3366,120 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
 
                       {/* Dòng chỉnh giảm giá riêng cho sản phẩm này */}
                       <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-200/80">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <Tag className="w-3.5 h-3.5 text-rose-600" />
                           <span className="text-[11px] font-bold text-slate-700">
                             Giảm giá SP:
                           </span>
                           <select
                             value={item.discountType}
-                            onChange={(e) =>
+                            onChange={(e) => {
+                              const val = e.target.value as DiscountType;
                               handleChangeItemDiscount(
                                 item.product._id,
-                                e.target.value as DiscountType,
+                                val,
                                 0,
                                 item.color,
-                                item.size
-                              )
-                            }
+                                item.size,
+                                val as "NONE" | "PERCENT" | "AMOUNT",
+                                ""
+                              );
+                            }}
                             className="px-2 py-1 rounded border border-slate-300 bg-white text-[11px] font-semibold"
                           >
                             <option value="NONE">Không giảm</option>
                             <option value="PERCENT">Giảm theo %</option>
                             <option value="AMOUNT">Giảm tiền (VND/SP)</option>
                           </select>
+
+                          {item.discountType === "PERCENT" && (
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                value={item.discountValue || ""}
+                                onChange={(e) =>
+                                  handleChangeItemDiscount(
+                                    item.product._id,
+                                    "PERCENT",
+                                    Number(e.target.value),
+                                    item.color,
+                                    item.size,
+                                    "PERCENT"
+                                  )
+                                }
+                                placeholder="0"
+                                className="w-16 px-2 py-1 rounded border border-rose-300 font-mono font-bold text-right text-xs bg-white"
+                              />
+                              <span className="font-bold text-rose-700 text-xs">%</span>
+                            </div>
+                          )}
+
+                          {item.discountType === "AMOUNT" &&
+                            item.discountInputMode !== "PRICE" && (
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={
+                                    item.discountValue > 0
+                                      ? formatNumberDots(item.discountValue)
+                                      : ""
+                                  }
+                                  onChange={(e) =>
+                                    handleChangeItemDiscount(
+                                      item.product._id,
+                                      "AMOUNT",
+                                      parseNumberDots(e.target.value),
+                                      item.color,
+                                      item.size,
+                                      "AMOUNT"
+                                    )
+                                  }
+                                  placeholder="Số tiền giảm"
+                                  className="w-28 px-2 py-1 rounded border border-rose-300 font-mono font-bold text-right text-xs bg-white"
+                                />
+                                <span className="font-bold text-rose-700 text-[11px]">
+                                  đ/SP
+                                </span>
+                              </div>
+                            )}
                         </div>
 
-                        {item.discountType === "PERCENT" && (
-                          <div className="flex items-center gap-1.5">
-                            <input
-                              type="number"
-                              min={0}
-                              max={100}
-                              value={item.discountValue || ""}
-                              onChange={(e) =>
-                                handleChangeItemDiscount(
-                                  item.product._id,
-                                  "PERCENT",
-                                  Number(e.target.value),
-                                  item.color,
-                                  item.size
-                                )
-                              }
-                              placeholder="0"
-                              className="w-16 px-2 py-1 rounded border border-rose-300 font-mono font-bold text-right text-xs"
-                            />
-                            <span className="font-bold text-rose-700">%</span>
-                            {pricing.discountAmount > 0 && (
-                              <span className="font-mono text-[11px] font-bold text-rose-600">
-                                (−{formatVND(pricing.discountAmount)})
-                              </span>
-                            )}
-                          </div>
-                        )}
-
-                        {item.discountType === "AMOUNT" && (
-                          <div className="flex items-center gap-1.5">
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              value={
-                                item.discountValue > 0
-                                  ? formatNumberDots(item.discountValue)
+                        {/* Ô input nhập trực tiếp giá muốn bán luôn hiển thị */}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={
+                              item.discountInputMode === "PRICE" &&
+                              item.customPriceText !== undefined
+                                ? item.customPriceText
+                                : pricing.discountAmount > 0
+                                  ? formatNumberDots(pricing.unitPrice)
                                   : ""
-                              }
-                              onChange={(e) =>
-                                handleChangeItemDiscount(
-                                  item.product._id,
-                                  "AMOUNT",
-                                  parseNumberDots(e.target.value),
-                                  item.color,
-                                  item.size
-                                )
-                              }
-                              placeholder="0"
-                              className="w-24 px-2 py-1 rounded border border-rose-300 font-mono font-bold text-right text-xs"
-                            />
-                            <span className="font-bold text-rose-700 text-[11px]">
-                              VND/SP
+                            }
+                            onChange={(e) =>
+                              handleChangeItemDesiredPrice(
+                                item.product._id,
+                                e.target.value,
+                                item.color,
+                                item.size
+                              )
+                            }
+                            placeholder="Nhập giá muốn bán"
+                            className="w-36 px-2.5 py-1 rounded border border-emerald-400 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-500 font-mono font-bold text-right text-xs bg-white text-emerald-900 placeholder:font-sans placeholder:font-medium placeholder:text-slate-400"
+                          />
+                          <span className="text-[11px] font-bold text-slate-600">
+                            đ/SP
+                          </span>
+                          {pricing.discountAmount > 0 && (
+                            <span className="font-mono text-[11px] font-bold text-rose-600">
+                              (−{formatVND(pricing.discountAmount)})
                             </span>
-                            {pricing.discountAmount > 0 && (
-                              <span className="font-mono text-[11px] font-bold text-rose-600">
-                                (−{formatVND(pricing.discountAmount)})
-                              </span>
-                            )}
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </div>
                     </div>
                   );
@@ -3477,8 +3628,11 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                 onClick={() => {
                   setBillDiscountType("NONE");
                   setBillDiscountValue(0);
+                  setBillDiscountInputMode("NONE");
+                  setBillCustomPriceText("");
+                  setIsManualBillDiscount(false);
                 }}
-                className={`py-2 px-2 rounded-lg border text-xs font-bold transition ${billDiscountType === "NONE"
+                className={`py-2 px-2 rounded-lg border text-xs font-bold transition ${billDiscountType === "NONE" && billDiscountInputMode !== "PRICE"
                   ? "bg-slate-900 text-white border-slate-900"
                   : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
                   }`}
@@ -3490,6 +3644,9 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                 onClick={() => {
                   setBillDiscountType("PERCENT");
                   setBillDiscountValue(0);
+                  setBillDiscountInputMode("PERCENT");
+                  setBillCustomPriceText("");
+                  setIsManualBillDiscount(true);
                 }}
                 className={`py-2 px-2 rounded-lg border text-xs font-bold transition ${billDiscountType === "PERCENT"
                   ? "bg-rose-600 text-white border-rose-700"
@@ -3502,9 +3659,11 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                 type="button"
                 onClick={() => {
                   setBillDiscountType("AMOUNT");
-                  setBillDiscountValue(0);
+                  setBillDiscountInputMode("AMOUNT");
+                  setBillCustomPriceText("");
+                  setIsManualBillDiscount(true);
                 }}
-                className={`py-2 px-2 rounded-lg border text-xs font-bold transition ${billDiscountType === "AMOUNT"
+                className={`py-2 px-2 rounded-lg border text-xs font-bold transition ${billDiscountType === "AMOUNT" && billDiscountInputMode !== "PRICE"
                   ? "bg-rose-600 text-white border-rose-700"
                   : "bg-white text-slate-700 border-slate-300 hover:bg-rose-50"
                   }`}
@@ -3514,7 +3673,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
             </div>
 
             {billDiscountType === "PERCENT" && (
-              <div className="flex items-center gap-2 pt-1">
+              <div className="flex flex-wrap items-center gap-2 pt-1">
                 <span className="text-xs font-semibold text-slate-700">
                   Mức giảm Bill (%):
                 </span>
@@ -3523,21 +3682,22 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                   min={0}
                   max={100}
                   value={billDiscountValue || ""}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    setIsManualBillDiscount(true);
                     setBillDiscountValue(
                       Math.min(100, Math.max(0, Number(e.target.value)))
-                    )
-                  }
+                    );
+                  }}
                   placeholder="VD: 10"
                   className="w-24 px-3 py-1.5 rounded-lg border border-rose-300 font-mono font-bold text-right text-sm bg-white"
                 />
                 <span className="text-xs font-bold text-rose-700">
-                  % (= −{formatVND(billDiscountAmount)})
+                  % (= −{formatVND(billDiscountAmount)} → Còn: {formatVND(afterBillDiscount)})
                 </span>
               </div>
             )}
 
-            {billDiscountType === "AMOUNT" && (
+            {billDiscountType === "AMOUNT" && billDiscountInputMode !== "PRICE" && (
               <div className="flex items-center gap-2 pt-1">
                 <span className="text-xs font-semibold text-slate-700">
                   Số tiền giảm Bill:
@@ -3551,9 +3711,12 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                         ? formatNumberDots(billDiscountValue)
                         : ""
                     }
-                    onChange={(e) =>
-                      setBillDiscountValue(parseNumberDots(e.target.value))
-                    }
+                    onChange={(e) => {
+                      setIsManualBillDiscount(true);
+                      setBillDiscountInputMode("AMOUNT");
+                      setBillCustomPriceText("");
+                      setBillDiscountValue(parseNumberDots(e.target.value));
+                    }}
                     placeholder="VD: 50.000"
                     className="w-full pl-3 pr-12 py-1.5 rounded-lg border border-rose-300 font-mono font-bold text-right text-sm bg-white"
                   />
@@ -3563,6 +3726,49 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                 </div>
               </div>
             )}
+
+            {/* Ô input nhập giá muốn bán cho Tổng Bill luôn hiển thị trực tiếp */}
+            <div className="flex items-center gap-2 pt-1">
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={
+                    billDiscountInputMode === "PRICE"
+                      ? billCustomPriceText
+                      : billDiscountAmount > 0
+                        ? formatNumberDots(afterBillDiscount)
+                        : ""
+                  }
+                  onChange={(e) => {
+                    const digits = e.target.value.replace(/[^\d]/g, "");
+                    if (!digits) {
+                      setBillDiscountType("NONE");
+                      setBillDiscountInputMode("NONE");
+                      setBillCustomPriceText("");
+                      setBillDiscountValue(0);
+                      setIsManualBillDiscount(false);
+                      return;
+                    }
+                    const enteredPrice = Math.min(
+                      subtotal,
+                      Math.max(0, Number(digits) || 0)
+                    );
+                    const computedDiscount = Math.max(0, subtotal - enteredPrice);
+                    setIsManualBillDiscount(true);
+                    setBillDiscountType(computedDiscount > 0 ? "AMOUNT" : "NONE");
+                    setBillDiscountInputMode("PRICE");
+                    setBillCustomPriceText(formatNumberDots(enteredPrice));
+                    setBillDiscountValue(computedDiscount);
+                  }}
+                  placeholder="Nhập giá muốn bán"
+                  className="w-full pl-3 pr-12 py-1.5 rounded-lg border border-emerald-400 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-500 font-mono font-bold text-right text-sm bg-white text-emerald-900 placeholder:font-sans placeholder:font-medium placeholder:text-slate-400"
+                />
+                <span className="absolute right-3 top-2 text-[11px] font-bold text-slate-500">
+                  VND
+                </span>
+              </div>
+            </div>
           </div>
 
           {/* 4. Phương thức thanh toán */}
