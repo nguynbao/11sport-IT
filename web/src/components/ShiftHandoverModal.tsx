@@ -119,7 +119,10 @@ export default function ShiftHandoverModal({
             categoryCode: catName.toUpperCase(),
             categoryName: catName,
             isPrimaryCategory: idx === 0,
-            unit: matching[0]?.unit || "Cái",
+            unit:
+              new Set(matching.map((p) => p.unit || "Cái")).size > 1
+                ? "Sản phẩm"
+                : matching[0]?.unit || "Cái",
             productCount: matching.length,
             expectedTotalQty,
           };
