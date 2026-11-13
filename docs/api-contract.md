@@ -984,6 +984,13 @@
       - **Danh mục đi kèm cố định theo Thứ trong tuần**: Danh mục được Quản lý cấu hình cho thứ đó (`companionCategory`), ví dụ: `Vợt + Giày`, `Vợt + Bóng thi đấu`, `Vợt + Phụ kiện`.
     - Trả về `categorySummaries`: Danh sách tổng hợp số lượng tồn Tầng 1 của từng mặt hàng kiểm trong ngày (**tổng số lượng tất cả bao gồm size, màu, không cần ghi chi tiết từng mã**):
       - `{ categoryId, categoryCode, categoryName, isPrimaryCategory, unit, productCount, expectedTotalQty }`.
+      - `unit`: đơn vị chung của danh mục; nếu danh mục gồm sản phẩm có nhiều đơn vị khác nhau (ví dụ Hộp + Quả) thì trả `"Sản phẩm"` (mỗi sản phẩm tính 1 đơn vị, không quy đổi số quả/hộp).
+    - **Quy đổi Bộ → Lẻ (chỉ với sản phẩm có liên kết `parentSetProductId` + `packSize > 0`)**:
+      - Tồn Tầng 1 của Sản phẩm Bộ được quy đổi `tồn Bộ × packSize` rồi cộng vào `stockFloor1` / `stockQtyFloor1` / `stock` của Sản phẩm Lẻ liên kết (nếu cả hai đang `ACTIVE`).
+      - Sản phẩm Bộ đã được quy đổi bị loại khỏi `products` và không tính riêng vào `expectedTotalQty` / `productCount` (tránh cộng lẫn Hộp + Cái). Mỗi Bộ chỉ quy đổi vào 1 sản phẩm Lẻ đầu tiên.
+      - Bộ lọc "tồn Tầng 1 > 0" áp dụng sau khi quy đổi.
+      - Sản phẩm không có liên kết (ví dụ bóng Hộp/Quả) giữ nguyên, không quy đổi.
+      - Trường bổ sung (optional) trên mỗi sản phẩm Lẻ trong `products[]` đã quy đổi: `retailOwnStockFloor1` (tồn lẻ riêng), `parentSetProductId`, `parentSetProductCode`, `parentSetUnit`, `parentSetStockFloor1` (tồn Bộ trước quy đổi), `packSize`.
   - Response: `{ "data": { "date": "2026-11-12", "weekday": 4, "categoryLabel": "Vợt + Phụ kiện", "checkedCategories": ["Vợt", "Phụ kiện"], "categorySummaries": [{ "categoryId": "...", "categoryCode": "VOT", "categoryName": "Vợt", "isPrimaryCategory": true, "unit": "Cái", "productCount": 24, "expectedTotalQty": 151 }, ...], "primaryCategory": { ... }, "companionCategory": { ... }, "availableCompanionCategories": [...], "products": [...] }, "meta": { "totalProducts": 49 } }`
 - `GET /api/v1/shifts/handover`
   - Query: `?date=YYYY-MM-DD&from=YYYY-MM-DD&to=YYYY-MM-DD&status=DRAFT|PENDING|ACCEPTED|DISCREPANCY_REPORTED|STORE_CLOSED&shiftCode=SHIFT_1|SHIFT_2|BOTH&staffId=...&onlyDiscrepancy=true|false&search=...`

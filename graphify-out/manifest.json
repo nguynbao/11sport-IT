@@ -642,9 +642,9 @@
     "semantic_hash": ""
   },
   "docs/api-contract.md": {
-    "mtime": 1794558996.040155,
-    "seen": 1794559257.848709,
-    "ast_hash": "e82e4d3a979947a944dd409313a1eeed",
+    "mtime": 1794566382.245877,
+    "seen": 1794566544.663677,
+    "ast_hash": "f0cf6652839adda7c2fde139a9b3318c",
     "semantic_hash": ""
   },
   "docs/design/design-system.md": {
@@ -822,9 +822,9 @@
     "semantic_hash": ""
   },
   "server/src/routes/shifts.ts": {
-    "mtime": 1794559033.0510411,
-    "seen": 1794559257.8484852,
-    "ast_hash": "e5f794c8d0177b5ec4410a3e21e02d6e",
+    "mtime": 1794565951.3193312,
+    "seen": 1794566059.336925,
+    "ast_hash": "c00eea772aa38212a3954dbf7c598b3e",
     "semantic_hash": ""
   },
   "server/tests/hrm-attendance.test.ts": {
@@ -846,9 +846,9 @@
     "semantic_hash": ""
   },
   "web/src/components/ShiftHandoverModal.tsx": {
-    "mtime": 1794559201.4826605,
-    "seen": 1794559257.848659,
-    "ast_hash": "f23686f427b2dae1aca14b1b6bc9cbde",
+    "mtime": 1794565951.3179314,
+    "seen": 1794566059.337033,
+    "ast_hash": "4b1f4d97221d501fdcfab8e59cce5a8e",
     "semantic_hash": ""
   },
   "docs/design/hrm-attendance-cms-web.md": {

@@ -1006,7 +1006,7 @@ export async function computeDailyHandoverCheck(targetDate?: string) {
     categories.map((c: any) => [String(c.name || '').trim().toLowerCase(), c])
   );
 
-  const floor1Products = allProducts
+  const allFloorProducts = allProducts
     .filter((p: any) => p.status !== 'INACTIVE')
     .map((p: any) => {
       const cat =
@@ -1048,7 +1048,37 @@ export async function computeDailyHandoverCheck(targetDate?: string) {
         stock: floors.stockFloor1,
         variants: visibleVariants,
       };
-    })
+    });
+
+  // Quy đổi liên kết Bộ -> Lẻ: tồn Sản phẩm Bộ tại Tầng 1 được quy ra đơn vị lẻ (x packSize)
+  // và cộng vào Sản phẩm Lẻ; Sản phẩm Bộ không đếm riêng để tránh cộng lẫn đơn vị (Hộp + Quả).
+  const activeById = new Map(allFloorProducts.map((p: any) => [String(p._id), p]));
+  const mergedSetIds = new Set<string>();
+  for (const raw of allProducts as any[]) {
+    if (raw.status === 'INACTIVE') continue;
+    const retailId = String(raw._id);
+    const parentId = String(raw.parentSetProductId || '').trim();
+    const packSize = Math.max(0, Math.round(Number(raw.packSize) || 0));
+    if (!parentId || packSize <= 0 || parentId === retailId || mergedSetIds.has(parentId)) continue;
+    const retail = activeById.get(retailId);
+    const setProd = activeById.get(parentId);
+    if (!retail || !setProd) continue;
+    const setQty = Number(setProd.stockFloor1) || 0;
+    const converted = setQty * packSize;
+    retail.retailOwnStockFloor1 = retail.stockFloor1;
+    retail.parentSetProductId = parentId;
+    retail.parentSetProductCode = setProd.code;
+    retail.parentSetUnit = setProd.unit;
+    retail.parentSetStockFloor1 = setQty;
+    retail.packSize = packSize;
+    retail.stockFloor1 = retail.stockFloor1 + converted;
+    retail.stockQtyFloor1 = retail.stockFloor1;
+    retail.stock = retail.stockFloor1;
+    mergedSetIds.add(parentId);
+  }
+
+  const floor1Products = allFloorProducts
+    .filter((p: any) => !mergedSetIds.has(String(p._id)))
     .filter((p: any) => (Number(p.stockFloor1) || 0) > 0);
 
   const activeCategories = categories.filter((c: any) => c.status !== 'INACTIVE');
@@ -1096,7 +1126,11 @@ export async function computeDailyHandoverCheck(targetDate?: string) {
         code: String(c.code || ''),
         slug: String(c.code || '').toLowerCase(),
         name: String(c.name || ''),
-        unit: catProds[0]?.unit || 'Cái',
+        // Danh mục lẫn nhiều đơn vị (Hộp + Quả...) -> hiển thị chung là "Sản phẩm" để tránh hiểu nhầm
+        unit:
+          new Set(catProds.map((p: any) => p.unit || 'Cái')).size > 1
+            ? 'Sản phẩm'
+            : catProds[0]?.unit || 'Cái',
         productCount: catProds.length,
         expectedTotalQty,
       };
