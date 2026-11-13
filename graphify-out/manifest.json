@@ -1092,9 +1092,9 @@
     "semantic_hash": ""
   },
   "server/src/migrations/scripts/20261113000003-backfill-return-debt-reduction.ts": {
-    "mtime": 1794562994.7332335,
-    "seen": 1794563121.6096792,
-    "ast_hash": "122c94ec7719793eed72ac430e516375",
+    "mtime": 1794564679.9433253,
+    "seen": 1794564815.2536662,
+    "ast_hash": "cdb90cb87b92b6479fbe0b74441dd50d",
     "semantic_hash": ""
   },
   "server/src/migrations/types.ts": {
