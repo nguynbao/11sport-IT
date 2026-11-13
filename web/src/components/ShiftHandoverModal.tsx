@@ -522,15 +522,17 @@ export default function ShiftHandoverModal({
             </button>
 
             <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={handleSaveDraft}
-                disabled={submitting || loading}
-                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
-              >
-                <Save className="w-3.5 h-3.5" />
-                <span>{submitting ? "Đang lưu..." : "Lưu Bản Nháp"}</span>
-              </button>
+              {existingHandover?.status !== "PENDING" && (
+                <button
+                  type="button"
+                  onClick={handleSaveDraft}
+                  disabled={submitting || loading}
+                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{submitting ? "Đang lưu..." : "Lưu Bản Nháp"}</span>
+                </button>
+              )}
 
               {isReachedCheckoutTime ? (
                 <button

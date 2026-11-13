@@ -1396,7 +1396,9 @@ export function resolvePendingIncomingHandoverForSales(params: {
 }
 
 export async function finalizeAttendanceCheckoutFromHandover(handover: any): Promise<any | null> {
-  if (!handover || !handover.fromStaffId || !handover.date) return null;
+  if (!handover || handover.status === 'DRAFT' || !handover.fromStaffId || !handover.date) {
+    return null;
+  }
   const att = await attendanceRepo.findOne({
     staffId: handover.fromStaffId,
     date: String(handover.date),
@@ -1973,6 +1975,14 @@ shiftsRouter.post('/shifts/handover', async (req, res, next) => {
       (h) => h.status === 'DRAFT' || h.status === 'PENDING'
     );
 
+    if (existing && existing.status === 'PENDING' && isDraft) {
+      throw new ApiError(
+        400,
+        'HANDOVER_ALREADY_SUBMITTED',
+        'Phiếu bàn giao ca này đã được gửi chính thức (đang chờ ca sau xác nhận), không thể hạ xuống trạng thái Bản nháp!'
+      );
+    }
+
     const payload: any = {
       date: effectiveDate,
       shiftCode,
@@ -2030,6 +2040,14 @@ shiftsRouter.post('/shifts/handover/:id/confirm', async (req, res, next) => {
       throw new ApiError(404, 'HANDOVER_NOT_FOUND', 'Không tìm thấy biên bản bàn giao ca');
     }
 
+    if (handover.status === 'DRAFT') {
+      throw new ApiError(
+        400,
+        'HANDOVER_STILL_DRAFT',
+        'Phiếu bàn giao ca này vẫn đang ở trạng thái Bản nháp (nhân viên chưa bấm xác nhận gửi bàn giao), chưa thể xác nhận!'
+      );
+    }
+
     if (!isManager) {
       if (String(handover.fromStaffId) === String(user.userId)) {
         throw new ApiError(403, 'FORBIDDEN', 'Người lập phiếu bàn giao không thể tự xác nhận phiếu của chính mình');
@@ -2039,6 +2057,7 @@ shiftsRouter.post('/shifts/handover/:id/confirm', async (req, res, next) => {
       }
     }
 
+    const wasPending = handover.status === 'PENDING';
     const { accept = true, note = '' } = req.body || {};
     const cleanNote = String(note || '').trim();
 
@@ -2055,9 +2074,11 @@ shiftsRouter.post('/shifts/handover/:id/confirm', async (req, res, next) => {
         : handover.notes,
     });
 
-    // Khi ca sau xác nhận phiếu bàn giao -> tự động hoàn tất Check-out cho nhân viên Ca 1
+    // Chỉ hoàn tất chấm công sau khi xác nhận một phiếu PENDING
     // với thời gian Check-out được giữ nguyên đúng thời điểm nhân viên Ca 1 bấm gửi bàn giao (pendingCheckOutTime / submittedAt)
-    const finalizedFromStaffAttendance = await finalizeAttendanceCheckoutFromHandover(updated || handover);
+    const finalizedFromStaffAttendance = wasPending
+      ? await finalizeAttendanceCheckoutFromHandover(updated || handover)
+      : null;
 
     res.json({
       data: updated,

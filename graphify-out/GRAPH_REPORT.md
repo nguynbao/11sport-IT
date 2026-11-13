@@ -1,7 +1,7 @@
 # Graph Report - 11sport-IT  (2026-11-13)
 
 ## Corpus Check
-- 168 files · ~400,799 words
+- 168 files · ~401,171 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 11 file(s) not represented in the graph (top: (none) 3, .example 3, .css 2)
 
@@ -11,7 +11,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `e296deba`
+- Built from commit: `ce4b951e`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 

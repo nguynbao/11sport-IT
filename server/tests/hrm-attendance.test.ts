@@ -249,7 +249,32 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
     expect(prematureCheckout.status).toBe(400);
     expect(prematureCheckout.body.code).toBe('HANDOVER_REQUIRED');
 
-    // Ca 1 tạo biên bản bàn giao Kho Tầng 1
+    // Ca 1 lưu bản nháp kiểm hàng trong ca (status: DRAFT)
+    const draftRes = await request(app)
+      .post('/api/v1/shifts/handover')
+      .set('Authorization', `Bearer ${salesToken}`)
+      .send({
+        date: today,
+        shiftCode: 'SHIFT_1',
+        cashBalance: 15000000,
+        checkedCategories: dailyCheckRes.body.data.checkedCategories,
+        totalCheckedProducts: dailyCheckRes.body.data.totalCheckedProducts,
+        discrepancies: [],
+        isDraft: true,
+      });
+    expect(draftRes.status).toBe(201);
+    expect(draftRes.body.data.status).toBe('DRAFT');
+    const draftHandoverId = draftRes.body.data._id;
+
+    // Chặn xác nhận phiếu còn ở trạng thái DRAFT (400 HANDOVER_STILL_DRAFT) để không tự động check-out sớm
+    const confirmDraftRes = await request(app)
+      .post(`/api/v1/shifts/handover/${draftHandoverId}/confirm`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ accept: true, note: 'Thử xác nhận phiếu nháp' });
+    expect(confirmDraftRes.status).toBe(400);
+    expect(confirmDraftRes.body.code).toBe('HANDOVER_STILL_DRAFT');
+
+    // Ca 1 tạo biên bản bàn giao Kho Tầng 1 chính thức (chuyển sang PENDING)
     const handoverRes = await request(app)
       .post('/api/v1/shifts/handover')
       .set('Authorization', `Bearer ${salesToken}`)
@@ -260,10 +285,24 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
         checkedCategories: dailyCheckRes.body.data.checkedCategories,
         totalCheckedProducts: dailyCheckRes.body.data.totalCheckedProducts,
         discrepancies: [{ productCode: 'GASIA221401DO38', expected: 10, actual: 10, note: 'Khớp' }],
+        isDraft: false,
       });
     expect(handoverRes.status).toBe(201);
     expect(handoverRes.body.data.status).toBe('PENDING');
     const handoverId = handoverRes.body.data._id;
+
+    // Chặn hạ phiếu PENDING xuống lại DRAFT (400 HANDOVER_ALREADY_SUBMITTED)
+    const downgradeToDraftRes = await request(app)
+      .post('/api/v1/shifts/handover')
+      .set('Authorization', `Bearer ${salesToken}`)
+      .send({
+        date: today,
+        shiftCode: 'SHIFT_1',
+        cashBalance: 15420000,
+        isDraft: true,
+      });
+    expect(downgradeToDraftRes.status).toBe(400);
+    expect(downgradeToDraftRes.body.code).toBe('HANDOVER_ALREADY_SUBMITTED');
 
     // Ca 1 sau khi lập phiếu kết ca xong thì được phép Check-out ngay
     const checkoutSuccess = await request(app)

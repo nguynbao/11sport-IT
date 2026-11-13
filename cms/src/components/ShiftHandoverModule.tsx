@@ -1027,36 +1027,42 @@ export default function ShiftHandoverModule() {
               </div>
 
               {/* Admin / Quản lý xác nhận hộ hoặc ghi chú xử lý */}
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
-                <label className="block font-bold text-slate-700">
-                  Ghi chú xác nhận / đối soát của Quản lý (Admin / Kế toán)
-                </label>
-                <input
-                  type="text"
-                  value={adminConfirmNote}
-                  onChange={(e) => setAdminConfirmNote(e.target.value)}
-                  placeholder="Nhập ghi chú xác nhận hoặc xử lý chênh lệch..."
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-xs outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-                <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
-                  <button
-                    type="button"
-                    disabled={actionLoading}
-                    onClick={() => handleConfirm(selectedHandover, false)}
-                    className="px-3.5 py-2 rounded-xl border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-800 font-bold text-xs transition cursor-pointer"
-                  >
-                    Đánh dấu Báo lệch
-                  </button>
-                  <button
-                    type="button"
-                    disabled={actionLoading}
-                    onClick={() => handleConfirm(selectedHandover, true)}
-                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs shadow-sm transition cursor-pointer"
-                  >
-                    ✓ Xác nhận khớp bàn giao
-                  </button>
+              {selectedHandover.status === "DRAFT" ? (
+                <div className="p-4 rounded-2xl bg-slate-100 border border-slate-200 text-slate-700 font-bold text-xs">
+                  Phiếu này đang ở trạng thái <b>Bản nháp trong ca (DRAFT)</b> — nhân viên chưa bấm xác nhận gửi bàn giao ra ca nên chưa thể xác nhận hoàn tất chấm công.
                 </div>
-              </div>
+              ) : (
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+                  <label className="block font-bold text-slate-700">
+                    Ghi chú xác nhận / đối soát của Quản lý (Admin / Kế toán)
+                  </label>
+                  <input
+                    type="text"
+                    value={adminConfirmNote}
+                    onChange={(e) => setAdminConfirmNote(e.target.value)}
+                    placeholder="Nhập ghi chú xác nhận hoặc xử lý chênh lệch..."
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-xs outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      disabled={actionLoading}
+                      onClick={() => handleConfirm(selectedHandover, false)}
+                      className="px-3.5 py-2 rounded-xl border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-800 font-bold text-xs transition cursor-pointer"
+                    >
+                      Đánh dấu Báo lệch
+                    </button>
+                    <button
+                      type="button"
+                      disabled={actionLoading}
+                      onClick={() => handleConfirm(selectedHandover, true)}
+                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs shadow-sm transition cursor-pointer"
+                    >
+                      ✓ Xác nhận khớp bàn giao
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between">

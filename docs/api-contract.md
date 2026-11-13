@@ -1003,8 +1003,9 @@
     - Body: `{ "date"?: "2026-11-12", "shiftCode": "SHIFT_1 | SHIFT_2 | BOTH", "isDraft"?: boolean, "cashBalance": 17420000, "checkedCategories"?: ["Vợt", "Giày"], "totalCheckedProducts"?: 30, "categoryCounts"?: [{ "categoryCode": "VOT", "categoryName": "Vợt", "expectedTotalQty": 151, "actualTotalQty": 151, "unit": "Cái", "note": "" }], "discrepancies"?: [...], "notes"?: "string", "lateCheckoutReason"?: "string", "forceEarly"?: boolean, "earlyReason"?: "string" }`
     - **Chế độ Bản nháp (`isDraft === true`)**:
       - Lưu hoặc cập nhật phiếu ở trạng thái `status: "DRAFT"`. Nhân viên có thể mở nút **Kiểm hàng** cạnh đồng hồ đếm giờ bất cứ lúc nào trong ca để cập nhật tổng số lượng đếm được, tiền mặt trong quầy và lý do.
+      - **Không hạ phiếu `PENDING` xuống `DRAFT`**: Nếu nhân viên đã gửi phiếu bàn giao chính thức (`existing.status === "PENDING"`), hệ thống chặn hạ trạng thái xuống `"DRAFT"` (`400 HANDOVER_ALREADY_SUBMITTED`) để phiếu không bị biến mất khỏi danh sách chờ xác nhận của ca sau và giữ nguyên `submittedAt`.
     - **Chế độ Xác nhận gửi bàn giao khi tan ca (`isDraft !== true`)**:
-      - Chuyển trạng thái phiếu sang `status: "PENDING"` và ghi nhận `submittedAt = new Date()`.
+      - Chuyển trạng thái phiếu sang `status: "PENDING"` và ghi nhận `submittedAt = new Date()` (nếu cập nhật lại phiếu `PENDING` đang chờ thì bảo toàn `submittedAt` ban đầu).
       - Nếu nhân viên gửi phiếu trễ > 5 phút sau giờ tan ca của ca 1 (`> 17:35`) hoặc ca 2 (`> 21:05`) mà chưa nhập `lateCheckoutReason`: trả lỗi `400 LATE_CHECKOUT_REASON_REQUIRED` kèm `{ lateCheckoutMinutes }` để nhân viên nhập lý do check-out trễ.
       - Ghi nhận ngay mốc thời gian bấm xác nhận gửi bàn giao (`pendingCheckOutTime = submittedAt`) vào bản ghi chấm công `Attendance` của nhân viên để chốt đúng giờ ra ca tại thời điểm bấm gửi.
       - **Với Ca 1 (`SHIFT_1`, 08:30–17:30) giao cho Ca 2 (`SHIFT_2`, 12:00–21:00) cùng ngày**:
@@ -1013,7 +1014,8 @@
         - Khi Ca tối gửi phiếu bàn giao (`status: "PENDING"`), Ca tối được hoàn tất Check-out theo giờ bấm gửi và phiếu chờ Ca 1 sáng hôm sau xác nhận.
 - `POST /api/v1/shifts/handover/:id/confirm`
   - Nhân viên Ca sau (hoặc Quản lý trên CMS) xác nhận thông tin phiếu bàn giao ca: `{ "accept": true, "note"?: "string", "receiverCategoryCounts"?: [...] }` -> Chuyển trạng thái phiếu sang `"ACCEPTED"` (hoặc `"DISCREPANCY_REPORTED"` nếu `accept === false`), lưu `toStaffId`, `toStaffName`, `acceptedAt`, `confirmNote`.
-  - Đồng thời, nếu nhân viên giao ca (`fromStaffId`) đang chờ xác nhận bàn giao để hoàn tất Check-out (`pendingCheckOutTime` đã ghi nhận lúc gửi phiếu), hệ thống tự động hoàn tất Check-out cho `fromStaffId` với **`checkOutTime = pendingCheckOutTime || handover.submittedAt`** (đảm bảo tính giờ đúng lúc nhân viên Ca 1 bấm xác nhận gửi bàn giao).
+  - **Chặn xác nhận phiếu nháp (`DRAFT`)**: Nếu phiếu đang ở trạng thái `"DRAFT"` (nhân viên Ca 1 chưa bấm gửi bàn giao), trả lỗi `400 HANDOVER_STILL_DRAFT` và không hoàn tất chấm công trước khi nhân viên gửi phiếu.
+  - Đồng thời, chỉ khi xác nhận một phiếu `"PENDING"`, nếu nhân viên giao ca (`fromStaffId`) đang chờ xác nhận bàn giao để hoàn tất Check-out (`pendingCheckOutTime` đã ghi nhận lúc gửi phiếu), hệ thống tự động hoàn tất Check-out cho `fromStaffId` với **`checkOutTime = pendingCheckOutTime || handover.submittedAt`** (đảm bảo tính giờ đúng lúc nhân viên Ca 1 bấm xác nhận gửi bàn giao).
 - `DELETE /api/v1/shifts/handover/:id` (Role `ADMIN`)
   - Admin xóa phiếu bàn giao ca bị lập nhầm trên CMS.
 
