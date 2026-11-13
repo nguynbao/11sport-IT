@@ -5,7 +5,9 @@ services:
     rootDir: server
     plan: free
     buildCommand: npm install --include=dev && npm run build
-    startCommand: npm start
+    # Chạy migration DB đang chờ trước khi khởi động (xem docs/devops/migrations.md).
+    # Migration lỗi => server không khởi động, Render giữ bản cũ.
+    startCommand: npm run start:migrate
     healthCheckPath: /api/v1/health
     envVars:
       - key: NODE_ENV

@@ -168,15 +168,15 @@
     "semantic_hash": ""
   },
   "render.yaml": {
-    "mtime": 1793843314.1827958,
-    "seen": 1793848296.663253,
-    "ast_hash": "682681e5f58b93d1dc189934a2b6a978",
+    "mtime": 1794563273.1148155,
+    "seen": 1794564181.4961421,
+    "ast_hash": "2a1971b1a047c91ece77e7715c5be9fe",
     "semantic_hash": ""
   },
   "server/package.json": {
-    "mtime": 1794191727.7289107,
-    "seen": 1794197536.016934,
-    "ast_hash": "347af379495cc379052fcbb69ccc84b1",
+    "mtime": 1794563004.119108,
+    "seen": 1794563121.609646,
+    "ast_hash": "fa3152dd740b922ba8fac74dd622943c",
     "semantic_hash": ""
   },
   "server/src/app.ts": {
@@ -1065,6 +1065,48 @@
     "mtime": 1794471960.592462,
     "seen": 1794472359.507021,
     "ast_hash": "bc3d9796bd8b7bd220c6a48fc7a86630",
+    "semantic_hash": ""
+  },
+  "server/src/migrations/cli.ts": {
+    "mtime": 1794562948.7454753,
+    "seen": 1794563121.6096692,
+    "ast_hash": "9e95526fdaf8f047d72cac456ac4be7f",
+    "semantic_hash": ""
+  },
+  "server/src/migrations/runner.ts": {
+    "mtime": 1794562948.766544,
+    "seen": 1794563121.6096718,
+    "ast_hash": "382353bb2e8829f80c7ce0f7fe27b1ee",
+    "semantic_hash": ""
+  },
+  "server/src/migrations/scripts/20261113000001-ensure-indexes.ts": {
+    "mtime": 1794562994.6946063,
+    "seen": 1794563121.609674,
+    "ast_hash": "3dc8d7233ad8948ea65f02c1b9a00642",
+    "semantic_hash": ""
+  },
+  "server/src/migrations/scripts/20261113000002-backfill-order-debt-fields.ts": {
+    "mtime": 1794563730.7587671,
+    "seen": 1794564181.496177,
+    "ast_hash": "374d113cbe954a9f91ea5298ab182eed",
+    "semantic_hash": ""
+  },
+  "server/src/migrations/scripts/20261113000003-backfill-return-debt-reduction.ts": {
+    "mtime": 1794562994.7332335,
+    "seen": 1794563121.6096792,
+    "ast_hash": "122c94ec7719793eed72ac430e516375",
+    "semantic_hash": ""
+  },
+  "server/src/migrations/types.ts": {
+    "mtime": 1794562932.98994,
+    "seen": 1794563121.609683,
+    "ast_hash": "83b8e2ff630f4389862f562e5450d5e0",
+    "semantic_hash": ""
+  },
+  "docs/devops/migrations.md": {
+    "mtime": 1794563273.1247518,
+    "seen": 1794564181.4964821,
+    "ast_hash": "d46b80a89259d51ec7234e0b6ed4c875",
     "semantic_hash": ""
   },
   "cms/package-lock.json": {
