@@ -2,6 +2,7 @@ import { Router, Request } from 'express';
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
+import { promises as dnsPromises } from 'dns';
 import {
   attendanceRepo,
   attendanceConfigRepo,
@@ -21,11 +22,37 @@ import {
 
 export const attendanceRouter = Router();
 
+// ---------------------------------------------------------------------------
+// DNS cache – tự động resolve DDNS domain thay cho IP cứng
+// ---------------------------------------------------------------------------
+const _dnsCache: Record<string, { ip: string; expiresAt: number }> = {};
+const DNS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 phút
+
+async function resolveDomain(domain: string): Promise<string | null> {
+  const now = Date.now();
+  const cached = _dnsCache[domain];
+  if (cached && cached.expiresAt > now) {
+    return cached.ip;
+  }
+  try {
+    const result = await dnsPromises.lookup(domain);
+    if (result?.address) {
+      _dnsCache[domain] = { ip: result.address, expiresAt: now + DNS_CACHE_TTL_MS };
+      return result.address;
+    }
+  } catch (err) {
+    console.error(`[DDNS] Lỗi resolve domain "${domain}":`, err);
+    // Dùng lại cache cũ nếu DNS tạm thời bị lỗi
+    if (cached) return cached.ip;
+  }
+  return null;
+}
+
 function isTestEnv(): boolean {
   return Boolean(
     process.env.VITEST ||
-      process.env.NODE_ENV === 'test' ||
-      process.env.FORCE_MEMORY_DB === 'true'
+    process.env.NODE_ENV === 'test' ||
+    process.env.FORCE_MEMORY_DB === 'true'
   );
 }
 
@@ -137,7 +164,22 @@ function sanitizeAllowedIps(rawList: string[]): string[] {
   return cleaned.filter((ip) => !isLoopbackOrPrivateIp(ip));
 }
 
-function getEnvAttendanceConfig() {
+async function resolveDomains(domainCsv: string): Promise<string[]> {
+  const domains = String(domainCsv || '')
+    .split(',')
+    .map((d) => d.trim())
+    .filter(Boolean);
+  const resolvedIps: string[] = [];
+  for (const domain of domains) {
+    const ip = await resolveDomain(domain);
+    if (ip && !resolvedIps.includes(ip)) {
+      resolvedIps.push(ip);
+    }
+  }
+  return resolvedIps;
+}
+
+async function getEnvAttendanceConfig() {
   const env = readAttendanceEnv();
 
   // --- Cơ sở 1 (Mạng Wi-Fi 1) ---
@@ -145,23 +187,48 @@ function getEnvAttendanceConfig() {
     env.ATTENDANCE_OFFICE_NAME ||
     env.ATTENDANCE_OFFICE_1_NAME ||
     'Cơ sở 1: Showroom 11Sport - 24 Tố Hữu, Hoà Cường, Đà Nẵng';
+
   const rawAllowedIps = (
     env.ATTENDANCE_ALLOWED_IPS ||
     env.ATTENDANCE_OFFICE_1_ALLOWED_IPS ||
-    (isTestEnv() ? '127.0.0.1,::1,localhost,192.168.1.' : '113.22.236.6')
+    (isTestEnv() ? '127.0.0.1,::1,localhost,192.168.1.' : '113.22.236.87,113.22.236.6')
   ).split(',');
-  const allowedIps = sanitizeAllowedIps(rawAllowedIps);
+  let allowedIps = sanitizeAllowedIps(rawAllowedIps);
+
+  const office1Domain =
+    env.ATTENDANCE_OFFICE_1_DOMAIN ||
+    env.ATTENDANCE_DDNS_DOMAIN ||
+    (isTestEnv() ? '' : '11sport2.myddns.me');
+  if (office1Domain && !isTestEnv()) {
+    const resolvedList = await resolveDomains(office1Domain);
+    if (resolvedList.length > 0) {
+      allowedIps = Array.from(new Set([...resolvedList, ...allowedIps]));
+    }
+  }
 
   // --- Cơ sở 2 (Mạng Wi-Fi 2) ---
   const office2Name =
     env.ATTENDANCE_OFFICE_2_NAME ||
     'Cơ sở 2: Văn phòng 11Sport - 89 Lê Thanh Nghị, Hòa Cường, Đà Nẵng';
+
   const rawAllowedIps2 = (
     env.ATTENDANCE_ALLOWED_IPS_2 ||
     env.ATTENDANCE_OFFICE_2_ALLOWED_IPS ||
-    (isTestEnv() ? '116.110.151.140,192.168.2.,127.0.0.1,::1,localhost' : '116.110.151.140')
+    (isTestEnv()
+      ? '116.110.151.140,192.168.2.,127.0.0.1,::1,localhost'
+      : '171.231.188.171,116.110.151.140')
   ).split(',');
-  const allowedIps2 = sanitizeAllowedIps(rawAllowedIps2);
+  let allowedIps2 = sanitizeAllowedIps(rawAllowedIps2);
+
+  const office2Domain =
+    env.ATTENDANCE_OFFICE_2_DOMAIN ||
+    (isTestEnv() ? '' : '11sport.myddns.me');
+  if (office2Domain && !isTestEnv()) {
+    const resolvedList2 = await resolveDomains(office2Domain);
+    if (resolvedList2.length > 0) {
+      allowedIps2 = Array.from(new Set([...resolvedList2, ...allowedIps2]));
+    }
+  }
 
   // Luôn bật kiểm tra IP mạng trên Dev & Production (chỉ cho phép tắt trong unit test nếu test cấu hình rõ)
   const requireIp = isTestEnv() ? env.ATTENDANCE_REQUIRE_IP !== 'false' : true;
@@ -208,13 +275,15 @@ function isIpAllowed(clientIp: string, allowedIps: string[]): boolean {
   });
 }
 
+type AttendanceConfig = Awaited<ReturnType<typeof getEnvAttendanceConfig>>;
+
 /**
  * Kiểm tra IP mạng của nhân viên thuộc Mạng Cơ sở 1 hoặc Mạng Cơ sở 2.
  * (Đã loại bỏ hoàn toàn kiểm tra tọa độ GPS do sai số thiết bị).
  */
 function verifyBranchNetwork(
   detectedIp: string,
-  config: ReturnType<typeof getEnvAttendanceConfig>
+  config: AttendanceConfig
 ) {
   if (!config.requireIp) {
     return config.branches[0];
@@ -270,7 +339,7 @@ attendanceRouter.post('/attendance/check-in', async (req, res, next) => {
     });
 
     const isWfh = Boolean(approvedWfh);
-    const config = getEnvAttendanceConfig();
+    const config = await getEnvAttendanceConfig();
     const detectedIp = await resolveEffectiveClientIp(req, clientIp);
 
     // 2. Nếu không phải WFH (đã xác minh server-side) -> Kiểm tra IP mạng thuộc Cơ sở 1 hoặc Cơ sở 2
@@ -327,9 +396,9 @@ attendanceRouter.post('/attendance/check-in', async (req, res, next) => {
     const effectiveDepartment = isSalesStaff ? 'SALES' : staff.department || 'OFFICE';
     const selectedShift: ShiftCode =
       assignedShift &&
-      (assignedShift.shiftCode === 'SHIFT_1' ||
-        assignedShift.shiftCode === 'SHIFT_2' ||
-        assignedShift.shiftCode === 'BOTH')
+        (assignedShift.shiftCode === 'SHIFT_1' ||
+          assignedShift.shiftCode === 'SHIFT_2' ||
+          assignedShift.shiftCode === 'BOTH')
         ? assignedShift.shiftCode
         : !isSalesStaff
           ? 'SHIFT_1'
@@ -420,7 +489,7 @@ attendanceRouter.post('/attendance/check-out', async (req, res, next) => {
     });
     const isWfh = attendance.checkInType === 'WFH' || Boolean(approvedWfh);
     if (!isWfh) {
-      const config = getEnvAttendanceConfig();
+      const config = await getEnvAttendanceConfig();
       const detectedIp = await resolveEffectiveClientIp(req, clientIp);
       verifyBranchNetwork(detectedIp, config);
     }
@@ -431,9 +500,9 @@ attendanceRouter.post('/attendance/check-out', async (req, res, next) => {
 
     const effectiveShiftCode: ShiftCode =
       assignedShift &&
-      (assignedShift.shiftCode === 'SHIFT_1' ||
-        assignedShift.shiftCode === 'SHIFT_2' ||
-        assignedShift.shiftCode === 'BOTH')
+        (assignedShift.shiftCode === 'SHIFT_1' ||
+          assignedShift.shiftCode === 'SHIFT_2' ||
+          assignedShift.shiftCode === 'BOTH')
         ? assignedShift.shiftCode
         : attendance.shiftCode;
 
@@ -687,20 +756,20 @@ attendanceRouter.get('/attendance/today', async (req, res, next) => {
 
     const handover = isSales
       ? (allHandovers as any[]).find(
-          (h) =>
-            todayCandidates.has(String(h.date)) &&
-            String(h.fromStaffId) === String(user.userId) &&
-            h.shiftCode === targetShiftCode
-        )
+        (h) =>
+          todayCandidates.has(String(h.date)) &&
+          String(h.fromStaffId) === String(user.userId) &&
+          h.shiftCode === targetShiftCode
+      )
       : null;
 
     const pendingIncomingHandover = isSales
       ? resolvePendingIncomingHandoverForSales({
-          allHandovers,
-          userId: String(user.userId),
-          todayLocal: todayStr,
-          receivingShiftCode: activeShiftCode,
-        })
+        allHandovers,
+        userId: String(user.userId),
+        todayLocal: todayStr,
+        receivingShiftCode: activeShiftCode,
+      })
       : null;
 
     res.json({
@@ -756,7 +825,7 @@ attendanceRouter.get('/attendance/history', async (req, res, next) => {
 // GET /api/v1/attendance/config (Chỉ đọc từ biến môi trường .env)
 attendanceRouter.get('/attendance/config', async (req, res, next) => {
   try {
-    const config = getEnvAttendanceConfig();
+    const config = await getEnvAttendanceConfig();
     const detectedClientIp = await resolveEffectiveClientIp(req);
     const isCurrentIpAllowed =
       !config.requireIp ||
