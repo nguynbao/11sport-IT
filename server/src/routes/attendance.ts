@@ -164,6 +164,21 @@ function sanitizeAllowedIps(rawList: string[]): string[] {
   return cleaned.filter((ip) => !isLoopbackOrPrivateIp(ip));
 }
 
+async function resolveDomains(domainCsv: string): Promise<string[]> {
+  const domains = String(domainCsv || '')
+    .split(',')
+    .map((d) => d.trim())
+    .filter(Boolean);
+  const resolvedIps: string[] = [];
+  for (const domain of domains) {
+    const ip = await resolveDomain(domain);
+    if (ip && !resolvedIps.includes(ip)) {
+      resolvedIps.push(ip);
+    }
+  }
+  return resolvedIps;
+}
+
 async function getEnvAttendanceConfig() {
   const env = readAttendanceEnv();
 
@@ -173,22 +188,22 @@ async function getEnvAttendanceConfig() {
     env.ATTENDANCE_OFFICE_1_NAME ||
     'Cơ sở 1: Showroom 11Sport - 24 Tố Hữu, Hoà Cường, Đà Nẵng';
 
-  let allowedIps: string[] = [];
-  const office1Domain = env.ATTENDANCE_OFFICE_1_DOMAIN || env.ATTENDANCE_DDNS_DOMAIN;
+  const rawAllowedIps = (
+    env.ATTENDANCE_ALLOWED_IPS ||
+    env.ATTENDANCE_OFFICE_1_ALLOWED_IPS ||
+    (isTestEnv() ? '127.0.0.1,::1,localhost,192.168.1.' : '113.22.236.87,113.22.236.6')
+  ).split(',');
+  let allowedIps = sanitizeAllowedIps(rawAllowedIps);
+
+  const office1Domain =
+    env.ATTENDANCE_OFFICE_1_DOMAIN ||
+    env.ATTENDANCE_DDNS_DOMAIN ||
+    (isTestEnv() ? '' : '11sport.myddns.me,11sport-office.duckdns.org');
   if (office1Domain && !isTestEnv()) {
-    const resolved = await resolveDomain(office1Domain);
-    if (resolved) {
-      allowedIps = [resolved];
-      console.log(`[DDNS] Cơ sở 1 → ${office1Domain} = ${resolved}`);
+    const resolvedList = await resolveDomains(office1Domain);
+    if (resolvedList.length > 0) {
+      allowedIps = Array.from(new Set([...resolvedList, ...allowedIps]));
     }
-  }
-  if (allowedIps.length === 0) {
-    const rawAllowedIps = (
-      env.ATTENDANCE_ALLOWED_IPS ||
-      env.ATTENDANCE_OFFICE_1_ALLOWED_IPS ||
-      (isTestEnv() ? '127.0.0.1,::1,localhost,192.168.1.' : '113.22.236.6')
-    ).split(',');
-    allowedIps = sanitizeAllowedIps(rawAllowedIps);
   }
 
   // --- Cơ sở 2 (Mạng Wi-Fi 2) ---
@@ -196,22 +211,22 @@ async function getEnvAttendanceConfig() {
     env.ATTENDANCE_OFFICE_2_NAME ||
     'Cơ sở 2: Văn phòng 11Sport - 89 Lê Thanh Nghị, Hòa Cường, Đà Nẵng';
 
-  let allowedIps2: string[] = [];
-  const office2Domain = env.ATTENDANCE_OFFICE_2_DOMAIN;
+  const rawAllowedIps2 = (
+    env.ATTENDANCE_ALLOWED_IPS_2 ||
+    env.ATTENDANCE_OFFICE_2_ALLOWED_IPS ||
+    (isTestEnv()
+      ? '116.110.151.140,192.168.2.,127.0.0.1,::1,localhost'
+      : '171.231.188.171,116.110.151.140')
+  ).split(',');
+  let allowedIps2 = sanitizeAllowedIps(rawAllowedIps2);
+
+  const office2Domain =
+    env.ATTENDANCE_OFFICE_2_DOMAIN || (isTestEnv() ? '' : '11sport2.myddns.me');
   if (office2Domain && !isTestEnv()) {
-    const resolved = await resolveDomain(office2Domain);
-    if (resolved) {
-      allowedIps2 = [resolved];
-      console.log(`[DDNS] Cơ sở 2 → ${office2Domain} = ${resolved}`);
+    const resolvedList2 = await resolveDomains(office2Domain);
+    if (resolvedList2.length > 0) {
+      allowedIps2 = Array.from(new Set([...resolvedList2, ...allowedIps2]));
     }
-  }
-  if (allowedIps2.length === 0) {
-    const rawAllowedIps2 = (
-      env.ATTENDANCE_ALLOWED_IPS_2 ||
-      env.ATTENDANCE_OFFICE_2_ALLOWED_IPS ||
-      (isTestEnv() ? '116.110.151.140,192.168.2.,127.0.0.1,::1,localhost' : '116.110.151.140')
-    ).split(',');
-    allowedIps2 = sanitizeAllowedIps(rawAllowedIps2);
   }
 
   // Luôn bật kiểm tra IP mạng trên Dev & Production (chỉ cho phép tắt trong unit test nếu test cấu hình rõ)
