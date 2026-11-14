@@ -827,9 +827,9 @@
         - Nếu `shiftCode` là `"SHIFT_1"`, `"SHIFT_2"`, hoặc `"BOTH"` (`Ca 1 + Ca 2: 08:30–21:00`): Bắt buộc áp dụng đúng ca đã được phân công (`selectedShift = assignedShift.shiftCode`); nếu client truyền `shiftCode` khác với ca đã xếp -> Trả lỗi `400 SHIFT_MISMATCH`.
       - Chỉ khi chưa có lịch phân ca cho ngày đó: Tự động nhận diện ca làm việc theo giờ bấm Check-in (với `SALES`, nếu không truyền `shiftCode`, gán `SHIFT_1` nếu trước `11:30`, `SHIFT_2` nếu từ `11:30` trở đi; khối `OFFICE` mặc định `SHIFT_1`).
     - Nếu nhân viên (cả khối `OFFICE` và `SALES`) có đơn `WFH` được `HR` duyệt trong ngày hôm nay (kiểm tra hoàn toàn phía server qua `approvedWfh`): Bỏ qua kiểm tra IP mạng (ghi nhận `checkInType: "WFH"`). Server tuyệt đối không nhận cờ `bypassNetwork` từ client.
-    - **Kiểm tra IP mạng Wi-Fi của 2 Cơ sở (không dùng định vị GPS)**:
+    - **Kiểm tra IP mạng Wi-Fi của 2 Cơ sở (không dùng định vị GPS, hỗ trợ DDNS & IP tĩnh)**:
       - Luôn bật kiểm tra IP mạng (`requireIp: true`) đối với mọi nhân viên không có đơn `WFH` đã duyệt trong ngày.
-      - Chỉ chấp nhận **IP Public (WAN IP)** của đường truyền Internet tại **Cơ sở 1 (`ATTENDANCE_ALLOWED_IPS`)** hoặc **Cơ sở 2 (`ATTENDANCE_ALLOWED_IPS_2`)**; hệ thống tự động loại bỏ các IP nội bộ/loopback (`127.0.0.1`, `::1`, `localhost`, `192.168.x.x`, `10.x.x.x`, `172.16-31.x.x`) để tránh lọt chấm công khi chạy local hoặc qua dải LAN phổ thông.
+      - Chỉ chấp nhận **IP Public (WAN IP)** của đường truyền Internet tại **Cơ sở 1** (resolve từ domain DDNS `ATTENDANCE_OFFICE_1_DOMAIN` / `ATTENDANCE_DDNS_DOMAIN` hoặc cấu hình IP tĩnh `ATTENDANCE_ALLOWED_IPS` / `ATTENDANCE_OFFICE_1_ALLOWED_IPS`) hoặc **Cơ sở 2** (resolve từ domain DDNS `ATTENDANCE_OFFICE_2_DOMAIN` hoặc cấu hình IP tĩnh `ATTENDANCE_ALLOWED_IPS_2` / `ATTENDANCE_OFFICE_2_ALLOWED_IPS`). Kết quả phân giải DNS được cache 5 phút trên server và tự động fallback về cache gần nhất nếu DNS tạm thời gián đoạn. Hệ thống tự động loại bỏ các IP nội bộ/loopback (`127.0.0.1`, `::1`, `localhost`, `192.168.x.x`, `10.x.x.x`, `172.16-31.x.x`) để tránh lọt chấm công khi chạy local hoặc qua dải LAN phổ thông.
       - Khi truy cập qua Production (Render/Cloudflare), server lấy IP Public thực của thiết bị từ reverse proxy header (`cf-connecting-ip` / `x-real-ip` / `x-forwarded-for`, bỏ qua `body.clientIp`). Khi chạy trên môi trường Local (`localhost` / LAN), server tự động kiểm tra IP Public (WAN IP) thực tế của kết nối Wi-Fi hiện tại để chặn ngay nếu đổi sang Wi-Fi khác / 4G.
       - Nếu IP Public hiện tại không khớp Cơ sở 1 hay Cơ sở 2 -> Trả lỗi `400 WIFI_IP_NOT_ALLOWED`.
     - Làm tròn check-in sớm / đúng giờ: Nếu check-in trước hoặc đúng giờ bắt đầu ca (`08:30` đối với `SHIFT_1` / `BOTH`, hoặc `12:00` đối với `SHIFT_2`), mốc tính công `workStartTime` tự động quy về `08:30:00` hoặc `12:00:00`.
@@ -841,7 +841,7 @@
 - `POST /api/v1/attendance/check-out`
   - Body: `{ "forceEarly"?: boolean, "earlyReason"?: string, "lateCheckoutReason"?: string }`
   - Logic xác thực:
-    - Kiểm tra IP mạng Wi-Fi 2 cơ sở (`ATTENDANCE_ALLOWED_IPS` hoặc `ATTENDANCE_ALLOWED_IPS_2`) tương tự lúc Check-in đối với nhân viên làm việc tại cơ sở (`checkInType !== "WFH"` và không có đơn `WFH` đã duyệt trong ngày; không chấp nhận cờ `bypassNetwork` từ client; không kiểm tra tọa độ GPS).
+    - Kiểm tra IP mạng Wi-Fi 2 cơ sở (`ATTENDANCE_OFFICE_1_DOMAIN` / `ATTENDANCE_DDNS_DOMAIN` / `ATTENDANCE_ALLOWED_IPS` hoặc `ATTENDANCE_OFFICE_2_DOMAIN` / `ATTENDANCE_ALLOWED_IPS_2`) tương tự lúc Check-in đối với nhân viên làm việc tại cơ sở (`checkInType !== "WFH"` và không có đơn `WFH` đã duyệt trong ngày; không chấp nhận cờ `bypassNetwork` từ client; không kiểm tra tọa độ GPS).
     - Chặn bấm Check-out & Bàn giao ca khi chưa đủ giờ làm việc của ca (`17:30` đối với `SHIFT_1`, `21:00` đối với `SHIFT_2` và `BOTH` `08:30–21:00`), trừ khi nhân viên có đơn xin về sớm (`type: "EARLY"`) đã được `HR` duyệt trong ngày hoặc xác nhận về sớm (`forceEarly = true`).
     - **Kiểm tra Check-out trễ & Tăng ca**:
       - **Làm 2 ca (`BOTH`: `08:30–21:00`)**: Là ca đã ghi trong bảng xếp ca, **không tính là tăng ca** (`overtimeMinutes = 0`).
@@ -902,7 +902,7 @@
   - Lỗi: `400 ALREADY_CHECKED_IN` nếu ngày đó đã có bản ghi chấm công và `shiftCode !== "OFF"` (dùng PATCH để sửa).
 
 - `GET /api/v1/attendance/config`
-  - Trả về cấu hình danh sách IP Wi-Fi/LAN của các cơ sở công ty (chỉ đọc từ biến môi trường `.env` trên Server: `ATTENDANCE_OFFICE_NAME`, `ATTENDANCE_OFFICE_2_NAME`, `ATTENDANCE_REQUIRE_IP`, `ATTENDANCE_ALLOWED_IPS`, `ATTENDANCE_ALLOWED_IPS_2`), kèm `detectedClientIp` và `isCurrentIpAllowed`. Không cho phép chỉnh sửa qua UI/API (HR và Admin đều không được sửa trên giao diện).
+  - Trả về cấu hình danh sách IP Wi-Fi/WAN của các cơ sở công ty (chỉ đọc từ biến môi trường `.env` trên Server: `ATTENDANCE_OFFICE_NAME` / `ATTENDANCE_OFFICE_1_NAME`, `ATTENDANCE_OFFICE_2_NAME`, `ATTENDANCE_REQUIRE_IP`, `ATTENDANCE_OFFICE_1_DOMAIN` / `ATTENDANCE_DDNS_DOMAIN`, `ATTENDANCE_OFFICE_2_DOMAIN`, `ATTENDANCE_ALLOWED_IPS` / `ATTENDANCE_OFFICE_1_ALLOWED_IPS`, `ATTENDANCE_ALLOWED_IPS_2` / `ATTENDANCE_OFFICE_2_ALLOWED_IPS`; trong đó các biến domain DDNS sẽ được server tự động phân giải DNS sang IPv4 hiện tại để gộp vào `allowedIps` / `allowedIps2`), kèm `detectedClientIp` và `isCurrentIpAllowed`. Không cho phép chỉnh sửa qua UI/API (HR và Admin đều không được sửa trên giao diện).
   - Response: `{ "data": { "config": { "officeName": "...", "office2Name": "...", "allowedIps": ["127.0.0.1", "::1"], "allowedIps2": ["..."], "requireIp": true, "branches": [...] }, "detectedClientIp": "127.0.0.1", "isCurrentIpAllowed": true } }`
 
 #### B. Đơn từ & Phê duyệt WFH / Nghỉ phép (`/leave-requests`)

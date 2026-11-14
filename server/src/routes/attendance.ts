@@ -51,8 +51,8 @@ async function resolveDomain(domain: string): Promise<string | null> {
 function isTestEnv(): boolean {
   return Boolean(
     process.env.VITEST ||
-      process.env.NODE_ENV === 'test' ||
-      process.env.FORCE_MEMORY_DB === 'true'
+    process.env.NODE_ENV === 'test' ||
+    process.env.FORCE_MEMORY_DB === 'true'
   );
 }
 
@@ -198,7 +198,7 @@ async function getEnvAttendanceConfig() {
   const office1Domain =
     env.ATTENDANCE_OFFICE_1_DOMAIN ||
     env.ATTENDANCE_DDNS_DOMAIN ||
-    (isTestEnv() ? '' : '11sport.myddns.me,11sport-office.duckdns.org');
+    (isTestEnv() ? '' : '11sport2.myddns.me');
   if (office1Domain && !isTestEnv()) {
     const resolvedList = await resolveDomains(office1Domain);
     if (resolvedList.length > 0) {
@@ -221,7 +221,8 @@ async function getEnvAttendanceConfig() {
   let allowedIps2 = sanitizeAllowedIps(rawAllowedIps2);
 
   const office2Domain =
-    env.ATTENDANCE_OFFICE_2_DOMAIN || (isTestEnv() ? '' : '11sport2.myddns.me');
+    env.ATTENDANCE_OFFICE_2_DOMAIN ||
+    (isTestEnv() ? '' : '11sport.myddns.me');
   if (office2Domain && !isTestEnv()) {
     const resolvedList2 = await resolveDomains(office2Domain);
     if (resolvedList2.length > 0) {
@@ -395,9 +396,9 @@ attendanceRouter.post('/attendance/check-in', async (req, res, next) => {
     const effectiveDepartment = isSalesStaff ? 'SALES' : staff.department || 'OFFICE';
     const selectedShift: ShiftCode =
       assignedShift &&
-      (assignedShift.shiftCode === 'SHIFT_1' ||
-        assignedShift.shiftCode === 'SHIFT_2' ||
-        assignedShift.shiftCode === 'BOTH')
+        (assignedShift.shiftCode === 'SHIFT_1' ||
+          assignedShift.shiftCode === 'SHIFT_2' ||
+          assignedShift.shiftCode === 'BOTH')
         ? assignedShift.shiftCode
         : !isSalesStaff
           ? 'SHIFT_1'
@@ -499,9 +500,9 @@ attendanceRouter.post('/attendance/check-out', async (req, res, next) => {
 
     const effectiveShiftCode: ShiftCode =
       assignedShift &&
-      (assignedShift.shiftCode === 'SHIFT_1' ||
-        assignedShift.shiftCode === 'SHIFT_2' ||
-        assignedShift.shiftCode === 'BOTH')
+        (assignedShift.shiftCode === 'SHIFT_1' ||
+          assignedShift.shiftCode === 'SHIFT_2' ||
+          assignedShift.shiftCode === 'BOTH')
         ? assignedShift.shiftCode
         : attendance.shiftCode;
 
@@ -755,20 +756,20 @@ attendanceRouter.get('/attendance/today', async (req, res, next) => {
 
     const handover = isSales
       ? (allHandovers as any[]).find(
-          (h) =>
-            todayCandidates.has(String(h.date)) &&
-            String(h.fromStaffId) === String(user.userId) &&
-            h.shiftCode === targetShiftCode
-        )
+        (h) =>
+          todayCandidates.has(String(h.date)) &&
+          String(h.fromStaffId) === String(user.userId) &&
+          h.shiftCode === targetShiftCode
+      )
       : null;
 
     const pendingIncomingHandover = isSales
       ? resolvePendingIncomingHandoverForSales({
-          allHandovers,
-          userId: String(user.userId),
-          todayLocal: todayStr,
-          receivingShiftCode: activeShiftCode,
-        })
+        allHandovers,
+        userId: String(user.userId),
+        todayLocal: todayStr,
+        receivingShiftCode: activeShiftCode,
+      })
       : null;
 
     res.json({

@@ -1,7 +1,7 @@
 # Graph Report - 11sport-IT  (2026-11-14)
 
 ## Corpus Check
-- 175 files · ~405,325 words
+- 175 files · ~405,422 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 11 file(s) not represented in the graph (top: (none) 3, .example 3, .css 2)
 
@@ -11,7 +11,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `90847034`
+- Built from commit: `01f5c401`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -448,7 +448,7 @@ Nodes (11): 1. Thực hiện đề xuất an toàn DB & cập nhật 4 file test
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `StockMovement` connect `StockMovement` to `Tài liệu Triển khai & Vận hành (Deployment & Runbook) - 11Sport v1.0`, `exports.ts`, `StaffModule.tsx`, `InventoryModule.tsx`, `cms/src/lib/api.ts`, `status`, `InventoryTab.tsx`?**
-  _High betweenness centrality (0.194) - this node is a cross-community bridge._
+  _High betweenness centrality (0.195) - this node is a cross-community bridge._
 - **Are the 2 inferred relationships involving `PosTab()` (e.g. with `2.14 Mã Con Theo Thuộc Tính Biến Thể (`variantCode`) — In Tem & Quét Kiểm Kho / Bán Hàng POS *(v3.2)*` and `2. Bảng Ma trận Test Cases chi tiết (AC-01 đến AC-07 & Biên/Lỗi)`) actually correct?**
   _`PosTab()` has 2 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `PATH` to the rest of the system?**
@@ -456,8 +456,8 @@ _Questions this graph is uniquely positioned to answer:_
 - **Should `imports.ts` be split into smaller, more focused modules?**
   _Cohesion score 0.057967313585291114 - nodes in this community are weakly interconnected._
 - **Why does `2.6 Trả / Đổi hàng (`/returns`)` connect `StockMovement` to `ordersCustomers.ts`, `2. Danh sách Endpoints`?**
-  _High betweenness centrality (0.167) - this node is a cross-community bridge._
+  _High betweenness centrality (0.168) - this node is a cross-community bridge._
 - **Should `ApiError` be split into smaller, more focused modules?**
   _Cohesion score 0.11264367816091954 - nodes in this community are weakly interconnected._
 - **Why does `executeUnpackSetToRetail()` connect `ordersCustomers.ts` to `ApiError`, `StockMovement`?**
-  _High betweenness centrality (0.166) - this node is a cross-community bridge._
+  _High betweenness centrality (0.167) - this node is a cross-community bridge._
