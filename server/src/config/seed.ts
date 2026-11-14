@@ -404,33 +404,29 @@ export async function seedDatabaseIfNeeded(): Promise<void> {
 
   // Chuẩn hóa department / contractType cho các tài khoản cũ chưa có trường này (không tự nâng quyền role)
   if (!isTestMemory) {
-    const existingCeoUser = await staffRepo.findOne({ username: 'ceo' });
-    if (!existingCeoUser) {
-      const allStaff = await staffRepo.find({});
-      const maxCodeNum = allStaff.reduce((max, s) => {
-        const num = parseInt(String(s.code || '').replace(/\D/g, ''), 10);
-        return !isNaN(num) && num > max ? num : max;
-      }, 0);
-      const nextCode = `NV${String(maxCodeNum + 1).padStart(3, '0')}`;
-      const initialCeoPassword = process.env.INITIAL_CEO_PASSWORD || '123456';
-      await staffRepo.create({
-        code: nextCode,
-        username: 'ceo',
-        passwordHash: hashPassword(initialCeoPassword),
-        fullName: 'Giám Đốc Điều Hành (CEO)',
-        phone: '0909000000',
-        role: 'CEO',
-        department: 'OFFICE',
-        status: 'ACTIVE',
-        contractType: 'FULLTIME',
-      });
-    } else if (existingCeoUser.role !== 'CEO' || existingCeoUser.status !== 'ACTIVE') {
-      await staffRepo.updateById(existingCeoUser._id, {
-        role: 'CEO',
-        department: existingCeoUser.department || 'OFFICE',
-        status: 'ACTIVE',
-        contractType: existingCeoUser.contractType || 'FULLTIME',
-      });
+    const initialCeoPassword = process.env.INITIAL_CEO_PASSWORD?.trim();
+    if (initialCeoPassword) {
+      const existingCeoUser = await staffRepo.findOne({ username: 'ceo' });
+      if (!existingCeoUser) {
+        const allStaff = await staffRepo.find({});
+        const maxCodeNum = allStaff.reduce((max, s) => {
+          const num = parseInt(String(s.code || '').replace(/\D/g, ''), 10);
+          return !isNaN(num) && num > max ? num : max;
+        }, 0);
+        const nextCode = `NV${String(maxCodeNum + 1).padStart(3, '0')}`;
+        await staffRepo.create({
+          code: nextCode,
+          username: 'ceo',
+          passwordHash: hashPassword(initialCeoPassword),
+          fullName: 'Giám Đốc Điều Hành (CEO)',
+          phone: '0909000000',
+          role: 'CEO',
+          department: 'OFFICE',
+          status: 'ACTIVE',
+          contractType: 'FULLTIME',
+          mustChangePassword: true,
+        });
+      }
     }
 
     const allExistingStaff = await staffRepo.find({});

@@ -417,8 +417,8 @@ reportsRouter.get('/reports/staff-activity', async (req, res, next) => {
 // GET /api/v1/reports/revenue-dashboard — Báo cáo Doanh thu chi tiết & Phân tích Sản phẩm bán chạy / cần đẩy mạnh + Quản lý Công nợ
 reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
   try {
-    if (!['ADMIN', 'ACCOUNTANT'].includes(req.user?.role || '')) {
-      throw new ApiError(403, 'FORBIDDEN', 'Chỉ Quản lý (ADMIN) hoặc Kế toán (ACCOUNTANT) được xem báo cáo doanh thu chi tiết');
+    if (!['CEO', 'ADMIN', 'ACCOUNTANT'].includes(req.user?.role || '')) {
+      throw new ApiError(403, 'FORBIDDEN', 'Chỉ Giám đốc (CEO), Quản lý (ADMIN) hoặc Kế toán (ACCOUNTANT) được xem báo cáo doanh thu chi tiết');
     }
 
     const { from, to, categoryId, paymentMethod } = req.query;

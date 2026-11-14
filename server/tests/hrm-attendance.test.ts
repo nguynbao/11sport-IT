@@ -1308,6 +1308,22 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
     expect(putScheduleRes.status).toBe(200);
     expect(putScheduleRes.body.data.weeklySchedule['5']).toEqual(['Phụ kiện']);
 
+    // Kế toán (ACCOUNTANT) chỉ được xem lịch kiểm tuần (GET 200), không được cấu hình lịch (PUT 403)
+    const accGetScheduleRes = await request(app)
+      .get('/api/v1/shifts/handover/schedule-config')
+      .set('Authorization', `Bearer ${accountantToken}`);
+    expect(accGetScheduleRes.status).toBe(200);
+
+    const accPutScheduleRes = await request(app)
+      .put('/api/v1/shifts/handover/schedule-config')
+      .set('Authorization', `Bearer ${accountantToken}`)
+      .send({
+        weeklySchedule: {
+          '1': ['Áo'],
+        },
+      });
+    expect(accPutScheduleRes.status).toBe(403);
+
     // 2. Lấy daily-check phải trả về categorySummaries tổng số lượng tồn Tầng 1 theo từng danh mục
     const today = new Date().toISOString().slice(0, 10);
     const dailyCheck = await request(app)
@@ -1518,6 +1534,31 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
       .get('/api/v1/reports/push-products')
       .set('Authorization', `Bearer ${ceoToken}`);
     expect(ceoPush.status).toBe(200);
+
+    // CEO tải được dữ liệu báo cáo doanh thu & công nợ (/reports/revenue-dashboard)
+    const ceoRevDash = await request(app)
+      .get('/api/v1/reports/revenue-dashboard')
+      .set('Authorization', `Bearer ${ceoToken}`);
+    expect(ceoRevDash.status).toBe(200);
+    expect(ceoRevDash.body.data.debtManagement).toBeTruthy();
+
+    // Request không có token (fallback user) bị từ chối (403 FORBIDDEN) khi cố tạo hoặc nâng quyền CEO
+    const anonCreateCeo = await request(app)
+      .post('/api/v1/staff')
+      .send({
+        username: 'anon_fake_ceo',
+        password: 'password123',
+        fullName: 'Giả Mạo CEO',
+        role: 'CEO',
+      });
+    expect(anonCreateCeo.status).toBe(403);
+
+    const anonPromoteCeo = await request(app)
+      .patch(`/api/v1/staff/${createdStaffId}`)
+      .send({
+        role: 'CEO',
+      });
+    expect(anonPromoteCeo.status).toBe(403);
 
     // 2. Kế toán (ACCOUNTANT) và HR đều xem được Lịch chấm công cá nhân (/attendance/my-calendar) và Đơn từ của chính mình (/leave-requests?mine=true)
     const accMyCal = await request(app)

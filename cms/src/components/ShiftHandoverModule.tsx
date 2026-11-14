@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
   Category,
+  StaffUser,
   ShiftHandoverRecord,
   DailyHandoverCheckData,
   HandoverScheduleConfigData,
@@ -69,7 +70,12 @@ function shiftLabel(code: string) {
   return code;
 }
 
-export default function ShiftHandoverModule() {
+export default function ShiftHandoverModule({
+  currentUser,
+}: {
+  currentUser?: StaffUser | null;
+}) {
+  const isReadOnlySchedule = currentUser?.role === "ACCOUNTANT";
   const [handovers, setHandovers] = useState<ShiftHandoverRecord[]>([]);
   const [dailyCheck, setDailyCheck] = useState<DailyHandoverCheckData | null>(null);
   const [previewDate, setPreviewDate] = useState<string>(() => localDateStr());
@@ -431,35 +437,57 @@ export default function ShiftHandoverModule() {
                 onClick={() => setShowScheduleConfig((prev) => !prev)}
                 className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold inline-flex items-center gap-1.5 transition cursor-pointer"
               >
-                <Settings className="w-3.5 h-3.5" />
-                <span>{showScheduleConfig ? "Đóng cấu hình" : "Cấu hình lịch tuần"}</span>
+                {isReadOnlySchedule ? (
+                  <Eye className="w-3.5 h-3.5" />
+                ) : (
+                  <Settings className="w-3.5 h-3.5" />
+                )}
+                <span>
+                  {showScheduleConfig
+                    ? isReadOnlySchedule
+                      ? "Đóng lịch tuần"
+                      : "Đóng cấu hình"
+                    : isReadOnlySchedule
+                    ? "Xem lịch tuần"
+                    : "Cấu hình lịch tuần"}
+                </span>
               </button>
             </div>
           </div>
         </div>
 
-        {/* Bảng cấu hình lịch kiểm hàng cố định Thứ 2 -> Chủ Nhật cho Quản lý */}
+        {/* Bảng cấu hình / xem lịch kiểm hàng cố định Thứ 2 -> Chủ Nhật */}
         {showScheduleConfig && (
           <div className="p-4 rounded-2xl bg-slate-50 border border-emerald-200 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
                 <h3 className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
-                  <Settings className="w-4 h-4 text-emerald-600" />
-                  Cấu Hình Lịch Kiểm Hàng Cố Định Theo Thứ Trong Tuần (Luôn gồm Vợt + Danh mục đi kèm)
+                  {isReadOnlySchedule ? (
+                    <Eye className="w-4 h-4 text-emerald-600" />
+                  ) : (
+                    <Settings className="w-4 h-4 text-emerald-600" />
+                  )}
+                  {isReadOnlySchedule
+                    ? "Lịch Kiểm Hàng Cố Định Theo Thứ Trong Tuần (Chỉ xem)"
+                    : "Cấu Hình Lịch Kiểm Hàng Cố Định Theo Thứ Trong Tuần (Luôn gồm Vợt + Danh mục đi kèm)"}
                 </h3>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  Chọn hoặc nhập danh mục kiểm kèm với Vợt cho từng ngày. Có thể nhập nhiều danh mục cách nhau bởi dấu &quot;+&quot; (VD: Vớ + Quấn cán).
+                  {isReadOnlySchedule
+                    ? "Lịch kiểm hàng cố định từng ngày trong tuần (luôn gồm Vợt + Danh mục đi kèm). Kế toán chỉ có quyền xem lịch."
+                    : 'Chọn hoặc nhập danh mục kiểm kèm với Vợt cho từng ngày. Có thể nhập nhiều danh mục cách nhau bởi dấu "+" (VD: Vớ + Quấn cán).'}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={handleSaveScheduleConfig}
-                disabled={savingSchedule}
-                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-extrabold inline-flex items-center gap-1.5 shadow-xs transition cursor-pointer shrink-0"
-              >
-                <Save className="w-3.5 h-3.5" />
-                <span>{savingSchedule ? "Đang lưu..." : "Lưu lịch kiểm tuần"}</span>
-              </button>
+              {!isReadOnlySchedule && (
+                <button
+                  type="button"
+                  onClick={handleSaveScheduleConfig}
+                  disabled={savingSchedule}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-extrabold inline-flex items-center gap-1.5 shadow-xs transition cursor-pointer shrink-0"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{savingSchedule ? "Đang lưu..." : "Lưu lịch kiểm tuần"}</span>
+                </button>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-2.5">
@@ -492,29 +520,38 @@ export default function ShiftHandoverModule() {
                       </div>
                     </div>
 
-                    <div>
-                      <select
-                        value={selectValue}
-                        onChange={(e) => {
-                          if (e.target.value) {
-                            handleChangeWeekdayCompanion(day.key, e.target.value);
-                          }
-                        }}
-                        className="w-full px-2.5 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-900 bg-white outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
-                      >
-                        {!matchedOption && selectValue && (
-                          <option value={selectValue}>{selectValue}</option>
-                        )}
-                        {companionOptions.map((c) => (
-                          <option key={c._id} value={c.name}>
-                            {c.name}
-                            {typeof c.expectedTotalQty === "number"
-                              ? ` (T1: ${c.expectedTotalQty})`
-                              : ""}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    {isReadOnlySchedule ? (
+                      <div className="w-full px-2.5 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-slate-50 truncate">
+                        {selectValue}
+                        {typeof matchedOption?.expectedTotalQty === "number"
+                          ? ` (T1: ${matchedOption.expectedTotalQty})`
+                          : ""}
+                      </div>
+                    ) : (
+                      <div>
+                        <select
+                          value={selectValue}
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              handleChangeWeekdayCompanion(day.key, e.target.value);
+                            }
+                          }}
+                          className="w-full px-2.5 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-900 bg-white outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                        >
+                          {!matchedOption && selectValue && (
+                            <option value={selectValue}>{selectValue}</option>
+                          )}
+                          {companionOptions.map((c) => (
+                            <option key={c._id} value={c.name}>
+                              {c.name}
+                              {typeof c.expectedTotalQty === "number"
+                                ? ` (T1: ${c.expectedTotalQty})`
+                                : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                   </div>
                 );
               })}
