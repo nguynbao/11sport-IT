@@ -2,6 +2,7 @@ import { Router, Request } from 'express';
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
+import { promises as dnsPromises } from 'dns';
 import {
   attendanceRepo,
   attendanceConfigRepo,
@@ -20,6 +21,32 @@ import {
 } from './shifts';
 
 export const attendanceRouter = Router();
+
+// ---------------------------------------------------------------------------
+// DNS cache – tự động resolve DDNS domain thay cho IP cứng
+// ---------------------------------------------------------------------------
+const _dnsCache: Record<string, { ip: string; expiresAt: number }> = {};
+const DNS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 phút
+
+async function resolveDomain(domain: string): Promise<string | null> {
+  const now = Date.now();
+  const cached = _dnsCache[domain];
+  if (cached && cached.expiresAt > now) {
+    return cached.ip;
+  }
+  try {
+    const result = await dnsPromises.lookup(domain);
+    if (result?.address) {
+      _dnsCache[domain] = { ip: result.address, expiresAt: now + DNS_CACHE_TTL_MS };
+      return result.address;
+    }
+  } catch (err) {
+    console.error(`[DDNS] Lỗi resolve domain "${domain}":`, err);
+    // Dùng lại cache cũ nếu DNS tạm thời bị lỗi
+    if (cached) return cached.ip;
+  }
+  return null;
+}
 
 function isTestEnv(): boolean {
   return Boolean(
@@ -137,7 +164,7 @@ function sanitizeAllowedIps(rawList: string[]): string[] {
   return cleaned.filter((ip) => !isLoopbackOrPrivateIp(ip));
 }
 
-function getEnvAttendanceConfig() {
+async function getEnvAttendanceConfig() {
   const env = readAttendanceEnv();
 
   // --- Cơ sở 1 (Mạng Wi-Fi 1) ---
@@ -145,23 +172,47 @@ function getEnvAttendanceConfig() {
     env.ATTENDANCE_OFFICE_NAME ||
     env.ATTENDANCE_OFFICE_1_NAME ||
     'Cơ sở 1: Showroom 11Sport - 24 Tố Hữu, Hoà Cường, Đà Nẵng';
-  const rawAllowedIps = (
-    env.ATTENDANCE_ALLOWED_IPS ||
-    env.ATTENDANCE_OFFICE_1_ALLOWED_IPS ||
-    (isTestEnv() ? '127.0.0.1,::1,localhost,192.168.1.' : '113.22.236.6')
-  ).split(',');
-  const allowedIps = sanitizeAllowedIps(rawAllowedIps);
+
+  let allowedIps: string[] = [];
+  const office1Domain = env.ATTENDANCE_OFFICE_1_DOMAIN || env.ATTENDANCE_DDNS_DOMAIN;
+  if (office1Domain && !isTestEnv()) {
+    const resolved = await resolveDomain(office1Domain);
+    if (resolved) {
+      allowedIps = [resolved];
+      console.log(`[DDNS] Cơ sở 1 → ${office1Domain} = ${resolved}`);
+    }
+  }
+  if (allowedIps.length === 0) {
+    const rawAllowedIps = (
+      env.ATTENDANCE_ALLOWED_IPS ||
+      env.ATTENDANCE_OFFICE_1_ALLOWED_IPS ||
+      (isTestEnv() ? '127.0.0.1,::1,localhost,192.168.1.' : '113.22.236.6')
+    ).split(',');
+    allowedIps = sanitizeAllowedIps(rawAllowedIps);
+  }
 
   // --- Cơ sở 2 (Mạng Wi-Fi 2) ---
   const office2Name =
     env.ATTENDANCE_OFFICE_2_NAME ||
     'Cơ sở 2: Văn phòng 11Sport - 89 Lê Thanh Nghị, Hòa Cường, Đà Nẵng';
-  const rawAllowedIps2 = (
-    env.ATTENDANCE_ALLOWED_IPS_2 ||
-    env.ATTENDANCE_OFFICE_2_ALLOWED_IPS ||
-    (isTestEnv() ? '116.110.151.140,192.168.2.,127.0.0.1,::1,localhost' : '116.110.151.140')
-  ).split(',');
-  const allowedIps2 = sanitizeAllowedIps(rawAllowedIps2);
+
+  let allowedIps2: string[] = [];
+  const office2Domain = env.ATTENDANCE_OFFICE_2_DOMAIN;
+  if (office2Domain && !isTestEnv()) {
+    const resolved = await resolveDomain(office2Domain);
+    if (resolved) {
+      allowedIps2 = [resolved];
+      console.log(`[DDNS] Cơ sở 2 → ${office2Domain} = ${resolved}`);
+    }
+  }
+  if (allowedIps2.length === 0) {
+    const rawAllowedIps2 = (
+      env.ATTENDANCE_ALLOWED_IPS_2 ||
+      env.ATTENDANCE_OFFICE_2_ALLOWED_IPS ||
+      (isTestEnv() ? '116.110.151.140,192.168.2.,127.0.0.1,::1,localhost' : '116.110.151.140')
+    ).split(',');
+    allowedIps2 = sanitizeAllowedIps(rawAllowedIps2);
+  }
 
   // Luôn bật kiểm tra IP mạng trên Dev & Production (chỉ cho phép tắt trong unit test nếu test cấu hình rõ)
   const requireIp = isTestEnv() ? env.ATTENDANCE_REQUIRE_IP !== 'false' : true;
@@ -208,13 +259,15 @@ function isIpAllowed(clientIp: string, allowedIps: string[]): boolean {
   });
 }
 
+type AttendanceConfig = Awaited<ReturnType<typeof getEnvAttendanceConfig>>;
+
 /**
  * Kiểm tra IP mạng của nhân viên thuộc Mạng Cơ sở 1 hoặc Mạng Cơ sở 2.
  * (Đã loại bỏ hoàn toàn kiểm tra tọa độ GPS do sai số thiết bị).
  */
 function verifyBranchNetwork(
   detectedIp: string,
-  config: ReturnType<typeof getEnvAttendanceConfig>
+  config: AttendanceConfig
 ) {
   if (!config.requireIp) {
     return config.branches[0];
@@ -270,7 +323,7 @@ attendanceRouter.post('/attendance/check-in', async (req, res, next) => {
     });
 
     const isWfh = Boolean(approvedWfh);
-    const config = getEnvAttendanceConfig();
+    const config = await getEnvAttendanceConfig();
     const detectedIp = await resolveEffectiveClientIp(req, clientIp);
 
     // 2. Nếu không phải WFH (đã xác minh server-side) -> Kiểm tra IP mạng thuộc Cơ sở 1 hoặc Cơ sở 2
@@ -420,7 +473,7 @@ attendanceRouter.post('/attendance/check-out', async (req, res, next) => {
     });
     const isWfh = attendance.checkInType === 'WFH' || Boolean(approvedWfh);
     if (!isWfh) {
-      const config = getEnvAttendanceConfig();
+      const config = await getEnvAttendanceConfig();
       const detectedIp = await resolveEffectiveClientIp(req, clientIp);
       verifyBranchNetwork(detectedIp, config);
     }
@@ -756,7 +809,7 @@ attendanceRouter.get('/attendance/history', async (req, res, next) => {
 // GET /api/v1/attendance/config (Chỉ đọc từ biến môi trường .env)
 attendanceRouter.get('/attendance/config', async (req, res, next) => {
   try {
-    const config = getEnvAttendanceConfig();
+    const config = await getEnvAttendanceConfig();
     const detectedClientIp = await resolveEffectiveClientIp(req);
     const isCurrentIpAllowed =
       !config.requireIp ||
