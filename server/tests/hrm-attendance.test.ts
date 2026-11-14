@@ -1308,6 +1308,22 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
     expect(putScheduleRes.status).toBe(200);
     expect(putScheduleRes.body.data.weeklySchedule['5']).toEqual(['Phụ kiện']);
 
+    // Kế toán (ACCOUNTANT) chỉ được xem lịch kiểm tuần (GET 200), không được cấu hình lịch (PUT 403)
+    const accGetScheduleRes = await request(app)
+      .get('/api/v1/shifts/handover/schedule-config')
+      .set('Authorization', `Bearer ${accountantToken}`);
+    expect(accGetScheduleRes.status).toBe(200);
+
+    const accPutScheduleRes = await request(app)
+      .put('/api/v1/shifts/handover/schedule-config')
+      .set('Authorization', `Bearer ${accountantToken}`)
+      .send({
+        weeklySchedule: {
+          '1': ['Áo'],
+        },
+      });
+    expect(accPutScheduleRes.status).toBe(403);
+
     // 2. Lấy daily-check phải trả về categorySummaries tổng số lượng tồn Tầng 1 theo từng danh mục
     const today = new Date().toISOString().slice(0, 10);
     const dailyCheck = await request(app)

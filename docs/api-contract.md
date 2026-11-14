@@ -973,10 +973,10 @@
   - HR kích hoạt tự động xếp ca dựa trên preferences Thứ 6: `{ "weekStart": "2026-11-09" }`.
 - `PUT /api/v1/shifts/assign`
   - HR kéo - thả (Drag & Drop) hoặc chỉnh sửa phân ca: `{ "shiftAssignmentId": "...", "staffId": "...", "date": "...", "shiftCode": "SHIFT_1 | SHIFT_2" }`.
-- `GET /api/v1/shifts/handover/schedule-config` (Role `ADMIN`, `MANAGER`, `HR`, `ACCOUNTANT`, `SALES`)
+- `GET /api/v1/shifts/handover/schedule-config` (Role `CEO`, `ADMIN`, `MANAGER`, `HR`, `ACCOUNTANT`, `SALES`)
   - Trả về cấu hình lịch kiểm hàng kết ca cố định theo từng Thứ trong tuần (`0` = Chủ Nhật, `1` = Thứ 2 .. `6` = Thứ 7) và danh sách các danh mục hàng hóa tại Tầng 1 có thể chọn đi kèm với `Vợt`.
-- `PUT /api/v1/shifts/handover/schedule-config` (Role `ADMIN`, `MANAGER`, `HR`, `ACCOUNTANT`)
-  - Quản lý tự cấu hình danh mục kiểm hàng cố định theo từng Thứ trong tuần (mỗi ngày luôn cố định `Vợt` + danh mục đi kèm được cấu hình cho thứ đó).
+- `PUT /api/v1/shifts/handover/schedule-config` (Role `CEO`, `ADMIN`, `MANAGER`, `HR`)
+  - Quản lý (`CEO`, `ADMIN`, `HR`) tự cấu hình danh mục kiểm hàng cố định theo từng Thứ trong tuần (mỗi ngày luôn cố định `Vợt` + danh mục đi kèm được cấu hình cho thứ đó). Kế toán (`ACCOUNTANT`) chỉ được xem lịch kiểm hàng, không được cấu hình (`403 FORBIDDEN`).
   - Body: `{ "weeklySchedule": { "1": ["GIAY"], "2": ["BONG_THI_DAU"], "3": ["PHU_KIEN"], "4": ["GIAY"], "5": ["BONG_THI_DAU"], "6": ["GIAY"], "0": ["PHU_KIEN"] } }`.
 - `GET /api/v1/shifts/handover/daily-check`
   - Query: `?date=2026-11-12` (mặc định ngày hiện tại theo giờ địa phương).

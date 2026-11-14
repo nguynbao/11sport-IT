@@ -1568,11 +1568,14 @@ shiftsRouter.put('/shifts/handover/schedule-config', async (req, res, next) => {
   try {
     const user = req.user;
     if (!user) throw new ApiError(401, 'UNAUTHORIZED', 'Vui lòng đăng nhập');
-    if (!isHandoverManagerRole(user.role)) {
+    if (
+      !isHandoverManagerRole(user.role) ||
+      String(user.role || '').toUpperCase() === 'ACCOUNTANT'
+    ) {
       throw new ApiError(
         403,
         'FORBIDDEN',
-        'Chỉ Quản lý (Admin / HR / Kế toán) mới được cấu hình lịch kiểm hàng cố định theo ngày'
+        'Chỉ Quản lý (CEO / Admin / HR) mới được cấu hình lịch kiểm hàng cố định theo ngày; Kế toán chỉ có quyền xem.'
       );
     }
 

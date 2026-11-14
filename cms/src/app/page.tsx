@@ -475,7 +475,7 @@ export default function CmsDashboardPage() {
       const isAccountantServices =
         adminUser?.role === "ACCOUNTANT" && item.id === "SERVICES";
       const label = isAccountantServices
-        ? "Theo dõi Đơn Dịch vụ (Chỉ xem)"
+        ? "Theo dõi Đơn Dịch vụ"
         : item.label;
       const desc = isAccountantServices
         ? "Tra cứu danh sách đơn dịch vụ, doanh thu dịch vụ & số tiền còn phải thu"
@@ -495,21 +495,21 @@ export default function CmsDashboardPage() {
   const currentMenu =
     effectiveModule === "PROFILE"
       ? {
-          id: "PROFILE" as CmsModuleType,
-          label: "Thông tin tài khoản cá nhân",
-          desc: "Xem hồ sơ nhân sự, hợp đồng, chế độ lương & đổi mật khẩu",
-          icon: User,
-          displayLabel: "Thông tin tài khoản cá nhân",
-        }
+        id: "PROFILE" as CmsModuleType,
+        label: "Thông tin tài khoản cá nhân",
+        desc: "Xem hồ sơ nhân sự, hợp đồng, chế độ lương & đổi mật khẩu",
+        icon: User,
+        displayLabel: "Thông tin tài khoản cá nhân",
+      }
       : effectiveModule === "MY_ATTENDANCE"
-      ? {
+        ? {
           id: "MY_ATTENDANCE" as CmsModuleType,
           label: "Lịch Chấm Công Cá Nhân & Đơn Từ",
           desc: "Xem lại lịch chấm công tháng của bản thân, gửi đơn xin nghỉ / đi muộn / WFH",
           icon: CalendarDays,
           displayLabel: "Chấm công & Lịch công tháng",
         }
-      : visibleMenuItems.find((item) => item.id === effectiveModule) ||
+        : visibleMenuItems.find((item) => item.id === effectiveModule) ||
         visibleMenuItems[0] || { ...CMS_MENU_ITEMS[0], displayLabel: `1. ${CMS_MENU_ITEMS[0].label}` };
   const CurrentIcon = currentMenu.icon;
 
@@ -570,11 +570,10 @@ export default function CmsDashboardPage() {
               type="button"
               onClick={() => setIsRightDrawerOpen(true)}
               title="Mở Menu Cá Nhân (Chấm công & Thông tin tài khoản)"
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs transition cursor-pointer ${
-                effectiveModule === "PROFILE" || effectiveModule === "MY_ATTENDANCE"
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs transition cursor-pointer ${effectiveModule === "PROFILE" || effectiveModule === "MY_ATTENDANCE"
                   ? "bg-emerald-600/25 border-emerald-500 text-white"
                   : "bg-slate-800 hover:bg-slate-700 border-slate-700"
-              }`}
+                }`}
             >
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
               <span className="text-slate-300 hidden md:inline">Nhân sự:</span>
@@ -680,41 +679,37 @@ export default function CmsDashboardPage() {
                       setActiveModule("MY_ATTENDANCE");
                       setIsRightDrawerOpen(false);
                     }}
-                    className={`w-full text-left px-3 py-3 rounded-xl text-xs font-bold flex items-center justify-between gap-2.5 transition ${
-                      effectiveModule === "MY_ATTENDANCE"
+                    className={`w-full text-left px-3 py-3 rounded-xl text-xs font-bold flex items-center justify-between gap-2.5 transition ${effectiveModule === "MY_ATTENDANCE"
                         ? "bg-emerald-600 text-white shadow-md"
                         : "text-slate-200 hover:bg-slate-800 hover:text-white"
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <div
-                        className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                          effectiveModule === "MY_ATTENDANCE"
+                        className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${effectiveModule === "MY_ATTENDANCE"
                             ? "bg-white/20 text-white"
                             : "bg-amber-500/15 text-amber-400"
-                        }`}
+                          }`}
                       >
                         <CalendarDays className="w-4 h-4" />
                       </div>
                       <div className="min-w-0">
                         <div className="truncate">Chấm công</div>
                         <div
-                          className={`text-[10px] font-normal truncate mt-0.5 ${
-                            effectiveModule === "MY_ATTENDANCE"
+                          className={`text-[10px] font-normal truncate mt-0.5 ${effectiveModule === "MY_ATTENDANCE"
                               ? "text-emerald-100"
                               : "text-slate-400"
-                          }`}
+                            }`}
                         >
                           Lịch công tháng, đơn từ &amp; tăng ca
                         </div>
                       </div>
                     </div>
                     <ChevronRight
-                      className={`w-4 h-4 shrink-0 ${
-                        effectiveModule === "MY_ATTENDANCE"
+                      className={`w-4 h-4 shrink-0 ${effectiveModule === "MY_ATTENDANCE"
                           ? "text-white"
                           : "text-slate-500"
-                      }`}
+                        }`}
                     />
                   </button>
                 )}
@@ -726,41 +721,37 @@ export default function CmsDashboardPage() {
                     setActiveModule("PROFILE");
                     setIsRightDrawerOpen(false);
                   }}
-                  className={`w-full text-left px-3 py-3 rounded-xl text-xs font-bold flex items-center justify-between gap-2.5 transition ${
-                    effectiveModule === "PROFILE"
+                  className={`w-full text-left px-3 py-3 rounded-xl text-xs font-bold flex items-center justify-between gap-2.5 transition ${effectiveModule === "PROFILE"
                       ? "bg-emerald-600 text-white shadow-md"
                       : "text-slate-200 hover:bg-slate-800 hover:text-white"
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <div
-                      className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                        effectiveModule === "PROFILE"
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${effectiveModule === "PROFILE"
                           ? "bg-white/20 text-white"
                           : "bg-emerald-500/15 text-emerald-400"
-                      }`}
+                        }`}
                     >
                       <User className="w-4 h-4" />
                     </div>
                     <div className="min-w-0">
                       <div className="truncate">Thông tin tài khoản</div>
                       <div
-                        className={`text-[10px] font-normal truncate mt-0.5 ${
-                          effectiveModule === "PROFILE"
+                        className={`text-[10px] font-normal truncate mt-0.5 ${effectiveModule === "PROFILE"
                             ? "text-emerald-100"
                             : "text-slate-400"
-                        }`}
+                          }`}
                       >
                         Xem hồ sơ &amp; chỉnh sửa thông tin cá nhân
                       </div>
                     </div>
                   </div>
                   <ChevronRight
-                    className={`w-4 h-4 shrink-0 ${
-                      effectiveModule === "PROFILE"
+                    className={`w-4 h-4 shrink-0 ${effectiveModule === "PROFILE"
                         ? "text-white"
                         : "text-slate-500"
-                    }`}
+                      }`}
                   />
                 </button>
 
@@ -817,7 +808,7 @@ export default function CmsDashboardPage() {
           />
 
           {/* Nội dung Drawer */}
-          <aside className="relative z-10 w-85 max-w-[88vw] bg-slate-900 text-white h-full shadow-2xl border-r border-slate-800 flex flex-col justify-between overflow-y-auto">
+          <aside className="relative z-10 w-85 max-w-[88vw] bg-slate-900 text-white h-full shadow-2xl border-r border-slate-800 flex flex-col overflow-y-auto">
             <div>
               {/* Đầu Drawer */}
               <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
@@ -892,37 +883,6 @@ export default function CmsDashboardPage() {
                 })}
               </nav>
             </div>
-
-            {/* Chân Drawer */}
-            <div className="p-4 border-t border-slate-800 bg-slate-950/60 space-y-2.5 text-xs">
-              <div className="flex items-center justify-between text-slate-300">
-                <span>Đang đăng nhập:</span>
-                <strong className="text-white">
-                  {adminUser.fullName} ({adminUser.role})
-                </strong>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsDrawerOpen(false);
-                    handleOpenChangePwd();
-                  }}
-                  className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold flex items-center justify-center gap-1.5 border border-slate-700"
-                >
-                  <KeyRound className="w-3.5 h-3.5" />
-                  Đổi mật khẩu
-                </button>
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="py-2 px-3 rounded-xl bg-red-600/90 hover:bg-red-600 text-white font-bold flex items-center justify-center gap-1.5"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  Đăng xuất
-                </button>
-              </div>
-            </div>
           </aside>
         </div>
       )}
@@ -955,7 +915,9 @@ export default function CmsDashboardPage() {
             onBack={() => setActiveModule(defaultMainModule)}
           />
         )}
-        {effectiveModule === "SHIFT_HANDOVERS" && <ShiftHandoverModule />}
+        {effectiveModule === "SHIFT_HANDOVERS" && (
+          <ShiftHandoverModule currentUser={adminUser} />
+        )}
         {effectiveModule === "ACTIVITY" && <StaffActivityModule />}
         {effectiveModule === "PROMOTIONS" && <PromotionModule />}
         {effectiveModule === "DEBTS" && (

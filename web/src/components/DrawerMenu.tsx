@@ -11,6 +11,7 @@ import {
   Clock,
   UserCog,
   Rocket,
+  KeyRound,
 } from "lucide-react";
 
 export type TabType = "POS" | "INVENTORY" | "CUSTOMER" | "RETURN" | "PUSH_PRODUCTS";
@@ -32,6 +33,7 @@ interface DrawerMenuProps {
   onOpenProfile: () => void;
   onOpenAttendance: () => void;
   onOpenPushProducts?: () => void;
+  onOpenChangePassword?: () => void;
   onLogout: () => void;
   getRoleDisplayName: (role?: UserRole) => string;
   cmsUrl?: string;
@@ -46,6 +48,7 @@ export default function DrawerMenu({
   onOpenProfile,
   onOpenAttendance,
   onOpenPushProducts,
+  onOpenChangePassword,
   onLogout,
   getRoleDisplayName,
   cmsUrl = "https://11sport-it-m1ei.vercel.app",
@@ -298,6 +301,31 @@ export default function DrawerMenu({
                 }`}
               />
             </button>
+
+            {/* 3. Đổi mật khẩu */}
+            {onOpenChangePassword && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenChangePassword();
+                }}
+                className="w-full text-left px-3 py-3 rounded-xl text-xs font-bold flex items-center justify-between gap-2.5 text-slate-200 hover:bg-slate-800 hover:text-white transition"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0">
+                    <KeyRound className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="truncate">Đổi mật khẩu</div>
+                    <div className="text-[10px] font-normal truncate mt-0.5 text-slate-400">
+                      Cập nhật mật khẩu đăng nhập hệ thống
+                    </div>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 shrink-0 text-slate-500" />
+              </button>
+            )}
           </div>
 
           {(currentUser.role === "ADMIN" || currentUser.role === "CEO") && (
