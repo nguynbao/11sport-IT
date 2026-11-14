@@ -16,7 +16,7 @@ export interface ParsedStaffImportRow {
   school: string;
   major: string;
   positionTitle: string;
-  role: Exclude<StaffRole, 'ADMIN' | 'WAREHOUSE'>;
+  role: Exclude<StaffRole, 'CEO' | 'ADMIN'>;
   department: StaffDepartment;
   contractType: Exclude<ContractType, 'PARTTIME'>;
   contractStartDate: string;
@@ -268,14 +268,14 @@ function inferRoleAndDepartment(
   positionRaw: string,
   departmentRaw: string
 ): {
-  role: Exclude<StaffRole, 'ADMIN' | 'WAREHOUSE'>;
+  role: Exclude<StaffRole, 'CEO' | 'ADMIN'>;
   department: StaffDepartment;
 } {
   const pos = stripAccentsUpper(positionRaw);
   const dept = stripAccentsUpper(departmentRaw);
   const combined = `${pos} ${dept}`.trim();
 
-  let role: Exclude<StaffRole, 'ADMIN' | 'WAREHOUSE'> = 'SALES';
+  let role: Exclude<StaffRole, 'CEO' | 'ADMIN'> = 'SALES';
   if (
     /\b(HR|NHAN SU|HCNS|HANH CHINH|TUYEN DUNG)\b/.test(combined)
   ) {

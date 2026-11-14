@@ -1,0 +1,1173 @@
+"use client";
+
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
+  Clock,
+  AlertTriangle,
+  CheckCircle2,
+  X,
+  Send,
+  FileText,
+  Timer,
+  Hourglass,
+  Info,
+} from "lucide-react";
+import {
+  StaffUser,
+  MyCalendarData,
+  MyCalendarCell,
+  MyCalendarCellCode,
+  MyCalendarDay,
+  LeaveRequestType,
+  fetchMyCalendarApi,
+  createLeaveRequestApi,
+} from "@/lib/api";
+import { CreateLeaveModal, MyLeaveRequestsPanel, LEAVE_REASON_MAX } from "./LeaveRequests";
+
+const WEEK_HEADERS = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
+
+const LEAVE_TYPE_LABEL: Record<LeaveRequestType, string> = {
+  PAID_LEAVE: "Nghỉ phép (có lương)",
+  OFF: "Xin nghỉ (OFF không lương)",
+  CHANGE_OFF: "Xin chuyển ngày off",
+  WFH: "Làm từ xa (WFH)",
+  LATE: "Xin đi trễ",
+  EARLY: "Xin về sớm",
+};
+
+const CONTRACT_LABEL: Record<string, string> = {
+  INTERN: "Thực tập",
+  PROBATION: "Thử việc",
+  FULLTIME: "Chính thức",
+  PARTTIME: "Bán thời gian (cũ)",
+};
+
+const isPaidLeaveEligible = (contractType?: string | null) => contractType === "FULLTIME";
+
+const LEAVE_STATUS: Record<string, { label: string; cls: string }> = {
+  PENDING: { label: "Chờ HR duyệt", cls: "bg-amber-100 text-amber-800" },
+  APPROVED: { label: "Đã duyệt", cls: "bg-emerald-100 text-emerald-800" },
+  REJECTED: { label: "Từ chối", cls: "bg-rose-100 text-rose-800" },
+};
+
+const STATUS: Record<
+  MyCalendarCellCode,
+  {
+    short: string;
+    label: string;
+    box: string;
+    dot: string;
+    dayNum: string;
+    badge?: string;
+    badgeCls?: string;
+  }
+> = {
+  ON_TIME: {
+    short: "Đúng giờ",
+    label: "Đi làm đúng giờ",
+    box: "bg-emerald-50 border-emerald-300",
+    dot: "bg-emerald-500",
+    dayNum: "text-emerald-900",
+    badge: "✓",
+    badgeCls: "bg-emerald-500 text-white",
+  },
+  WORKING: {
+    short: "Đang làm",
+    label: "Đang trong ca",
+    box: "bg-sky-50 border-sky-300",
+    dot: "bg-sky-500 animate-pulse",
+    dayNum: "text-sky-900",
+    badge: "●",
+    badgeCls: "bg-sky-500 text-white animate-pulse",
+  },
+  WFH: {
+    short: "WFH",
+    label: "Làm việc từ xa (WFH)",
+    box: "bg-cyan-50 border-cyan-300",
+    dot: "bg-cyan-600",
+    dayNum: "text-cyan-900",
+    badge: "W",
+    badgeCls: "bg-cyan-600 text-white",
+  },
+  LATE: {
+    short: "Đi trễ",
+    label: "Đi trễ",
+    box: "bg-amber-50 border-amber-300",
+    dot: "bg-amber-500",
+    dayNum: "text-amber-900",
+    badge: "T",
+    badgeCls: "bg-amber-400 text-amber-950",
+  },
+  EARLY: {
+    short: "Về sớm",
+    label: "Về sớm",
+    box: "bg-amber-50 border-amber-300",
+    dot: "bg-amber-500",
+    dayNum: "text-amber-900",
+    badge: "S",
+    badgeCls: "bg-amber-400 text-amber-950",
+  },
+  LATE_EARLY: {
+    short: "Trễ & sớm",
+    label: "Đi trễ & về sớm",
+    box: "bg-amber-100/80 border-amber-400",
+    dot: "bg-amber-500",
+    dayNum: "text-amber-950",
+    badge: "TS",
+    badgeCls: "bg-amber-500 text-white",
+  },
+  MISSING_OUT: {
+    short: "Quên ra ca",
+    label: "Chưa check-out",
+    box: "bg-red-50 border-red-400",
+    dot: "bg-red-600",
+    dayNum: "text-red-900",
+    badge: "!",
+    badgeCls: "bg-red-600 text-white",
+  },
+  ABSENT: {
+    short: "Vắng",
+    label: "Vắng không phép",
+    box: "bg-rose-50 border-rose-300",
+    dot: "bg-rose-500",
+    dayNum: "text-rose-800",
+    badge: "V",
+    badgeCls: "bg-rose-100 text-rose-700 border border-rose-400",
+  },
+  LEAVE: {
+    short: "Nghỉ OFF",
+    label: "Nghỉ OFF (không lương)",
+    box: "bg-slate-100 border-slate-300",
+    dot: "bg-slate-400",
+    dayNum: "text-slate-700",
+    badge: "P",
+    badgeCls: "bg-slate-200 text-slate-700 border border-slate-300",
+  },
+  PAID_LEAVE: {
+    short: "Phép (+1c)",
+    label: "Nghỉ phép có lương (+1 công)",
+    box: "bg-blue-50 border-blue-300",
+    dot: "bg-blue-600",
+    dayNum: "text-blue-900",
+    badge: "PL",
+    badgeCls: "bg-blue-600 text-white",
+  },
+  HOLIDAY: {
+    short: "Nghỉ lễ",
+    label: "Nghỉ lễ hưởng lương (+1 công)",
+    box: "bg-fuchsia-50 border-fuchsia-300",
+    dot: "bg-fuchsia-600",
+    dayNum: "text-fuchsia-900",
+    badge: "L",
+    badgeCls: "bg-fuchsia-600 text-white",
+  },
+  DAY_OFF: {
+    short: "Nghỉ tuần",
+    label: "Ngày nghỉ hàng tuần",
+    box: "bg-slate-50 border-slate-200",
+    dot: "bg-slate-300",
+    dayNum: "text-slate-400",
+  },
+  UNSCHEDULED: {
+    short: "Chưa xếp ca",
+    label: "Chưa được xếp ca",
+    box: "bg-slate-50 border-dashed border-slate-300",
+    dot: "bg-slate-300",
+    dayNum: "text-slate-400",
+  },
+  FUTURE: {
+    short: "",
+    label: "Chưa tới",
+    box: "bg-white border-slate-200",
+    dot: "bg-slate-200",
+    dayNum: "text-slate-700",
+  },
+};
+
+function fmtMinutes(m?: number) {
+  if (!m) return "0p";
+  if (m < 60) return `${m}p`;
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  return r ? `${h}h${r}p` : `${h}h`;
+}
+
+export default function MyAttendanceCalendar({
+  currentUser,
+  onBack,
+}: {
+  currentUser: StaffUser;
+  onBack?: () => void;
+}) {
+  const now = new Date();
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useState(now.getFullYear());
+  const [data, setData] = useState<MyCalendarData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<{ day: MyCalendarDay; cell: MyCalendarCell } | null>(null);
+  const [leaveModal, setLeaveModal] = useState<{
+    date?: string;
+    fromDate?: string;
+    sourceLeaveId?: string;
+    type?: LeaveRequestType;
+  } | null>(null);
+  const [leaveReloadKey, setLeaveReloadKey] = useState(0);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const notify = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3500);
+  };
+
+  const load = useCallback(async () => {
+    if (currentUser.role === "ADMIN" || currentUser.role === "CEO") return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetchMyCalendarApi(month, year);
+      setData(res);
+    } catch (e: any) {
+      setError(e?.message || "Không tải được lịch chấm công");
+    } finally {
+      setLoading(false);
+    }
+  }, [month, year, currentUser.role]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useEffect(() => {
+    const h = () => {
+      load();
+    };
+    window.addEventListener("attendance-changed", h);
+    return () => window.removeEventListener("attendance-changed", h);
+  }, [load]);
+
+  const changeMonth = (delta: number) => {
+    let m = month + delta;
+    let y = year;
+    if (m < 1) {
+      m = 12;
+      y -= 1;
+    } else if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+    setMonth(m);
+    setYear(y);
+  };
+
+  const grid = useMemo(() => {
+    if (!data) return [];
+    const firstWeekday = data.days[0]?.weekday ?? 0;
+    const blanks: (MyCalendarDay | null)[] = Array.from({ length: firstWeekday }, () => null);
+    return [...blanks, ...data.days];
+  }, [data]);
+
+  const availableOffDays = useMemo(() => {
+    const out: {
+      date: string;
+      offType: "OFF" | "PAID_LEAVE";
+      sourceLeaveId?: string;
+      label: string;
+    }[] = [];
+    const seen = new Set<string>();
+    const cells = data?.row?.cells || {};
+    for (const [dateStr, cell] of Object.entries(cells)) {
+      const activeLeave = (cell.leaveRequests || []).find(
+        (l) =>
+          (l.type === "OFF" || l.type === "PAID_LEAVE") &&
+          (l.status === "APPROVED" || l.status === "PENDING")
+      );
+      if (activeLeave) {
+        seen.add(dateStr);
+        out.push({
+          date: dateStr,
+          offType: activeLeave.type === "PAID_LEAVE" ? "PAID_LEAVE" : "OFF",
+          sourceLeaveId: activeLeave.id,
+          label: `${dateStr} (${activeLeave.type === "PAID_LEAVE" ? "Phép" : "OFF"})`,
+        });
+      } else if (cell.code === "LEAVE" || cell.code === "PAID_LEAVE") {
+        seen.add(dateStr);
+        out.push({
+          date: dateStr,
+          offType: cell.code === "PAID_LEAVE" ? "PAID_LEAVE" : "OFF",
+          label: `${dateStr} (${cell.code === "PAID_LEAVE" ? "Phép" : "OFF"})`,
+        });
+      }
+    }
+    return out.sort((a, b) => a.date.localeCompare(b.date));
+  }, [data]);
+
+  if (currentUser.role === "ADMIN" || currentUser.role === "CEO") {
+    return (
+      <div className="max-w-xl mx-auto mt-10 p-6 bg-white rounded-2xl border border-slate-200 text-center space-y-2">
+        <div className="text-base font-extrabold text-slate-800">
+          Tài khoản {currentUser.role === "CEO" ? "Giám đốc (CEO)" : "Quản trị viên (ADMIN)"} không cần chấm công cá nhân
+        </div>
+        <p className="text-xs text-slate-500">
+          Vui lòng xem và điều chỉnh bảng công toàn công ty tại mục <b>Quản lý Nhân sự & Chấm công (HRM)</b>.
+        </p>
+      </div>
+    );
+  }
+
+  const s = data?.row?.summary;
+  const pct = s && s.standardDays > 0 ? Math.min(100, Math.round((s.paidUnits / s.standardDays) * 100)) : 0;
+  const multiplier = data?.rules?.holidayWorkPayMultiplier || 4;
+
+  const afterLeaveChange = (msg: string) => {
+    notify(msg);
+    setLeaveReloadKey((k) => k + 1);
+    load();
+  };
+
+  return (
+    <div className="w-full space-y-3">
+      {toast && (
+        <div className="fixed bottom-5 right-5 z-50 px-4 py-2.5 bg-slate-900 text-white text-xs font-semibold rounded-xl shadow-lg">
+          {toast}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
+        {/* Cột trái (2/12): Đơn từ của tôi */}
+        <aside className="order-2 lg:order-1 lg:col-span-2 lg:sticky lg:top-3">
+          <MyLeaveRequestsPanel
+            reloadKey={leaveReloadKey}
+            onCreate={() => setLeaveModal({})}
+            onRequestChangeOff={(leave) =>
+              setLeaveModal({
+                type: "CHANGE_OFF",
+                fromDate: leave.date,
+                sourceLeaveId: leave._id,
+              })
+            }
+            onChanged={afterLeaveChange}
+          />
+        </aside>
+
+        {/* Cột giữa (8/12): Lịch chấm công tháng */}
+        <section className="order-1 lg:order-2 lg:col-span-8 space-y-3 min-w-0">
+          {/* Thanh tiêu đề + chọn tháng + gửi đơn */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-4 flex flex-wrap items-center justify-between gap-2 shadow-sm">
+            <div>
+              <h2 className="text-base sm:text-lg font-extrabold text-slate-900 flex items-center gap-2">
+                Lịch Chấm Công Của Tôi
+                <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-700">
+                  Khối Văn phòng
+                </span>
+                {data?.row?.contractType && (
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                      data.row.contractType === "FULLTIME"
+                        ? "bg-teal-100 text-teal-800"
+                        : "bg-slate-100 text-slate-600"
+                    }`}
+                  >
+                    HĐ: {CONTRACT_LABEL[data.row.contractType] || data.row.contractType}
+                  </span>
+                )}
+              </h2>
+              <p className="text-xs text-slate-500">
+                Bấm vào một ngày trên lịch để xem giờ vào/ra hoặc gửi đơn xin nghỉ, chuyển ngày off, WFH, đi trễ, về sớm.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              {onBack && (
+                <button
+                  type="button"
+                  onClick={onBack}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  Quay lại
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setLeaveModal({})}
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 shadow-sm cursor-pointer"
+              >
+                <Send className="w-3.5 h-3.5" />
+                Gửi đơn
+              </button>
+              <button
+                type="button"
+                onClick={() => setLeaveModal({ type: "CHANGE_OFF" })}
+                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 shadow-sm cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Xin chuyển ngày off
+              </button>
+              <div className="flex items-center bg-slate-100 rounded-xl p-0.5">
+                <button
+                  type="button"
+                  onClick={() => changeMonth(-1)}
+                  className="p-1.5 hover:bg-white rounded-lg text-slate-600"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="px-3 text-xs sm:text-sm font-extrabold text-slate-800 min-w-[96px] text-center">
+                  Tháng {month}/{year}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => changeMonth(1)}
+                  className="p-1.5 hover:bg-white rounded-lg text-slate-600"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setMonth(now.getMonth() + 1);
+                  setYear(now.getFullYear());
+                }}
+                className="px-2.5 py-1.5 text-xs font-bold rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600"
+              >
+                Tháng này
+              </button>
+              <button
+                type="button"
+                onClick={load}
+                className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-500"
+                title="Tải lại"
+              >
+                <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+              </button>
+            </div>
+          </div>
+
+          {/* Tổng hợp tháng */}
+          {s && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 2xl:grid-cols-8 gap-2">
+              <div className="col-span-2 bg-white rounded-xl border border-slate-200 p-3">
+                <div className="text-[11px] font-semibold text-slate-500">Tổng công tính lương</div>
+                <div className="flex items-end gap-1 mt-0.5">
+                  <span className="text-2xl font-black text-slate-900">{s.paidUnits.toFixed(2)}</span>
+                  <span className="text-sm font-bold text-slate-400 mb-0.5">/ {s.standardDays}</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-slate-100 mt-1.5 overflow-hidden">
+                  <div
+                    className={`h-full ${pct >= 95 ? "bg-emerald-500" : pct >= 80 ? "bg-yellow-400" : "bg-red-500"}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <div className="text-[10px] text-slate-500 mt-1">
+                  Đi làm {s.workUnits.toFixed(2)}
+                  {s.holidayPaidDays > 0 && (
+                    <span className="text-rose-600 font-semibold"> + Lễ {s.holidayPaidDays}</span>
+                  )}
+                  {(s.paidLeaveUsed ?? 0) > 0 && (
+                    <span className="text-teal-600 font-semibold"> + Phép {s.paidLeaveUsed}</span>
+                  )}
+                </div>
+              </div>
+              <StatCard label="Tổng giờ làm" value={`${s.totalHours.toFixed(1)}h`} tone="slate" />
+              <StatCard label="Đi trễ" value={`${s.lateCount} lần`} sub={fmtMinutes(s.lateMinutes)} tone="yellow" />
+              <StatCard label="Về sớm" value={`${s.earlyCount} lần`} sub={fmtMinutes(s.earlyMinutes)} tone="pink" />
+              <StatCard
+                label="Vắng / Quên ra ca"
+                value={`${s.absentDays} / ${s.missingCheckout}`}
+                tone="red"
+              />
+              <StatCard
+                label="Tăng ca"
+                value={fmtMinutes(s.overtimeMinutes)}
+                sub={`${s.overtimeDays || 0} ngày`}
+                tone="indigo"
+              />
+              <StatCard
+                label={`Làm ngày lễ (x${multiplier})`}
+                value={`${s.holidayWorkDays} ngày`}
+                sub={s.holidayWorkHours ? `${s.holidayWorkHours}h` : undefined}
+                tone="rose"
+              />
+            </div>
+          )}
+
+          {s && (s.pendingRequests ?? 0) > 0 && (
+            <div className="px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold flex items-center gap-2">
+              <Hourglass className="w-4 h-4" />
+              Bạn có {s.pendingRequests} đơn đang chờ HR duyệt trong tháng này.
+            </div>
+          )}
+
+          {s && (
+            <div
+              className={`px-3 py-2 rounded-xl border text-xs font-semibold flex flex-wrap items-center justify-between gap-2 ${
+                data?.row?.contractType !== "FULLTIME"
+                  ? "bg-slate-50 border-slate-200 text-slate-600"
+                  : (s.paidLeaveRemaining ?? Math.max(0, (s.paidLeaveEntitled || 0) - (s.paidLeaveUsed || 0))) > 0
+                    ? "bg-teal-50 border-teal-200 text-teal-900"
+                    : "bg-slate-100 border-slate-300 text-slate-700"
+              }`}
+            >
+              <span>
+                <b>Quỹ nghỉ phép có lương (tích lũy đến tháng {month}/{year}):</b>{" "}
+                {data?.row?.contractType !== "FULLTIME" ? (
+                  <>
+                    Đang ở giai đoạn{" "}
+                    <b>{CONTRACT_LABEL[data?.row?.contractType || ""] || "Chưa cập nhật"}</b>
+                    {data?.row?.contractType === "PROBATION" && (s.paidLeaveFromProbation ?? 0) > 0
+                      ? ` • Đã tích lũy ${s.paidLeaveFromProbation} ngày phép thử việc – sẽ được cộng vào quỹ phép ngay khi ký HĐ Chính thức.`
+                      : " – khi lên HĐ Chính thức sẽ được cộng số ngày phép tương ứng tháng thử việc (tối đa 2 ngày) + 1 ngày phép mỗi tháng chính thức."}
+                  </>
+                ) : (
+                  <>
+                    Có thể dùng <b>{s.paidLeaveEntitled || 0} ngày</b>
+                    {(s.paidLeaveFromProbation ?? 0) > 0
+                      ? ` (gồm +${s.paidLeaveFromProbation} ngày từ thử việc)`
+                      : ""}{" "}
+                    • Đã dùng trong tháng: <b>{s.paidLeaveUsed || 0} ngày</b> • Còn để dành cộng dồn:{" "}
+                    <b>
+                      {s.paidLeaveRemaining ?? Math.max(0, (s.paidLeaveEntitled || 0) - (s.paidLeaveUsed || 0))} ngày
+                    </b>{" "}
+                    (dùng liên tiếp tối đa 1 tuần; từ 2 ngày phép trở đi phải tạo đơn trước 3 tuần).
+                  </>
+                )}
+              </span>
+              {data?.row?.contractType === "FULLTIME" &&
+                (s.paidLeaveRemaining ?? Math.max(0, (s.paidLeaveEntitled || 0) - (s.paidLeaveUsed || 0))) > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setLeaveModal({ type: "PAID_LEAVE" })}
+                    className="px-2.5 py-1 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-[11px] font-bold"
+                  >
+                    Đăng ký nghỉ phép
+                  </button>
+                )}
+            </div>
+          )}
+
+          {error && (
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm">{error}</div>
+          )}
+
+          {/* Lịch tháng */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-4 shadow-sm space-y-2">
+            <div className="grid grid-cols-7 gap-1.5 sm:gap-2 text-center">
+              {WEEK_HEADERS.map((h, i) => (
+                <div
+                  key={h}
+                  className={`py-1 text-[11px] sm:text-xs font-extrabold uppercase ${
+                    i === 0 ? "text-rose-600" : "text-slate-500"
+                  }`}
+                >
+                  {h}
+                </div>
+              ))}
+            </div>
+
+            {loading && !data ? (
+              <div className="py-20 text-center text-slate-400 text-sm">Đang tải lịch công...</div>
+            ) : (
+              <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
+                {grid.map((day, idx) => {
+                  if (!day) {
+                    return (
+                      <div key={`blank-${idx}`} className="rounded-xl bg-slate-50/40 min-h-[78px] sm:min-h-[104px]" />
+                    );
+                  }
+                  const cell = data?.row?.cells[day.date];
+                  if (!cell) {
+                    return <div key={day.date} className="rounded-xl border border-slate-200 min-h-[78px]" />;
+                  }
+                  return (
+                    <DayCell
+                      key={day.date}
+                      day={day}
+                      cell={cell}
+                      department={data?.row?.department || "OFFICE"}
+                      multiplier={multiplier}
+                      onClick={() => setSelected({ day, cell })}
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Cột phải (2/12): Chú thích chuẩn HR & Quy định chấm công */}
+        <aside className="order-3 lg:col-span-2 lg:sticky lg:top-3 space-y-2.5">
+          <div className="bg-slate-50 rounded-2xl border border-slate-200/90 p-3 shadow-sm space-y-2.5">
+            <div className="text-[11px] font-black text-slate-700 uppercase tracking-wider border-b border-slate-200 pb-1.5">
+              Chú thích:
+            </div>
+
+            <div className="flex flex-col gap-1.5 text-[11px] text-slate-700">
+              <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-slate-200/80">
+                <span className="w-4 h-4 shrink-0 rounded bg-emerald-500 text-white text-[9px] font-black inline-flex items-center justify-center">
+                  ✓
+                </span>
+                <span className="font-medium truncate">Đúng giờ</span>
+              </div>
+
+              <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-sky-200">
+                <span className="w-4 h-4 shrink-0 rounded bg-sky-500 text-white animate-pulse text-[9px] font-black inline-flex items-center justify-center">
+                  ●
+                </span>
+                <span className="font-medium truncate">Đang làm</span>
+              </div>
+
+              <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-cyan-200">
+                <span className="w-4 h-4 shrink-0 rounded bg-cyan-600 text-white text-[9px] font-black inline-flex items-center justify-center">
+                  W
+                </span>
+                <span className="font-medium truncate">Làm từ xa (WFH)</span>
+              </div>
+
+              <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-indigo-200">
+                <span className="w-4 h-4 shrink-0 rounded bg-indigo-600 text-white text-[8px] font-black inline-flex items-center justify-center">
+                  TC
+                </span>
+                <span className="font-medium truncate">Tăng ca (đã duyệt)</span>
+              </div>
+
+              <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-amber-200">
+                <span className="w-4 h-4 shrink-0 rounded bg-amber-400 text-amber-950 text-[8px] font-black inline-flex items-center justify-center">
+                  T/S
+                </span>
+                <span className="font-medium truncate" title="Đi trễ (T) / Về sớm (S) / Cả hai (TS)">
+                  Đi trễ (T) / Về sớm (S) / Cả hai (TS)
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-red-200">
+                <span className="w-4 h-4 shrink-0 rounded bg-red-600 text-white text-[9px] font-black inline-flex items-center justify-center">
+                  !
+                </span>
+                <span className="font-medium truncate">Quên check-out</span>
+              </div>
+
+              <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-rose-200">
+                <span className="w-4 h-4 shrink-0 rounded bg-rose-100 text-rose-700 border border-rose-400 text-[9px] font-black inline-flex items-center justify-center">
+                  V
+                </span>
+                <span className="font-medium truncate">Vắng không phép</span>
+              </div>
+
+              <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-slate-200/80">
+                <span className="w-4 h-4 shrink-0 rounded bg-slate-200 text-slate-700 border border-slate-300 text-[9px] font-black inline-flex items-center justify-center">
+                  P
+                </span>
+                <span className="font-medium truncate">Nghỉ OFF không lương</span>
+              </div>
+
+              <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-blue-200">
+                <span className="w-4 h-4 shrink-0 rounded bg-blue-600 text-white text-[8px] font-black inline-flex items-center justify-center">
+                  PL
+                </span>
+                <span className="font-medium truncate">Phép có lương (+1 công)</span>
+              </div>
+
+              <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-fuchsia-200">
+                <span className="w-4 h-4 shrink-0 rounded bg-fuchsia-600 text-white text-[9px] font-black inline-flex items-center justify-center">
+                  L
+                </span>
+                <span className="font-medium truncate">Nghỉ lễ (+1 công VP)</span>
+              </div>
+
+              <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-amber-200">
+                <span className="w-4 h-4 shrink-0 rounded bg-emerald-500 text-white ring-2 ring-yellow-400 text-[9px] font-black inline-flex items-center justify-center">
+                  ★
+                </span>
+                <span className="font-medium truncate">Đi làm lễ (lương x{multiplier})</span>
+              </div>
+            </div>
+
+            {data && (
+              <div className="pt-2 border-t border-slate-200 space-y-1 text-[10px] leading-relaxed text-slate-600">
+                <div className="font-extrabold text-slate-800 uppercase">Quy định</div>
+                <p>• Tuần làm 6 ngày (nghỉ Chủ nhật).</p>
+                <p>• Ca hành chính: 08:30 – 17:30 (nghỉ trưa 12:00 – 13:00, chuẩn 8h/ngày).</p>
+                <p>
+                  • Trễ quá {data.rules.lateToleranceMinutes}p tính đi trễ. Khối Văn phòng chỉ tính tăng ca khi được HR yêu cầu.
+                </p>
+                <p>• Nghỉ lễ chính thức hưởng +1 công; đi làm ngày lễ lương x{multiplier}.</p>
+              </div>
+            )}
+          </div>
+        </aside>
+      </div>
+
+      {leaveModal && (
+        <CreateLeaveModal
+          department={data?.row?.department || currentUser.department || "OFFICE"}
+          contractType={data?.row?.contractType || currentUser.contractType}
+          defaultDate={leaveModal.date}
+          defaultFromDate={leaveModal.fromDate}
+          defaultType={leaveModal.type}
+          availableOffDays={availableOffDays}
+          paidLeaveRemaining={
+            s?.paidLeaveRemaining ?? Math.max(0, (s?.paidLeaveEntitled || 0) - (s?.paidLeaveUsed || 0))
+          }
+          paidLeaveEntitled={s?.paidLeaveEntitled || 0}
+          paidLeaveFromProbation={s?.paidLeaveFromProbation || 0}
+          salesOffRemaining={s?.salesOffRemaining}
+          onClose={() => setLeaveModal(null)}
+          onSuccess={(msg) => {
+            setLeaveModal(null);
+            afterLeaveChange(msg);
+          }}
+        />
+      )}
+
+      {selected && data?.row && (
+        <DayDetailModal
+          day={selected.day}
+          cell={selected.cell}
+          department={data.row.department}
+          contractType={data.row.contractType}
+          multiplier={multiplier}
+          onClose={() => setSelected(null)}
+          onRequestChangeOff={(fromDate, sourceLeaveId) => {
+            setSelected(null);
+            setLeaveModal({
+              type: "CHANGE_OFF",
+              fromDate,
+              sourceLeaveId,
+            });
+          }}
+          onSubmitted={(msg) => {
+            setSelected(null);
+            afterLeaveChange(msg);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  sub,
+  tone,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  tone: "slate" | "yellow" | "pink" | "red" | "indigo" | "rose";
+}) {
+  const tones = {
+    slate: "border-slate-200",
+    yellow: "border-yellow-300 bg-yellow-50/50",
+    pink: "border-pink-300 bg-pink-50/50",
+    red: "border-red-300 bg-red-50/50",
+    indigo: "border-indigo-300 bg-indigo-50/50",
+    rose: "border-rose-300 bg-rose-50/50",
+  } as const;
+  return (
+    <div className={`bg-white rounded-xl border p-3 ${tones[tone]}`}>
+      <div className="text-[11px] font-semibold text-slate-500 truncate">{label}</div>
+      <div className="text-lg font-black text-slate-900 mt-0.5">{value}</div>
+      {sub && <div className="text-[10px] text-slate-500">{sub}</div>}
+    </div>
+  );
+}
+
+function DayCell({
+  day,
+  cell,
+  department,
+  multiplier,
+  onClick,
+}: {
+  day: MyCalendarDay;
+  cell: MyCalendarCell;
+  department: string;
+  multiplier: number;
+  onClick: () => void;
+}) {
+  const isUnpaidHoliday = cell.code === "HOLIDAY" && !cell.isPaidHoliday;
+  const st = isUnpaidHoliday ? STATUS.DAY_OFF : STATUS[cell.code];
+  const hasPending = (cell.leaveRequests || []).some((l) => l.status === "PENDING");
+  const eventHoliday = day.holiday && !day.holiday.isOfficialDayOff ? day.holiday : null;
+  const officialHoliday = day.holiday && day.holiday.isOfficialDayOff ? day.holiday : null;
+  const shiftLabel =
+    cell.shiftCode === "BOTH"
+      ? "Ca 1 + Ca 2"
+      : cell.shiftCode === "SHIFT_2"
+        ? "Ca 2"
+        : cell.shiftCode === "SHIFT_1"
+          ? "Ca 1"
+          : null;
+
+  let statusText = st.short;
+  if (cell.code === "EARLY" || cell.code === "LATE_EARLY") {
+    statusText = cell.earlyApproved ? "Xin về sớm" : st.short;
+  }
+  if (cell.code === "LATE" && cell.lateApproved) statusText = "Trễ (có đơn)";
+  if (cell.code === "FUTURE" && shiftLabel) statusText = shiftLabel;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`group relative overflow-hidden text-left rounded-xl border-2 p-1.5 sm:p-2 min-h-[78px] sm:min-h-[104px] flex flex-col transition hover:shadow-md hover:-translate-y-0.5 ${st.box} ${
+        day.isToday ? "ring-2 ring-blue-500 ring-offset-1" : ""
+      }`}
+    >
+      {cell.isHolidayWork && (
+        <span className="pointer-events-none absolute top-[7px] -right-[22px] w-[78px] rotate-45 bg-rose-600 text-white text-[9px] font-black text-center py-[1px] shadow">
+          x{multiplier} lương
+        </span>
+      )}
+      {!cell.isHolidayWork && eventHoliday && (
+        <span className="pointer-events-none absolute top-[7px] -right-[22px] w-[78px] rotate-45 bg-amber-500 text-white text-[8px] font-black text-center py-[1px]">
+          Sự kiện
+        </span>
+      )}
+      {!cell.isHolidayWork && officialHoliday && (
+        <span className="pointer-events-none absolute top-[7px] -right-[22px] w-[78px] rotate-45 bg-rose-600 text-white text-[8px] font-black text-center py-[1px]">
+          {department === "SALES" ? `LỄ • x${multiplier}` : "LỄ"}
+        </span>
+      )}
+
+      <div className="flex items-center justify-between gap-1">
+        <div className="flex items-center gap-1">
+          <span
+            className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs sm:text-sm font-black ${
+              day.isToday ? "bg-blue-600 text-white" : st.dayNum
+            }`}
+          >
+            {day.day}
+          </span>
+          {hasPending && <span className="w-2 h-2 rounded-full bg-amber-500" title="Có đơn chờ duyệt" />}
+          {cell.adjusted && <span className="w-1.5 h-1.5 rounded-full bg-slate-800" title="HR đã điều chỉnh" />}
+        </div>
+        {cell.isHolidayWork ? (
+          <span className="w-4 h-4 shrink-0 rounded bg-emerald-500 text-white ring-2 ring-yellow-400 text-[9px] font-black inline-flex items-center justify-center">
+            ★
+          </span>
+        ) : st.badge ? (
+          <span
+            className={`w-4 h-4 shrink-0 rounded text-[9px] font-black inline-flex items-center justify-center ${st.badgeCls}`}
+          >
+            {st.badge}
+          </span>
+        ) : null}
+      </div>
+
+      <div className="mt-auto space-y-0.5 min-w-0">
+        {statusText && (
+          <div className={`text-[10px] sm:text-[11px] font-extrabold truncate ${st.dayNum}`}>{statusText}</div>
+        )}
+        {cell.checkIn && (
+          <div className="hidden sm:block text-[10px] font-mono text-slate-600 truncate">
+            {cell.checkIn}–{cell.checkOut || "--:--"}
+          </div>
+        )}
+        {(officialHoliday || eventHoliday) && (
+          <div className="hidden sm:block text-[9px] text-slate-500 truncate" title={day.holiday!.name}>
+            {day.holiday!.name}
+          </div>
+        )}
+        <div className="flex flex-wrap gap-0.5">
+          {!!cell.overtimeMinutes && (
+            <span className="px-1 rounded bg-indigo-600 text-white text-[9px] font-black">
+              TC {fmtMinutes(cell.overtimeMinutes)}
+            </span>
+          )}
+          {!cell.overtimeMinutes && cell.overtimeStatus === "PENDING" && !!cell.lateCheckoutMinutes && (
+            <span className="px-1 rounded bg-amber-100 text-amber-800 text-[9px] font-bold">
+              ⏳ Chờ duyệt TC ({fmtMinutes(cell.lateCheckoutMinutes)})
+            </span>
+          )}
+          {cell.isPaidHoliday && cell.code === "HOLIDAY" && (
+            <span className="px-1 rounded bg-rose-100 text-rose-700 text-[9px] font-bold">+1 công</span>
+          )}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function DayDetailModal({
+  day,
+  cell,
+  department,
+  contractType,
+  multiplier,
+  onClose,
+  onRequestChangeOff,
+  onSubmitted,
+}: {
+  day: MyCalendarDay;
+  cell: MyCalendarCell;
+  department: string;
+  contractType?: string;
+  multiplier: number;
+  onClose: () => void;
+  onRequestChangeOff?: (fromDate: string, sourceLeaveId?: string) => void;
+  onSubmitted: (msg: string) => void;
+}) {
+  const paidLeaveAllowed = isPaidLeaveEligible(contractType);
+  const st = cell.code === "HOLIDAY" && !cell.isPaidHoliday ? STATUS.DAY_OFF : STATUS[cell.code];
+  const [yy, mm, dd] = day.date.split("-");
+  const leaveTypes: LeaveRequestType[] = ["PAID_LEAVE", "OFF", "WFH", "LATE", "EARLY"];
+  const activeOffLeave = (cell.leaveRequests || []).find(
+    (l) =>
+      (l.type === "OFF" || l.type === "PAID_LEAVE") &&
+      (l.status === "APPROVED" || l.status === "PENDING")
+  );
+  const canChangeOffFromThisDay =
+    Boolean(activeOffLeave) || cell.code === "LEAVE" || cell.code === "PAID_LEAVE";
+
+  const [showForm, setShowForm] = useState(false);
+  const [type, setType] = useState<LeaveRequestType>(cell.code === "ABSENT" ? "OFF" : "EARLY");
+  const [reason, setReason] = useState("");
+  const [sending, setSending] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reason.trim()) {
+      setErr("Vui lòng nhập lý do.");
+      return;
+    }
+    setSending(true);
+    setErr(null);
+    try {
+      await createLeaveRequestApi({ type, date: day.date, reason: reason.trim() });
+      onSubmitted(`Đã gửi đơn "${LEAVE_TYPE_LABEL[type]}" ngày ${dd}/${mm}, chờ HR duyệt`);
+    } catch (e: any) {
+      setErr(e?.message || "Không gửi được đơn");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-slate-950/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div className="px-5 py-4 border-b border-slate-100 flex items-start justify-between">
+          <div>
+            <div className="text-xs font-semibold text-slate-500">
+              {WEEK_HEADERS[day.weekday]}, {dd}/{mm}/{yy}
+            </div>
+            <div className="flex items-center gap-2 mt-1">
+              <span className={`w-3 h-3 rounded ${st.dot}`} />
+              <span className="text-base font-extrabold text-slate-900">{st.label}</span>
+            </div>
+            {day.holiday && (
+              <span
+                className={`inline-block mt-1.5 px-2 py-0.5 rounded text-[11px] font-bold ${
+                  day.holiday.isOfficialDayOff ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-800"
+                }`}
+              >
+                {day.holiday.isOfficialDayOff ? "Lễ chính thức" : "Sự kiện"}: {day.holiday.name}
+              </span>
+            )}
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-slate-700">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="px-5 py-4 space-y-3 text-sm">
+          {cell.attendanceId ? (
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <InfoBox label="Giờ vào" value={cell.checkIn || "—"} />
+              <InfoBox label="Giờ ra" value={cell.checkOut || "Chưa ra"} danger={!cell.checkOut} />
+              <InfoBox label="Giờ công" value={cell.hours ? `${cell.hours}h` : "—"} />
+            </div>
+          ) : (
+            <div className="text-xs text-slate-500">Không có dữ liệu chấm công ngày này.</div>
+          )}
+
+          <div className="space-y-1.5 text-xs">
+            {cell.shiftCode && (
+              <Row
+                icon={<Clock className="w-3.5 h-3.5" />}
+                text={
+                  cell.shiftCode === "BOTH"
+                    ? "Ca 1 + Ca 2 (08:30 – 21:00)"
+                    : cell.shiftCode === "SHIFT_2"
+                      ? "Ca 2 (12:00 – 21:00)"
+                      : "Ca 1 (08:30 – 17:30)"
+                }
+              />
+            )}
+            {!!cell.lateMinutes && cell.lateMinutes > 0 && (
+              <Row
+                icon={<AlertTriangle className="w-3.5 h-3.5 text-yellow-600" />}
+                text={`Đi trễ ${cell.lateMinutes} phút${cell.lateApproved ? " (có đơn được duyệt)" : ""}`}
+              />
+            )}
+            {!!cell.earlyMinutes && cell.earlyMinutes > 0 && (
+              <Row
+                icon={<AlertTriangle className="w-3.5 h-3.5 text-pink-600" />}
+                text={`Về sớm ${cell.earlyMinutes} phút${cell.earlyApproved ? " (có đơn xin về sớm)" : ""}`}
+              />
+            )}
+            {!!cell.overtimeMinutes && (
+              <Row
+                icon={<Timer className="w-3.5 h-3.5 text-indigo-600" />}
+                text={`Tăng ca ${fmtMinutes(cell.overtimeMinutes)} (Đã được HR phê duyệt)`}
+              />
+            )}
+            {cell.isHolidayWork && (
+              <Row
+                icon={
+                  <span className="px-1 rounded bg-rose-600 text-white text-[9px] font-black">x{multiplier}</span>
+                }
+                text={`Đi làm ngày lễ chính thức – hưởng lương x${multiplier}`}
+              />
+            )}
+            {cell.isPaidHoliday && cell.code === "HOLIDAY" && (
+              <Row
+                icon={<CheckCircle2 className="w-3.5 h-3.5 text-rose-600" />}
+                text="Nghỉ lễ hưởng nguyên lương (+1 công)"
+              />
+            )}
+            {cell.code === "MISSING_OUT" && (
+              <Row
+                icon={<AlertTriangle className="w-3.5 h-3.5 text-red-600" />}
+                text="Bạn chưa check-out ngày này. Liên hệ HR để điều chỉnh giờ ra."
+              />
+            )}
+            {cell.adjusted && (
+              <Row
+                icon={<Info className="w-3.5 h-3.5 text-slate-500" />}
+                text={`HR đã điều chỉnh: ${cell.adjustReason || ""}`}
+              />
+            )}
+          </div>
+
+          {(cell.leaveRequests || []).length > 0 && (
+            <div className="space-y-1.5">
+              <div className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5" />
+                Đơn từ ngày này
+              </div>
+              {cell.leaveRequests!.map((l) => (
+                <div key={l.id} className="p-2 rounded-lg border border-slate-200 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-slate-800">{LEAVE_TYPE_LABEL[l.type]}</span>
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${LEAVE_STATUS[l.status]?.cls}`}>
+                      {LEAVE_STATUS[l.status]?.label}
+                    </span>
+                  </div>
+                  <div className="text-slate-500 mt-0.5 break-words">{l.reason}</div>
+                  {l.reviewNote && <div className="text-slate-400 italic mt-0.5">HR: {l.reviewNote}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {canChangeOffFromThisDay && onRequestChangeOff && (
+            <button
+              type="button"
+              onClick={() => onRequestChangeOff(day.date, activeOffLeave?.id)}
+              className="w-full py-2.5 rounded-xl border-2 border-indigo-200 bg-indigo-50 text-indigo-800 hover:bg-indigo-100 text-xs font-bold flex items-center justify-center gap-1.5 transition"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Xin chuyển ngày off {dd}/{mm} sang ngày khác
+            </button>
+          )}
+
+          {!showForm ? (
+            <button
+              type="button"
+              onClick={() => setShowForm(true)}
+              className="w-full py-2.5 rounded-xl border-2 border-dashed border-emerald-300 text-emerald-700 hover:bg-emerald-50 text-xs font-bold flex items-center justify-center gap-1.5"
+            >
+              <Send className="w-3.5 h-3.5" />
+              Gửi đơn cho ngày này
+            </button>
+          ) : (
+            <form onSubmit={submit} className="space-y-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200">
+              <div className="grid grid-cols-2 gap-1.5">
+                {leaveTypes.map((t) => {
+                  const locked = t === "PAID_LEAVE" && !paidLeaveAllowed;
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      disabled={locked}
+                      onClick={() => !locked && setType(t)}
+                      title={locked ? "Chỉ nhân viên hợp đồng Chính thức mới được dùng" : undefined}
+                      className={`px-2 py-1.5 rounded-lg border text-xs font-semibold ${
+                        locked
+                          ? "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed line-through"
+                          : type === t
+                            ? "bg-emerald-600 border-emerald-600 text-white"
+                            : "bg-white border-slate-200 text-slate-600"
+                      }`}
+                    >
+                      {LEAVE_TYPE_LABEL[t]}
+                    </button>
+                  );
+                })}
+              </div>
+              <div>
+                <textarea
+                  rows={2}
+                  maxLength={LEAVE_REASON_MAX}
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value.slice(0, LEAVE_REASON_MAX))}
+                  placeholder="Lý do..."
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+                />
+                <span
+                  className={`block text-right text-[10px] ${
+                    reason.length >= LEAVE_REASON_MAX ? "text-rose-600 font-bold" : "text-slate-400"
+                  }`}
+                >
+                  {reason.length}/{LEAVE_REASON_MAX} ký tự
+                </span>
+              </div>
+              {err && <div className="text-xs text-rose-600 font-semibold">{err}</div>}
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowForm(false)}
+                  className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={sending}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg disabled:opacity-50"
+                >
+                  {sending ? "Đang gửi..." : "Gửi đơn"}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InfoBox({ label, value, danger }: { label: string; value: string; danger?: boolean }) {
+  return (
+    <div className="p-2 rounded-xl bg-slate-50 border border-slate-200">
+      <div className="text-[10px] text-slate-400">{label}</div>
+      <div className={`font-mono font-extrabold ${danger ? "text-red-600" : "text-slate-900"}`}>{value}</div>
+    </div>
+  );
+}
+
+function Row({ icon, text }: { icon: React.ReactNode; text: string }) {
+  return (
+    <div className="flex items-start gap-2 text-slate-700">
+      <span className="mt-0.5 shrink-0">{icon}</span>
+      <span>{text}</span>
+    </div>
+  );
+}

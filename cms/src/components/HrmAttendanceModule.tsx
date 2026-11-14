@@ -1000,7 +1000,7 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
       {/* ================= TAB 4.5: QUẢN LÝ PHIẾU BÀN GIAO CA ================= */}
 
       {/* ================= TAB 5: TẠO TÀI KHOẢN & QUẢN LÝ NHÂN SỰ ================= */}
-      {activeTab === "STAFF_ACCOUNTS" && <StaffModule />}
+      {activeTab === "STAFF_ACCOUNTS" && <StaffModule mode="HR_FULL" currentUser={currentUser} />}
     </div>
   );
 }

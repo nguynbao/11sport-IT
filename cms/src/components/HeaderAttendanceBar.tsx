@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { StaffUser, AttendanceRecord, apiRequest } from "@/lib/api";
-import { Play, Pause, CheckCircle2, AlertTriangle, Home, Clock } from "lucide-react";
+import { Play, Pause, CheckCircle2, AlertTriangle, Home, Clock, CalendarDays } from "lucide-react";
 
 /** Ngày hiện tại theo giờ máy (YYYY-MM-DD) */
 function localDateStr(d = new Date()): string {
@@ -11,9 +11,10 @@ function localDateStr(d = new Date()): string {
 
 interface Props {
   currentUser: StaffUser | null;
+  onOpenMyAttendance?: () => void;
 }
 
-export default function HeaderAttendanceBar({ currentUser }: Props) {
+export default function HeaderAttendanceBar({ currentUser, onOpenMyAttendance }: Props) {
   const [attendance, setAttendance] = useState<AttendanceRecord | null>(null);
   const [isWfhToday, setIsWfhToday] = useState(false);
   const [isEarlyApprovedToday, setIsEarlyApprovedToday] = useState(false);
@@ -31,7 +32,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
   };
 
   const loadData = useCallback(async () => {
-    if (!currentUser || currentUser.role === "ADMIN") return;
+    if (!currentUser || currentUser.role === "ADMIN" || currentUser.role === "CEO") return;
     setLoading(true);
     try {
       const todayRes = await apiRequest<{
@@ -52,6 +53,9 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
 
   useEffect(() => {
     loadData();
+    const onChanged = () => loadData();
+    window.addEventListener("attendance-changed", onChanged);
+    return () => window.removeEventListener("attendance-changed", onChanged);
   }, [loadData]);
 
   // Qua 00:00 sang ngày mới: reset đồng hồ & tải lại trạng thái chấm công của ngày mới
@@ -159,6 +163,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
       );
       setAttendance(res.data.attendance);
       showNotice("ok", "Đã bắt đầu tính giờ ca làm việc!");
+      window.dispatchEvent(new Event("attendance-changed"));
     } catch (err: any) {
       showNotice("err", err?.message || "Không thể chấm công vào ca");
     } finally {
@@ -202,6 +207,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
       );
       setAttendance(res.data.attendance);
       showNotice("ok", `Đã kết thúc ca (${res.data.attendance.totalWorkHours}h)!`);
+      window.dispatchEvent(new Event("attendance-changed"));
     } catch (err: any) {
       showNotice("err", err?.message || "Không thể kết ca");
     } finally {
@@ -209,7 +215,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
     }
   };
 
-  if (!currentUser || currentUser.role === "ADMIN") return null;
+  if (!currentUser || currentUser.role === "ADMIN" || currentUser.role === "CEO") return null;
 
   const isWorking = Boolean(attendance && !attendance.checkOutTime);
   const isCompleted = Boolean(attendance && attendance.checkOutTime);
@@ -282,6 +288,18 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
             <Clock className="w-3.5 h-3.5 animate-spin text-emerald-400" />
             <span>--:--:--</span>
           </div>
+        )}
+
+        {onOpenMyAttendance && (
+          <button
+            type="button"
+            onClick={onOpenMyAttendance}
+            title="Xem lịch chấm công cá nhân & gửi đơn từ"
+            className="ml-1 px-2.5 py-1 rounded-xl bg-slate-700/80 hover:bg-slate-600 text-emerald-300 hover:text-white border border-slate-600 text-[11px] font-bold inline-flex items-center gap-1.5 transition cursor-pointer"
+          >
+            <CalendarDays className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="hidden md:inline">Lịch chấm công</span>
+          </button>
         )}
       </div>
 

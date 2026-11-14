@@ -14,7 +14,6 @@ import {
   User,
   Phone,
   BadgeCheck,
-  KeyRound,
   Save,
   ArrowLeft,
   CheckCircle2,
@@ -38,13 +37,13 @@ import ContractFilePreviewModal from "./ContractFilePreviewModal";
 
 function getRoleDisplayName(role?: UserRole): string {
   switch (role) {
+    case "CEO":
+      return "Giám đốc (CEO)";
     case "ADMIN":
       return "Quản lý (ADMIN)";
     case "HR":
       return "Nhân sự (HR)";
     case "ACCOUNTANT":
-      return "Kế toán & Kho (ACCOUNTANT)";
-    case "WAREHOUSE":
       return "Kế toán & Kho (ACCOUNTANT)";
     case "MARKETING":
       return "Marketing (MARKETING)";
@@ -146,16 +145,6 @@ export default function AccountProfileModule({
   const [showContractPreview, setShowContractPreview] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileMsg, setProfileMsg] = useState<{
-    type: "success" | "error";
-    text: string;
-  } | null>(null);
-
-  // State đổi mật khẩu
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [savingPwd, setSavingPwd] = useState(false);
-  const [pwdMsg, setPwdMsg] = useState<{
     type: "success" | "error";
     text: string;
   } | null>(null);
@@ -317,65 +306,6 @@ export default function AccountProfileModule({
     }
   };
 
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setPwdMsg(null);
-
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      setPwdMsg({
-        type: "error",
-        text: "Vui lòng nhập đầy đủ mật khẩu hiện tại và mật khẩu mới.",
-      });
-      return;
-    }
-
-    const cleanNew = newPassword.trim();
-    if (cleanNew.length < 4) {
-      setPwdMsg({
-        type: "error",
-        text: "Mật khẩu mới phải có ít nhất 4 ký tự.",
-      });
-      return;
-    }
-
-    if (cleanNew !== confirmPassword.trim()) {
-      setPwdMsg({
-        type: "error",
-        text: "Xác nhận mật khẩu mới không khớp.",
-      });
-      return;
-    }
-
-    setSavingPwd(true);
-    try {
-      await apiRequest("/auth/change-password", {
-        method: "POST",
-        body: JSON.stringify({
-          currentPassword,
-          newPassword: cleanNew,
-          username: currentUser.username,
-        }),
-      });
-
-      setPwdMsg({
-        type: "success",
-        text: "Đổi mật khẩu thành công!",
-      });
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-    } catch (err: any) {
-      setPwdMsg({
-        type: "error",
-        text:
-          err?.message ||
-          "Mật khẩu hiện tại không đúng hoặc không thể đổi mật khẩu.",
-      });
-    } finally {
-      setSavingPwd(false);
-    }
-  };
-
   const contractLabel =
     contractType === "FULLTIME"
       ? "Chính thức"
@@ -391,7 +321,7 @@ export default function AccountProfileModule({
     new Intl.NumberFormat("vi-VN").format(Number(val || 0));
 
   return (
-    <div className="max-w-6xl mx-auto space-y-5">
+    <div className="w-full space-y-5">
       {/* Hero Banner */}
       <div className="bg-gradient-to-r from-slate-900 via-slate-900 to-slate-800 text-white rounded-2xl p-5 md:p-6 shadow-md border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-start sm:items-center gap-4">
@@ -455,9 +385,8 @@ export default function AccountProfileModule({
         )}
       </div>
 
-      {/* Bố cục 2 cột: Trái (7/12) Thông tin cá nhân + Hồ sơ HR | Phải (5/12) Đổi mật khẩu + Quy định */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-        <div className="lg:col-span-7 space-y-5">
+      {/* Bố cục toàn chiều ngang (full-width): Thông tin cá nhân -> Hồ sơ HR -> Quy định */}
+      <div className="w-full space-y-5">
           {/* Card 1: Thông tin cá nhân, Học vấn & Ngân hàng (Cho phép chỉnh sửa) */}
           <form
             onSubmit={handleSaveProfile}
@@ -481,11 +410,10 @@ export default function AccountProfileModule({
 
             {profileMsg && (
               <div
-                className={`p-3 rounded-xl text-xs font-medium flex items-start gap-2 border ${
-                  profileMsg.type === "success"
-                    ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-                    : "bg-red-50 border-red-200 text-red-700"
-                }`}
+                className={`p-3 rounded-xl text-xs font-medium flex items-start gap-2 border ${profileMsg.type === "success"
+                  ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                  : "bg-red-50 border-red-200 text-red-700"
+                  }`}
               >
                 {profileMsg.type === "success" ? (
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
@@ -793,13 +721,12 @@ export default function AccountProfileModule({
                 </div>
                 <div className="mt-1">
                   <span
-                    className={`inline-block px-2 py-0.5 rounded-md text-xs font-bold ${
-                      contractType === "FULLTIME"
-                        ? "bg-emerald-100 text-emerald-800"
-                        : contractType === "INTERN"
-                          ? "bg-sky-100 text-sky-800"
-                          : "bg-amber-100 text-amber-800"
-                    }`}
+                    className={`inline-block px-2 py-0.5 rounded-md text-xs font-bold ${contractType === "FULLTIME"
+                      ? "bg-emerald-100 text-emerald-800"
+                      : contractType === "INTERN"
+                        ? "bg-sky-100 text-sky-800"
+                        : "bg-amber-100 text-amber-800"
+                      }`}
                   >
                     {contractLabel}
                   </span>
@@ -951,98 +878,8 @@ export default function AccountProfileModule({
               )}
             </div>
           </div>
-        </div>
 
-        {/* CỘT PHẢI (5/12): Đổi mật khẩu + Ghi chú quyền lợi */}
-        <div className="lg:col-span-5 space-y-5">
-          <form
-            onSubmit={handleChangePassword}
-            className="bg-white rounded-2xl border border-slate-200 p-5 md:p-6 shadow-xs space-y-4"
-          >
-            <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
-              <div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center shrink-0">
-                <KeyRound className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-tight">
-                  Đổi mật khẩu đăng nhập
-                </h3>
-                <p className="text-[11px] text-slate-500">
-                  Bảo mật tài khoản bằng mật khẩu riêng của bạn
-                </p>
-              </div>
-            </div>
-
-            {pwdMsg && (
-              <div
-                className={`p-3 rounded-xl text-xs font-medium flex items-start gap-2 border ${
-                  pwdMsg.type === "success"
-                    ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-                    : "bg-red-50 border-red-200 text-red-700"
-                }`}
-              >
-                {pwdMsg.type === "success" ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                ) : (
-                  <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
-                )}
-                <span>{pwdMsg.text}</span>
-              </div>
-            )}
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
-                Mật khẩu hiện tại <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="password"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                placeholder="Nhập mật khẩu đang sử dụng..."
-                autoComplete="current-password"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
-                Mật khẩu mới <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Tối thiểu 4 ký tự..."
-                autoComplete="new-password"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
-                Xác nhận mật khẩu mới <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Nhập lại mật khẩu mới..."
-                autoComplete="new-password"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={savingPwd}
-              className="w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-60 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm transition cursor-pointer"
-            >
-              <KeyRound className="w-4 h-4 text-amber-400" />
-              <span>{savingPwd ? "Đang cập nhật..." : "Cập nhật mật khẩu"}</span>
-            </button>
-          </form>
-
-          {/* Card 4: Quyền lợi hợp đồng & Lưu ý nhân sự */}
+          {/* Card 3: Quyền lợi hợp đồng & Lưu ý nhân sự */}
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3">
             <div className="flex items-center gap-2 text-xs font-extrabold text-slate-800 uppercase">
               <Info className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -1074,7 +911,6 @@ export default function AccountProfileModule({
               </li>
             </ul>
           </div>
-        </div>
       </div>
 
       {/* Modal Xem trước / Tải về File Hợp đồng */}

@@ -39,6 +39,8 @@ import {
   User,
   KeyRound,
   AlertCircle,
+  CheckCircle2,
+  X,
   Clock,
   ArrowLeft,
   Rocket,
@@ -50,48 +52,51 @@ const TABS_CONFIG: TabConfig[] = [
     id: "POS",
     label: "1. Bán hàng",
     icon: ShoppingCart,
-    allowedRoles: ["SALES", "ADMIN"],
-    roleHint: "NV Bán hàng / Quản lý",
+    allowedRoles: ["SALES", "ADMIN", "CEO"],
+    roleHint: "NV Bán hàng / Quản lý / Giám đốc",
   },
   {
     id: "INVENTORY",
     label: "2. Kho hàng",
     icon: Package,
-    allowedRoles: ["SALES", "WAREHOUSE", "ADMIN"],
-    roleHint: "Tất cả nhân sự",
+    allowedRoles: ["SALES", "ADMIN", "CEO"],
+    roleHint: "NV Bán hàng / Quản lý / Giám đốc",
   },
   {
     id: "CUSTOMER",
     label: "3. Tra cứu Khách & Xuất PDF",
     icon: Users,
-    allowedRoles: ["SALES", "ADMIN"],
-    roleHint: "NV Bán hàng / Quản lý",
+    allowedRoles: ["SALES", "ADMIN", "CEO"],
+    roleHint: "NV Bán hàng / Quản lý / Giám đốc",
   },
   {
     id: "RETURN",
     label: "4. Trả / Đổi hàng",
     icon: RotateCcw,
-    allowedRoles: ["SALES", "ADMIN"],
-    roleHint: "NV Bán hàng / Quản lý",
+    allowedRoles: ["SALES", "ADMIN", "CEO"],
+    roleHint: "NV Bán hàng / Quản lý / Giám đốc",
   },
 ];
 
 function getDefaultTabForRole(role: UserRole): TabType {
-  if (role === "WAREHOUSE") return "INVENTORY";
   if (role === "MARKETING") return "PUSH_PRODUCTS";
   return "POS";
 }
 
-function isAttendanceOnlyRole(role?: UserRole): boolean {
+function isBlockedFromWebPos(role?: UserRole): boolean {
   return role === "HR" || role === "ACCOUNTANT";
 }
 
+function isAttendanceOnlyRole(_role?: UserRole): boolean {
+  return false;
+}
+
 function getRoleDisplayName(role?: UserRole): string {
+  if (role === "CEO") return "Giám đốc (CEO)";
   if (role === "ADMIN") return "Quản lý (ADMIN)";
   if (role === "HR") return "Nhân sự (HR)";
   if (role === "ACCOUNTANT") return "Kế toán (ACCOUNTANT)";
   if (role === "MARKETING") return "Marketing (MARKETING)";
-  if (role === "WAREHOUSE") return "Thủ kho (WAREHOUSE)";
   return "NV Bán hàng (SALES)";
 }
 
@@ -112,16 +117,23 @@ export default function WebPosHomePage() {
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState("");
 
+  // State Modal Đổi mật khẩu
+  const [showChangePwdModal, setShowChangePwdModal] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [pwdSaving, setPwdSaving] = useState(false);
+  const [pwdMessage, setPwdMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
+
   useEffect(() => {
     const savedUser = getStoredUser();
     const savedToken = getStoredToken();
-    if (savedUser && savedToken && savedToken !== "demo-token") {
+    if (savedUser && savedToken && savedToken !== "demo-token" && !isBlockedFromWebPos(savedUser.role)) {
       setCurrentUser(savedUser);
-      if (isAttendanceOnlyRole(savedUser.role)) {
-        setActiveDrawerPage("ATTENDANCE");
-      } else {
-        setActiveTab(getDefaultTabForRole(savedUser.role));
-      }
+      setActiveTab(getDefaultTabForRole(savedUser.role));
     } else {
       clearStoredAuth();
     }
@@ -183,14 +195,16 @@ export default function WebPosHomePage() {
         }
       );
       if (res.data?.token && res.data?.user) {
+        if (isBlockedFromWebPos(res.data.user.role)) {
+          setLoginError(
+            `Tài khoản "${res.data.user.username}" có vai trò ${res.data.user.role}. Kế toán (ACCOUNTANT) và Nhân sự (HR) không truy cập Web POS — vui lòng đăng nhập và xem lịch chấm công trên trang Quản trị CMS!`
+          );
+          return;
+        }
         setStoredAuth(res.data.token, res.data.user);
         setCurrentUser(res.data.user);
-        if (isAttendanceOnlyRole(res.data.user.role)) {
-          setActiveDrawerPage("ATTENDANCE");
-        } else {
-          setActiveDrawerPage("NONE");
-          setActiveTab(getDefaultTabForRole(res.data.user.role));
-        }
+        setActiveDrawerPage("NONE");
+        setActiveTab(getDefaultTabForRole(res.data.user.role));
         setPassword("");
       }
     } catch (err: any) {
@@ -210,6 +224,69 @@ export default function WebPosHomePage() {
     setUsername("");
     setPassword("");
     setLoginError("");
+  };
+
+  const handleOpenChangePwd = () => {
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setPwdMessage(null);
+    setShowChangePwdModal(true);
+  };
+
+  const handleChangePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPwdMessage(null);
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setPwdMessage({
+        type: "error",
+        text: "Vui lòng nhập đầy đủ mật khẩu hiện tại, mật khẩu mới và xác nhận.",
+      });
+      return;
+    }
+
+    if (newPassword.trim().length < 4) {
+      setPwdMessage({
+        type: "error",
+        text: "Mật khẩu mới phải từ 4 ký tự trở lên.",
+      });
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPwdMessage({
+        type: "error",
+        text: "Mật khẩu xác nhận không khớp với mật khẩu mới.",
+      });
+      return;
+    }
+
+    setPwdSaving(true);
+    try {
+      await apiRequest("/auth/change-password", {
+        method: "POST",
+        body: JSON.stringify({
+          currentPassword,
+          newPassword: newPassword.trim(),
+          username: currentUser?.username,
+        }),
+      });
+      setPwdMessage({
+        type: "success",
+        text: "Đã đổi mật khẩu thành công!",
+      });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err: any) {
+      setPwdMessage({
+        type: "error",
+        text: err?.message || "Không thể đổi mật khẩu. Vui lòng kiểm tra lại.",
+      });
+    } finally {
+      setPwdSaving(false);
+    }
   };
 
   if (checkingAuth) {
@@ -298,7 +375,9 @@ export default function WebPosHomePage() {
   const isCurrentTabAllowed =
     currentUser.role === "MARKETING"
       ? activeTab === "PUSH_PRODUCTS"
-      : currentTabConfig?.allowedRoles.includes(currentUser.role) ?? false;
+      : currentUser.role === "CEO" || currentUser.role === "ADMIN"
+        ? true
+        : currentTabConfig?.allowedRoles.includes(currentUser.role) ?? false;
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-100">
@@ -525,6 +604,7 @@ export default function WebPosHomePage() {
           setActiveDrawerPage("NONE");
           setActiveTab("PUSH_PRODUCTS");
         }}
+        onOpenChangePassword={handleOpenChangePwd}
         onLogout={handleLogout}
         getRoleDisplayName={getRoleDisplayName}
         cmsUrl={
@@ -536,6 +616,107 @@ export default function WebPosHomePage() {
             : "https://11sport-it-m1ei.vercel.app")
         }
       />
+
+      {/* Modal Đổi mật khẩu */}
+      {showChangePwdModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/65 p-4 print:hidden">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <KeyRound className="w-4 h-4 text-amber-400" />
+                <h3 className="font-extrabold text-sm">
+                  Đổi mật khẩu tài khoản ({currentUser.username})
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowChangePwdModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleChangePasswordSubmit} className="p-5 space-y-4">
+              {pwdMessage && (
+                <div
+                  className={`p-3 rounded-xl border text-xs font-bold flex items-start gap-2 ${
+                    pwdMessage.type === "success"
+                      ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                      : "bg-red-50 border-red-200 text-red-700"
+                  }`}
+                >
+                  {pwdMessage.type === "success" ? (
+                    <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  )}
+                  <span>{pwdMessage.text}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Mật khẩu hiện tại *
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="Nhập mật khẩu đang sử dụng..."
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Mật khẩu mới *
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Tối thiểu 4 ký tự..."
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Xác nhận mật khẩu mới *
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Nhập lại mật khẩu mới..."
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowChangePwdModal(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100"
+                >
+                  Đóng
+                </button>
+                <button
+                  type="submit"
+                  disabled={pwdSaving}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-xs font-extrabold"
+                >
+                  {pwdSaving ? "Đang lưu..." : "Lưu mật khẩu mới"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Modal Xuất / In Hóa Đơn PDF (K80 / A4) */}
       <InvoicePdfModal

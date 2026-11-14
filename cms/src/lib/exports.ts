@@ -47,8 +47,11 @@ const PAYMENT: Record<string, string> = {
 };
 const ROLE: Record<string, string> = {
   SALES: "Nhân viên bán hàng",
-  WAREHOUSE: "Thủ kho",
+  ACCOUNTANT: "Kế toán & Kho",
+  HR: "Nhân sự (HR)",
+  MARKETING: "Marketing",
   ADMIN: "Quản lý",
+  CEO: "Giám đốc (CEO)",
 };
 
 const categoryNameOf = (p: Product) =>

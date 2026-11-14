@@ -6,6 +6,16 @@ import { filterAndRankBySearch } from '../utils/search';
 
 export const categoriesRouter = Router();
 
+function requireCategoryManager(role?: string) {
+  if (role && role !== 'CEO' && role !== 'ADMIN') {
+    throw new ApiError(
+      403,
+      'FORBIDDEN',
+      'Chỉ Giám đốc (CEO) hoặc Quản trị viên (ADMIN) mới có quyền quản lý danh mục sản phẩm'
+    );
+  }
+}
+
 // GET /api/v1/categories
 categoriesRouter.get('/categories', async (req, res, next) => {
   try {
@@ -47,6 +57,7 @@ categoriesRouter.get('/categories', async (req, res, next) => {
 // POST /api/v1/categories
 categoriesRouter.post('/categories', async (req, res, next) => {
   try {
+    requireCategoryManager(req.user?.role);
     const { code, name, status } = req.body || {};
     if (!code || !name) {
       throw new ApiError(400, 'VALIDATION_ERROR', 'Mã và tên category là bắt buộc', {
@@ -85,6 +96,7 @@ categoriesRouter.post('/categories', async (req, res, next) => {
 // PATCH /api/v1/categories/:id
 categoriesRouter.patch('/categories/:id', async (req, res, next) => {
   try {
+    requireCategoryManager(req.user?.role);
     const { id } = req.params;
     const category = await categoryRepo.findById(id);
     if (!category) {
@@ -131,6 +143,7 @@ categoriesRouter.patch('/categories/:id', async (req, res, next) => {
 // DELETE /api/v1/categories/:id
 categoriesRouter.delete('/categories/:id', async (req, res, next) => {
   try {
+    requireCategoryManager(req.user?.role);
     const { id } = req.params;
     const category = await categoryRepo.findById(id);
     if (!category) {

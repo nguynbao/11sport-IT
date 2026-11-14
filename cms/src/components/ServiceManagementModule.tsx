@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import {
+  StaffUser,
   ServiceType,
   ServiceOrder,
   ServiceOrderStatus,
@@ -83,7 +84,13 @@ function toInputDate(raw?: string | null): string {
   return `${y}-${m}-${d}`;
 }
 
-export default function ServiceManagementModule() {
+export default function ServiceManagementModule({
+  currentUser,
+}: {
+  currentUser?: StaffUser | null;
+}) {
+  const isAccountantReadOnly = currentUser?.role === "ACCOUNTANT";
+  const canManageServices = !isAccountantReadOnly;
   const [subTab, setSubTab] = useState<"ORDERS" | "TYPES">("ORDERS");
 
   // Thông báo chung
@@ -212,8 +219,10 @@ export default function ServiceManagementModule() {
   }, [debouncedOrderSearch, statusFilter, paymentFilter, overdueOnly, fromDate, toDate]);
 
   useEffect(() => {
-    fetchServiceTypes();
-  }, [fetchServiceTypes]);
+    if (canManageServices) {
+      fetchServiceTypes();
+    }
+  }, [canManageServices, fetchServiceTypes]);
 
   useEffect(() => {
     fetchServiceOrders();
@@ -476,10 +485,14 @@ export default function ServiceManagementModule() {
           </div>
           <div>
             <h1 className="text-lg font-extrabold text-slate-900">
-              Quản Lý Dịch Vụ & Đơn Dịch Vụ
+              {isAccountantReadOnly
+                ? "Theo Dõi Đơn Dịch Vụ"
+                : "Quản Lý Dịch Vụ & Đơn Dịch Vụ"}
             </h1>
             <p className="text-xs text-slate-500">
-              Tạo danh mục loại dịch vụ (giá mặc định) và theo dõi toàn bộ đơn dịch vụ khách gửi
+              {isAccountantReadOnly
+                ? "Tra cứu danh sách đơn dịch vụ, doanh thu dịch vụ và số tiền còn phải thu (Chế độ Kế toán - Chỉ xem)"
+                : "Tạo danh mục loại dịch vụ (giá mặc định) và theo dõi toàn bộ đơn dịch vụ khách gửi"}
             </p>
           </div>
         </div>
@@ -495,7 +508,9 @@ export default function ServiceManagementModule() {
             }`}
           >
             <ListChecks className="w-4 h-4" />
-            <span>Quản lý Đơn Dịch Vụ ({ordersMeta.totalOrders})</span>
+            <span>
+              {isAccountantReadOnly ? "Danh sách Đơn Dịch Vụ" : "Quản lý Đơn Dịch Vụ"} ({ordersMeta.totalOrders})
+            </span>
             {ordersMeta.overdueCount > 0 && (
               <span className="px-2 py-0.5 rounded-full text-[11px] bg-red-600 text-white">
                 {ordersMeta.overdueCount} quá hạn
@@ -503,18 +518,20 @@ export default function ServiceManagementModule() {
             )}
           </button>
 
-          <button
-            type="button"
-            onClick={() => setSubTab("TYPES")}
-            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold flex items-center gap-2 transition ${
-              subTab === "TYPES"
-                ? "bg-indigo-600 text-white shadow-sm"
-                : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-            }`}
-          >
-            <Layers className="w-4 h-4" />
-            <span>Danh mục Loại Dịch Vụ ({serviceTypes.length})</span>
-          </button>
+          {canManageServices && (
+            <button
+              type="button"
+              onClick={() => setSubTab("TYPES")}
+              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold flex items-center gap-2 transition ${
+                subTab === "TYPES"
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+              }`}
+            >
+              <Layers className="w-4 h-4" />
+              <span>Danh mục Loại Dịch Vụ ({serviceTypes.length})</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -725,19 +742,21 @@ export default function ServiceManagementModule() {
                     <th className="py-3 px-3">Ngày gửi / Hẹn trả</th>
                     <th className="py-3 px-3 text-right">Tổng tiền / Thanh toán</th>
                     <th className="py-3 px-3">Trạng thái</th>
-                    <th className="py-3 px-3 text-right">Thao tác</th>
+                    {canManageServices && (
+                      <th className="py-3 px-3 text-right">Thao tác</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {loadingOrders ? (
                     <tr>
-                      <td colSpan={7} className="py-10 text-center text-slate-500">
+                      <td colSpan={canManageServices ? 7 : 6} className="py-10 text-center text-slate-500">
                         Đang tải danh sách đơn dịch vụ...
                       </td>
                     </tr>
                   ) : serviceOrders.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-10 text-center text-slate-500">
+                      <td colSpan={canManageServices ? 7 : 6} className="py-10 text-center text-slate-500">
                         Chưa có đơn dịch vụ nào khớp với bộ lọc.
                       </td>
                     </tr>
@@ -866,97 +885,107 @@ export default function ServiceManagementModule() {
                           </td>
 
                           <td className="py-3 px-3 align-top">
-                            <select
-                              value={ord.status}
-                              onChange={(e) =>
-                                handleStatusChange(
-                                  ord,
-                                  e.target.value as ServiceOrderStatus
-                                )
-                              }
-                              className={`px-2.5 py-1 rounded-lg text-xs font-extrabold border ${stInfo.badgeCls}`}
-                            >
-                              <option value="RECEIVED">Đã nhận đồ</option>
-                              <option value="IN_PROGRESS">Đang xử lý</option>
-                              <option value="READY">Đã xong (Chờ lấy)</option>
-                              <option value="RETURNED">Đã trả khách</option>
-                              <option value="CANCELLED">Đã hủy</option>
-                            </select>
-                          </td>
-
-                          <td className="py-3 px-3 align-top text-right whitespace-nowrap">
-                            <div className="flex flex-wrap items-center justify-end gap-1.5">
-                              {/* Bước 1: Đã nhận đồ -> Bắt đầu làm */}
-                              {ord.status === "RECEIVED" && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleStatusChange(ord, "IN_PROGRESS")
-                                  }
-                                  className="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold flex items-center gap-1"
-                                  title="Bước 1: Bắt đầu xử lý dịch vụ"
-                                >
-                                  <Play className="w-3.5 h-3.5" /> Bắt đầu làm
-                                </button>
-                              )}
-
-                              {/* Bước 2: Đang xử lý -> Đã xong */}
-                              {ord.status === "IN_PROGRESS" && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleStatusChange(ord, "READY")}
-                                  className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1"
-                                  title="Bước 2: Xác nhận đã làm xong, chờ khách lấy"
-                                >
-                                  <CheckCircle2 className="w-3.5 h-3.5" /> Đã xong
-                                </button>
-                              )}
-
-                              {/* Bước 3: Đã xong (Chờ lấy) -> Thu tiền & Trả đồ (nếu còn tiền) hoặc Trả đồ (nếu đã thu đủ) */}
-                              {ord.status === "READY" && ord.remainingAmount > 0 && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenCollectModal(ord, true)}
-                                  className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1"
-                                  title="Bước 3: Thu tiền & Trả đồ cho khách"
-                                >
-                                  <Wallet className="w-3.5 h-3.5" /> Thu tiền &amp; Trả đồ
-                                </button>
-                              )}
-
-                              {ord.status === "READY" && ord.remainingAmount <= 0 && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleStatusChange(ord, "RETURNED")}
-                                  className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold flex items-center gap-1"
-                                  title="Bước 3: Xác nhận trả đồ cho khách"
-                                >
-                                  <PackageCheck className="w-3.5 h-3.5" /> Trả đồ
-                                </button>
-                              )}
-
-                              {/* Trường hợp đã trả đồ nhưng còn công nợ */}
-                              {ord.status === "RETURNED" && ord.remainingAmount > 0 && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenCollectModal(ord, false)}
-                                  className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1"
-                                  title="Thu nốt tiền dịch vụ"
-                                >
-                                  <Wallet className="w-3.5 h-3.5" /> Thu tiền
-                                </button>
-                              )}
-
-                              <button
-                                type="button"
-                                onClick={() => handleOpenEditOrder(ord)}
-                                className="p-1.5 rounded-lg border border-slate-300 hover:bg-slate-100 text-slate-700"
-                                title="Chỉnh sửa đơn dịch vụ"
+                            {canManageServices ? (
+                              <select
+                                value={ord.status}
+                                onChange={(e) =>
+                                  handleStatusChange(
+                                    ord,
+                                    e.target.value as ServiceOrderStatus
+                                  )
+                                }
+                                className={`px-2.5 py-1 rounded-lg text-xs font-extrabold border ${stInfo.badgeCls}`}
                               >
-                                <Edit3 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
+                                <option value="RECEIVED">Đã nhận đồ</option>
+                                <option value="IN_PROGRESS">Đang xử lý</option>
+                                <option value="READY">Đã xong (Chờ lấy)</option>
+                                <option value="RETURNED">Đã trả khách</option>
+                                <option value="CANCELLED">Đã hủy</option>
+                              </select>
+                            ) : (
+                              <span
+                                className={`inline-block px-2.5 py-1 rounded-lg text-xs font-extrabold border ${stInfo.badgeCls}`}
+                              >
+                                {stInfo.label}
+                              </span>
+                            )}
                           </td>
+
+                          {canManageServices && (
+                            <td className="py-3 px-3 align-top text-right whitespace-nowrap">
+                              <div className="flex flex-wrap items-center justify-end gap-1.5">
+                                {/* Bước 1: Đã nhận đồ -> Bắt đầu làm */}
+                                {ord.status === "RECEIVED" && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleStatusChange(ord, "IN_PROGRESS")
+                                    }
+                                    className="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold flex items-center gap-1"
+                                    title="Bước 1: Bắt đầu xử lý dịch vụ"
+                                  >
+                                    <Play className="w-3.5 h-3.5" /> Bắt đầu làm
+                                  </button>
+                                )}
+
+                                {/* Bước 2: Đang xử lý -> Đã xong */}
+                                {ord.status === "IN_PROGRESS" && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStatusChange(ord, "READY")}
+                                    className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1"
+                                    title="Bước 2: Xác nhận đã làm xong, chờ khách lấy"
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5" /> Đã xong
+                                  </button>
+                                )}
+
+                                {/* Bước 3: Đã xong (Chờ lấy) -> Thu tiền & Trả đồ (nếu còn tiền) hoặc Trả đồ (nếu đã thu đủ) */}
+                                {ord.status === "READY" && ord.remainingAmount > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenCollectModal(ord, true)}
+                                    className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1"
+                                    title="Bước 3: Thu tiền & Trả đồ cho khách"
+                                  >
+                                    <Wallet className="w-3.5 h-3.5" /> Thu tiền &amp; Trả đồ
+                                  </button>
+                                )}
+
+                                {ord.status === "READY" && ord.remainingAmount <= 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStatusChange(ord, "RETURNED")}
+                                    className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold flex items-center gap-1"
+                                    title="Bước 3: Xác nhận trả đồ cho khách"
+                                  >
+                                    <PackageCheck className="w-3.5 h-3.5" /> Trả đồ
+                                  </button>
+                                )}
+
+                                {/* Trường hợp đã trả đồ nhưng còn công nợ */}
+                                {ord.status === "RETURNED" && ord.remainingAmount > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenCollectModal(ord, false)}
+                                    className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1"
+                                    title="Thu nốt tiền dịch vụ"
+                                  >
+                                    <Wallet className="w-3.5 h-3.5" /> Thu tiền
+                                  </button>
+                                )}
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditOrder(ord)}
+                                  className="p-1.5 rounded-lg border border-slate-300 hover:bg-slate-100 text-slate-700"
+                                  title="Chỉnh sửa đơn dịch vụ"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          )}
                         </tr>
                       );
                     })
@@ -971,7 +1000,7 @@ export default function ServiceManagementModule() {
       {/* ================================================== */}
       {/* TAB 2: DANH MỤC LOẠI DỊCH VỤ */}
       {/* ================================================== */}
-      {subTab === "TYPES" && (
+      {canManageServices && subTab === "TYPES" && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
           {/* FORM TẠO / SỬA LOẠI DỊCH VỤ */}
           <div className="lg:col-span-4">

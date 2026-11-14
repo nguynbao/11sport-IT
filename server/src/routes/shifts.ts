@@ -518,9 +518,12 @@ shiftsRouter.post('/shifts/my-schedule/seen', async (req, res, next) => {
   }
 });
 
-// GET /api/v1/shifts/schedule (Xem lịch tuần)
+// GET /api/v1/shifts/schedule (Xem lịch tuần — chỉ CEO / HR / ADMIN)
 shiftsRouter.get('/shifts/schedule', async (req, res, next) => {
   try {
+    if (req.user && !req.isFallbackUser && !['CEO', 'ADMIN', 'HR'].includes(req.user.role)) {
+      throw new ApiError(403, 'FORBIDDEN', 'Chỉ Giám đốc (CEO), Nhân sự (HR) hoặc Quản trị viên (ADMIN) mới có quyền xem bảng xếp ca toàn công ty');
+    }
     const { weekStart } = req.query;
     let assignments = await shiftAssignmentRepo.find({});
     const startStr =
@@ -644,8 +647,8 @@ shiftsRouter.get('/shifts/schedule', async (req, res, next) => {
 shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
   try {
     const user = req.user;
-    if (!user || !['ADMIN', 'HR'].includes(user.role)) {
-      throw new ApiError(403, 'FORBIDDEN', 'Chỉ HR hoặc ADMIN mới có quyền xếp ca');
+    if (!user || !['CEO', 'ADMIN', 'HR'].includes(user.role)) {
+      throw new ApiError(403, 'FORBIDDEN', 'Chỉ CEO, HR hoặc ADMIN mới có quyền xếp ca');
     }
 
     const { weekStart, changes = [], confirmWeek = false } = req.body || {};
@@ -866,8 +869,8 @@ shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
 shiftsRouter.put('/shifts/assign', async (req, res, next) => {
   try {
     const user = req.user;
-    if (!user || !['ADMIN', 'HR'].includes(user.role)) {
-      throw new ApiError(403, 'FORBIDDEN', 'Chỉ HR hoặc ADMIN mới có quyền xếp ca');
+    if (!user || !['CEO', 'ADMIN', 'HR'].includes(user.role)) {
+      throw new ApiError(403, 'FORBIDDEN', 'Chỉ CEO, HR hoặc ADMIN mới có quyền xếp ca');
     }
 
     const { staffId, date, weekStart, dayOfWeek, shiftCode } = req.body || {};
@@ -1292,7 +1295,7 @@ export async function computeDailyHandoverCheck(targetDate?: string) {
   };
 }
 
-export const HANDOVER_MANAGER_ROLES = new Set(['ADMIN', 'MANAGER', 'ACCOUNTANT', 'HR']);
+export const HANDOVER_MANAGER_ROLES = new Set(['CEO', 'ADMIN', 'MANAGER', 'ACCOUNTANT', 'HR']);
 
 export function isHandoverManagerRole(role?: string): boolean {
   return Boolean(role && HANDOVER_MANAGER_ROLES.has(String(role).toUpperCase()));
@@ -1565,11 +1568,14 @@ shiftsRouter.put('/shifts/handover/schedule-config', async (req, res, next) => {
   try {
     const user = req.user;
     if (!user) throw new ApiError(401, 'UNAUTHORIZED', 'Vui lòng đăng nhập');
-    if (!isHandoverManagerRole(user.role)) {
+    if (
+      !isHandoverManagerRole(user.role) ||
+      String(user.role || '').toUpperCase() === 'ACCOUNTANT'
+    ) {
       throw new ApiError(
         403,
         'FORBIDDEN',
-        'Chỉ Quản lý (Admin / HR / Kế toán) mới được cấu hình lịch kiểm hàng cố định theo ngày'
+        'Chỉ Quản lý (CEO / Admin / HR) mới được cấu hình lịch kiểm hàng cố định theo ngày; Kế toán chỉ có quyền xem.'
       );
     }
 

@@ -35,7 +35,7 @@ authStaffRouter.post('/auth/login', async (req, res, next) => {
       username: staff.username,
       fullName: staff.fullName,
       role: staff.role,
-      department: staff.department || (['HR', 'ACCOUNTANT', 'MARKETING', 'ADMIN'].includes(staff.role) ? 'OFFICE' : 'SALES'),
+      department: staff.department || (['CEO', 'HR', 'ACCOUNTANT', 'MARKETING', 'ADMIN'].includes(staff.role) ? 'OFFICE' : 'SALES'),
       code: staff.code,
     });
 
@@ -51,7 +51,7 @@ authStaffRouter.post('/auth/login', async (req, res, next) => {
           email: staff.email || '',
           companyEmail: staff.companyEmail || '',
           role: staff.role,
-          department: staff.department || (['HR', 'ACCOUNTANT', 'MARKETING', 'ADMIN'].includes(staff.role) ? 'OFFICE' : 'SALES'),
+          department: staff.department || (['CEO', 'HR', 'ACCOUNTANT', 'MARKETING', 'ADMIN'].includes(staff.role) ? 'OFFICE' : 'SALES'),
           positionTitle: (staff as any).positionTitle || '',
           contractType: staff.contractType || 'PROBATION',
           dateOfBirth: (staff as any).dateOfBirth,
@@ -173,8 +173,9 @@ authStaffRouter.get('/staff', async (req, res, next) => {
     const { role, department, contractType, status, search, sortBy, sortOrder } = req.query;
     const allStaff = await staffRepo.find({}, { createdAt: 1 });
     const authedUser = req.user && !req.isFallbackUser ? req.user : undefined;
+    // Kế toán (ACCOUNTANT) không có quyền của HR: không xem được lương/hồ sơ nhạy cảm của nhân viên khác
     const canViewAllSalaries =
-      !!authedUser && ['HR', 'ADMIN', 'ACCOUNTANT'].includes(authedUser.role);
+      !!authedUser && ['CEO', 'HR', 'ADMIN'].includes(authedUser.role);
 
     const baseFiltered = allStaff
       .filter((s) => {
@@ -297,11 +298,11 @@ function parseNullableDate(val: any): Date | null {
 // POST /api/v1/staff/parse-import-file
 authStaffRouter.post('/staff/parse-import-file', async (req, res, next) => {
   try {
-    if (!req.user || !['HR', 'ADMIN'].includes(req.user.role)) {
+    if (!req.user || !['CEO', 'HR', 'ADMIN'].includes(req.user.role)) {
       throw new ApiError(
         403,
         'FORBIDDEN',
-        'Chỉ Nhân sự (HR) hoặc Quản trị viên mới được phép đọc file import hồ sơ nhân sự'
+        'Chỉ Giám đốc (CEO), Nhân sự (HR) hoặc Quản trị viên mới được phép đọc file import hồ sơ nhân sự'
       );
     }
 
@@ -343,6 +344,14 @@ authStaffRouter.post('/staff/parse-import-file', async (req, res, next) => {
 // POST /api/v1/staff
 authStaffRouter.post('/staff', async (req, res, next) => {
   try {
+    if (req.user && !req.isFallbackUser && !['CEO', 'ADMIN', 'HR'].includes(req.user.role)) {
+      throw new ApiError(
+        403,
+        'FORBIDDEN',
+        'Chỉ Giám đốc (CEO), Quản trị viên (ADMIN) hoặc Nhân sự (HR) mới có quyền tạo tài khoản nhân sự'
+      );
+    }
+
     const {
       username,
       password,
@@ -468,9 +477,19 @@ authStaffRouter.post('/staff', async (req, res, next) => {
       }
     }
 
-    const validRoles = ['SALES', 'WAREHOUSE', 'ADMIN', 'HR', 'ACCOUNTANT', 'MARKETING'];
+    const validRoles = ['CEO', 'ADMIN', 'ACCOUNTANT', 'HR', 'MARKETING', 'SALES'];
     const staffRole = validRoles.includes(role) ? role : 'SALES';
-    if (staffRole === 'ADMIN' && req.user && req.user.role !== 'ADMIN') {
+    if (
+      staffRole === 'CEO' &&
+      (!req.user || req.isFallbackUser || !['CEO', 'ADMIN'].includes(req.user.role))
+    ) {
+      throw new ApiError(
+        403,
+        'FORBIDDEN',
+        'Chỉ Giám đốc (CEO) hoặc Quản trị viên (ADMIN) đã xác thực mới được phép tạo tài khoản có quyền CEO'
+      );
+    }
+    if (staffRole === 'ADMIN' && req.user && !['ADMIN', 'CEO'].includes(req.user.role)) {
       throw new ApiError(
         403,
         'FORBIDDEN',
@@ -483,15 +502,15 @@ authStaffRouter.post('/staff', async (req, res, next) => {
       allowance !== undefined ||
       bonus !== undefined ||
       insurance !== undefined;
-    if (hasSalaryFields && req.user && req.user.role !== 'HR') {
+    if (hasSalaryFields && req.user && !['HR', 'CEO'].includes(req.user.role)) {
       throw new ApiError(
         403,
         'FORBIDDEN',
-        'Chỉ Nhân sự (HR) mới được phép chỉnh sửa lương cơ bản, trợ cấp, thưởng và bảo hiểm'
+        'Chỉ Giám đốc (CEO) hoặc Nhân sự (HR) mới được phép chỉnh sửa lương cơ bản, trợ cấp, thưởng và bảo hiểm'
       );
     }
 
-    const staffDept = department || (['HR', 'ACCOUNTANT', 'MARKETING', 'ADMIN'].includes(staffRole) ? 'OFFICE' : 'SALES');
+    const staffDept = department || (['CEO', 'HR', 'ACCOUNTANT', 'MARKETING', 'ADMIN'].includes(staffRole) ? 'OFFICE' : 'SALES');
     const cleanPermanent = permanentAddress !== undefined ? String(permanentAddress).trim() : (address ? String(address).trim() : '');
     const cleanCurrent = currentAddress ? String(currentAddress).trim() : '';
     const cleanAddress = address ? String(address).trim() : (cleanPermanent || cleanCurrent);
@@ -608,10 +627,10 @@ authStaffRouter.patch('/staff/:id', async (req, res, next) => {
     } = req.body || {};
     const updateData: Record<string, any> = {};
 
-    // Nhân viên thường không được phép chỉnh sửa hồ sơ của nhân viên khác
+    // Nhân viên thường (kể cả ACCOUNTANT, MARKETING, SALES) không được phép chỉnh sửa hồ sơ của nhân viên khác
     if (
       req.user &&
-      !['HR', 'ADMIN'].includes(req.user.role) &&
+      !['CEO', 'HR', 'ADMIN'].includes(req.user.role) &&
       String(req.user.userId) !== String(id)
     ) {
       throw new ApiError(
@@ -621,7 +640,7 @@ authStaffRouter.patch('/staff/:id', async (req, res, next) => {
       );
     }
 
-    // Các trường quản trị nhân sự (Hợp đồng, Vị trí, BHXH, Số ngày nghỉ hồ sơ, Vai trò, Khối) chỉ HR / ADMIN được sửa
+    // Các trường quản trị nhân sự (Hợp đồng, Vị trí, BHXH, Số ngày nghỉ hồ sơ, Vai trò, Khối) chỉ CEO / HR / ADMIN được sửa
     const hasHrAdminOnlyFields =
       role !== undefined ||
       department !== undefined ||
@@ -639,11 +658,11 @@ authStaffRouter.patch('/staff/:id', async (req, res, next) => {
       bhxhEndDate !== undefined ||
       recordedLeaveDays !== undefined;
 
-    if (hasHrAdminOnlyFields && req.user && !['HR', 'ADMIN'].includes(req.user.role)) {
+    if (hasHrAdminOnlyFields && req.user && !['CEO', 'HR', 'ADMIN'].includes(req.user.role)) {
       throw new ApiError(
         403,
         'FORBIDDEN',
-        'Chỉ Nhân sự (HR) mới được phép chỉnh sửa thông tin vị trí, hợp đồng, BHXH và số ngày nghỉ hồ sơ'
+        'Chỉ Giám đốc (CEO) hoặc Nhân sự (HR) mới được phép chỉnh sửa thông tin vị trí, hợp đồng, BHXH và số ngày nghỉ hồ sơ'
       );
     }
 
@@ -665,11 +684,11 @@ authStaffRouter.patch('/staff/:id', async (req, res, next) => {
       bonus !== undefined ||
       insurance !== undefined;
     if (hasSalaryFields) {
-      if (!req.user || req.user.role !== 'HR') {
+      if (!req.user || !['HR', 'CEO'].includes(req.user.role)) {
         throw new ApiError(
           403,
           'FORBIDDEN',
-          'Chỉ Nhân sự (HR) mới được phép chỉnh sửa lương cơ bản, trợ cấp, thưởng và bảo hiểm'
+          'Chỉ Giám đốc (CEO) hoặc Nhân sự (HR) mới được phép chỉnh sửa lương cơ bản, trợ cấp, thưởng và bảo hiểm'
         );
       }
       if (baseSalary !== undefined) updateData.baseSalary = parseSalaryField(baseSalary, 'Lương cơ bản');
@@ -678,7 +697,19 @@ authStaffRouter.patch('/staff/:id', async (req, res, next) => {
       if (insurance !== undefined) updateData.insurance = parseSalaryField(insurance, 'Bảo hiểm');
     }
 
-    if (req.user && req.user.role !== 'ADMIN') {
+    if (staff.role === 'CEO' || role === 'CEO') {
+      if (!req.user || req.isFallbackUser || req.user.role !== 'CEO') {
+        throw new ApiError(
+          403,
+          'FORBIDDEN',
+          staff.role === 'CEO'
+            ? 'Chỉ Giám đốc (CEO) đã xác thực mới được phép chỉnh sửa tài khoản CEO'
+            : 'Chỉ Giám đốc (CEO) đã xác thực mới được phép cấp quyền CEO'
+        );
+      }
+    }
+
+    if (req.user && !['ADMIN', 'CEO'].includes(req.user.role)) {
       if (staff.role === 'ADMIN') {
         throw new ApiError(
           403,
@@ -730,7 +761,7 @@ authStaffRouter.patch('/staff/:id', async (req, res, next) => {
     }
 
     if (role !== undefined) {
-      if (!['SALES', 'WAREHOUSE', 'ADMIN', 'HR', 'ACCOUNTANT', 'MARKETING'].includes(role)) {
+      if (!['CEO', 'ADMIN', 'ACCOUNTANT', 'HR', 'MARKETING', 'SALES'].includes(role)) {
         throw new ApiError(400, 'INVALID_ROLE', 'Vai trò không hợp lệ');
       }
       updateData.role = role;
@@ -839,19 +870,19 @@ authStaffRouter.patch('/staff/:id', async (req, res, next) => {
       updateData.fulltimeStartDate = parseNullableDate(contractStartDate);
     }
     if (contractFileUrl !== undefined || contractFileName !== undefined) {
-      if (req.user && !['HR', 'ADMIN'].includes(req.user.role)) {
+      if (req.user && !['CEO', 'HR', 'ADMIN'].includes(req.user.role)) {
         throw new ApiError(
           403,
           'FORBIDDEN',
-          'Chỉ Nhân sự (HR) mới được phép tải lên, chỉnh sửa hoặc xóa file hợp đồng'
+          'Chỉ Giám đốc (CEO) hoặc Nhân sự (HR) mới được phép tải lên, chỉnh sửa hoặc xóa file hợp đồng'
         );
       }
       if (contractFileUrl !== undefined) updateData.contractFileUrl = String(contractFileUrl);
       if (contractFileName !== undefined) updateData.contractFileName = String(contractFileName).trim();
     }
     if (status !== undefined) {
-      if (req.user && req.user.role !== 'ADMIN') {
-        throw new ApiError(403, 'FORBIDDEN', 'Chỉ Quản trị viên (ADMIN) mới được phép khóa hoặc mở khóa tài khoản');
+      if (req.user && !['ADMIN', 'CEO'].includes(req.user.role)) {
+        throw new ApiError(403, 'FORBIDDEN', 'Chỉ Giám đốc (CEO) hoặc Quản trị viên (ADMIN) mới được phép khóa hoặc mở khóa tài khoản');
       }
       if (!['ACTIVE', 'LOCKED'].includes(status)) {
         throw new ApiError(400, 'INVALID_STATUS', 'Trạng thái không hợp lệ');

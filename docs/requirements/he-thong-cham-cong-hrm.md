@@ -58,26 +58,28 @@ Hệ thống bán hàng 11 Sport hiện có 2 khối nhân sự với đặc th�
 
 ### 3.1 Danh sách Tác nhân theo 2 Khối
 - **Khối Quản trị Tối cao**:
-  - `ADMIN`: Toàn quyền hệ thống, cấu hình chi nhánh, IP LAN, tọa độ GPS, phân quyền nhân sự.
-- **Khối Văn phòng (OFFICE)**: Áp dụng ca 08:30 - 17:30, nghỉ trưa 12:00 - 13:30, được xin WFH.
-  - `HR` (Quản trị Nhân sự): Quản lý hồ sơ nhân viên, duyệt đơn (off, trễ/sớm, WFH), cấu hình ngày lễ, kéo-thả xếp ca Sales.
-  - `ACCOUNTANT` (Kế toán - *thay thế WAREHOUSE cũ*): Xem Dashboard doanh thu & lãi gộp, tiếp quản toàn bộ tính năng Kho (tồn kho Tầng 1 & Tầng 2, lập/duyệt phiếu nhập hàng, sổ kho, chuyển kho) và Quản lý Công nợ.
-  - `MARKETING` (Content Marketing): Chỉ sử dụng tính năng Chấm công cá nhân, nộp đơn từ (WFH, xin nghỉ, trễ/sớm) và xem hồ sơ cá nhân. Các công việc quản trị banner, bài viết, danh mục và khuyến mãi do `ADMIN` phụ trách trực tiếp.
+  - `CEO` (Giám đốc): Vai trò cao nhất, có toàn bộ quyền hạn trên cả CMS và Web POS (tất cả quyền của `ADMIN`, `HR`, `ACCOUNTANT`, `MARKETING`, `SALES`, `WAREHOUSE`). Không cần chấm công cá nhân.
+  - `ADMIN`: Toàn quyền quản trị vận hành hệ thống, cấu hình chi nhánh, IP LAN, khóa/mở khóa tài khoản nhân sự.
+- **Khối Văn phòng (OFFICE)**: Áp dụng ca 08:30 - 17:30, nghỉ trưa 12:00 - 13:00 (1h), được xin WFH.
+  - `HR` (Quản trị Nhân sự): Chỉ truy cập CMS (không vào Web POS); quản lý hồ sơ nhân viên, duyệt đơn (off, phép, chuyển ngày nghỉ, trễ/sớm, WFH), cấu hình ngày lễ, xếp ca Sales, và xem lại lịch chấm công cá nhân ngay trên CMS (`MY_ATTENDANCE`).
+  - `ACCOUNTANT` (Kế toán - *thay thế WAREHOUSE cũ*): Chỉ truy cập CMS (không vào Web POS) và **không có các quyền quản trị nhân sự của HR**; xem Dashboard doanh thu & lãi gộp, tiếp quản toàn bộ tính năng Kho (tồn kho Tầng 1 & Tầng 2, lập/duyệt phiếu nhập hàng, sổ kho, chuyển kho), Quản lý Công nợ, và xem lại lịch chấm công cá nhân / gửi đơn từ ngay trên CMS (`MY_ATTENDANCE`).
+  - `MARKETING` (Content Marketing): Sử dụng tính năng Chấm công cá nhân, xem lịch công cá nhân, nộp đơn từ (WFH, xin nghỉ, trễ/sớm), xem danh sách sản phẩm cần đẩy mạnh (`PUSH_PRODUCTS`) và xem hồ sơ cá nhân.
 - **Khối Bán hàng (SALES)**: Áp dụng xoay 2 ca, kiểm hàng Tầng 1 & két tiền lúc bàn giao.
-  - `SALES` (Nhân viên Showroom): Bán hàng POS, đăng ký ca làm việc Thứ 6, chấm công GPS + LAN, bàn giao ca.
+  - `SALES` (Nhân viên Showroom): Bán hàng POS, đăng ký ca làm việc Thứ 6, chấm công Wi-Fi, bàn giao ca.
 
 ### 3.2 Ma trận Phân quyền Mô-đun CMS (CMS Access Matrix)
 
-| Mô-đun CMS | ADMIN | HR (Văn phòng) | ACCOUNTANT (Kế toán) | MARKETING (Content) | SALES (Cửa hàng) |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **01. Dashboard Doanh thu & Lãi gộp (`REVENUE`)** | Toàn quyền | - | **Xem & Xuất BC** | - | - |
-| **02. Quản lý Kho, Sổ kho & Nhập hàng (`INVENTORY`)** | Toàn quyền | - | **Toàn quyền (T1, T2, Nhập, Chuyển)** | - | Xem tồn Tầng 1 |
-| **03. Quản lý Category / Danh mục (`CATEGORIES`)** | **Toàn quyền** | - | Xem | - | Xem |
-| **04. Quản lý Đơn hàng & Đổi trả (`ORDERS`)** | Toàn quyền | - | **Xem & Tra cứu HĐ** | - | Đơn POS quầy |
-| **05. Quản lý Nhân sự & Hồ sơ (`STAFF`)** | Toàn quyền | **Toàn quyền** | Xem thông tin NV | Trang cá nhân | Trang cá nhân |
-| **06. Chấm công & Xếp ca (`HRM_ATTENDANCE`)** | Toàn quyền | **Toàn quyền Duyệt & Xếp ca** | Chấm công cá nhân | **Chấm công cá nhân & WFH** | Đăng ký & Bàn giao |
-| **07. Chương trình Khuyến mãi (`PROMOTIONS`)** | **Toàn quyền** | - | Xem | - | Áp dụng tại POS |
-| **08. Quản lý Công nợ & Thu nợ (`DEBTS`)** | Toàn quyền | - | **Toàn quyền Quản lý** | - | Thu nợ tại POS |
+| Mô-đun CMS | CEO (Giám đốc) | ADMIN | HR (Văn phòng) | ACCOUNTANT (Kế toán) | MARKETING (Content) | SALES (Cửa hàng) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **01. Dashboard Doanh thu & Lãi gộp (`REVENUE`)** | Toàn quyền | Toàn quyền | - | **Xem & Xuất BC** | - | - |
+| **02. Quản lý Kho, Sổ kho & Nhập hàng (`INVENTORY`)** | Toàn quyền | Toàn quyền | - | **Toàn quyền (T1, T2, Nhập, Chuyển)** | - | Xem tồn Tầng 1 (Web) |
+| **03. Quản lý Category / Danh mục (`CATEGORIES`)** | Toàn quyền | **Toàn quyền** | - | Xem | - | Xem (Web) |
+| **04. Quản lý Đơn hàng & Đổi trả (`ORDERS`)** | Toàn quyền | Toàn quyền | - | **Xem & Tra cứu HĐ** | - | Đơn POS quầy (Web) |
+| **05. Quản lý Nhân sự & Hồ sơ (`STAFF`)** | Toàn quyền | Khóa/Mở TK | **Toàn quyền (trong HRM)** | - | - | - |
+| **06. Quản lý Chấm công & Xếp ca (`HRM`)** | Toàn quyền | Toàn quyền | **Toàn quyền Duyệt & Xếp ca** | - | - | - |
+| **07. Lịch Chấm Công Cá Nhân & Đơn Từ (`MY_ATTENDANCE`)** | - | - | **Xem lịch & Gửi đơn cá nhân** | **Xem lịch & Gửi đơn cá nhân** | **Xem lịch & Gửi đơn cá nhân** | Xem trên Web POS |
+| **08. Chương trình Khuyến mãi (`PROMOTIONS`)** | Toàn quyền | **Toàn quyền** | - | - | - | Áp dụng tại POS |
+| **09. Quản lý Công nợ & Thu nợ (`DEBTS`)** | Toàn quyền | Toàn quyền | - | **Toàn quyền Quản lý** | - | Tạo đơn nợ tại POS |
 
 ---
 

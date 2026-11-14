@@ -20,14 +20,14 @@ describe('v1.4: Báo cáo hoạt động nhân viên (bán hàng / kiểm kho)',
       .set('x-user-id', 'admin')
       .send({ code: 'AO', name: 'Áo' });
 
-    // Thủ kho lập phiếu, quét kiểm 2 chiếc, hoàn thành
+    // Kế toán kho lập phiếu, quét kiểm 2 chiếc, hoàn thành
     const created = await request(app)
       .post('/api/v1/imports')
-      .set('x-user-id', 'warehouse1')
+      .set('x-user-id', 'accountant1')
       .send({ defaultCategoryId: cat.body.data._id, items: [{ productName: NAME, expectedQuantity: 2, costPrice: 100000 }] });
     importId = created.body.data._id;
-    await request(app).post(`/api/v1/imports/${importId}/finish-listing`).set('x-user-id', 'warehouse1');
-    await request(app).post(`/api/v1/imports/${importId}/scan-check`).set('x-user-id', 'warehouse1').send({ productName: NAME });
+    await request(app).post(`/api/v1/imports/${importId}/finish-listing`).set('x-user-id', 'accountant1');
+    await request(app).post(`/api/v1/imports/${importId}/scan-check`).set('x-user-id', 'accountant1').send({ productName: NAME });
     await request(app).post(`/api/v1/imports/${importId}/scan-check`).set('x-user-id', 'admin').send({ productName: NAME });
   });
 
@@ -36,33 +36,33 @@ describe('v1.4: Báo cáo hoạt động nhân viên (bán hàng / kiểm kho)',
   });
 
   it('ghi nhận người quét kiểm trên dòng phiếu và giữ nguyên khi client PUT lại items (không tin dữ liệu client)', async () => {
-    const detail = await request(app).get(`/api/v1/imports/${importId}`).set('x-user-id', 'warehouse1');
-    expect(detail.body.data.createdByRole).toBe('WAREHOUSE');
+    const detail = await request(app).get(`/api/v1/imports/${importId}`).set('x-user-id', 'accountant1');
+    expect(detail.body.data.createdByRole).toBe('ACCOUNTANT');
     const item = detail.body.data.items[0];
     expect(item.scannedQuantity).toBe(2);
     expect(item.checkedByName).toBeTruthy();
     expect(item.checkedByRole).toBe('ADMIN');
     expect(item.scanCounts.length).toBe(2);
-    expect(item.scanCounts.map((s: any) => s.role).sort()).toEqual(['ADMIN', 'WAREHOUSE']);
+    expect(item.scanCounts.map((s: any) => s.role).sort()).toEqual(['ACCOUNTANT', 'ADMIN']);
 
     const forged = { ...item, scanCounts: [{ userId: 'x', name: 'Giả mạo', quantity: 99 }] };
     const put = await request(app)
       .put(`/api/v1/imports/${importId}`)
-      .set('x-user-id', 'warehouse1')
+      .set('x-user-id', 'accountant1')
       .send({ items: [forged] });
     expect(put.body.data.items[0].scanCounts.map((s: any) => s.quantity).sort()).toEqual([1, 1]);
 
     const done = await request(app)
       .post(`/api/v1/imports/${importId}/complete`)
-      .set('x-user-id', 'warehouse1')
+      .set('x-user-id', 'accountant1')
       .send({});
     expect(done.status).toBe(200);
-    expect(done.body.data.receipt.completedByRole).toBe('WAREHOUSE');
+    expect(done.body.data.receipt.completedByRole).toBe('ACCOUNTANT');
 
-    // Kiểm tra sổ kho lưu performedByRole = WAREHOUSE
+    // Kiểm tra sổ kho lưu performedByRole = ACCOUNTANT
     const movRes = await request(app).get('/api/v1/inventory/movements?type=IMPORT').set('x-user-id', 'admin');
     expect(movRes.status).toBe(200);
-    expect(movRes.body.data[0].performedByRole).toBe('WAREHOUSE');
+    expect(movRes.body.data[0].performedByRole).toBe('ACCOUNTANT');
   });
 
   it('bán hàng bởi sales1 rồi xem báo cáo bằng admin', async () => {
@@ -90,12 +90,12 @@ describe('v1.4: Báo cáo hoạt động nhân viên (bán hàng / kiểm kho)',
     expect(sales1.sales.revenue).toBe(200000);
     expect(sales1.warehouse.unitsScanned).toBe(0);
 
-    const wh = byUser('warehouse1');
-    expect(wh.warehouse.importsCreated).toBe(1);
-    expect(wh.warehouse.importsCompleted).toBe(1);
-    expect(wh.warehouse.unitsScanned).toBe(1);
-    expect(wh.warehouse.unitsImported).toBe(2);
-    expect(wh.sales.orders).toBe(0);
+    const acc = byUser('accountant1');
+    expect(acc.warehouse.importsCreated).toBe(1);
+    expect(acc.warehouse.importsCompleted).toBe(1);
+    expect(acc.warehouse.unitsScanned).toBe(1);
+    expect(acc.warehouse.unitsImported).toBe(2);
+    expect(acc.sales.orders).toBe(0);
 
     expect(byUser('admin').warehouse.unitsScanned).toBe(1);
 

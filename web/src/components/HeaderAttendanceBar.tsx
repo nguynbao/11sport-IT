@@ -200,7 +200,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
   }, [showIncomingHandoverPopup, pendingHandoverToConfirm?._id, pendingHandoverToConfirm?.date]);
 
   const loadData = useCallback(async () => {
-    if (!currentUser || currentUser.role === "ADMIN") return;
+    if (!currentUser || currentUser.role === "ADMIN" || currentUser.role === "CEO") return;
     setLoading(true);
     try {
       const [todayRes, checkData] = await Promise.all([
@@ -549,7 +549,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
     }
   };
 
-  if (!currentUser || currentUser.role === "ADMIN") return null;
+  if (!currentUser || currentUser.role === "ADMIN" || currentUser.role === "CEO") return null;
 
   const isWorking = Boolean(attendance && !attendance.checkOutTime);
   const isCompleted = Boolean(attendance && attendance.checkOutTime);

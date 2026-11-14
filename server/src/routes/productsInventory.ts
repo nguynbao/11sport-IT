@@ -24,9 +24,9 @@ import { filterAndRankBySearch } from '../utils/search';
 
 export const productsInventoryRouter = Router();
 
-// Quản lý/Admin (role ADMIN) quản lý toàn bộ giá & tồn; Thủ kho/Kế toán (role WAREHOUSE | ACCOUNTANT) cũng được phép nhập/cập nhật giá bán
-const isPriceManager = (role?: string) => role === 'ADMIN' || role === 'ACCOUNTANT';
-const canEditSellingPrice = (role?: string) => role === 'ADMIN' || role === 'WAREHOUSE' || role === 'ACCOUNTANT';
+// Quản lý/Admin/CEO (role ADMIN | CEO) và Kế toán & Kho (role ACCOUNTANT) quản lý giá & tồn
+const isPriceManager = (role?: string) => role === 'CEO' || role === 'ADMIN' || role === 'ACCOUNTANT';
+const canEditSellingPrice = (role?: string) => role === 'CEO' || role === 'ADMIN' || role === 'ACCOUNTANT';
 
 function inferActorRole(
   explicitRole?: string,
@@ -36,7 +36,7 @@ function inferActorRole(
   fallback = 'ADMIN'
 ): string {
   const cleanRole = String(explicitRole || '').trim().toUpperCase();
-  if (cleanRole === 'ADMIN' || cleanRole === 'WAREHOUSE' || cleanRole === 'ACCOUNTANT' || cleanRole === 'HR' || cleanRole === 'MARKETING' || cleanRole === 'SALES') {
+  if (cleanRole === 'CEO' || cleanRole === 'ADMIN' || cleanRole === 'ACCOUNTANT' || cleanRole === 'HR' || cleanRole === 'MARKETING' || cleanRole === 'SALES') {
     return cleanRole;
   }
   const uid = String(userId || '').trim();
@@ -45,14 +45,14 @@ function inferActorRole(
   }
   const upperId = uid.toUpperCase();
   if (upperId === 'ADMIN') return 'ADMIN';
-  if (upperId === 'WAREHOUSE') return 'WAREHOUSE';
+  if (upperId === 'ACCOUNTANT') return 'ACCOUNTANT';
   if (upperId === 'SALES') return 'SALES';
   const nameLower = String(userName || '').toLowerCase();
   if (nameLower.includes('admin') || nameLower.includes('quản trị') || nameLower.includes('quản lý')) {
     return 'ADMIN';
   }
-  if (nameLower.includes('thủ kho') || nameLower.includes('kho')) {
-    return 'WAREHOUSE';
+  if (nameLower.includes('kế toán') || nameLower.includes('thủ kho') || nameLower.includes('kho')) {
+    return 'ACCOUNTANT';
   }
   return fallback;
 }
@@ -921,7 +921,7 @@ productsInventoryRouter.get('/inventory/movements', async (req, res, next) => {
           m.type === 'SALE' || m.type === 'RETURN' || m.type === 'EXCHANGE_IN' || m.type === 'EXCHANGE_OUT'
             ? 'SALES'
             : String(m.referenceCode || '').startsWith('PN-')
-            ? 'WAREHOUSE'
+            ? 'ACCOUNTANT'
             : 'ADMIN';
         const performedByRole = inferActorRole(
           (m as any).performedByRole,

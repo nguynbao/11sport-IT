@@ -23,6 +23,7 @@ import ShiftHandoverModule from "@/components/ShiftHandoverModule";
 import MarketingPushProductsModule from "@/components/MarketingPushProductsModule";
 import AccountProfileModule from "@/components/AccountProfileModule";
 import ServiceManagementModule from "@/components/ServiceManagementModule";
+import MyAttendanceCalendar from "@/components/MyAttendanceCalendar";
 import HeaderAttendanceBar from "@/components/HeaderAttendanceBar";
 import InvoicePdfModal from "@/components/InvoicePdfModal";
 import {
@@ -46,6 +47,7 @@ import {
   ChevronRight,
   X,
   CalendarCheck,
+  CalendarDays,
   ClipboardCheck,
   Rocket,
   Wrench,
@@ -63,6 +65,7 @@ type CmsModuleType =
   | "PROMOTIONS"
   | "DEBTS"
   | "HRM"
+  | "MY_ATTENDANCE"
   | "PUSH_PRODUCTS"
   | "PROFILE";
 
@@ -148,6 +151,21 @@ const CMS_MENU_ITEMS: {
   ];
 
 const ROLE_ALLOWED_MODULES: Record<string, CmsModuleType[]> = {
+  CEO: [
+    "REVENUE",
+    "PUSH_PRODUCTS",
+    "INVENTORY",
+    "CATEGORIES",
+    "ORDERS",
+    "SERVICES",
+    "STAFF",
+    "HRM",
+    "SHIFT_HANDOVERS",
+    "ACTIVITY",
+    "PROMOTIONS",
+    "DEBTS",
+    "PROFILE",
+  ],
   ADMIN: [
     "REVENUE",
     "INVENTORY",
@@ -161,14 +179,24 @@ const ROLE_ALLOWED_MODULES: Record<string, CmsModuleType[]> = {
     "DEBTS",
     "PROFILE",
   ],
-  ACCOUNTANT: ["REVENUE", "INVENTORY", "CATEGORIES", "ORDERS", "SERVICES", "SHIFT_HANDOVERS", "DEBTS", "PROFILE"],
-  HR: ["HRM", "PROFILE"],
-  MARKETING: ["PUSH_PRODUCTS", "PROFILE"],
+  ACCOUNTANT: [
+    "REVENUE",
+    "INVENTORY",
+    "ORDERS",
+    "SERVICES",
+    "SHIFT_HANDOVERS",
+    "DEBTS",
+    "MY_ATTENDANCE",
+    "PROFILE",
+  ],
+  HR: ["HRM", "MY_ATTENDANCE", "PROFILE"],
+  MARKETING: ["PUSH_PRODUCTS", "MY_ATTENDANCE", "PROFILE"],
 };
 
 export default function CmsDashboardPage() {
   const [activeModule, setActiveModule] = useState<CmsModuleType>("REVENUE");
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isRightDrawerOpen, setIsRightDrawerOpen] = useState(false);
   const [adminUser, setAdminUser] = useState<StaffUser | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [invoiceOrder, setInvoiceOrder] = useState<Order | null>(null);
@@ -194,11 +222,12 @@ export default function CmsDashboardPage() {
     try {
       const saved = getStoredUser();
       const token = getStoredToken();
-      if (saved && token && token !== "demo-admin-token" && ["ADMIN", "HR", "ACCOUNTANT", "MARKETING"].includes(saved.role)) {
+      if (saved && token && token !== "demo-admin-token" && ["CEO", "ADMIN", "HR", "ACCOUNTANT", "MARKETING"].includes(saved.role)) {
         setAdminUser(saved);
         if (saved.role === "ACCOUNTANT") setActiveModule("REVENUE");
         else if (saved.role === "HR") setActiveModule("HRM");
         else if (saved.role === "MARKETING") setActiveModule("PUSH_PRODUCTS");
+        else setActiveModule("REVENUE");
       } else {
         clearStoredAuth();
       }
@@ -239,10 +268,10 @@ export default function CmsDashboardPage() {
         }
       );
       if (res.data?.token && res.data?.user) {
-        const allowedRoles = ["ADMIN", "HR", "ACCOUNTANT", "MARKETING"];
+        const allowedRoles = ["CEO", "ADMIN", "HR", "ACCOUNTANT", "MARKETING"];
         if (!allowedRoles.includes(res.data.user.role)) {
           setLoginError(
-            `Tài khoản "${res.data.user.username}" có vai trò ${res.data.user.role}. Chỉ Quản lý (ADMIN), Nhân sự (HR), Kế toán (ACCOUNTANT) hoặc Marketing (MARKETING) mới được phép truy cập CMS!`
+            `Tài khoản "${res.data.user.username}" có vai trò ${res.data.user.role}. Chỉ Giám đốc (CEO), Quản lý (ADMIN), Nhân sự (HR), Kế toán (ACCOUNTANT) hoặc Marketing (MARKETING) mới được phép truy cập CMS!`
           );
           return;
         }
@@ -439,26 +468,48 @@ export default function CmsDashboardPage() {
   }
 
   const userAllowedModules = adminUser?.role ? (ROLE_ALLOWED_MODULES[adminUser.role] || ["HRM"]) : [];
+  const defaultMainModule: CmsModuleType =
+    userAllowedModules.find((m) => m !== "PROFILE" && m !== "MY_ATTENDANCE") || "REVENUE";
   const visibleMenuItems = CMS_MENU_ITEMS.filter((item) => userAllowedModules.includes(item.id)).map(
-    (item, idx) => ({
-      ...item,
-      displayLabel: `${idx + 1}. ${item.label}`,
-    })
+    (item, idx) => {
+      const isAccountantServices =
+        adminUser?.role === "ACCOUNTANT" && item.id === "SERVICES";
+      const label = isAccountantServices
+        ? "Theo dõi Đơn Dịch vụ"
+        : item.label;
+      const desc = isAccountantServices
+        ? "Tra cứu danh sách đơn dịch vụ, doanh thu dịch vụ & số tiền còn phải thu"
+        : item.desc;
+      return {
+        ...item,
+        label,
+        desc,
+        displayLabel: `${idx + 1}. ${label}`,
+      };
+    }
   );
   const effectiveModule: CmsModuleType = userAllowedModules.includes(activeModule)
     ? activeModule
-    : (userAllowedModules[0] || "REVENUE");
+    : defaultMainModule;
 
   const currentMenu =
     effectiveModule === "PROFILE"
       ? {
-          id: "PROFILE" as CmsModuleType,
-          label: "Thông tin tài khoản cá nhân",
-          desc: "Xem hồ sơ nhân sự, hợp đồng, chế độ lương & đổi mật khẩu",
-          icon: User,
-          displayLabel: "Thông tin tài khoản cá nhân",
+        id: "PROFILE" as CmsModuleType,
+        label: "Thông tin tài khoản cá nhân",
+        desc: "Xem hồ sơ nhân sự, hợp đồng, chế độ lương & đổi mật khẩu",
+        icon: User,
+        displayLabel: "Thông tin tài khoản cá nhân",
+      }
+      : effectiveModule === "MY_ATTENDANCE"
+        ? {
+          id: "MY_ATTENDANCE" as CmsModuleType,
+          label: "Lịch Chấm Công Cá Nhân & Đơn Từ",
+          desc: "Xem lại lịch chấm công tháng của bản thân, gửi đơn xin nghỉ / đi muộn / WFH",
+          icon: CalendarDays,
+          displayLabel: "Chấm công & Lịch công tháng",
         }
-      : visibleMenuItems.find((item) => item.id === effectiveModule) ||
+        : visibleMenuItems.find((item) => item.id === effectiveModule) ||
         visibleMenuItems[0] || { ...CMS_MENU_ITEMS[0], displayLabel: `1. ${CMS_MENU_ITEMS[0].label}` };
   const CurrentIcon = currentMenu.icon;
 
@@ -508,30 +559,244 @@ export default function CmsDashboardPage() {
 
           {/* Thanh Chấm công trực tiếp nằm ở giữa Header CMS (Play / Pause & Đồng hồ giờ làm) */}
           <div className="flex-1 flex items-center justify-center px-2">
-            <HeaderAttendanceBar currentUser={adminUser} />
+            <HeaderAttendanceBar
+              currentUser={adminUser}
+              onOpenMyAttendance={() => setActiveModule("MY_ATTENDANCE")}
+            />
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => setActiveModule("PROFILE")}
-              title="Xem & chỉnh sửa thông tin tài khoản cá nhân"
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs transition cursor-pointer ${
-                effectiveModule === "PROFILE"
+              onClick={() => setIsRightDrawerOpen(true)}
+              title="Mở Menu Cá Nhân (Chấm công & Thông tin tài khoản)"
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs transition cursor-pointer ${effectiveModule === "PROFILE" || effectiveModule === "MY_ATTENDANCE"
                   ? "bg-emerald-600/25 border-emerald-500 text-white"
                   : "bg-slate-800 hover:bg-slate-700 border-slate-700"
-              }`}
+                }`}
             >
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span className="text-slate-300 hidden md:inline">Tài khoản:</span>
+              <span className="text-slate-300 hidden md:inline">Nhân sự:</span>
               <strong className="text-white">{adminUser.fullName}</strong>
               <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-emerald-600 text-white font-bold">
                 {adminUser.role}
               </span>
             </button>
+
+            <button
+              type="button"
+              onClick={() => setIsRightDrawerOpen(true)}
+              title="Mở Menu Cá Nhân (Chấm công & Thông tin cá nhân)"
+              aria-label="Mở Menu Cá Nhân"
+              className="min-h-[38px] px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white border border-slate-700 flex items-center justify-center gap-1.5 transition cursor-pointer"
+            >
+              <Menu className="w-4 h-4 text-emerald-400" />
+              <span className="hidden sm:inline">Menu</span>
+            </button>
           </div>
         </div>
       </header>
+
+      {/* DRAWER MENU CÁ NHÂN TRƯỢT TỪ BÊN PHẢI (CHẤM CÔNG & THÔNG TIN CÁ NHÂN) */}
+      {isRightDrawerOpen && (
+        <div
+          className="fixed inset-0 z-50 print:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Menu tài khoản & cá nhân"
+        >
+          {/* Lớp nền mờ */}
+          <div
+            className="fixed inset-0 bg-slate-950/60 backdrop-blur-[2px] transition-opacity"
+            onClick={() => setIsRightDrawerOpen(false)}
+          />
+
+          {/* Nội dung Drawer trượt từ bên phải */}
+          <aside className="fixed top-0 right-0 bottom-0 w-80 max-w-[85vw] bg-slate-900 text-white shadow-2xl border-l border-slate-800 flex flex-col z-10 animate-in slide-in-from-right duration-200">
+            {/* Header của Drawer */}
+            <div className="px-4 py-3.5 bg-slate-950 border-b border-slate-800 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <img
+                  src="/logo-11sport-white.svg"
+                  alt="11Sport Logo"
+                  className="h-9 w-auto object-contain shrink-0"
+                />
+                <div className="min-w-0">
+                  <div className="font-extrabold text-sm tracking-tight truncate">
+                    MENU CÁ NHÂN
+                  </div>
+                  <div className="text-[11px] text-slate-400 truncate">
+                    11Sport Quản trị CMS
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsRightDrawerOpen(false)}
+                title="Đóng menu"
+                className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Thông tin nhân sự đang đăng nhập */}
+            <div className="p-4 border-b border-slate-800 bg-slate-900/60">
+              <div className="bg-slate-800/90 border border-slate-700/80 rounded-xl p-3 flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0 mt-0.5">
+                  <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs text-slate-400">Đang đăng nhập:</div>
+                  <div className="font-bold text-sm text-white truncate">
+                    {adminUser.fullName}
+                  </div>
+                  {adminUser.username && (
+                    <div className="text-[11px] text-slate-400 font-mono truncate">
+                      @{adminUser.username}
+                    </div>
+                  )}
+                  <div className="mt-1.5 inline-block font-mono text-[10px] px-2 py-0.5 rounded bg-emerald-600 text-white font-bold">
+                    {adminUser.role}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Danh sách tiện ích cá nhân: Chấm công & Thông tin tài khoản */}
+            <div className="flex-1 overflow-y-auto p-3 space-y-4">
+              <div className="space-y-1.5">
+                <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  Tiện ích nhân sự
+                </div>
+
+                {/* 1. Chấm công: Lịch công tháng của tôi */}
+                {userAllowedModules.includes("MY_ATTENDANCE") && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveModule("MY_ATTENDANCE");
+                      setIsRightDrawerOpen(false);
+                    }}
+                    className={`w-full text-left px-3 py-3 rounded-xl text-xs font-bold flex items-center justify-between gap-2.5 transition ${effectiveModule === "MY_ATTENDANCE"
+                        ? "bg-emerald-600 text-white shadow-md"
+                        : "text-slate-200 hover:bg-slate-800 hover:text-white"
+                      }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div
+                        className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${effectiveModule === "MY_ATTENDANCE"
+                            ? "bg-white/20 text-white"
+                            : "bg-amber-500/15 text-amber-400"
+                          }`}
+                      >
+                        <CalendarDays className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="truncate">Chấm công</div>
+                        <div
+                          className={`text-[10px] font-normal truncate mt-0.5 ${effectiveModule === "MY_ATTENDANCE"
+                              ? "text-emerald-100"
+                              : "text-slate-400"
+                            }`}
+                        >
+                          Lịch công tháng, đơn từ &amp; tăng ca
+                        </div>
+                      </div>
+                    </div>
+                    <ChevronRight
+                      className={`w-4 h-4 shrink-0 ${effectiveModule === "MY_ATTENDANCE"
+                          ? "text-white"
+                          : "text-slate-500"
+                        }`}
+                    />
+                  </button>
+                )}
+
+                {/* 2. Thông tin tài khoản cá nhân */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveModule("PROFILE");
+                    setIsRightDrawerOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-3 rounded-xl text-xs font-bold flex items-center justify-between gap-2.5 transition ${effectiveModule === "PROFILE"
+                      ? "bg-emerald-600 text-white shadow-md"
+                      : "text-slate-200 hover:bg-slate-800 hover:text-white"
+                    }`}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${effectiveModule === "PROFILE"
+                          ? "bg-white/20 text-white"
+                          : "bg-emerald-500/15 text-emerald-400"
+                        }`}
+                    >
+                      <User className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="truncate">Thông tin tài khoản</div>
+                      <div
+                        className={`text-[10px] font-normal truncate mt-0.5 ${effectiveModule === "PROFILE"
+                            ? "text-emerald-100"
+                            : "text-slate-400"
+                          }`}
+                      >
+                        Xem hồ sơ &amp; chỉnh sửa thông tin cá nhân
+                      </div>
+                    </div>
+                  </div>
+                  <ChevronRight
+                    className={`w-4 h-4 shrink-0 ${effectiveModule === "PROFILE"
+                        ? "text-white"
+                        : "text-slate-500"
+                      }`}
+                  />
+                </button>
+
+                {/* 3. Đổi mật khẩu */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsRightDrawerOpen(false);
+                    handleOpenChangePwd();
+                  }}
+                  className="w-full text-left px-3 py-3 rounded-xl text-xs font-bold flex items-center justify-between gap-2.5 text-slate-200 hover:bg-slate-800 hover:text-white transition"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0">
+                      <KeyRound className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="truncate">Đổi mật khẩu</div>
+                      <div className="text-[10px] font-normal truncate mt-0.5 text-slate-400">
+                        Cập nhật mật khẩu đăng nhập CMS
+                      </div>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 shrink-0 text-slate-500" />
+                </button>
+              </div>
+            </div>
+
+            {/* Footer của Drawer phải: Nút Đăng xuất */}
+            <div className="p-4 border-t border-slate-800 bg-slate-950/80">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRightDrawerOpen(false);
+                  handleLogout();
+                }}
+                className="w-full py-3 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-xs font-bold text-white flex items-center justify-center gap-2 shadow-lg transition"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>Đăng xuất tài khoản</span>
+              </button>
+            </div>
+          </aside>
+        </div>
+      )}
 
       {/* DRAWER MENU TRƯỢT TỪ BÊN TRÁI */}
       {isDrawerOpen && (
@@ -543,7 +808,7 @@ export default function CmsDashboardPage() {
           />
 
           {/* Nội dung Drawer */}
-          <aside className="relative z-10 w-85 max-w-[88vw] bg-slate-900 text-white h-full shadow-2xl border-r border-slate-800 flex flex-col justify-between overflow-y-auto">
+          <aside className="relative z-10 w-85 max-w-[88vw] bg-slate-900 text-white h-full shadow-2xl border-r border-slate-800 flex flex-col overflow-y-auto">
             <div>
               {/* Đầu Drawer */}
               <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
@@ -618,37 +883,6 @@ export default function CmsDashboardPage() {
                 })}
               </nav>
             </div>
-
-            {/* Chân Drawer */}
-            <div className="p-4 border-t border-slate-800 bg-slate-950/60 space-y-2.5 text-xs">
-              <div className="flex items-center justify-between text-slate-300">
-                <span>Đang đăng nhập:</span>
-                <strong className="text-white">
-                  {adminUser.fullName} ({adminUser.role})
-                </strong>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsDrawerOpen(false);
-                    handleOpenChangePwd();
-                  }}
-                  className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold flex items-center justify-center gap-1.5 border border-slate-700"
-                >
-                  <KeyRound className="w-3.5 h-3.5" />
-                  Đổi mật khẩu
-                </button>
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="py-2 px-3 rounded-xl bg-red-600/90 hover:bg-red-600 text-white font-bold flex items-center justify-center gap-1.5"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  Đăng xuất
-                </button>
-              </div>
-            </div>
           </aside>
         </div>
       )}
@@ -665,10 +899,25 @@ export default function CmsDashboardPage() {
         {effectiveModule === "ORDERS" && (
           <OrdersReturnsModule onOpenInvoice={(ord) => setInvoiceOrder(ord)} />
         )}
-        {effectiveModule === "SERVICES" && <ServiceManagementModule />}
-        {effectiveModule === "STAFF" && <StaffModule mode="ADMIN_LOCK_ONLY" />}
+        {effectiveModule === "SERVICES" && (
+          <ServiceManagementModule currentUser={adminUser} />
+        )}
+        {effectiveModule === "STAFF" && (
+          <StaffModule
+            mode={adminUser.role === "CEO" ? "HR_FULL" : "ADMIN_LOCK_ONLY"}
+            currentUser={adminUser}
+          />
+        )}
         {effectiveModule === "HRM" && <HrmAttendanceModule currentUser={adminUser} />}
-        {effectiveModule === "SHIFT_HANDOVERS" && <ShiftHandoverModule />}
+        {effectiveModule === "MY_ATTENDANCE" && (
+          <MyAttendanceCalendar
+            currentUser={adminUser}
+            onBack={() => setActiveModule(defaultMainModule)}
+          />
+        )}
+        {effectiveModule === "SHIFT_HANDOVERS" && (
+          <ShiftHandoverModule currentUser={adminUser} />
+        )}
         {effectiveModule === "ACTIVITY" && <StaffActivityModule />}
         {effectiveModule === "PROMOTIONS" && <PromotionModule />}
         {effectiveModule === "DEBTS" && (
@@ -679,11 +928,7 @@ export default function CmsDashboardPage() {
           <AccountProfileModule
             currentUser={adminUser}
             onUserUpdated={(updated) => setAdminUser(updated)}
-            onBack={() =>
-              setActiveModule(
-                userAllowedModules.find((m) => m !== "PROFILE") || "REVENUE"
-              )
-            }
+            onBack={() => setActiveModule(defaultMainModule)}
           />
         )}
       </main>

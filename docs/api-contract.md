@@ -34,8 +34,8 @@
 ### 2.1 Xác thực & Nhân viên (`/auth`, `/staff`)
 - `POST /api/v1/auth/login`
   - Body: `{ "username": "string", "password": "string" }`
-  - Response: `{ "data": { "token": "string", "user": { "_id": "...", "code": "NV001", "username": "sales1", "fullName": "Nguyễn Văn Bán", "role": "ADMIN | HR | ACCOUNTANT | MARKETING | SALES", "department": "OFFICE | SALES", "status": "ACTIVE | LOCKED", "mustChangePassword": false } } }`
-  - **Bảo mật Seed**: Không bao giờ tự động seed tài khoản đặc quyền mẫu (`hr`, `hr1`, `accountant1`, `marketing1`, `warehouse1`, `sales1`) bằng mật khẩu công khai (`123456`) trên DB thật hoặc môi trường `production`. Tài khoản mẫu chỉ được tạo trong môi trường memory/test (`FORCE_MEMORY_DB=true` / `dbMode === "memory"`) ngoài production; nếu khởi tạo `admin` lần đầu trên DB thật mà không cấu hình `INITIAL_ADMIN_PASSWORD`, hệ thống sinh mật khẩu ngẫu nhiên và bật `mustChangePassword: true`.
+  - Response: `{ "data": { "token": "string", "user": { "_id": "...", "code": "NV001", "username": "sales1", "fullName": "Nguyễn Văn Bán", "role": "CEO | ADMIN | HR | ACCOUNTANT | MARKETING | SALES", "department": "OFFICE | SALES", "status": "ACTIVE | LOCKED", "mustChangePassword": false } } }`
+  - **Bảo mật Seed**: Không bao giờ tự động seed tài khoản đặc quyền mẫu (`ceo`, `hr`, `hr1`, `accountant1`, `marketing1`, `sales1`) bằng mật khẩu công khai (`123456`) trên DB thật hoặc môi trường `production`. Tài khoản mẫu chỉ được tạo trong môi trường memory/test (`FORCE_MEMORY_DB=true` / `dbMode === "memory"`) ngoài production; nếu khởi tạo `admin` lần đầu trên DB thật mà không cấu hình `INITIAL_ADMIN_PASSWORD`, hệ thống sinh mật khẩu ngẫu nhiên và bật `mustChangePassword: true`.
 - `POST /api/v1/auth/change-password` *(v2.3)*
   - Đổi mật khẩu của tài khoản đang đăng nhập (đồng thời xóa cờ `mustChangePassword: false`).
   - Body: `{ "currentPassword": "string", "newPassword": "string" }`
@@ -48,8 +48,8 @@
   - Hỗ trợ đúng mẫu 2 dòng tiêu đề gộp ô của HR: `BẮT ĐẦU`, `KẾT THÚC`, `HỌ TÊN`, `NGÀY SINH`, `GIỚI TÍNH`, `QUỐC TỊCH`, `CMND`, `NGÀY CẤP`, `NƠI CẤP`, `ĐỊA CHỈ THƯỜNG CHÚ`, `ĐỊA CHỈ HIỆN TẠI`, `TRƯỜNG HỌC`, `CHUYÊN NGÀNH`, `VỊ TRÍ`, `LOẠI HỢP ĐỒNG`, `SỐ HĐ` (`HDTT`, `HĐTV`, `HDXDTH`), `SDT`, `BỘ PHẬN`, `BHXH` (`NGÀY ĐÓNG`, `MỨC ĐÓNG`, `NGÀY NGHỈ`), `Lương`, `Số ngày nghỉ`, `STK`; tự động đổi ngày Excel serial / `DD/MM/YYYY` sang `YYYY-MM-DD`, suy luận `role`, `department`, `contractType` và gợi ý `username` không trùng.
   - Response: `{ "data": { "rows": [ { "rowIndex": 3, "suggestedUsername": "nganptt", "fullName": "...", "dateOfBirth": "YYYY-MM-DD", "gender": "...", "nationality": "...", "citizenId": "...", "citizenIssueDate": "YYYY-MM-DD", "citizenIssuePlace": "...", "permanentAddress": "...", "currentAddress": "...", "school": "...", "major": "...", "positionTitle": "...", "role": "SALES|HR|ACCOUNTANT|MARKETING", "department": "SALES|OFFICE", "contractType": "INTERN|PROBATION|FULLTIME", "contractStartDate": "YYYY-MM-DD", "contractEndDate": "YYYY-MM-DD", "internContractNumber": "...", "probationContractNumber": "...", "officialContractNumber": "...", "phone": "...", "bhxhStartDate": "YYYY-MM-DD", "insurance": 0, "bhxhEndDate": "YYYY-MM-DD", "baseSalary": 0, "recordedLeaveDays": 0, "bankAccount": "..." } ] }, "meta": { "total": 1 } }`.
 - `POST /api/v1/staff` — Tạo nhân viên mới (`username`, `password`, `fullName`, `phone`, `email`, `companyEmail`, `role`, `department`, `positionTitle`, `contractType`, `citizenId`, `citizenIssueDate`, `citizenIssuePlace`, `dateOfBirth`, `gender`, `nationality`, `address`, `permanentAddress`, `currentAddress`, `school`, `major`, `bankAccount`, `contractStartDate`, `contractEndDate`, `internContractNumber`, `probationContractNumber`, `officialContractNumber`, `bhxhStartDate`, `bhxhEndDate`, `recordedLeaveDays`, `contractFileUrl`, `contractFileName`, `baseSalary`, `allowance`, `bonus`, `insurance`):
-  - `ADMIN` tạo tài khoản nhanh với `username`, `password`, `role` (được cấp mọi role kể cả `ADMIN`; nếu bỏ trống `fullName` hệ thống tự lấy theo `username`).
-  - `HR` tạo tài khoản kèm hồ sơ nhân sự chi tiết, tải file hợp đồng (`contractFileUrl`, `contractFileName`) và thiết lập thông tin lương/chế độ/BHXH (`baseSalary`, `allowance`, `bonus`, `insurance`, `bhxhStartDate`, `bhxhEndDate`, `recordedLeaveDays`, `internContractNumber`, `probationContractNumber`, `officialContractNumber`), nhưng **không được phép** cấp `role: "ADMIN"` (trả `403 FORBIDDEN`).
+  - `CEO` và `ADMIN` đã xác thực thực sự (`!isFallbackUser`) được tạo tài khoản nhanh với `username`, `password`, `role` (được cấp mọi role kể cả `CEO` / `ADMIN`; nếu bỏ trống `fullName` hệ thống tự lấy theo `username`). Các request không có token (fallback user) hoặc role khác bị từ chối `403 FORBIDDEN` khi cố cấp `role: "CEO"` hoặc `role: "ADMIN"`.
+  - `HR` tạo tài khoản kèm hồ sơ nhân sự chi tiết, tải file hợp đồng (`contractFileUrl`, `contractFileName`) và thiết lập thông tin lương/chế độ/BHXH (`baseSalary`, `allowance`, `bonus`, `insurance`, `bhxhStartDate`, `bhxhEndDate`, `recordedLeaveDays`, `internContractNumber`, `probationContractNumber`, `officialContractNumber`), nhưng **không được phép** cấp `role: "CEO"` hoặc `role: "ADMIN"` (trả `403 FORBIDDEN`).
   - **Loại hợp đồng `contractType` & Cơ chế Thử việc -> Chính thức**: `INTERN` (Thực tập) | `PROBATION` (Thử việc) | `FULLTIME` (Chính thức). Giá trị cũ `PARTTIME` vẫn được đọc để tương thích nhưng không còn cho chọn mới.
     - `HR` tạo tài khoản **bắt buộc chọn** loại hợp đồng (không có mặc định trên giao diện). Giá trị khác danh sách → `400 INVALID_CONTRACT_TYPE`.
     - Nếu không truyền (VD `ADMIN` tạo nhanh), server mặc định **`PROBATION` (Thử việc)** — không còn mặc định Chính thức.
@@ -65,11 +65,11 @@
 - `GET /api/v1/categories`
   - Query: `?status=ACTIVE` (tùy chọn)
   - Response: Danh sách category kèm `productCount` (số sản phẩm thuộc category).
-- `POST /api/v1/categories`
+- `POST /api/v1/categories` (Chỉ role `CEO` hoặc `ADMIN`; `ACCOUNTANT` và role khác bị chặn `403 FORBIDDEN`)
   - Body: `{ "code": "AO", "name": "Áo thể thao", "status": "ACTIVE" }`
-- `PATCH /api/v1/categories/:id`
+- `PATCH /api/v1/categories/:id` (Chỉ role `CEO` hoặc `ADMIN`; `ACCOUNTANT` và role khác bị chặn `403 FORBIDDEN`)
   - Body: `{ "name": "string", "status": "ACTIVE | INACTIVE" }`
-- `DELETE /api/v1/categories/:id`
+- `DELETE /api/v1/categories/:id` (Chỉ role `CEO` hoặc `ADMIN`; `ACCOUNTANT` và role khác bị chặn `403 FORBIDDEN`)
   - Quy tắc: Nếu `productCount > 0` trả về `400 Bad Request` (`CATEGORY_HAS_PRODUCTS`: "Không thể xóa category đang có sản phẩm; chỉ được ngừng sử dụng").
 
 ### 2.3 Kho hàng, Sản phẩm & Sổ kho (`/products`, `/inventory`)
@@ -88,7 +88,7 @@
 - `PATCH /api/v1/products/:id`
   - Body: `{ "name": "string", "categoryId": "string", "unit": "string", "sellingPrice": 250000, "costPrice": 180000, "stock"?: 20, "stockFloor1"?: 12, "stockFloor2"?: 8, "allowDirectStock"?: boolean, "parentSetProductId"?: "string", "packSize"?: 12 }`
   - Lưu ý: Không cho phép sửa `code`. Sửa `stock` / `stockFloor1` / `stockFloor2` trực tiếp mặc định bị chặn (`400 STOCK_DIRECT_EDIT_FORBIDDEN`), trừ khi `ADMIN` gửi kèm `allowDirectStock: true` từ CMS (hệ thống sẽ cập nhật tồn kho tầng + tổng tồn kho và tự động ghi `StockMovement` loại `IMPORT` nếu tăng hoặc `ADJUSTMENT` nếu giảm cho từng kho tầng `FLOOR_1` / `FLOOR_2` tương ứng, kèm `performedBy`, `performedByName`, `performedByRole` để cân bằng Sổ kho).
-  - *(v1.1 & v2.4)* Role `ADMIN` và `WAREHOUSE` được phép cập nhật `sellingPrice` và cấu hình liên kết Bộ ↔ Lẻ (`parentSetProductId`, `packSize`); chỉ role `ADMIN` được đổi `costPrice` / `stock` (`allowDirectStock: true`); role khác → `403 SELLING_PRICE_FORBIDDEN` / `403 COST_PRICE_FORBIDDEN` / `403 DIRECT_STOCK_FORBIDDEN`.
+  - *(v1.1 & v2.4)* Role `CEO`, `ADMIN` và `ACCOUNTANT` được phép cập nhật `sellingPrice`, `costPrice`, `stock` (`allowDirectStock: true`) và cấu hình liên kết Bộ ↔ Lẻ (`parentSetProductId`, `packSize`); role khác → `403 SELLING_PRICE_FORBIDDEN` / `403 COST_PRICE_FORBIDDEN` / `403 DIRECT_STOCK_FORBIDDEN`.
 - `DELETE /api/v1/products/:id` *(v1.8)*
   - Chỉ role `ADMIN` được xóa sản phẩm (`403 PRODUCT_DELETE_FORBIDDEN` nếu role khác).
   - Xóa sản phẩm theo `id` và dọn các bút toán `StockMovement` liên quan để Báo cáo tồn kho luôn đồng nhất.
@@ -122,7 +122,7 @@
     - Ghi 2 bút toán `StockMovement` loại `ADJUSTMENT` (`referenceCode: "TB-xxxx"`) cho cả Sản phẩm Bộ và Sản phẩm Lẻ để cân bằng Sổ kho và Báo cáo xuất nhập tồn.
 - `GET /api/v1/inventory/movements`
   - Query: `?productId=...&type=IMPORT|SALE|RETURN|EXCHANGE_IN|EXCHANGE_OUT|ADJUSTMENT|TRANSFER&from=...&to=...`
-  - Response: Lịch sử sổ kho (`StockMovement`) kèm `sellingPrice`, `stock` hiện tại, `costPrice` (ẩn `costPrice` nếu role `SALES`) và thông tin người thực hiện (`performedBy`, `performedByName`, `performedByRole`: `"ADMIN" | "WAREHOUSE" | "SALES"`).
+  - Response: Lịch sử sổ kho (`StockMovement`) kèm `sellingPrice`, `stock` hiện tại, `costPrice` (ẩn `costPrice` nếu role `SALES`) và thông tin người thực hiện (`performedBy`, `performedByName`, `performedByRole`: `"CEO" | "ADMIN" | "ACCOUNTANT" | "SALES"`).
 - `GET /api/v1/inventory/report`
   - Query: `?from=YYYY-MM-DD&to=YYYY-MM-DD&categoryId=...`
   - Response: Báo cáo kế toán kho theo công thức:
@@ -152,8 +152,8 @@
     - Ghi nhận vào **Báo cáo hoạt động nhân viên** (`GET /api/v1/reports/staff-activity`) với loại hoạt động kho `EXPORT_TRANSFER`.
 
 ### 2.4 Nhập kho (`/imports`)
-- `GET /api/v1/imports` — Danh sách phiếu nhập kho (`DRAFT`, `CHECKING`, `COMPLETED`), kèm thông tin người lập (`createdBy`, `createdByName`, `createdByRole`: `"ADMIN" | "WAREHOUSE"`), người hoàn thành (`completedBy`, `completedByName`, `completedByRole`: `"ADMIN" | "WAREHOUSE"`), và trên từng dòng hàng có người kiểm (`checkedBy`, `checkedByName`, `checkedByRole`, `scanCounts: [{ "userId", "name", "role", "quantity" }]`).
-- `GET /api/v1/imports/:id` — Chi tiết phiếu nhập kho (bao gồm toàn bộ thông tin người lập, người kiểm, người hoàn thành kèm vai trò `ADMIN` hoặc `WAREHOUSE`).
+- `GET /api/v1/imports` — Danh sách phiếu nhập kho (`DRAFT`, `CHECKING`, `COMPLETED`), kèm thông tin người lập (`createdBy`, `createdByName`, `createdByRole`: `"CEO" | "ADMIN" | "ACCOUNTANT"`), người hoàn thành (`completedBy`, `completedByName`, `completedByRole`: `"CEO" | "ADMIN" | "ACCOUNTANT"`), và trên từng dòng hàng có người kiểm (`checkedBy`, `checkedByName`, `checkedByRole`, `scanCounts: [{ "userId", "name", "role", "quantity" }]`).
+- `GET /api/v1/imports/:id` — Chi tiết phiếu nhập kho (bao gồm toàn bộ thông tin người lập, người kiểm, người hoàn thành kèm vai trò `CEO`, `ADMIN` hoặc `ACCOUNTANT`).
 - `POST /api/v1/imports/ocr-preview`
   - Body: `{ "imageText": "string" }` (mỗi dòng: `Tên hàng | ĐVT | Số lượng | Ghi chú`)
   - Tách văn bản thành danh sách 6 cột (`stt`, `productCode`, `productName`, `unit`, `expectedQuantity`, `note`) để người dùng xem lại và chỉnh sửa. Không còn trả dữ liệu mẫu.
@@ -198,7 +198,7 @@
       ]
     }
     ```
-  - *(v1.1 & v2.4)* `costPrice`: **giá gốc (đơn giá nhập)** do thủ kho nhập, VND, số nguyên ≥ 0 (không bắt buộc, mặc định `0`, âm → `400 INVALID_COST_PRICE`). `sellingPrice`: **giá bán niêm yết** do thủ kho (`WAREHOUSE`) hoặc Quản lý (`ADMIN`) nhập khi lập phiếu nhập kho, VND, số nguyên ≥ 0 (không bắt buộc, mặc định `0`, âm → `400 INVALID_SELLING_PRICE`).
+  - *(v1.1 & v2.4)* `costPrice`: **giá gốc (đơn giá nhập)** do kế toán/kho nhập, VND, số nguyên ≥ 0 (không bắt buộc, mặc định `0`, âm → `400 INVALID_COST_PRICE`). `sellingPrice`: **giá bán niêm yết** do Kế toán & Kho (`ACCOUNTANT`), Quản lý (`ADMIN`) hoặc Giám đốc (`CEO`) nhập khi lập phiếu nhập kho, VND, số nguyên ≥ 0 (không bắt buộc, mặc định `0`, âm → `400 INVALID_SELLING_PRICE`).
 - `PUT /api/v1/imports/:id`
   - Lưu nháp hoặc cập nhật danh sách dòng hàng, trạng thái kiểm hàng (`DRAFT` hoặc `CHECKING`). Chặn sửa nếu phiếu đã `COMPLETED`.
 - `DELETE /api/v1/imports/:id` *(v1.8)*
@@ -381,7 +381,7 @@
     {
       "data": {
         "staff": [{
-          "staffId": "...", "code": "NV002", "fullName": "...", "username": "...", "role": "SALES|WAREHOUSE|ADMIN", "status": "ACTIVE|LOCKED",
+          "staffId": "...", "code": "NV002", "fullName": "...", "username": "...", "role": "CEO|ADMIN|ACCOUNTANT|HR|MARKETING|SALES", "status": "ACTIVE|LOCKED",
           "sales": { "orders": 12, "revenue": 3500000, "units": 20, "returnsHandled": 1, "returnTotal": 250000 },
           "warehouse": { "importsCreated": 2, "importsCompleted": 1, "unitsScanned": 40, "rowsChecked": 10, "unitsImported": 38, "adjustments": 1, "transfers": 1, "unitsTransferred": 5 },
           "lastActivityAt": "ISO date | null"
@@ -396,7 +396,7 @@
 
 ### 2.8 Dashboard Doanh thu chi tiết & Phân tích Sản phẩm (`/reports/revenue-dashboard`) *(v2.3 & v4.1)*
 - `GET /api/v1/reports/revenue-dashboard?from=YYYY-MM-DD&to=YYYY-MM-DD&categoryId=...&paymentMethod=...`
-  - Chỉ role `ADMIN` (Quản lý) hoặc `ACCOUNTANT` (Kế toán) → role khác `403 FORBIDDEN`.
+  - Chỉ role `CEO` (Giám đốc), `ADMIN` (Quản lý) hoặc `ACCOUNTANT` (Kế toán) → role khác `403 FORBIDDEN`.
   - Trả về:
     - `summary`:
       - Doanh thu & giảm giá: `grossRevenue` (tổng giá gốc × SL không tính quà), `itemDiscountTotal` (giảm giá SP), `billDiscountTotal` (giảm giá Bill), `totalDiscount`, `orderRevenue` (**tiền hàng bán sau giảm SP & giảm Bill `S - B`, KHÔNG gồm phí quẹt thẻ**).
@@ -864,9 +864,9 @@
 
 - `GET /api/v1/attendance/history`
   - Query: `?month=11&year=2026&staffId=...` (lọc đúng theo tháng/năm nếu truyền).
-  - Phân quyền: Nhân viên tự xem lịch sử của mình; `HR` và `ADMIN` xem được của toàn bộ nhân viên.
+  - Phân quyền: Nhân viên tự xem lịch sử của mình; `CEO`, `HR` và `ADMIN` xem được của toàn bộ nhân viên.
 
-- `GET /api/v1/attendance/timesheet` (Role `HR` hoặc `ADMIN`) — **Bảng công tháng toàn công ty**
+- `GET /api/v1/attendance/timesheet` (Role `CEO`, `HR` hoặc `ADMIN`) — **Bảng công tháng toàn công ty**
   - Query: `?month=11&year=2026&department=OFFICE|SALES` (tuỳ chọn).
   - Trả về ma trận nhân viên × ngày trong tháng + tổng hợp từng người:
     - `days[]`: `{ date, day, weekday, isToday, holiday?: { name, isOfficialDayOff } }`
@@ -883,20 +883,21 @@
     - **Khối Bán hàng**: **mặc định không có ngày nghỉ cố định, kể cả Chủ nhật và ngày lễ** — chỉ nghỉ khi xếp ca `OFF` hoặc có đơn nghỉ được duyệt. Mỗi tháng nhân viên Sales có tối đa **4 ngày nghỉ không lương (`OFF`)**. Trong mục **Đăng ký ca tuần**, nhân viên Bán hàng chỉ được chọn nghỉ **tối đa 2 ngày/tuần** (mặc định gồm tối đa **1 ngày OFF không lương** và tối đa **1 ngày phép có lương `PAID_LEAVE`**); nếu muốn nghỉ **từ 3 ngày trở đi trong 1 tuần** thì bắt buộc phải **Tạo đơn xin nghỉ (`LeaveRequest`) tối thiểu trước 3 tuần (21 ngày)**. Ngày lễ là ngày làm bình thường: không cộng công lễ, vẫn nằm trong công chuẩn; đi làm → tính công + **lương x4** (`holidayWorkDays`, `holidayWorkHours`); không đi làm (không có đơn/lịch OFF) → `ABSENT`. Công chuẩn tháng (`standardDays`) tính theo lịch 6 ngày/tuần của tháng (`24`, `25`, `26`, hoặc `27` công tuỳ tháng 28/29/30/31 ngày và số Chủ nhật trong tháng).
     - Lễ trùng Chủ nhật không cộng công thêm.
 
-- `GET /api/v1/attendance/my-calendar` (Mọi nhân viên trừ `ADMIN`) — **Lịch công tháng của chính mình** (Web)
+- `GET /api/v1/attendance/my-calendar` (Mọi nhân viên trừ `ADMIN` và `CEO`) — **Lịch công tháng của chính mình** (Web POS & CMS `MY_ATTENDANCE`)
   - Query: `?month=11&year=2026`.
+  - Hỗ trợ xem lại lịch chấm công tháng cá nhân và gửi/hủy đơn từ cho cả nhân viên trên Web POS (`SALES`, `MARKETING`) lẫn nhân viên khối văn phòng trên CMS (`HR`, `ACCOUNTANT`, `MARKETING`).
   - Response: `{ "data": { month, year, days[], row (cùng cấu trúc 1 dòng của /attendance/timesheet), rules: { shifts, lateToleranceMinutes (0 với khối SALES, 5 với khối OFFICE), overtimeMinMinutes, holidayWorkPayMultiplier: 4 } } }`
   - Bổ sung cho mỗi `Cell` (cả ở `/attendance/timesheet`): `overtimeMinutes` (số phút tăng ca đã được HR duyệt; ca `BOTH` không tính tăng ca; `SALES` 1 ca chỉ tính khi HR duyệt phần check-out trễ > 5p; `OFFICE` chỉ tính khi được HR yêu cầu), `overtimeStatus` (`NONE | PENDING | APPROVED | REJECTED`), `overtimeApprovedMinutes`, `lateCheckoutMinutes`, `lateCheckoutReason`, `earlyApproved`, `lateApproved` (có đơn xin về sớm / đi trễ đã duyệt), `leaveRequests[]` (`{ id, type, status, reason, reviewNote }` mọi trạng thái).
   - Bổ sung `summary`: `overtimeDays`, `overtimeMinutes`, `pendingRequests`, `paidLeaveEntitled` (tổng số ngày phép có lương khả dụng tích lũy đến tháng đang xem = phép thử việc được cộng + phép các tháng chính thức - phép đã dùng các tháng trước), `paidLeaveFromProbation` (số ngày phép tích lũy từ giai đoạn thử việc: `0 | 1 | 2`), `paidLeaveTotalEarned` (tổng ngày phép tích lũy từ đầu), `paidLeaveUsedTotal` (tổng ngày phép đã dùng từ đầu), `paidLeaveUsed` (số ngày phép dùng trong tháng), `paidLeaveRemaining` (số ngày phép còn lại để dành sang tháng sau), `paidLeaveForfeited` (`0` vì ngày phép được cộng dồn để dành, không bị mất khi qua tháng mới), `salesOffEntitled` (`4` với khối `SALES`, `0` với khối `OFFICE`), `salesOffUsed`, `salesOffRemaining`.
   - `Cell.code = "PAID_LEAVE"`: nghỉ phép có lương đã duyệt → **+1 công/ngày** (cộng toàn bộ `paidLeaveUsed` trong tháng vào `paidUnits`).
   - Đi làm ngày lễ chính thức hiển thị nhãn **x4 lương** (100% lương ngày lễ + ≥ 300% lương làm việc ngày lễ).
 
-- `PATCH /api/v1/attendance/:id` (Role `HR` hoặc `ADMIN`) — **Điều chỉnh giờ công, Chuyển sang OFF/WFH & Xét duyệt tăng ca** (quên check-out, sai giờ, đổi hình thức làm việc trực tiếp/WFH, chuyển ngày đó thành ngày nghỉ OFF/PAID_LEAVE, xét duyệt check-out trễ của Sales hoặc giao tăng ca cho Văn phòng)
+- `PATCH /api/v1/attendance/:id` (Role `CEO`, `HR` hoặc `ADMIN`) — **Điều chỉnh giờ công, Chuyển sang OFF/WFH & Xét duyệt tăng ca** (quên check-out, sai giờ, đổi hình thức làm việc trực tiếp/WFH, chuyển ngày đó thành ngày nghỉ OFF/PAID_LEAVE, xét duyệt check-out trễ của Sales hoặc giao tăng ca cho Văn phòng)
   - Body: `{ "checkIn"?: "08:30", "checkOut"?: "17:30", "shiftCode"?: "SHIFT_1|SHIFT_2|BOTH|OFF", "checkInType"?: "STANDARD|WFH", "offType"?: "OFF|PAID_LEAVE", "overtimeStatus"?: "NONE|PENDING|APPROVED|REJECTED", "overtimeApprovedMinutes"?: number, "reason": "string (bắt buộc)" }`
   - Khi `shiftCode = "OFF"`: không yêu cầu `checkIn`/`checkOut`; xoá bản ghi chấm công đi làm của ngày đó, tự động tạo/cập nhật đơn nghỉ đã duyệt (`APPROVED`) loại `offType` (`OFF` nghỉ không lương hoặc `PAID_LEAVE` nghỉ phép có lương cho nhân viên `FULLTIME`), đồng thời đồng bộ lịch phân ca ngày đó về `OFF` (nếu là `SALES` và `offType = "OFF"`).
   - Khi `shiftCode` là `SHIFT_1 | SHIFT_2 | BOTH`: Server tự tính lại `workStartTime`, `lateMinutes`, `earlyMinutes`, `totalWorkHours`, `status`, cập nhật `checkInType` (`STANDARD` hoặc `WFH`), trạng thái & số phút tăng ca (`overtimeStatus`, `overtimeApprovedMinutes`); ghi vết `adjustedBy`, `adjustedByName`, `adjustedAt`, `adjustReason`.
 
-- `POST /api/v1/attendance/manual` (Role `HR` hoặc `ADMIN`) — **Chấm công bù (bao gồm chấm công đi làm trực tiếp, chấm công WFH hoặc chấm OFF)** cho nhân viên
+- `POST /api/v1/attendance/manual` (Role `CEO`, `HR` hoặc `ADMIN`) — **Chấm công bù (bao gồm chấm công đi làm trực tiếp, chấm công WFH hoặc chấm OFF)** cho nhân viên
   - Body: `{ "staffId": "...", "date": "2026-11-05", "shiftCode": "SHIFT_1|SHIFT_2|BOTH|OFF", "checkInType"?: "STANDARD|WFH", "offType"?: "OFF|PAID_LEAVE", "checkIn"?: "08:30", "checkOut"?: "17:30", "overtimeStatus"?: "NONE|APPROVED", "overtimeApprovedMinutes"?: number, "reason": "string (bắt buộc)" }`
   - Khi `shiftCode = "OFF"`: không cần truyền `checkIn`/`checkOut`; hệ thống ghi nhận ngày nghỉ (`OFF` không lương hoặc `PAID_LEAVE` có lương cho `FULLTIME`, kiểm tra hạn mức 4 ngày OFF không lương/tháng đối với `SALES` và quỹ ngày phép tích lũy `PAID_LEAVE` đối với `FULLTIME`), xoá bản ghi chấm công nếu đã lỡ tạo trong ngày và đồng bộ `ShiftAssignment` sang `OFF`.
   - Lỗi: `400 ALREADY_CHECKED_IN` nếu ngày đó đã có bản ghi chấm công và `shiftCode !== "OFF"` (dùng PATCH để sửa).
@@ -930,11 +931,12 @@
     - Trạng thái ban đầu của đơn `CHANGE_OFF` là `PENDING` (chờ HR duyệt). Trong thời gian chờ HR duyệt, ngày nghỉ gốc `fromDate` vẫn giữ nguyên.
   - Lỗi `400 DUPLICATE_REQUEST` nếu đã có đơn cùng loại, cùng ngày đang chờ duyệt hoặc đã duyệt.
 - `GET /api/v1/leave-requests`
-  - HR xem danh sách đơn chờ duyệt; nhân viên xem danh sách đơn của mình (sắp xếp ngày mới nhất trước).
+  - Query: `?mine=true` (khi `mine=true`, chỉ lấy đơn từ cá nhân của chính tài khoản đang đăng nhập — kể cả khi người gọi là `HR` đang xem mục "Đơn từ của tôi"), `?status=PENDING|APPROVED|REJECTED`, `?type=...`, `?staffId=...`.
+  - Khi không truyền `mine=true`: `CEO`, `HR`, `ADMIN` xem danh sách đơn của toàn công ty; các nhân viên khác chỉ xem được danh sách đơn của chính mình (sắp xếp ngày mới nhất trước).
 - `DELETE /api/v1/leave-requests/:id`
   - Nhân viên tự hủy đơn của mình khi còn `PENDING`. Đơn đã duyệt/từ chối trả `400 REQUEST_ALREADY_REVIEWED`; đơn của người khác trả `403`.
-- `PATCH /api/v1/leave-requests/:id`
-  - HR duyệt hoặc từ chối đơn: `{ "status": "APPROVED" | "REJECTED", "reviewNote": "string" }`.
+- `PATCH /api/v1/leave-requests/:id` (Role `CEO`, `HR` hoặc `ADMIN`)
+  - HR / Quản lý duyệt hoặc từ chối đơn: `{ "status": "APPROVED" | "REJECTED", "reviewNote": "string" }`.
   - **Khi HR duyệt (`status = "APPROVED"`) đơn `type === "CHANGE_OFF"`**:
     - Hệ thống tự động chuyển ngày nghỉ từ `fromDate` sang `date`:
       - Nếu ngày `fromDate` có đơn nghỉ (`OFF` hoặc `PAID_LEAVE`): cập nhật ngày của đơn nghỉ đó từ `fromDate` sang `date` với trạng thái `APPROVED` (nếu chưa có đơn riêng mà là lịch phân ca `OFF` của `SALES` thì tạo đơn `OFF`/`PAID_LEAVE` `APPROVED` tại ngày `date` và gỡ nghỉ tại `fromDate`).
@@ -971,10 +973,10 @@
   - HR kích hoạt tự động xếp ca dựa trên preferences Thứ 6: `{ "weekStart": "2026-11-09" }`.
 - `PUT /api/v1/shifts/assign`
   - HR kéo - thả (Drag & Drop) hoặc chỉnh sửa phân ca: `{ "shiftAssignmentId": "...", "staffId": "...", "date": "...", "shiftCode": "SHIFT_1 | SHIFT_2" }`.
-- `GET /api/v1/shifts/handover/schedule-config` (Role `ADMIN`, `MANAGER`, `HR`, `ACCOUNTANT`, `SALES`)
+- `GET /api/v1/shifts/handover/schedule-config` (Role `CEO`, `ADMIN`, `MANAGER`, `HR`, `ACCOUNTANT`, `SALES`)
   - Trả về cấu hình lịch kiểm hàng kết ca cố định theo từng Thứ trong tuần (`0` = Chủ Nhật, `1` = Thứ 2 .. `6` = Thứ 7) và danh sách các danh mục hàng hóa tại Tầng 1 có thể chọn đi kèm với `Vợt`.
-- `PUT /api/v1/shifts/handover/schedule-config` (Role `ADMIN`, `MANAGER`, `HR`, `ACCOUNTANT`)
-  - Quản lý tự cấu hình danh mục kiểm hàng cố định theo từng Thứ trong tuần (mỗi ngày luôn cố định `Vợt` + danh mục đi kèm được cấu hình cho thứ đó).
+- `PUT /api/v1/shifts/handover/schedule-config` (Role `CEO`, `ADMIN`, `MANAGER`, `HR`)
+  - Quản lý (`CEO`, `ADMIN`, `HR`) tự cấu hình danh mục kiểm hàng cố định theo từng Thứ trong tuần (mỗi ngày luôn cố định `Vợt` + danh mục đi kèm được cấu hình cho thứ đó). Kế toán (`ACCOUNTANT`) chỉ được xem lịch kiểm hàng, không được cấu hình (`403 FORBIDDEN`).
   - Body: `{ "weeklySchedule": { "1": ["GIAY"], "2": ["BONG_THI_DAU"], "3": ["PHU_KIEN"], "4": ["GIAY"], "5": ["BONG_THI_DAU"], "6": ["GIAY"], "0": ["PHU_KIEN"] } }`.
 - `GET /api/v1/shifts/handover/daily-check`
   - Query: `?date=2026-11-12` (mặc định ngày hiện tại theo giờ địa phương).
@@ -1068,12 +1070,12 @@
       "updatedAt": "..."
     }
     ```
-- `POST /api/v1/service-types` (Role `ADMIN` hoặc `ACCOUNTANT`)
+- `POST /api/v1/service-types` (Chỉ role `CEO` hoặc `ADMIN`; `ACCOUNTANT` và role khác bị chặn `403 FORBIDDEN`)
   - Body: `{ "code"?: "string", "name": "string", "defaultPrice": 40000, "unit"?: "Cây | Đôi | Lần", "description"?: "string", "status"?: "ACTIVE | INACTIVE" }`
   - Nếu không truyền `code`, hệ thống tự sinh mã in hoa từ `name` (VD: `DV_DAN_VOT`).
-- `PATCH /api/v1/service-types/:id` (Role `ADMIN` hoặc `ACCOUNTANT`)
+- `PATCH /api/v1/service-types/:id` (Chỉ role `CEO` hoặc `ADMIN`; `ACCOUNTANT` và role khác bị chặn `403 FORBIDDEN`)
   - Body: `{ "name"?: "string", "defaultPrice"?: number, "unit"?: "string", "description"?: "string", "status"?: "ACTIVE | INACTIVE" }`
-- `DELETE /api/v1/service-types/:id` (Role `ADMIN` hoặc `ACCOUNTANT`)
+- `DELETE /api/v1/service-types/:id` (Chỉ role `CEO` hoặc `ADMIN`; `ACCOUNTANT` và role khác bị chặn `403 FORBIDDEN`)
   - Quy tắc: Nếu `orderCount > 0` trả về `400 SERVICE_TYPE_IN_USE` ("Không thể xóa loại dịch vụ đã phát sinh đơn; chỉ được chuyển sang Ngừng sử dụng").
 
 #### B. Quản lý Đơn Dịch Vụ (`/service-orders`)
@@ -1087,15 +1089,15 @@
   - `UNPAID`: Chưa thanh toán (thu lúc khách nhận đồ)
   - `PARTIAL`: Đã đặt cọc / thanh toán một phần
   - `PAID`: Đã thanh toán đủ
-- `GET /api/v1/service-orders` (Role `ADMIN`, `ACCOUNTANT`, `SALES`)
+- `GET /api/v1/service-orders` (Role `CEO`, `ADMIN`, `ACCOUNTANT`, `SALES` — `ACCOUNTANT` chỉ có quyền xem đơn dịch vụ)
   - Query: `?status=RECEIVED|IN_PROGRESS|READY|RETURNED|CANCELLED&paymentStatus=UNPAID|PARTIAL|PAID&overdueOnly=true|false&search=...&from=YYYY-MM-DD&to=YYYY-MM-DD&dueFrom=YYYY-MM-DD&dueTo=YYYY-MM-DD`
   - Response:
     - `data`: Danh sách `ServiceOrder` (sắp xếp mới nhất trước), mỗi đơn kèm cờ `isOverdue: boolean` (`true` khi `status` thuộc `RECEIVED | IN_PROGRESS | READY` và thời gian hiện tại vượt quá `dueAt`).
     - `meta`: `{ "totalOrders", "receivedCount", "inProgressCount", "readyCount", "returnedCount", "overdueCount", "unpaidCount", "totalRevenue", "totalPaid", "totalRemaining" }`.
-- `GET /api/v1/service-orders/:id` (Role `ADMIN`, `ACCOUNTANT`, `SALES`)
+- `GET /api/v1/service-orders/:id` (Role `CEO`, `ADMIN`, `ACCOUNTANT`, `SALES` — `ACCOUNTANT` chỉ có quyền xem đơn dịch vụ)
   - Chi tiết một đơn dịch vụ.
-- `POST /api/v1/service-orders` (Role `ADMIN`, `ACCOUNTANT`, `SALES`)
-  - Tạo phiếu dịch vụ mới từ màn hình Bán hàng POS (`SALES`, `ADMIN`) hoặc CMS (`ADMIN`, `ACCOUNTANT`).
+- `POST /api/v1/service-orders` (Role `CEO`, `ADMIN`, `SALES`; `ACCOUNTANT` bị chặn `403 FORBIDDEN`)
+  - Tạo phiếu dịch vụ mới từ màn hình Bán hàng POS (`SALES`, `ADMIN`, `CEO`) hoặc CMS (`ADMIN`, `CEO`).
   - Body:
     ```json
     {
@@ -1134,15 +1136,38 @@
     - Hỗ trợ tính phí quẹt thẻ (`hasCardFee: boolean`, `cardFeePercent: 1.8 | 4` — **Khách Việt 1.8%** hoặc **Khách nước ngoài 4%** giống Bán hàng POS, `cardFee: number`) khi thanh toán qua `CARD` (`totalAmount = afterBillDiscount + cardFee`).
     - Hỗ trợ thu đủ tiền ngay lúc gửi (`paidAmount = totalAmount`), đặt cọc một phần (`0 < paidAmount < totalAmount`), hoặc thu tiền lúc khách nhận đồ (`paidAmount = 0`).
     - Tự động tạo mới hoặc cập nhật tên khách hàng trong bảng `Customer` theo `customerPhone`.
-- `PATCH /api/v1/service-orders/:id` (Role `ADMIN`, `ACCOUNTANT`)
+- `PATCH /api/v1/service-orders/:id` (Chỉ role `CEO`, `ADMIN`; `ACCOUNTANT` bị chặn `403 FORBIDDEN`)
   - Cập nhật thông tin đơn dịch vụ (`customerName`, `customerPhone`, `receivedAt`, `dueAt`, `items`, `billDiscountType`, `billDiscountValue`, `hasCardFee`, `cardFeePercent`, `note`, `status`). Tự động tính lại `subtotal`, `billDiscountAmount`, `cardFee`, `totalAmount`, `remainingAmount` và `paymentStatus`.
   - **Ràng buộc nhất quán tiền đã thu**: Nếu cập nhật `items` hoặc giảm giá làm tổng tiền mới thấp hơn số tiền khách đã thanh toán (`totalAmount < existing.paidAmount`), hệ thống chặn và trả lỗi `400 TOTAL_BELOW_PAID_AMOUNT` ("Tổng tiền mới không được nhỏ hơn số tiền khách đã thanh toán") để không làm lệch báo cáo doanh thu và thực thu.
-- `PATCH /api/v1/service-orders/:id/status` (Role `ADMIN`, `ACCOUNTANT`, và `SALES` khi đơn đã `READY`)
+- `PATCH /api/v1/service-orders/:id/status` (Role `CEO`, `ADMIN`, và `SALES` khi đơn đã `READY`; `ACCOUNTANT` bị chặn `403 FORBIDDEN`)
   - **Phân quyền**:
-    - Chỉ `ADMIN` / `ACCOUNTANT` trên CMS mới được phép cập nhật tiến độ xử lý (`RECEIVED`, `IN_PROGRESS`, `READY`, `CANCELLED`).
+    - Chỉ `CEO` / `ADMIN` trên CMS mới được phép cập nhật tiến độ xử lý (`RECEIVED`, `IN_PROGRESS`, `READY`, `CANCELLED`).
     - Khi đơn dịch vụ đã được Admin chuyển sang **`READY` (Đã làm xong — Chờ khách lấy)**, nhân viên **`SALES`** tại quầy POS được phép xác nhận thu tiền còn lại và trả đồ cho khách (`status: "RETURNED"`, kèm `collectAmount`, `paymentMethod`, `hasCardFee`, `cardFeePercent`). Nếu đơn chưa ở trạng thái `READY`, `SALES` gọi API đổi trạng thái sẽ bị chặn `403 FORBIDDEN`.
   - Chuyển nhanh trạng thái xử lý: `{ "status": "RECEIVED | IN_PROGRESS | READY | RETURNED | CANCELLED", "collectAmount"?: number, "paymentMethod"?: "CASH | BANKING | CARD", "hasCardFee"?: boolean, "cardFeePercent"?: number, "paymentNote"?: "string" }`.
   - Khi chuyển sang `RETURNED`, hệ thống tự động gán `returnedAt = new Date()`. Nếu truyền kèm `collectAmount > 0` (VD: thu nốt tiền khi trả đồ cho khách, luôn hỗ trợ cộng phí quẹt thẻ `1.8%` / `4%` trên số tiền thu `collectAmount` nếu `paymentMethod === "CARD"` và `hasCardFee === true`), hệ thống ghi nhận luôn khoản thanh toán vào `payments`, cộng `paidAmount`, giảm `remainingAmount` và cập nhật `paymentStatus`.
-- `POST /api/v1/service-orders/:id/payments` (Role `ADMIN`, `ACCOUNTANT`, `SALES`)
+- `POST /api/v1/service-orders/:id/payments` (Role `CEO`, `ADMIN`, `SALES`; `ACCOUNTANT` bị chặn `403 FORBIDDEN`)
   - Thu thêm tiền cọc hoặc tất toán phần tiền còn lại của đơn dịch vụ (hỗ trợ `markReturned?: boolean` khi đơn đang `READY`):
   - Body: `{ "amount": 50000, "method": "CASH | BANKING | CARD", "hasCardFee"?: boolean, "cardFeePercent"?: number, "markReturned"?: boolean, "note"?: "Thu tiền khi khách nhận đồ" }`.
+
+---
+
+### 2.18 Phân quyền Vai trò `CEO` (Toàn quyền cao nhất), Tách quyền `ACCOUNTANT` & `HR`, và Lịch Chấm Công Cá Nhân Trên CMS *(v4.1)*
+- **Vai trò `CEO` (`StaffRole = "CEO"`)**:
+  - Là vai trò cao nhất trong hệ thống 11 Sport, có **tất cả các quyền** trên toàn bộ hệ thống (`server/`, `cms/`, `web/`):
+    - **Trên CMS (`cms/`)**: Truy cập toàn bộ module (`REVENUE`, `PUSH_PRODUCTS`, `INVENTORY`, `CATEGORIES`, `ORDERS`, `SERVICES`, `STAFF`, `HRM`, `SHIFT_HANDOVERS`, `ACTIVITY`, `PROMOTIONS`, `DEBTS`, `PROFILE`).
+    - **Trên Web POS (`web/`)**: Truy cập toàn bộ các tab (`POS`, `INVENTORY`, `CUSTOMER`, `RETURN`, `PUSH_PRODUCTS`) và tính năng quản lý kho/bán hàng.
+    - **Quản trị Tài khoản & Nhân sự (`/api/v1/staff`)**: Toàn quyền tạo mới, chỉnh sửa hồ sơ nhân sự, hợp đồng, mức lương/phụ cấp/thưởng/bảo hiểm (`baseSalary`, `allowance`, `bonus`, `insurance`), đổi mật khẩu và khóa/mở khóa (`status: "ACTIVE" | "LOCKED"`) cho mọi vai trò (6 vai trò hệ thống: `CEO`, `ADMIN`, `ACCOUNTANT`, `HR`, `MARKETING`, `SALES`; vai trò `WAREHOUSE` đã được loại bỏ hoàn toàn). Chỉ `CEO` hoặc `ADMIN` mới được tạo/sửa/khóa hoặc gán vai trò `CEO`.
+    - **Chấm công**: Giống `ADMIN`, `CEO` không cần chấm công cá nhân và không hiển thị trong bảng chấm công nhân viên.
+- **Tách biệt quyền của Kế toán (`ACCOUNTANT`) và Nhân sự (`HR`), giới hạn quyền Danh mục & Dịch vụ của `ACCOUNTANT`**:
+  - `ACCOUNTANT` **tuyệt đối không có các quyền quản trị của `HR`**:
+    - Không được xem thông tin lương/phụ cấp/thưởng/bảo hiểm và hồ sơ nhạy cảm (CCCD, hợp đồng...) của nhân viên khác trong `GET /api/v1/staff` (chỉ `CEO`, `ADMIN`, `HR` xem được tất cả; `ACCOUNTANT` chỉ xem được của chính mình `isSelf`).
+    - Không được tạo mới hay chỉnh sửa tài khoản nhân viên khác (`POST /api/v1/staff`, `PATCH /api/v1/staff/:id`, `POST /api/v1/staff/parse-import-file` trả `403 FORBIDDEN`).
+    - Không được truy cập bảng công toàn công ty (`GET /api/v1/attendance/timesheet`), không được điều chỉnh/chấm công bù (`PATCH /api/v1/attendance/:id`, `POST /api/v1/attendance/manual`), không được duyệt đơn từ (`PATCH /api/v1/leave-requests/:id`), không được xem/xếp lịch ca của HR (`GET /api/v1/shifts/schedule`, `PUT /api/v1/shifts/assign*`), không được xem báo cáo hoạt động nhân sự (`GET /api/v1/reports/staff-activity`).
+    - Trên CMS, `ACCOUNTANT` không có module `HRM`, không có module `STAFF`, và **không vào được module Quản lý Danh mục (`CATEGORIES`)** (`POST/PATCH/DELETE /api/v1/categories` chặn `ACCOUNTANT` trả `403 FORBIDDEN`).
+    - Trong module Dịch vụ (`SERVICES`), `ACCOUNTANT` **không vào được phần Quản lý Loại Dịch Vụ (`TYPES`)** và **chỉ được xem Đơn Dịch Vụ (`ORDERS` ở chế độ chỉ xem)** — không được tạo/sửa loại dịch vụ hay tạo/sửa/đổi trạng thái/thu tiền đơn dịch vụ (`403 FORBIDDEN`).
+- **Chặn `ACCOUNTANT` và `HR` đăng nhập vào Web POS (`web/`) & Gom Chấm Công + Thông Tin Cá Nhân vào Drawer Menu Bên Phải trên CMS (`cms/`)**:
+  - Tài khoản `ACCOUNTANT` và `HR` **chỉ đăng nhập và làm việc trên trang Quản trị CMS (`cms/`)**, bị chặn đăng nhập vào giao diện Web POS (`web/`).
+  - Trên **CMS (`cms/`)**:
+    - **Drawer Menu bên trái (`Menu CMS`)**: Chỉ chứa các phân hệ quản trị nghiệp vụ theo vai trò.
+    - **Drawer Menu bên phải (`MENU CÁ NHÂN`)**: Trượt từ bên phải khi bấm nút Tài khoản / Menu cá nhân ở góc phải Header CMS, tích hợp **1. Chấm công & Lịch công tháng (`MY_ATTENDANCE`)**, **2. Thông tin tài khoản cá nhân (`PROFILE`)**, **Đổi mật khẩu** và **Đăng xuất tài khoản**.
+

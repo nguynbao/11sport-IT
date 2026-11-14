@@ -19,7 +19,7 @@ function resolveApiBaseUrl(): string {
   return RENDER_API_BASE_URL;
 }
 
-export type UserRole = "SALES" | "WAREHOUSE" | "ADMIN" | "HR" | "ACCOUNTANT" | "MARKETING";
+export type UserRole = "CEO" | "ADMIN" | "ACCOUNTANT" | "HR" | "MARKETING" | "SALES";
 export type Department = "OFFICE" | "SALES";
 /** INTERN = Thực tập, PROBATION = Thử việc, FULLTIME = Chính thức (PARTTIME: giá trị cũ) */
 export type ContractType = "INTERN" | "PROBATION" | "FULLTIME" | "PARTTIME";
@@ -1903,7 +1903,7 @@ export interface MyLeaveRequest {
 }
 
 export async function fetchMyLeaveRequestsApi(): Promise<MyLeaveRequest[]> {
-  const res = await apiRequest<MyLeaveRequest[]>("/leave-requests");
+  const res = await apiRequest<MyLeaveRequest[]>("/leave-requests?mine=true");
   return res.data;
 }
 

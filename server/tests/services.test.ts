@@ -9,7 +9,8 @@ const app = createApp();
 describe('Service Types & Service Orders API Tests', () => {
   let adminToken = '';
   let salesToken = '';
-  let warehouseToken = '';
+  let accountantToken = '';
+  let marketingToken = '';
   let serviceTypeId = '';
   let serviceOrderId = '';
 
@@ -29,10 +30,15 @@ describe('Service Types & Service Orders API Tests', () => {
       .send({ username: 'sales1', password: '123456' });
     salesToken = salesLogin.body.data.token;
 
-    const warehouseLogin = await request(app)
+    const accountantLogin = await request(app)
       .post('/api/v1/auth/login')
-      .send({ username: 'warehouse1', password: '123456' });
-    warehouseToken = warehouseLogin.body.data.token;
+      .send({ username: 'accountant1', password: '123456' });
+    accountantToken = accountantLogin.body.data.token;
+
+    const marketingLogin = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ username: 'marketing1', password: '123456' });
+    marketingToken = marketingLogin.body.data.token;
   });
 
   afterAll(async () => {
@@ -50,7 +56,7 @@ describe('Service Types & Service Orders API Tests', () => {
       .send({ customerName: 'A', customerPhone: '0909111222', dueAt: '2026-11-12', items: [] });
     expect(unauthCreateOrder.status).toBe(401);
 
-    // 2. Role SALES không được tạo loại dịch vụ (chỉ ADMIN / ACCOUNTANT) -> 403 FORBIDDEN
+    // 2. Role SALES và ACCOUNTANT không được tạo loại dịch vụ (chỉ CEO / ADMIN) -> 403 FORBIDDEN
     const salesCreateType = await request(app)
       .post('/api/v1/service-types')
       .set('Authorization', `Bearer ${salesToken}`)
@@ -58,12 +64,37 @@ describe('Service Types & Service Orders API Tests', () => {
     expect(salesCreateType.status).toBe(403);
     expect(salesCreateType.body.code).toBe('FORBIDDEN');
 
-    // 3. Role WAREHOUSE không được xem hay tạo đơn dịch vụ -> 403 FORBIDDEN
-    const warehouseGetOrders = await request(app)
+    const accountantCreateType = await request(app)
+      .post('/api/v1/service-types')
+      .set('Authorization', `Bearer ${accountantToken}`)
+      .send({ name: 'Đan vợt KT', defaultPrice: 40000 });
+    expect(accountantCreateType.status).toBe(403);
+    expect(accountantCreateType.body.code).toBe('FORBIDDEN');
+
+    // 3. Role ACCOUNTANT được XEM đơn dịch vụ (200), nhưng KHÔNG được tạo đơn dịch vụ hay tạo danh mục (403)
+    const accountantGetOrders = await request(app)
       .get('/api/v1/service-orders')
-      .set('Authorization', `Bearer ${warehouseToken}`);
-    expect(warehouseGetOrders.status).toBe(403);
-    expect(warehouseGetOrders.body.code).toBe('FORBIDDEN');
+      .set('Authorization', `Bearer ${accountantToken}`);
+    expect(accountantGetOrders.status).toBe(200);
+
+    const accountantCreateOrder = await request(app)
+      .post('/api/v1/service-orders')
+      .set('Authorization', `Bearer ${accountantToken}`)
+      .send({ customerName: 'A', customerPhone: '0909111222', dueAt: '2026-11-12', items: [] });
+    expect(accountantCreateOrder.status).toBe(403);
+
+    const accountantCreateCategory = await request(app)
+      .post('/api/v1/categories')
+      .set('Authorization', `Bearer ${accountantToken}`)
+      .send({ code: 'KT_CAT', name: 'Danh mục KT' });
+    expect(accountantCreateCategory.status).toBe(403);
+
+    // 4. Role MARKETING không được xem hay tạo đơn dịch vụ -> 403 FORBIDDEN
+    const marketingGetOrders = await request(app)
+      .get('/api/v1/service-orders')
+      .set('Authorization', `Bearer ${marketingToken}`);
+    expect(marketingGetOrders.status).toBe(403);
+    expect(marketingGetOrders.body.code).toBe('FORBIDDEN');
   });
 
   it('should create and list service types from CMS', async () => {

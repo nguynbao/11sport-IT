@@ -14,8 +14,9 @@ import {
 
 export const servicesRouter = Router();
 
-const SERVICE_ORDER_ALLOWED_ROLES = ['ADMIN', 'ACCOUNTANT', 'SALES'];
-const SERVICE_TYPE_MANAGE_ROLES = ['ADMIN', 'ACCOUNTANT'];
+const SERVICE_ORDER_ALLOWED_ROLES = ['CEO', 'ADMIN', 'ACCOUNTANT', 'SALES'];
+const SERVICE_ORDER_MUTATE_ROLES = ['CEO', 'ADMIN', 'SALES'];
+const SERVICE_TYPE_MANAGE_ROLES = ['CEO', 'ADMIN'];
 
 async function requireServiceRoles(
   req: Request,
@@ -614,7 +615,7 @@ async function normalizeAndPriceServiceItems(
 // POST /api/v1/service-orders
 servicesRouter.post('/service-orders', async (req, res, next) => {
   try {
-    const actor = await requireServiceRoles(req, SERVICE_ORDER_ALLOWED_ROLES);
+    const actor = await requireServiceRoles(req, SERVICE_ORDER_MUTATE_ROLES);
     const {
       customerName,
       customerPhone,
@@ -917,11 +918,12 @@ servicesRouter.patch('/service-orders/:id', async (req, res, next) => {
 });
 
 // PATCH /api/v1/service-orders/:id/status
-// - ADMIN / ACCOUNTANT: được chuyển mọi trạng thái xử lý (RECEIVED -> IN_PROGRESS -> READY -> RETURNED / CANCELLED)
+// - CEO / ADMIN: được chuyển mọi trạng thái xử lý (RECEIVED -> IN_PROGRESS -> READY -> RETURNED / CANCELLED)
 // - SALES: chỉ được xác nhận lấy tiền & trả đồ (RETURNED) khi đơn đã được Admin xác nhận làm xong (existing.status === 'READY')
+// - ACCOUNTANT: chỉ có quyền xem đơn dịch vụ, không được đổi trạng thái hay thu tiền
 servicesRouter.patch('/service-orders/:id/status', async (req, res, next) => {
   try {
-    const actor = await requireServiceRoles(req, SERVICE_ORDER_ALLOWED_ROLES);
+    const actor = await requireServiceRoles(req, SERVICE_ORDER_MUTATE_ROLES);
     const { id } = req.params;
     const existing = await serviceOrderRepo.findById(id);
     if (!existing) {
@@ -1034,7 +1036,7 @@ servicesRouter.patch('/service-orders/:id/status', async (req, res, next) => {
 // POST /api/v1/service-orders/:id/payments
 servicesRouter.post('/service-orders/:id/payments', async (req, res, next) => {
   try {
-    const actor = await requireServiceRoles(req, SERVICE_ORDER_ALLOWED_ROLES);
+    const actor = await requireServiceRoles(req, SERVICE_ORDER_MUTATE_ROLES);
     const { id } = req.params;
     const existing = await serviceOrderRepo.findById(id);
     if (!existing) {

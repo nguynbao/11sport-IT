@@ -63,11 +63,11 @@ export function computePromotionEffectiveState(
 }
 
 function assertAdminRole(req: any) {
-  if (req.user?.role !== 'ADMIN') {
+  if (!['ADMIN', 'CEO'].includes(req.user?.role || '')) {
     throw new ApiError(
       403,
       'PROMOTION_FORBIDDEN',
-      'Chỉ Quản lý (ADMIN) mới có quyền tạo, chỉnh sửa hoặc xóa Chương trình khuyến mãi'
+      'Chỉ Giám đốc (CEO) hoặc Quản lý (ADMIN) mới có quyền tạo, chỉnh sửa hoặc xóa Chương trình khuyến mãi'
     );
   }
 }

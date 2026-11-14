@@ -69,10 +69,13 @@ interface EditableImportRow extends ParsedStaffImportRow {
 
 export default function StaffModule({
   mode = "HR_FULL",
+  currentUser = null,
 }: {
   mode?: "ADMIN_LOCK_ONLY" | "HR_FULL";
+  currentUser?: StaffUser | null;
 }) {
-  const isAdminView = mode === "ADMIN_LOCK_ONLY";
+  const isCeo = currentUser?.role === "CEO";
+  const isAdminView = mode === "ADMIN_LOCK_ONLY" && !isCeo;
   const [staffList, setStaffList] = useState<StaffUser[]>([]);
 
   // --- Form Tạo Tài Khoản Nhân Viên Mới ---
@@ -724,7 +727,7 @@ export default function StaffModule({
   const filteredStaffList = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     const filtered = staffList.filter((st) => {
-      const normalizedRole = st.role === ("WAREHOUSE" as any) ? "ACCOUNTANT" : st.role;
+      const normalizedRole = st.role;
       const dept = st.department || (normalizedRole === "SALES" ? "SALES" : "OFFICE");
       if (filterDept !== "ALL" && dept !== filterDept) return false;
       if (filterRole !== "ALL" && normalizedRole !== filterRole) return false;
@@ -915,6 +918,7 @@ export default function StaffModule({
                 <option value="ACCOUNTANT">ACCOUNTANT (Kế toán &amp; Kho)</option>
                 <option value="MARKETING">MARKETING (Content Marketing)</option>
                 <option value="ADMIN">ADMIN (Quản lý)</option>
+                {isCeo && <option value="CEO">CEO (Giám đốc - Toàn quyền)</option>}
               </select>
             </div>
 
@@ -967,7 +971,7 @@ export default function StaffModule({
                     Vai trò hệ thống *
                   </label>
                   <select
-                    value={role === "ADMIN" ? "SALES" : role}
+                    value={!isCeo && (role === "ADMIN" || role === "CEO") ? "SALES" : role}
                     onChange={(e) => {
                       const nextRole = e.target.value as UserRole;
                       setRole(nextRole);
@@ -979,6 +983,8 @@ export default function StaffModule({
                     <option value="HR">HR (Nhân sự &amp; Chấm công)</option>
                     <option value="ACCOUNTANT">ACCOUNTANT (Kế toán &amp; Kho)</option>
                     <option value="MARKETING">MARKETING (Content Marketing)</option>
+                    {isCeo && <option value="ADMIN">ADMIN (Quản lý)</option>}
+                    {isCeo && <option value="CEO">CEO (Giám đốc - Toàn quyền)</option>}
                   </select>
                 </div>
               </div>
@@ -1529,6 +1535,7 @@ export default function StaffModule({
             <option value="ACCOUNTANT">ACCOUNTANT (Kế toán &amp; Kho)</option>
             <option value="MARKETING">MARKETING</option>
             <option value="ADMIN">ADMIN (Quản lý)</option>
+            <option value="CEO">CEO (Giám đốc)</option>
           </select>
 
           <select
@@ -1660,9 +1667,10 @@ export default function StaffModule({
                 </tr>
               ) : (
                 filteredStaffList.map((st) => {
-                  const normalizedRole =
-                    st.role === ("WAREHOUSE" as any) ? "ACCOUNTANT" : st.role;
+                  const normalizedRole = st.role;
                   const isTargetAdmin = normalizedRole === "ADMIN";
+                  const isTargetCeo = normalizedRole === "CEO";
+                  const isTargetHighPriv = isTargetAdmin || isTargetCeo;
                   const startStr = toIsoDateSlice(st.contractStartDate);
                   const endStr = toIsoDateSlice(st.contractEndDate);
                   const displayAddr =
@@ -1733,9 +1741,13 @@ export default function StaffModule({
                         )}
                       </td>
                       <td className="py-3 px-3.5">
-                        {!isAdminView && isTargetAdmin ? (
+                        {isTargetCeo && !isCeo ? (
+                          <span className="px-2.5 py-1 rounded bg-amber-50 border border-amber-300 font-mono font-bold text-xs text-amber-800">
+                            CEO (Giám đốc)
+                          </span>
+                        ) : !isAdminView && !isCeo && isTargetHighPriv ? (
                           <span className="px-2.5 py-1 rounded bg-emerald-50 border border-emerald-200 font-mono font-bold text-xs text-emerald-800">
-                            ADMIN (Quản lý)
+                            {isTargetCeo ? "CEO (Giám đốc)" : "ADMIN (Quản lý)"}
                           </span>
                         ) : (
                           <select
@@ -1753,7 +1765,8 @@ export default function StaffModule({
                             <option value="HR">HR (Nhân sự &amp; Chấm công)</option>
                             <option value="ACCOUNTANT">ACCOUNTANT (Kế toán &amp; Kho)</option>
                             <option value="MARKETING">MARKETING (Content Marketing)</option>
-                            {isAdminView && <option value="ADMIN">ADMIN (Quản lý)</option>}
+                            {(isAdminView || isCeo) && <option value="ADMIN">ADMIN (Quản lý)</option>}
+                            {isCeo && <option value="CEO">CEO (Giám đốc - Toàn quyền)</option>}
                           </select>
                         )}
                       </td>
@@ -1806,8 +1819,48 @@ export default function StaffModule({
                       </td>
                       <td className="py-3 px-3.5 text-right whitespace-nowrap">
                         <div className="inline-flex items-center gap-2">
-                          {!isAdminView ? (
-                            !isTargetAdmin ? (
+                          {isCeo ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenProfileModal(st)}
+                                className="py-1.5 px-3 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs transition cursor-pointer"
+                              >
+                                Sửa hồ sơ
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenResetPassword(st)}
+                                className="px-3 py-1.5 rounded-lg font-bold inline-flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 cursor-pointer"
+                              >
+                                <KeyRound className="w-3.5 h-3.5" /> Đổi mật khẩu
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleUpdateStaff(st, {
+                                    status: st.status === "ACTIVE" ? "LOCKED" : "ACTIVE",
+                                  })
+                                }
+                                className={`px-3 py-1.5 rounded-lg font-bold inline-flex items-center gap-1 cursor-pointer ${
+                                  st.status === "ACTIVE"
+                                    ? "bg-red-50 hover:bg-red-100 text-red-600"
+                                    : "bg-emerald-50 hover:bg-emerald-100 text-emerald-700"
+                                }`}
+                              >
+                                {st.status === "ACTIVE" ? (
+                                  <>
+                                    <Lock className="w-3.5 h-3.5" /> Khóa TK
+                                  </>
+                                ) : (
+                                  <>
+                                    <Unlock className="w-3.5 h-3.5" /> Mở khóa
+                                  </>
+                                )}
+                              </button>
+                            </>
+                          ) : !isAdminView ? (
+                            !isTargetHighPriv ? (
                               <>
                                 <button
                                   type="button"
@@ -1826,9 +1879,13 @@ export default function StaffModule({
                               </>
                             ) : (
                               <span className="text-[11px] text-slate-400 italic">
-                                Tài khoản Quản lý
+                                {isTargetCeo ? "Tài khoản Giám đốc" : "Tài khoản Quản lý"}
                               </span>
                             )
+                          ) : isTargetCeo ? (
+                            <span className="text-[11px] text-slate-400 italic">
+                              Tài khoản Giám đốc
+                            </span>
                           ) : (
                             <button
                               type="button"

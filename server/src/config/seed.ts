@@ -284,11 +284,11 @@ export async function seedDatabaseIfNeeded(): Promise<void> {
 
       await staffRepo.create({
         code: 'NV002',
-        username: 'warehouse1',
+        username: 'accountant1',
         passwordHash: hashPassword('123456'),
-        fullName: 'Lê Văn Kho',
-        phone: '0909000002',
-        role: 'WAREHOUSE',
+        fullName: 'Phạm Thị Kế Toán',
+        phone: '0909000005',
+        role: 'ACCOUNTANT',
         department: 'OFFICE',
         status: 'ACTIVE',
         contractType: 'FULLTIME',
@@ -329,13 +329,13 @@ export async function seedDatabaseIfNeeded(): Promise<void> {
     }
   }
 
-  // Chỉ tạo các tài khoản mẫu (HR, ACCOUNTANT, MARKETING) ngoài production (trên memory/test hoặc khi bật SEED_DEMO_ACCOUNTS=true)
+  // Chỉ tạo các tài khoản mẫu (CEO, HR, ACCOUNTANT, MARKETING) ngoài production (trên memory/test hoặc khi bật SEED_DEMO_ACCOUNTS=true)
   if (allowDemoSeed) {
     const ensureStaff = async (data: {
       username: string;
       fullName: string;
       phone: string;
-      role: 'HR' | 'ACCOUNTANT' | 'MARKETING' | 'SALES' | 'ADMIN';
+      role: 'CEO' | 'HR' | 'ACCOUNTANT' | 'MARKETING' | 'SALES' | 'ADMIN';
       department: 'OFFICE' | 'SALES';
     }) => {
       const existing = await staffRepo.findOne({ username: data.username });
@@ -360,6 +360,14 @@ export async function seedDatabaseIfNeeded(): Promise<void> {
         });
       }
     };
+
+    await ensureStaff({
+      username: 'ceo',
+      fullName: 'Giám Đốc Điều Hành (CEO)',
+      phone: '0909000000',
+      role: 'CEO',
+      department: 'OFFICE',
+    });
 
     await ensureStaff({
       username: 'hr',
@@ -396,13 +404,41 @@ export async function seedDatabaseIfNeeded(): Promise<void> {
 
   // Chuẩn hóa department / contractType cho các tài khoản cũ chưa có trường này (không tự nâng quyền role)
   if (!isTestMemory) {
+    const initialCeoPassword = process.env.INITIAL_CEO_PASSWORD?.trim();
+    if (initialCeoPassword) {
+      const existingCeoUser = await staffRepo.findOne({ username: 'ceo' });
+      if (!existingCeoUser) {
+        const allStaff = await staffRepo.find({});
+        const maxCodeNum = allStaff.reduce((max, s) => {
+          const num = parseInt(String(s.code || '').replace(/\D/g, ''), 10);
+          return !isNaN(num) && num > max ? num : max;
+        }, 0);
+        const nextCode = `NV${String(maxCodeNum + 1).padStart(3, '0')}`;
+        await staffRepo.create({
+          code: nextCode,
+          username: 'ceo',
+          passwordHash: hashPassword(initialCeoPassword),
+          fullName: 'Giám Đốc Điều Hành (CEO)',
+          phone: '0909000000',
+          role: 'CEO',
+          department: 'OFFICE',
+          status: 'ACTIVE',
+          contractType: 'FULLTIME',
+          mustChangePassword: true,
+        });
+      }
+    }
+
     const allExistingStaff = await staffRepo.find({});
     for (const st of allExistingStaff) {
-      const nextDept = st.department || (st.role === 'SALES' ? 'SALES' : 'OFFICE');
+      const nextRole =
+        String(st.role) === 'WAREHOUSE' ? ('ACCOUNTANT' as const) : st.role;
+      const nextDept = st.department || (nextRole === 'SALES' ? 'SALES' : 'OFFICE');
       // Không tự gán "Chính thức": tài khoản chưa có loại hợp đồng -> Thử việc (HR cập nhật lại trong CMS)
       const nextContract = st.contractType || 'PROBATION';
-      if (st.department !== nextDept || st.contractType !== nextContract) {
+      if (st.role !== nextRole || st.department !== nextDept || st.contractType !== nextContract) {
         await staffRepo.updateById(st._id, {
+          role: nextRole,
           department: nextDept,
           contractType: nextContract,
         });

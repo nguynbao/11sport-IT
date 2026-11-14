@@ -346,8 +346,8 @@ holidaysRouter.get('/holidays', async (req, res, next) => {
 holidaysRouter.post('/holidays/sync-vn', async (req, res, next) => {
   try {
     const user = req.user;
-    if (!user || !['ADMIN', 'HR'].includes(user.role)) {
-      throw new ApiError(403, 'FORBIDDEN', 'Chỉ HR hoặc ADMIN mới có quyền đồng bộ ngày lễ');
+    if (!user || !['CEO', 'ADMIN', 'HR'].includes(user.role)) {
+      throw new ApiError(403, 'FORBIDDEN', 'Chỉ CEO, HR hoặc ADMIN mới có quyền đồng bộ ngày lễ');
     }
 
     const year = Number(req.body?.year) || new Date().getFullYear();
@@ -389,12 +389,12 @@ function totalLabel(synced: number, total: number): string {
   return synced > 0 ? `${synced}/${total}` : `${total}`;
 }
 
-// POST /api/v1/holidays (HR / Admin tạo hoặc cập nhật ngày lễ)
+// POST /api/v1/holidays (HR / Admin / CEO tạo hoặc cập nhật ngày lễ)
 holidaysRouter.post('/holidays', async (req, res, next) => {
   try {
     const user = req.user;
-    if (!user || !['ADMIN', 'HR'].includes(user.role)) {
-      throw new ApiError(403, 'FORBIDDEN', 'Chỉ HR hoặc ADMIN mới có quyền tạo ngày lễ');
+    if (!user || !['CEO', 'ADMIN', 'HR'].includes(user.role)) {
+      throw new ApiError(403, 'FORBIDDEN', 'Chỉ CEO, HR hoặc ADMIN mới có quyền tạo ngày lễ');
     }
 
     const { date, name, note = '', isOfficialDayOff = true } = req.body || {};
@@ -439,8 +439,8 @@ holidaysRouter.post('/holidays', async (req, res, next) => {
 holidaysRouter.delete('/holidays/:id', async (req, res, next) => {
   try {
     const user = req.user;
-    if (!user || !['ADMIN', 'HR'].includes(user.role)) {
-      throw new ApiError(403, 'FORBIDDEN', 'Chỉ HR hoặc ADMIN mới có quyền xóa ngày lễ');
+    if (!user || !['CEO', 'ADMIN', 'HR'].includes(user.role)) {
+      throw new ApiError(403, 'FORBIDDEN', 'Chỉ CEO, HR hoặc ADMIN mới có quyền xóa ngày lễ');
     }
 
     const { id } = req.params;
