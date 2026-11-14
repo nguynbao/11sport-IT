@@ -479,11 +479,14 @@ authStaffRouter.post('/staff', async (req, res, next) => {
 
     const validRoles = ['CEO', 'ADMIN', 'ACCOUNTANT', 'HR', 'MARKETING', 'SALES'];
     const staffRole = validRoles.includes(role) ? role : 'SALES';
-    if (staffRole === 'CEO' && req.user && !req.isFallbackUser && !['CEO', 'ADMIN'].includes(req.user.role)) {
+    if (
+      staffRole === 'CEO' &&
+      (!req.user || req.isFallbackUser || !['CEO', 'ADMIN'].includes(req.user.role))
+    ) {
       throw new ApiError(
         403,
         'FORBIDDEN',
-        'Chỉ Giám đốc (CEO) hoặc Quản trị viên (ADMIN) mới được phép tạo tài khoản có quyền CEO'
+        'Chỉ Giám đốc (CEO) hoặc Quản trị viên (ADMIN) đã xác thực mới được phép tạo tài khoản có quyền CEO'
       );
     }
     if (staffRole === 'ADMIN' && req.user && !['ADMIN', 'CEO'].includes(req.user.role)) {
@@ -694,19 +697,14 @@ authStaffRouter.patch('/staff/:id', async (req, res, next) => {
       if (insurance !== undefined) updateData.insurance = parseSalaryField(insurance, 'Bảo hiểm');
     }
 
-    if (req.user && !req.isFallbackUser && req.user.role !== 'CEO') {
-      if (staff.role === 'CEO') {
+    if (staff.role === 'CEO' || role === 'CEO') {
+      if (!req.user || req.isFallbackUser || req.user.role !== 'CEO') {
         throw new ApiError(
           403,
           'FORBIDDEN',
-          'Chỉ Giám đốc (CEO) mới được phép chỉnh sửa tài khoản CEO'
-        );
-      }
-      if (role === 'CEO') {
-        throw new ApiError(
-          403,
-          'FORBIDDEN',
-          'Chỉ Giám đốc (CEO) mới được phép cấp quyền CEO'
+          staff.role === 'CEO'
+            ? 'Chỉ Giám đốc (CEO) đã xác thực mới được phép chỉnh sửa tài khoản CEO'
+            : 'Chỉ Giám đốc (CEO) đã xác thực mới được phép cấp quyền CEO'
         );
       }
     }

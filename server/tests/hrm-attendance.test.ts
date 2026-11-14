@@ -1535,6 +1535,31 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
       .set('Authorization', `Bearer ${ceoToken}`);
     expect(ceoPush.status).toBe(200);
 
+    // CEO tải được dữ liệu báo cáo doanh thu & công nợ (/reports/revenue-dashboard)
+    const ceoRevDash = await request(app)
+      .get('/api/v1/reports/revenue-dashboard')
+      .set('Authorization', `Bearer ${ceoToken}`);
+    expect(ceoRevDash.status).toBe(200);
+    expect(ceoRevDash.body.data.debtManagement).toBeTruthy();
+
+    // Request không có token (fallback user) bị từ chối (403 FORBIDDEN) khi cố tạo hoặc nâng quyền CEO
+    const anonCreateCeo = await request(app)
+      .post('/api/v1/staff')
+      .send({
+        username: 'anon_fake_ceo',
+        password: 'password123',
+        fullName: 'Giả Mạo CEO',
+        role: 'CEO',
+      });
+    expect(anonCreateCeo.status).toBe(403);
+
+    const anonPromoteCeo = await request(app)
+      .patch(`/api/v1/staff/${createdStaffId}`)
+      .send({
+        role: 'CEO',
+      });
+    expect(anonPromoteCeo.status).toBe(403);
+
     // 2. Kế toán (ACCOUNTANT) và HR đều xem được Lịch chấm công cá nhân (/attendance/my-calendar) và Đơn từ của chính mình (/leave-requests?mine=true)
     const accMyCal = await request(app)
       .get(`/api/v1/attendance/my-calendar?month=${now.getMonth() + 1}&year=${now.getFullYear()}`)
