@@ -57,7 +57,7 @@ function inferRole(
   staffRoleMap?: Map<string, string>
 ): string {
   const cleanRole = String(explicitRole || '').trim().toUpperCase();
-  if (cleanRole === 'ADMIN' || cleanRole === 'WAREHOUSE' || cleanRole === 'SALES') {
+  if (cleanRole === 'CEO' || cleanRole === 'ADMIN' || cleanRole === 'ACCOUNTANT' || cleanRole === 'HR' || cleanRole === 'MARKETING' || cleanRole === 'SALES') {
     return cleanRole;
   }
   const uid = String(userId || '').trim();
@@ -66,12 +66,12 @@ function inferRole(
   }
   const upperId = uid.toUpperCase();
   if (upperId === 'ADMIN') return 'ADMIN';
-  if (upperId === 'WAREHOUSE') return 'WAREHOUSE';
+  if (upperId === 'ACCOUNTANT') return 'ACCOUNTANT';
   const nameLower = String(userName || '').toLowerCase();
   if (nameLower.includes('admin') || nameLower.includes('quản trị') || nameLower.includes('quản lý')) {
     return 'ADMIN';
   }
-  return 'WAREHOUSE';
+  return 'ACCOUNTANT';
 }
 
 async function buildStaffRoleMap(): Promise<Map<string, string>> {
@@ -861,8 +861,8 @@ importsRouter.post('/imports', async (req, res, next) => {
 
     const initialStatus = status === 'CHECKING' ? 'CHECKING' : 'DRAFT';
     const warehouseFloor = normalizeFloor(targetWarehouse);
-    const createdBy = req.user?.userId || 'WAREHOUSE';
-    const createdByName = req.user?.fullName || 'Thủ kho';
+    const createdBy = req.user?.userId || 'ACCOUNTANT';
+    const createdByName = req.user?.fullName || 'Kế toán kho';
     const createdByRole = inferRole(req.user?.role, createdBy, createdByName);
 
     const created = await importReceiptRepo.create({
@@ -983,11 +983,11 @@ importsRouter.delete('/imports/:id', async (req, res, next) => {
     }
 
     if (receipt.status === 'COMPLETED') {
-      if (req.user?.role !== 'ADMIN') {
+      if (!['ADMIN', 'CEO'].includes(req.user?.role || '')) {
         throw new ApiError(
           400,
           'IMPORT_RECEIPT_LOCKED',
-          'Phiếu nhập đã hoàn thành và bị khóa; chỉ Quản lý/Admin mới có quyền xóa'
+          'Phiếu nhập đã hoàn thành và bị khóa; chỉ Quản lý/Admin/CEO mới có quyền xóa'
         );
       }
       const movements = await stockMovementRepo.find({ referenceId: String(receipt._id) });
@@ -1509,8 +1509,8 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
 
       await productRepo.updateById(product._id, productUpdate);
 
-      const actorId = req.user?.userId || receipt.createdBy || 'WAREHOUSE';
-      const actorName = req.user?.fullName || receipt.createdByName || 'Thủ kho';
+      const actorId = req.user?.userId || receipt.createdBy || 'ACCOUNTANT';
+      const actorName = req.user?.fullName || receipt.createdByName || 'Kế toán kho';
       const actorRole = inferRole(req.user?.role || receipt.createdByRole, actorId, actorName);
 
       const movement = await stockMovementRepo.create({
@@ -1547,8 +1547,8 @@ importsRouter.post('/imports/:id/complete', async (req, res, next) => {
       });
     }
 
-    const completedBy = req.user?.userId || 'WAREHOUSE';
-    const completedByName = req.user?.fullName || 'Thủ kho';
+    const completedBy = req.user?.userId || 'ACCOUNTANT';
+    const completedByName = req.user?.fullName || 'Kế toán kho';
     const completedByRole = inferRole(req.user?.role, completedBy, completedByName);
 
     const completedReceipt = await importReceiptRepo.updateById(id, {

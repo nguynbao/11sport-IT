@@ -30,7 +30,7 @@ describe('v1.1: Giá gốc khi nhập kho & phân quyền giá bán', () => {
   it('Từ chối giá gốc âm (400 INVALID_COST_PRICE)', async () => {
     const res = await request(app)
       .post('/api/v1/imports')
-      .set('x-user-id', 'warehouse1')
+      .set('x-user-id', 'accountant1')
       .send({ items: [{ productName, expectedQuantity: 5, costPrice: -1 }] });
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('INVALID_COST_PRICE');
@@ -40,7 +40,7 @@ describe('v1.1: Giá gốc khi nhập kho & phân quyền giá bán', () => {
     const runImport = async (qty: number, costPrice: number) => {
       const created = await request(app)
         .post('/api/v1/imports')
-        .set('x-user-id', 'warehouse1')
+        .set('x-user-id', 'accountant1')
         .send({
           defaultCategoryId: categoryId,
           items: [{ productName, expectedQuantity: qty, actualQuantity: qty, costPrice, isConfirmed: true }],
@@ -49,7 +49,7 @@ describe('v1.1: Giá gốc khi nhập kho & phân quyền giá bán', () => {
       expect(created.body.data.items[0].costPrice).toBe(costPrice);
       const done = await request(app)
         .post(`/api/v1/imports/${created.body.data._id}/complete`)
-        .set('x-user-id', 'warehouse1')
+        .set('x-user-id', 'accountant1')
         .send({});
       expect(done.status).toBe(200);
       if (!productCode) {
@@ -71,7 +71,7 @@ describe('v1.1: Giá gốc khi nhập kho & phân quyền giá bán', () => {
     expect(prod.stock).toBe(15);
   });
 
-  it('ADMIN và WAREHOUSE được đặt giá bán; SALES bị chặn đặt giá bán và không thấy giá gốc', async () => {
+  it('ADMIN và ACCOUNTANT được đặt giá bán; SALES bị chặn đặt giá bán/giá gốc và không thấy giá gốc', async () => {
     const list = await request(app).get('/api/v1/products').set('x-user-id', 'admin');
     const prod = list.body.data.find((p: any) => p.code === productCode);
 
@@ -82,19 +82,19 @@ describe('v1.1: Giá gốc khi nhập kho & phân quyền giá bán', () => {
     expect(salesPrice.status).toBe(403);
     expect(salesPrice.body.code).toBe('SELLING_PRICE_FORBIDDEN');
 
-    const whPrice = await request(app)
+    const accPrice = await request(app)
       .patch(`/api/v1/products/${prod._id}`)
-      .set('x-user-id', 'warehouse1')
+      .set('x-user-id', 'accountant1')
       .send({ sellingPrice: 280000 });
-    expect(whPrice.status).toBe(200);
-    expect(whPrice.body.data.sellingPrice).toBe(280000);
+    expect(accPrice.status).toBe(200);
+    expect(accPrice.body.data.sellingPrice).toBe(280000);
 
-    const whCost = await request(app)
+    const salesCost = await request(app)
       .patch(`/api/v1/products/${prod._id}`)
-      .set('x-user-id', 'warehouse1')
+      .set('x-user-id', 'sales1')
       .send({ costPrice: 1 });
-    expect(whCost.status).toBe(403);
-    expect(whCost.body.code).toBe('COST_PRICE_FORBIDDEN');
+    expect(salesCost.status).toBe(403);
+    expect(salesCost.body.code).toBe('COST_PRICE_FORBIDDEN');
 
     const whCreate = await request(app)
       .post('/api/v1/products')
@@ -195,7 +195,7 @@ describe('v1.1: Giá gốc khi nhập kho & phân quyền giá bán', () => {
     // 5. Xóa sản phẩm trên CMS (DELETE /api/v1/products/:id) & Xóa phiếu nhập (DELETE /api/v1/imports/:id)
     const nonAdminDel = await request(app)
       .delete(`/api/v1/products/${createRes.body.data._id}`)
-      .set('x-user-id', 'warehouse1');
+      .set('x-user-id', 'sales1');
     expect(nonAdminDel.status).toBe(403);
 
     const adminDel = await request(app)
@@ -206,7 +206,7 @@ describe('v1.1: Giá gốc khi nhập kho & phân quyền giá bán', () => {
 
     const draftImport = await request(app)
       .post('/api/v1/imports')
-      .set('x-user-id', 'warehouse1')
+      .set('x-user-id', 'accountant1')
       .send({
         defaultCategoryId: categoryId,
         items: [{ productName, expectedQuantity: 3, actualQuantity: 3, costPrice: 150000 }],
@@ -215,7 +215,7 @@ describe('v1.1: Giá gốc khi nhập kho & phân quyền giá bán', () => {
 
     const delImport = await request(app)
       .delete(`/api/v1/imports/${draftImport.body.data._id}`)
-      .set('x-user-id', 'warehouse1');
+      .set('x-user-id', 'accountant1');
     expect(delImport.status).toBe(200);
     expect(delImport.body.data.deleted).toBe(true);
   });
@@ -279,10 +279,10 @@ describe('v1.1: Giá gốc khi nhập kho & phân quyền giá bán', () => {
   it('Hệ thống Kho 2 tầng (FLOOR_1 & FLOOR_2): chọn tầng khi nhập kho, Admin lập Phiếu xuất kho chuyển tầng (PXK-...) và ghi vào Hoạt động nhân viên', async () => {
     const floorProdName = 'Giày Chạy Bộ 2 Tầng (Giày Chạy Bộ 2 Tầng GCB02 Trắng size 42)';
 
-    // 1. Warehouse lập phiếu nhập 6 đôi vào Kho Tầng 2 (FLOOR_2)
+    // 1. Kế toán kho lập phiếu nhập 6 đôi vào Kho Tầng 2 (FLOOR_2)
     const impF2 = await request(app)
       .post('/api/v1/imports')
-      .set('x-user-id', 'warehouse1')
+      .set('x-user-id', 'accountant1')
       .send({
         targetWarehouse: 'FLOOR_2',
         defaultCategoryId: categoryId,
@@ -303,7 +303,7 @@ describe('v1.1: Giá gốc khi nhập kho & phân quyền giá bán', () => {
 
     const doneF2 = await request(app)
       .post(`/api/v1/imports/${impF2.body.data._id}/complete`)
-      .set('x-user-id', 'warehouse1')
+      .set('x-user-id', 'accountant1')
       .send({});
     expect(doneF2.status).toBe(200);
     const floorProdCode = doneF2.body.data.receipt.items[0].productCode;

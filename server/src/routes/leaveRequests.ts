@@ -805,10 +805,15 @@ leaveRequestsRouter.get('/leave-requests', async (req, res, next) => {
     const user = req.user;
     if (!user) throw new ApiError(401, 'UNAUTHORIZED', 'Vui lòng đăng nhập');
 
-    const { status, type, date, staffId } = req.query;
+    const { status, type, date, staffId, mine } = req.query;
     const filter: Record<string, any> = {};
 
-    if (['ADMIN', 'HR'].includes(user.role)) {
+    if (String(mine) === 'true') {
+      filter.staffId = user.userId;
+      if (status) filter.status = String(status);
+      if (type) filter.type = String(type);
+      if (date) filter.date = String(date);
+    } else if (['CEO', 'ADMIN', 'HR'].includes(user.role)) {
       if (status) filter.status = String(status);
       if (type) filter.type = String(type);
       if (date) filter.date = String(date);
@@ -849,12 +854,12 @@ leaveRequestsRouter.delete('/leave-requests/:id', async (req, res, next) => {
   }
 });
 
-// PATCH /api/v1/leave-requests/:id (HR / Admin duyệt)
+// PATCH /api/v1/leave-requests/:id (HR / Admin / CEO duyệt)
 leaveRequestsRouter.patch('/leave-requests/:id', async (req, res, next) => {
   try {
     const user = req.user;
-    if (!user || !['ADMIN', 'HR'].includes(user.role)) {
-      throw new ApiError(403, 'FORBIDDEN', 'Chỉ HR hoặc ADMIN mới có quyền duyệt đơn');
+    if (!user || !['CEO', 'ADMIN', 'HR'].includes(user.role)) {
+      throw new ApiError(403, 'FORBIDDEN', 'Chỉ CEO, HR hoặc ADMIN mới có quyền duyệt đơn');
     }
 
     const { id } = req.params;

@@ -16,6 +16,7 @@ import {
 import StaffModule from "./StaffModule";
 import AttendanceTimesheetModule from "./AttendanceTimesheetModule";
 import ShiftScheduleModule from "./ShiftScheduleModule";
+import MyAttendanceCalendar from "./MyAttendanceCalendar";
 import {
   Calendar as CalendarIcon,
   CheckCircle2,
@@ -34,9 +35,10 @@ import {
   ChevronLeft,
   ChevronRight,
   UserPlus,
+  CalendarCheck,
 } from "lucide-react";
 
-type SubTab = "CALENDAR" | "LEAVE_REQUESTS" | "SHIFTS" | "ATTENDANCE_LOG" | "STAFF_ACCOUNTS";
+type SubTab = "CALENDAR" | "LEAVE_REQUESTS" | "SHIFTS" | "ATTENDANCE_LOG" | "STAFF_ACCOUNTS" | "MY_CALENDAR";
 
 export default function HrmAttendanceModule({ currentUser }: { currentUser: StaffUser | null }) {
   const [activeTab, setActiveTab] = useState<SubTab>("CALENDAR");
@@ -388,6 +390,19 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
           <UserPlus className="w-4 h-4" />
           Tạo Tài Khoản & Hồ Sơ NV
         </button>
+
+        {currentUser && currentUser.role !== "ADMIN" && currentUser.role !== "CEO" && (
+          <button
+            onClick={() => setActiveTab("MY_CALENDAR")}
+            className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition flex items-center gap-2 ${activeTab === "MY_CALENDAR"
+              ? "bg-emerald-600 text-white shadow-md"
+              : "text-slate-600 hover:bg-slate-100"
+              }`}
+          >
+            <CalendarCheck className="w-4 h-4" />
+            Lịch Chấm Công Của Tôi
+          </button>
+        )}
       </div>
 
       {/* ================= TAB 1: CALENDAR & HOLIDAYS ================= */}
@@ -1000,7 +1015,10 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
       {/* ================= TAB 4.5: QUẢN LÝ PHIẾU BÀN GIAO CA ================= */}
 
       {/* ================= TAB 5: TẠO TÀI KHOẢN & QUẢN LÝ NHÂN SỰ ================= */}
-      {activeTab === "STAFF_ACCOUNTS" && <StaffModule />}
+      {activeTab === "STAFF_ACCOUNTS" && <StaffModule mode="HR_FULL" currentUser={currentUser} />}
+
+      {/* ================= TAB 6: LỊCH CHẤM CÔNG CÁ NHÂN CỦA TÔI (DÀNH CHO HR) ================= */}
+      {activeTab === "MY_CALENDAR" && currentUser && <MyAttendanceCalendar currentUser={currentUser} />}
     </div>
   );
 }

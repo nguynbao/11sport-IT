@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
-export type StaffRole = 'SALES' | 'WAREHOUSE' | 'ADMIN' | 'HR' | 'ACCOUNTANT' | 'MARKETING';
+export type StaffRole = 'CEO' | 'ADMIN' | 'ACCOUNTANT' | 'HR' | 'MARKETING' | 'SALES';
 export type StaffDepartment = 'OFFICE' | 'SALES';
 /** INTERN = Thực tập, PROBATION = Thử việc, FULLTIME = Chính thức (PARTTIME: giá trị cũ, chỉ đọc) */
 export type ContractType = 'INTERN' | 'PROBATION' | 'FULLTIME' | 'PARTTIME';
@@ -77,7 +77,7 @@ const StaffSchema = new Schema<IStaff>(
     bankAccount: { type: String, default: '', trim: true },
     role: {
       type: String,
-      enum: ['SALES', 'WAREHOUSE', 'ADMIN', 'HR', 'ACCOUNTANT', 'MARKETING'],
+      enum: ['CEO', 'ADMIN', 'ACCOUNTANT', 'HR', 'MARKETING', 'SALES'],
       required: true,
       default: 'SALES',
     },

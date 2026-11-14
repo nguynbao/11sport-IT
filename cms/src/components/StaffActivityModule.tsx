@@ -24,8 +24,11 @@ type ViewTab = "SALES" | "WAREHOUSE";
 
 const ROLE_LABEL: Record<string, string> = {
   SALES: "Bán hàng",
-  WAREHOUSE: "Thủ kho",
+  ACCOUNTANT: "Kế toán & Kho",
+  HR: "Nhân sự (HR)",
+  MARKETING: "Marketing",
   ADMIN: "Quản lý",
+  CEO: "Giám đốc (CEO)",
 };
 
 const toInputDate = (d: Date) => {
@@ -105,9 +108,9 @@ export default function StaffActivityModule() {
       className={`px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap ${
         role === "SALES"
           ? "bg-blue-100 text-blue-800"
-          : role === "WAREHOUSE"
+          : role === "ACCOUNTANT"
           ? "bg-amber-100 text-amber-800"
-          : role === "ADMIN"
+          : role === "ADMIN" || role === "CEO"
           ? "bg-purple-100 text-purple-800"
           : "bg-slate-100 text-slate-600"
       }`}
@@ -157,8 +160,9 @@ export default function StaffActivityModule() {
             >
               <option value="">Tất cả vai trò</option>
               <option value="SALES">Nhân viên bán hàng</option>
-              <option value="WAREHOUSE">Thủ kho</option>
+              <option value="ACCOUNTANT">Kế toán & Kho</option>
               <option value="ADMIN">Quản lý</option>
+              <option value="CEO">Giám đốc (CEO)</option>
             </select>
             <button
               type="button"

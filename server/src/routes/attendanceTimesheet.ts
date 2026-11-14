@@ -141,8 +141,8 @@ export function computeAttendanceMetrics(params: {
 function requireHr(req: any) {
   const user = req.user;
   if (!user) throw new ApiError(401, 'UNAUTHORIZED', 'Vui lòng đăng nhập');
-  if (!['ADMIN', 'HR'].includes(user.role)) {
-    throw new ApiError(403, 'FORBIDDEN', 'Chỉ HR hoặc ADMIN mới có quyền quản lý bảng công');
+  if (!['CEO', 'ADMIN', 'HR'].includes(user.role)) {
+    throw new ApiError(403, 'FORBIDDEN', 'Chỉ CEO, HR hoặc ADMIN mới có quyền quản lý bảng công');
   }
   return user;
 }
@@ -194,7 +194,7 @@ export async function buildTimesheet(params: {
     });
 
     const staffList = allStaff
-      .filter((s: any) => s.role !== 'ADMIN')
+      .filter((s: any) => s.role !== 'ADMIN' && s.role !== 'CEO')
       .filter((s: any) => !params.staffIdFilter || String(s._id) === String(params.staffIdFilter))
       .filter((s: any) => {
         const dept = s.department || (s.role === 'SALES' ? 'SALES' : 'OFFICE');
@@ -630,8 +630,8 @@ attendanceTimesheetRouter.get('/attendance/my-calendar', async (req, res, next) 
   try {
     const user = req.user;
     if (!user) throw new ApiError(401, 'UNAUTHORIZED', 'Vui lòng đăng nhập');
-    if (user.role === 'ADMIN') {
-      throw new ApiError(400, 'ADMIN_NO_ATTENDANCE', 'Tài khoản Quản trị viên (ADMIN) không cần chấm công');
+    if (user.role === 'ADMIN' || user.role === 'CEO') {
+      throw new ApiError(400, 'ADMIN_NO_ATTENDANCE', 'Tài khoản Quản trị viên (ADMIN/CEO) không cần chấm công');
     }
     const { month, year } = parseMonthYear(req.query);
     const data = await buildTimesheet({ month, year, staffIdFilter: String(user.userId) });
@@ -962,7 +962,7 @@ attendanceTimesheetRouter.post('/attendance/manual', async (req, res, next) => {
 
     const staff: any = await staffRepo.findById(String(staffId));
     if (!staff) throw new ApiError(404, 'STAFF_NOT_FOUND', 'Không tìm thấy nhân viên');
-    if (staff.role === 'ADMIN') {
+    if (staff.role === 'ADMIN' || staff.role === 'CEO') {
       throw new ApiError(400, 'ADMIN_NO_ATTENDANCE', 'Tài khoản Quản trị viên không cần chấm công');
     }
 

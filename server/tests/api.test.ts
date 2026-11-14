@@ -78,7 +78,7 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
     await disconnectDatabase();
   });
 
-  it('Health check & Auth login (admin, warehouse1, sales1)', async () => {
+  it('Health check & Auth login (admin, accountant1, sales1)', async () => {
     const healthRes = await request(app).get('/api/v1/health');
     expect(healthRes.status).toBe(200);
     expect(healthRes.body.data.status).toBe('ok');

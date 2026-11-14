@@ -50,48 +50,51 @@ const TABS_CONFIG: TabConfig[] = [
     id: "POS",
     label: "1. Bán hàng",
     icon: ShoppingCart,
-    allowedRoles: ["SALES", "ADMIN"],
-    roleHint: "NV Bán hàng / Quản lý",
+    allowedRoles: ["SALES", "ADMIN", "CEO"],
+    roleHint: "NV Bán hàng / Quản lý / Giám đốc",
   },
   {
     id: "INVENTORY",
     label: "2. Kho hàng",
     icon: Package,
-    allowedRoles: ["SALES", "WAREHOUSE", "ADMIN"],
-    roleHint: "Tất cả nhân sự",
+    allowedRoles: ["SALES", "ADMIN", "CEO"],
+    roleHint: "NV Bán hàng / Quản lý / Giám đốc",
   },
   {
     id: "CUSTOMER",
     label: "3. Tra cứu Khách & Xuất PDF",
     icon: Users,
-    allowedRoles: ["SALES", "ADMIN"],
-    roleHint: "NV Bán hàng / Quản lý",
+    allowedRoles: ["SALES", "ADMIN", "CEO"],
+    roleHint: "NV Bán hàng / Quản lý / Giám đốc",
   },
   {
     id: "RETURN",
     label: "4. Trả / Đổi hàng",
     icon: RotateCcw,
-    allowedRoles: ["SALES", "ADMIN"],
-    roleHint: "NV Bán hàng / Quản lý",
+    allowedRoles: ["SALES", "ADMIN", "CEO"],
+    roleHint: "NV Bán hàng / Quản lý / Giám đốc",
   },
 ];
 
 function getDefaultTabForRole(role: UserRole): TabType {
-  if (role === "WAREHOUSE") return "INVENTORY";
   if (role === "MARKETING") return "PUSH_PRODUCTS";
   return "POS";
 }
 
-function isAttendanceOnlyRole(role?: UserRole): boolean {
+function isBlockedFromWebPos(role?: UserRole): boolean {
   return role === "HR" || role === "ACCOUNTANT";
 }
 
+function isAttendanceOnlyRole(_role?: UserRole): boolean {
+  return false;
+}
+
 function getRoleDisplayName(role?: UserRole): string {
+  if (role === "CEO") return "Giám đốc (CEO)";
   if (role === "ADMIN") return "Quản lý (ADMIN)";
   if (role === "HR") return "Nhân sự (HR)";
   if (role === "ACCOUNTANT") return "Kế toán (ACCOUNTANT)";
   if (role === "MARKETING") return "Marketing (MARKETING)";
-  if (role === "WAREHOUSE") return "Thủ kho (WAREHOUSE)";
   return "NV Bán hàng (SALES)";
 }
 
@@ -115,13 +118,9 @@ export default function WebPosHomePage() {
   useEffect(() => {
     const savedUser = getStoredUser();
     const savedToken = getStoredToken();
-    if (savedUser && savedToken && savedToken !== "demo-token") {
+    if (savedUser && savedToken && savedToken !== "demo-token" && !isBlockedFromWebPos(savedUser.role)) {
       setCurrentUser(savedUser);
-      if (isAttendanceOnlyRole(savedUser.role)) {
-        setActiveDrawerPage("ATTENDANCE");
-      } else {
-        setActiveTab(getDefaultTabForRole(savedUser.role));
-      }
+      setActiveTab(getDefaultTabForRole(savedUser.role));
     } else {
       clearStoredAuth();
     }
@@ -183,14 +182,16 @@ export default function WebPosHomePage() {
         }
       );
       if (res.data?.token && res.data?.user) {
+        if (isBlockedFromWebPos(res.data.user.role)) {
+          setLoginError(
+            `Tài khoản "${res.data.user.username}" có vai trò ${res.data.user.role}. Kế toán (ACCOUNTANT) và Nhân sự (HR) không truy cập Web POS — vui lòng đăng nhập và xem lịch chấm công trên trang Quản trị CMS!`
+          );
+          return;
+        }
         setStoredAuth(res.data.token, res.data.user);
         setCurrentUser(res.data.user);
-        if (isAttendanceOnlyRole(res.data.user.role)) {
-          setActiveDrawerPage("ATTENDANCE");
-        } else {
-          setActiveDrawerPage("NONE");
-          setActiveTab(getDefaultTabForRole(res.data.user.role));
-        }
+        setActiveDrawerPage("NONE");
+        setActiveTab(getDefaultTabForRole(res.data.user.role));
         setPassword("");
       }
     } catch (err: any) {
@@ -298,7 +299,9 @@ export default function WebPosHomePage() {
   const isCurrentTabAllowed =
     currentUser.role === "MARKETING"
       ? activeTab === "PUSH_PRODUCTS"
-      : currentTabConfig?.allowedRoles.includes(currentUser.role) ?? false;
+      : currentUser.role === "CEO" || currentUser.role === "ADMIN"
+        ? true
+        : currentTabConfig?.allowedRoles.includes(currentUser.role) ?? false;
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-100">

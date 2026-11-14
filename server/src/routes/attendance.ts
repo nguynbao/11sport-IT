@@ -318,8 +318,8 @@ attendanceRouter.post('/attendance/check-in', async (req, res, next) => {
 
     const staff = await staffRepo.findById(user.userId);
     if (!staff) throw new ApiError(404, 'STAFF_NOT_FOUND', 'Không tìm thấy nhân viên');
-    if (staff.role === 'ADMIN') {
-      throw new ApiError(400, 'ADMIN_NO_ATTENDANCE', 'Tài khoản Quản trị viên (ADMIN) không cần chấm công');
+    if (staff.role === 'ADMIN' || staff.role === 'CEO') {
+      throw new ApiError(400, 'ADMIN_NO_ATTENDANCE', 'Tài khoản Quản trị viên (ADMIN/CEO) không cần chấm công');
     }
 
     const todayStr = getTodayString();
@@ -799,7 +799,7 @@ attendanceRouter.get('/attendance/history', async (req, res, next) => {
     const { staffId, month, year } = req.query;
 
     const filter: Record<string, any> = {};
-    if (['ADMIN', 'HR'].includes(user.role)) {
+    if (['CEO', 'ADMIN', 'HR'].includes(user.role)) {
       if (staffId) filter.staffId = String(staffId);
     } else {
       filter.staffId = user.userId;

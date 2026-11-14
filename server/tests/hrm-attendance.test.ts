@@ -562,6 +562,14 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
     } finally {
       process.env.NODE_ENV = prevNodeEnv;
       await seedDatabaseIfNeeded();
+      const hrReLogin = await request(app)
+        .post('/api/v1/auth/login')
+        .send({ username: 'hr1', password: '123456' });
+      hrToken = hrReLogin.body.data.token;
+      const accReLogin = await request(app)
+        .post('/api/v1/auth/login')
+        .send({ username: 'accountant1', password: '123456' });
+      accountantToken = accReLogin.body.data.token;
     }
   });
 
@@ -837,7 +845,7 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
         username: 'office_overtime_hr',
         password: 'password123',
         fullName: 'Văn Phòng Tăng Ca Theo Yêu Cầu HR',
-        role: 'WAREHOUSE',
+        role: 'ACCOUNTANT',
         department: 'OFFICE',
       });
     expect(officeRes.status).toBe(201);
@@ -1439,5 +1447,154 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
     expect(new Date((s1AttAfter as any).checkOutTime).getTime()).toBe(exact1730.getTime());
     expect((s1AttAfter as any).totalWorkHours).toBe(9);
     expect((s1AttAfter as any).lateCheckoutMinutes || 0).toBe(0);
+  });
+
+  it('21. Phân quyền CEO toàn quyền, tách biệt Kế toán (ACCOUNTANT) khỏi quyền HR, và Lịch chấm công cá nhân cho HR & Kế toán', async () => {
+    // 1. Đăng nhập tài khoản CEO (được seed mặc định)
+    const ceoLogin = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ username: 'ceo', password: '123456' });
+    expect(ceoLogin.status).toBe(200);
+    expect(ceoLogin.body.data.user.role).toBe('CEO');
+    const ceoToken = ceoLogin.body.data.token;
+
+    // CEO không cần chấm công cá nhân (giống ADMIN)
+    const ceoCheckIn = await request(app)
+      .post('/api/v1/attendance/check-in')
+      .set('Authorization', `Bearer ${ceoToken}`)
+      .send({});
+    expect(ceoCheckIn.status).toBe(400);
+    expect(ceoCheckIn.body.code).toBe('ADMIN_NO_ATTENDANCE');
+
+    // CEO có toàn quyền tạo tài khoản nhân sự kèm mức lương & phụ cấp, kể cả role ADMIN
+    const ceoCreateStaff = await request(app)
+      .post('/api/v1/staff')
+      .set('Authorization', `Bearer ${ceoToken}`)
+      .send({
+        username: 'hr_sub_by_ceo',
+        password: 'password123',
+        fullName: 'Nhân Sự Do CEO Tạo',
+        role: 'HR',
+        department: 'OFFICE',
+        contractType: 'FULLTIME',
+        baseSalary: 15000000,
+        allowance: 2000000,
+        bonus: 1000000,
+        insurance: 1500000,
+      });
+    expect(ceoCreateStaff.status).toBe(201);
+    expect(ceoCreateStaff.body.data.baseSalary).toBe(15000000);
+    const createdStaffId = ceoCreateStaff.body.data._id;
+
+    // CEO có toàn quyền chỉnh sửa lương, hồ sơ VÀ khóa/mở khóa tài khoản
+    const ceoPatchStaff = await request(app)
+      .patch(`/api/v1/staff/${createdStaffId}`)
+      .set('Authorization', `Bearer ${ceoToken}`)
+      .send({
+        baseSalary: 18000000,
+        status: 'LOCKED',
+      });
+    expect(ceoPatchStaff.status).toBe(200);
+    expect(ceoPatchStaff.body.data.baseSalary).toBe(18000000);
+    expect(ceoPatchStaff.body.data.status).toBe('LOCKED');
+
+    // CEO xem được toàn bộ bảng công công ty, lịch ca, báo cáo hoạt động nhân viên & SP cần đẩy mạnh
+    const now = new Date();
+    const ceoTimesheet = await request(app)
+      .get(`/api/v1/attendance/timesheet?month=${now.getMonth() + 1}&year=${now.getFullYear()}`)
+      .set('Authorization', `Bearer ${ceoToken}`);
+    expect(ceoTimesheet.status).toBe(200);
+    // CEO và ADMIN không nằm trong danh sách chấm công nhân viên
+    expect(
+      ceoTimesheet.body.data.rows.some((r: any) => r.staffName?.includes('Giám Đốc') || r.role === 'CEO')
+    ).toBe(false);
+
+    const ceoActivity = await request(app)
+      .get('/api/v1/reports/staff-activity')
+      .set('Authorization', `Bearer ${ceoToken}`);
+    expect(ceoActivity.status).toBe(200);
+
+    const ceoPush = await request(app)
+      .get('/api/v1/reports/push-products')
+      .set('Authorization', `Bearer ${ceoToken}`);
+    expect(ceoPush.status).toBe(200);
+
+    // 2. Kế toán (ACCOUNTANT) và HR đều xem được Lịch chấm công cá nhân (/attendance/my-calendar) và Đơn từ của chính mình (/leave-requests?mine=true)
+    const accMyCal = await request(app)
+      .get(`/api/v1/attendance/my-calendar?month=${now.getMonth() + 1}&year=${now.getFullYear()}`)
+      .set('Authorization', `Bearer ${accountantToken}`);
+    expect(accMyCal.status).toBe(200);
+    expect(accMyCal.body.data.row).toBeTruthy();
+
+    const hrMyCal = await request(app)
+      .get(`/api/v1/attendance/my-calendar?month=${now.getMonth() + 1}&year=${now.getFullYear()}`)
+      .set('Authorization', `Bearer ${hrToken}`);
+    expect(hrMyCal.status).toBe(200);
+    expect(hrMyCal.body.data.row).toBeTruthy();
+
+    // HR gửi 1 đơn từ cá nhân -> gọi /leave-requests?mine=true chỉ trả về đơn của chính HR
+    const hrLeaveCreate = await request(app)
+      .post('/api/v1/leave-requests')
+      .set('Authorization', `Bearer ${hrToken}`)
+      .send({
+        type: 'LATE',
+        date: '2026-11-20',
+        reason: 'HR xin đi muộn 30p việc cá nhân',
+      });
+    expect(hrLeaveCreate.status).toBe(201);
+
+    const hrMineLeaves = await request(app)
+      .get('/api/v1/leave-requests?mine=true')
+      .set('Authorization', `Bearer ${hrToken}`);
+    expect(hrMineLeaves.status).toBe(200);
+    expect(hrMineLeaves.body.data.length).toBeGreaterThanOrEqual(1);
+    expect(
+      hrMineLeaves.body.data.every((r: any) => String(r.staffId) === String(hrLeaveCreate.body.data.staffId))
+    ).toBe(true);
+
+    // 3. Kế toán (ACCOUNTANT) bị chặn (403) khỏi toàn bộ các quyền quản trị nhân sự của HR
+    const accTimesheet = await request(app)
+      .get(`/api/v1/attendance/timesheet?month=${now.getMonth() + 1}&year=${now.getFullYear()}`)
+      .set('Authorization', `Bearer ${accountantToken}`);
+    expect(accTimesheet.status).toBe(403);
+
+    const accShiftSchedule = await request(app)
+      .get('/api/v1/shifts/schedule?weekStart=2026-11-16')
+      .set('Authorization', `Bearer ${accountantToken}`);
+    expect(accShiftSchedule.status).toBe(403);
+
+    const accCreateStaff = await request(app)
+      .post('/api/v1/staff')
+      .set('Authorization', `Bearer ${accountantToken}`)
+      .send({
+        username: 'acc_illegal_staff',
+        password: 'password123',
+        fullName: 'Không Được Tạo',
+        role: 'SALES',
+      });
+    expect(accCreateStaff.status).toBe(403);
+
+    const accReviewLeave = await request(app)
+      .patch(`/api/v1/leave-requests/${hrLeaveCreate.body.data._id}`)
+      .set('Authorization', `Bearer ${accountantToken}`)
+      .send({ status: 'APPROVED' });
+    expect(accReviewLeave.status).toBe(403);
+
+    const accStaffActivity = await request(app)
+      .get('/api/v1/reports/staff-activity')
+      .set('Authorization', `Bearer ${accountantToken}`);
+    expect(accStaffActivity.status).toBe(403);
+
+    // Kế toán gọi GET /api/v1/staff không được xem lương/hồ sơ nhạy cảm của nhân viên khác
+    const accStaffList = await request(app)
+      .get('/api/v1/staff')
+      .set('Authorization', `Bearer ${accountantToken}`);
+    expect(accStaffList.status).toBe(200);
+    const otherStaffInAccView = accStaffList.body.data.find(
+      (s: any) => s.username === 'hr_sub_by_ceo'
+    );
+    expect(otherStaffInAccView).toBeTruthy();
+    expect(otherStaffInAccView.baseSalary).toBe(0);
+    expect(otherStaffInAccView.citizenId).toBeUndefined();
   });
 });

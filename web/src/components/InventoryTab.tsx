@@ -101,8 +101,9 @@ export default function InventoryTab() {
   const currentUser = getStoredUser();
   const isSales = currentUser?.role === "SALES";
   const canSeeCostPrice =
-    currentUser?.role === "ADMIN" || currentUser?.role === "WAREHOUSE";
-  const isAdmin = currentUser?.role === "ADMIN";
+    currentUser?.role === "CEO" ||
+    currentUser?.role === "ADMIN";
+  const isAdmin = currentUser?.role === "CEO" || currentUser?.role === "ADMIN";
 
   const debouncedSearch = useDebounce(search, 400);
 

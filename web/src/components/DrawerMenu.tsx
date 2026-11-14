@@ -144,7 +144,10 @@ export default function DrawerMenu({
               Tiện ích nhân sự
             </div>
 
-            {currentUser.role === "MARKETING" && onOpenPushProducts && (
+            {(currentUser.role === "MARKETING" ||
+              currentUser.role === "CEO" ||
+              currentUser.role === "ADMIN") &&
+              onOpenPushProducts && (
               <button
                 type="button"
                 onClick={() => {
@@ -297,7 +300,7 @@ export default function DrawerMenu({
             </button>
           </div>
 
-          {currentUser.role === "ADMIN" && (
+          {(currentUser.role === "ADMIN" || currentUser.role === "CEO") && (
             <div className="space-y-1 pt-2 border-t border-slate-800">
               <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-400">
                 Quản trị hệ thống

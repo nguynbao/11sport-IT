@@ -299,7 +299,7 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
   }, [month, year]);
 
   useEffect(() => {
-    if (currentUser.role !== "ADMIN") {
+    if (currentUser.role !== "ADMIN" && currentUser.role !== "CEO") {
       load();
       loadShiftSchedule();
     }
@@ -331,11 +331,13 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
     return cells;
   }, [data, month, year]);
 
-  if (currentUser.role === "ADMIN") {
+  if (currentUser.role === "ADMIN" || currentUser.role === "CEO") {
     return (
       <div className="max-w-xl mx-auto bg-white rounded-2xl border border-slate-200 p-8 text-center space-y-3">
         <Info className="w-8 h-8 text-slate-400 mx-auto" />
-        <p className="text-sm text-slate-600">Tài khoản Quản trị viên (ADMIN) không cần chấm công.</p>
+        <p className="text-sm text-slate-600">
+          Tài khoản {currentUser.role === "CEO" ? "Giám đốc (CEO)" : "Quản trị viên (ADMIN)"} không cần chấm công.
+        </p>
         <button
           type="button"
           onClick={onBack}

@@ -103,7 +103,7 @@ describe('v2.8 & v3.2: Mã gốc + Mã con theo thuộc tính (variantCode = [Ro
 
     const parseRes = await request(app)
       .post('/api/v1/imports/parse-file')
-      .set('x-user-id', 'warehouse1')
+      .set('x-user-id', 'accountant1')
       .send({
         fileName: 'phieu-nhap-kamito.csv',
         base64Data,
@@ -144,7 +144,7 @@ describe('v2.8 & v3.2: Mã gốc + Mã con theo thuộc tính (variantCode = [Ro
   it('Hoàn thành phiếu nhập nhiều dòng cùng mã AKAMITO146857 nhưng khác Màu/Size -> gộp thành 1 sản phẩm duy nhất với mảng variants[] có variantCode riêng cho từng thuộc tính', async () => {
     const createImp = await request(app)
       .post('/api/v1/imports')
-      .set('x-user-id', 'warehouse1')
+      .set('x-user-id', 'accountant1')
       .send({
         targetWarehouse: 'FLOOR_1',
         defaultCategoryId: aoCatId,
@@ -196,12 +196,12 @@ describe('v2.8 & v3.2: Mã gốc + Mã con theo thuộc tính (variantCode = [Ro
     // Chuyển phiếu sang trạng thái CHECKING để quét kiểm hàng thực tế
     await request(app)
       .post(`/api/v1/imports/${createImp.body.data._id}/finish-listing`)
-      .set('x-user-id', 'warehouse1');
+      .set('x-user-id', 'accountant1');
 
     // Quét kiểm hàng bằng Mã con AKAMITO146857DOL -> khớp chính xác dòng Đỏ - L (scannedQuantity = 1)
     const scanCheckRes = await request(app)
       .post(`/api/v1/imports/${createImp.body.data._id}/scan-check`)
-      .set('x-user-id', 'warehouse1')
+      .set('x-user-id', 'accountant1')
       .send({ barcode: 'AKAMITO146857DOL', actualQuantity: 10 });
     expect(scanCheckRes.status).toBe(200);
     expect(scanCheckRes.body.data.matched).toBe(true);
@@ -212,8 +212,9 @@ describe('v2.8 & v3.2: Mã gốc + Mã con theo thuộc tính (variantCode = [Ro
     // Quét kiểm hàng dòng #2 khi máy khác bật Unikey Tiếng Việt (biến DOXL -> DOÕL do Backspace)
     const scanCheckUnikeyRes = await request(app)
       .post(`/api/v1/imports/${createImp.body.data._id}/scan-check`)
-      .set('x-user-id', 'warehouse1')
+      .set('x-user-id', 'accountant1')
       .send({ barcode: 'AKAMITO146857DOÕL', actualQuantity: 8 });
+    expect(scanCheckUnikeyRes.status).toBe(200);
     expect(scanCheckUnikeyRes.status).toBe(200);
     expect(scanCheckUnikeyRes.body.data.matched).toBe(true);
     expect(scanCheckUnikeyRes.body.data.matchedIndex).toBe(1);
@@ -221,7 +222,7 @@ describe('v2.8 & v3.2: Mã gốc + Mã con theo thuộc tính (variantCode = [Ro
 
     const completeRes = await request(app)
       .post(`/api/v1/imports/${createImp.body.data._id}/complete`)
-      .set('x-user-id', 'warehouse1')
+      .set('x-user-id', 'accountant1')
       .send({});
     expect(completeRes.status).toBe(200);
 

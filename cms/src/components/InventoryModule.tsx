@@ -128,6 +128,13 @@ const COMMON_SIZES = [
 
 function CmsRoleBadge({ role, compact = false }: { role?: string; compact?: boolean }) {
   const r = String(role || "").toUpperCase();
+  if (r === "CEO") {
+    return (
+      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-amber-100 text-amber-800 border border-amber-300 whitespace-nowrap">
+        {compact ? "CEO" : "CEO (Giám đốc)"}
+      </span>
+    );
+  }
   if (r === "ADMIN") {
     return (
       <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-purple-100 text-purple-800 border border-purple-200 whitespace-nowrap">
@@ -135,10 +142,10 @@ function CmsRoleBadge({ role, compact = false }: { role?: string; compact?: bool
       </span>
     );
   }
-  if (r === "WAREHOUSE") {
+  if (r === "ACCOUNTANT") {
     return (
       <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-teal-100 text-teal-800 border border-teal-200 whitespace-nowrap">
-        {compact ? "WAREHOUSE" : "WAREHOUSE (Thủ kho)"}
+        {compact ? "ACCOUNTANT" : "ACCOUNTANT (Kế toán & Kho)"}
       </span>
     );
   }
@@ -307,7 +314,7 @@ export default function InventoryModule() {
   const [savingBatch, setSavingBatch] = useState(false);
   const [detailModalReceipt, setDetailModalReceipt] = useState<any | null>(null);
   const [showRecentImportsSection, setShowRecentImportsSection] = useState(false);
-  const [recentImportRoleFilter, setRecentImportRoleFilter] = useState<"ALL" | "ADMIN" | "WAREHOUSE">("ALL");
+  const [recentImportRoleFilter, setRecentImportRoleFilter] = useState<"ALL" | "ADMIN" | "ACCOUNTANT">("ALL");
 
   const [statusMsg, setStatusMsg] = useState<{
     type: "success" | "error";
@@ -2652,7 +2659,7 @@ export default function InventoryModule() {
                   </h3>
                   <p className="text-[11px] text-slate-500">
                     Lưu vết đầy đủ thông tin Người nhập (<strong className="text-purple-700">ADMIN</strong> hoặc{" "}
-                    <strong className="text-teal-700">WAREHOUSE</strong>), kho nhận, số lượng, giá gốc và giá bán.
+                    <strong className="text-teal-700">ACCOUNTANT</strong>), kho nhận, số lượng, giá gốc và giá bán.
                   </p>
                 </div>
               </div>
@@ -2682,13 +2689,13 @@ export default function InventoryModule() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setRecentImportRoleFilter("WAREHOUSE")}
-                      className={`px-2.5 py-1 rounded-md transition ${recentImportRoleFilter === "WAREHOUSE"
+                      onClick={() => setRecentImportRoleFilter("ACCOUNTANT")}
+                      className={`px-2.5 py-1 rounded-md transition ${recentImportRoleFilter === "ACCOUNTANT"
                         ? "bg-teal-700 text-white"
                         : "text-teal-700 hover:bg-teal-50"
                         }`}
                     >
-                      Warehouse
+                      Kế toán & Kho
                     </button>
                   </div>
                 )}

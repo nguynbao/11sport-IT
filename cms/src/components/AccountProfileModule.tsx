@@ -38,13 +38,13 @@ import ContractFilePreviewModal from "./ContractFilePreviewModal";
 
 function getRoleDisplayName(role?: UserRole): string {
   switch (role) {
+    case "CEO":
+      return "Giám đốc (CEO)";
     case "ADMIN":
       return "Quản lý (ADMIN)";
     case "HR":
       return "Nhân sự (HR)";
     case "ACCOUNTANT":
-      return "Kế toán & Kho (ACCOUNTANT)";
-    case "WAREHOUSE":
       return "Kế toán & Kho (ACCOUNTANT)";
     case "MARKETING":
       return "Marketing (MARKETING)";
@@ -481,11 +481,10 @@ export default function AccountProfileModule({
 
             {profileMsg && (
               <div
-                className={`p-3 rounded-xl text-xs font-medium flex items-start gap-2 border ${
-                  profileMsg.type === "success"
+                className={`p-3 rounded-xl text-xs font-medium flex items-start gap-2 border ${profileMsg.type === "success"
                     ? "bg-emerald-50 border-emerald-200 text-emerald-800"
                     : "bg-red-50 border-red-200 text-red-700"
-                }`}
+                  }`}
               >
                 {profileMsg.type === "success" ? (
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
@@ -793,13 +792,12 @@ export default function AccountProfileModule({
                 </div>
                 <div className="mt-1">
                   <span
-                    className={`inline-block px-2 py-0.5 rounded-md text-xs font-bold ${
-                      contractType === "FULLTIME"
+                    className={`inline-block px-2 py-0.5 rounded-md text-xs font-bold ${contractType === "FULLTIME"
                         ? "bg-emerald-100 text-emerald-800"
                         : contractType === "INTERN"
                           ? "bg-sky-100 text-sky-800"
                           : "bg-amber-100 text-amber-800"
-                    }`}
+                      }`}
                   >
                     {contractLabel}
                   </span>
@@ -975,11 +973,10 @@ export default function AccountProfileModule({
 
             {pwdMsg && (
               <div
-                className={`p-3 rounded-xl text-xs font-medium flex items-start gap-2 border ${
-                  pwdMsg.type === "success"
+                className={`p-3 rounded-xl text-xs font-medium flex items-start gap-2 border ${pwdMsg.type === "success"
                     ? "bg-emerald-50 border-emerald-200 text-emerald-800"
                     : "bg-red-50 border-red-200 text-red-700"
-                }`}
+                  }`}
               >
                 {pwdMsg.type === "success" ? (
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />

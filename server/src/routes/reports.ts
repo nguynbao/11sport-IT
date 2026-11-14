@@ -163,8 +163,8 @@ function parseLocalDateBound(raw: unknown, isEnd: boolean): Date | null {
 // GET /api/v1/reports/staff-activity — Quản lý xem nhân viên nào bán hàng / kiểm kho
 reportsRouter.get('/reports/staff-activity', async (req, res, next) => {
   try {
-    if (!['ADMIN', 'ACCOUNTANT', 'HR'].includes(req.user?.role || '')) {
-      throw new ApiError(403, 'FORBIDDEN', 'Chỉ Quản lý (ADMIN), Kế toán (ACCOUNTANT) hoặc Nhân sự (HR) được xem báo cáo hoạt động nhân viên');
+    if (!['CEO', 'ADMIN', 'HR'].includes(req.user?.role || '')) {
+      throw new ApiError(403, 'FORBIDDEN', 'Chỉ Giám đốc (CEO), Quản lý (ADMIN) hoặc Nhân sự (HR) được xem báo cáo hoạt động nhân viên');
     }
 
     const { from, to, staffId } = req.query;
@@ -1571,11 +1571,11 @@ reportsRouter.get('/reports/revenue-dashboard', async (req, res, next) => {
 // GET /api/v1/reports/push-products — Danh sách Các Sản Phẩm Đang Cần Đẩy Mạnh (Mở cho Marketing quan sát)
 reportsRouter.get('/reports/push-products', async (req, res, next) => {
   try {
-    if (!['MARKETING', 'ADMIN', 'ACCOUNTANT'].includes(req.user?.role || '')) {
+    if (!['CEO', 'MARKETING', 'ADMIN', 'ACCOUNTANT'].includes(req.user?.role || '')) {
       throw new ApiError(
         403,
         'FORBIDDEN',
-        'Chỉ bộ phận Marketing (MARKETING), Quản lý (ADMIN) hoặc Kế toán (ACCOUNTANT) được xem danh sách sản phẩm cần đẩy mạnh'
+        'Chỉ Giám đốc (CEO), bộ phận Marketing (MARKETING), Quản lý (ADMIN) hoặc Kế toán (ACCOUNTANT) được xem danh sách sản phẩm cần đẩy mạnh'
       );
     }
 
