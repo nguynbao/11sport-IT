@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   mongodb:
     image: mongo:7.0
@@ -13,7 +11,8 @@ services:
       - mongodb_data:/data/db
       - mongodb_config:/data/configdb
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      test:
+        ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -22,27 +21,34 @@ services:
       - 11sport-net
 
   server:
-    image: node:20-alpine
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    image: 11sport-server:latest
     container_name: 11sport-server
-    working_dir: /app
     restart: unless-stopped
     ports:
       - "${SERVER_PORT:-4000}:4000"
     environment:
-      NODE_ENV: ${NODE_ENV:-development}
+      NODE_ENV: production
       PORT: 4000
+      TZ: ${TZ:-Asia/Ho_Chi_Minh}
       MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017/11sport}
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
-      CORS_ORIGINS: ${CORS_ORIGINS:-https://11sport-it.vercel.app,https://11sport-it-m1ei.vercel.app,http://localhost:3000,http://localhost:3001}
-    volumes:
-      - ./server:/app
-      - server_node_modules:/app/node_modules
-    command: sh -c "npm install && npm run dev"
+      WEB_URL: ${WEB_URL:-http://localhost:3000}
+      CMS_URL: ${CMS_URL:-http://localhost:3001}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash}
+      ATTENDANCE_REQUIRE_IP: ${ATTENDANCE_REQUIRE_IP:-true}
+      ATTENDANCE_ALLOWED_IPS: ${ATTENDANCE_ALLOWED_IPS:-}
+      ATTENDANCE_ALLOWED_IPS_2: ${ATTENDANCE_ALLOWED_IPS_2:-}
     depends_on:
       mongodb:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:4000/api/v1/categories || exit 1"]
+      test:
+        ["CMD-SHELL", "wget -qO- http://127.0.0.1:4000/api/v1/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -51,65 +57,66 @@ services:
       - 11sport-net
 
   web:
-    image: node:20-alpine
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000/api/v1}
+        NEXT_PUBLIC_WEB_URL: ${WEB_URL:-http://localhost:3000}
+        NEXT_PUBLIC_CMS_URL: ${CMS_URL:-http://localhost:3001}
+        NEXT_PUBLIC_APP_NAME: ${WEB_APP_NAME:-11Sport POS & Kho}
+    image: 11sport-web:latest
     container_name: 11sport-web
-    working_dir: /app
     restart: unless-stopped
     ports:
       - "${WEB_PORT:-3000}:3000"
     environment:
-      NODE_ENV: ${NODE_ENV:-development}
+      NODE_ENV: production
       PORT: 3000
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000/api/v1}
-    volumes:
-      - ./web:/app
-      - web_node_modules:/app/node_modules
-    command: sh -c "npm install && npm run dev -- -p 3000"
     depends_on:
       server:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000 || exit 1"]
       interval: 20s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 25s
     networks:
       - 11sport-net
 
   cms:
-    image: node:20-alpine
+    build:
+      context: ./cms
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000/api/v1}
+        NEXT_PUBLIC_WEB_URL: ${WEB_URL:-http://localhost:3000}
+        NEXT_PUBLIC_CMS_URL: ${CMS_URL:-http://localhost:3001}
+        NEXT_PUBLIC_APP_NAME: ${CMS_APP_NAME:-11Sport CMS}
+    image: 11sport-cms:latest
     container_name: 11sport-cms
-    working_dir: /app
     restart: unless-stopped
     ports:
       - "${CMS_PORT:-3001}:3001"
     environment:
-      NODE_ENV: ${NODE_ENV:-development}
+      NODE_ENV: production
       PORT: 3001
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000/api/v1}
-    volumes:
-      - ./cms:/app
-      - cms_node_modules:/app/node_modules
-    command: sh -c "npm install && npm run dev -- -p 3001"
     depends_on:
       server:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3001 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3001 || exit 1"]
       interval: 20s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 25s
     networks:
       - 11sport-net
 
 volumes:
   mongodb_data:
   mongodb_config:
-  server_node_modules:
-  web_node_modules:
-  cms_node_modules:
 
 networks:
   11sport-net:
