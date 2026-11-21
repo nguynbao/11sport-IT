@@ -2,16 +2,37 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Chỉ đặt trên body (propagate lên viewport) để không làm hỏng position: sticky */
-body {
-  max-width: 100%;
-  overflow-x: hidden;
-}
+@layer base {
+  body {
+    max-width: 100%;
+    overflow-x: hidden;
+    background-color: #f8fafc;
+    color: #0c1b48;
+    font-weight: 500;
+    -webkit-text-size-adjust: 100%;
+  }
 
-body {
-  background-color: #f8fafc;
-  color: #0f172a;
-  -webkit-text-size-adjust: 100%;
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-weight: 800;
+    letter-spacing: -0.01em;
+  }
+
+  th {
+    font-weight: 800;
+  }
+
+  input,
+  select,
+  textarea {
+    font-weight: 600;
+  }
+
+  button {
+    font-weight: 700;
+  }
 }
 
 /* Ảnh/video/canvas không bao giờ vượt quá khung chứa */

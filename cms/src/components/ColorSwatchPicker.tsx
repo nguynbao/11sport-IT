@@ -356,7 +356,7 @@ export function ColorInputWithPicker({
         style={boxBorderStyle}
         className={`flex items-center gap-1 rounded border transition ${
           activeHexes.length === 0
-            ? "border-slate-300 focus-within:border-emerald-600 bg-white"
+            ? "border-slate-300 focus-within:border-teal-600 bg-white"
             : ""
         } ${disabled ? "bg-slate-100 opacity-80" : "bg-white"} ${
           compact ? "px-1.5 py-0.5" : "px-1.5 py-1"

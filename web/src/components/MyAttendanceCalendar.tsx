@@ -51,10 +51,10 @@ const STATUS: Record<
     label: "Đúng giờ",
     short: "Đúng giờ",
     badge: "✓",
-    badgeCls: "bg-emerald-500 text-white",
-    box: "bg-emerald-50 border-emerald-400",
-    dayNum: "text-emerald-700",
-    dot: "bg-emerald-500",
+    badgeCls: "bg-blue-500 text-white",
+    box: "bg-blue-50 border-blue-400",
+    dayNum: "text-blue-700",
+    dot: "bg-blue-500",
   },
   LATE: {
     label: "Đi trễ (T)",
@@ -96,10 +96,10 @@ const STATUS: Record<
     label: "Đang làm",
     short: "Đang làm",
     badge: "●",
-    badgeCls: "bg-sky-500 text-white animate-pulse",
-    box: "bg-sky-50 border-sky-400",
-    dayNum: "text-sky-700",
-    dot: "bg-sky-500",
+    badgeCls: "bg-blue-500 text-white animate-pulse",
+    box: "bg-blue-50 border-blue-400",
+    dayNum: "text-blue-700",
+    dot: "bg-blue-500",
   },
   MISSING_OUT: {
     label: "Quên check-out",
@@ -199,7 +199,7 @@ const LEAVE_TYPE_LABEL: Record<LeaveRequestType, string> = {
 };
 const LEAVE_STATUS: Record<string, { label: string; cls: string }> = {
   PENDING: { label: "Chờ duyệt", cls: "bg-amber-100 text-amber-800" },
-  APPROVED: { label: "Đã duyệt", cls: "bg-emerald-100 text-emerald-800" },
+  APPROVED: { label: "Đã duyệt", cls: "bg-blue-100 text-blue-800" },
   REJECTED: { label: "Từ chối", cls: "bg-rose-100 text-rose-700" },
 };
 
@@ -341,7 +341,7 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
         <button
           type="button"
           onClick={onBack}
-          className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold inline-flex items-center gap-1.5"
+          className="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold inline-flex items-center gap-1.5"
         >
           <ArrowLeft className="w-4 h-4" />
           Quay lại
@@ -357,8 +357,8 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
   return (
     <div className="max-w-[1600px] mx-auto">
       {toast && (
-        <div className="fixed bottom-6 right-6 z-[70] bg-slate-900 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 text-sm font-medium">
-          <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+        <div className="fixed bottom-6 right-6 z-[70] bg-blue-600 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 text-sm font-medium">
+          <CheckCircle2 className="w-5 h-5 text-blue-400" />
           {toast}
         </div>
       )}
@@ -396,7 +396,7 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
               )}
               <div>
                 <h2 className="text-base sm:text-lg font-extrabold text-slate-900 flex items-center gap-2">
-                  <CalendarDays className="w-5 h-5 text-emerald-600" />
+                  <CalendarDays className="w-5 h-5 text-blue-600" />
                   Lịch công của tôi
                 </h2>
                 <p className="text-[11px] text-slate-500">
@@ -420,7 +420,7 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
               <button
                 type="button"
                 onClick={() => setLeaveModal({})}
-                className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-sm"
+                className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-sm"
               >
                 <Send className="w-3.5 h-3.5" />
                 Tạo đơn (Nghỉ / WFH / Trễ / Về sớm)
@@ -470,7 +470,7 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
                 </div>
                 <div className="h-1.5 rounded-full bg-slate-100 mt-1.5 overflow-hidden">
                   <div
-                    className={`h-full ${pct >= 95 ? "bg-emerald-500" : pct >= 80 ? "bg-yellow-400" : "bg-red-500"}`}
+                    className={`h-full ${pct >= 95 ? "bg-blue-500" : pct >= 80 ? "bg-yellow-400" : "bg-red-500"}`}
                     style={{ width: `${pct}%` }}
                   />
                 </div>
@@ -580,7 +580,7 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
             return (
               <div
                 className={`bg-white rounded-2xl border p-3.5 sm:p-4 shadow-sm space-y-3 ${myShiftSchedule.isConfirmedByHr
-                  ? "border-emerald-300 ring-1 ring-emerald-200"
+                  ? "border-blue-300 ring-1 ring-blue-200"
                   : myShiftSchedule.isRegistered
                     ? "border-indigo-200"
                     : "border-amber-200"
@@ -589,12 +589,12 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="text-xs sm:text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
-                      <Clock className="w-4 h-4 text-emerald-600" />
+                      <Clock className="w-4 h-4 text-blue-600" />
                       Lịch làm việc tuần sau ({wsD}/{wsM} – {weD}/{weM}/{weY})
                     </h3>
                     {myShiftSchedule.isConfirmedByHr ? (
-                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-extrabold inline-flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span className="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[11px] font-extrabold inline-flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
                         HR đã xác nhận lịch làm việc
                         {justSawConfirmedSchedule && (
                           <span className="ml-1 px-1.5 py-0.2 rounded-full bg-rose-600 text-white text-[9px] font-black uppercase">
@@ -742,15 +742,15 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
             <div className="flex flex-col gap-1.5 text-[11px] text-slate-700">
               {/* Đúng giờ */}
               <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-slate-200/80">
-                <span className="w-4 h-4 shrink-0 rounded bg-emerald-500 text-white text-[9px] font-black inline-flex items-center justify-center">
+                <span className="w-4 h-4 shrink-0 rounded bg-blue-500 text-white text-[9px] font-black inline-flex items-center justify-center">
                   ✓
                 </span>
                 <span className="font-medium truncate">Đúng giờ</span>
               </div>
 
               {/* Đang làm */}
-              <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-sky-200">
-                <span className="w-4 h-4 shrink-0 rounded bg-sky-500 text-white animate-pulse text-[9px] font-black inline-flex items-center justify-center">
+              <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-blue-200">
+                <span className="w-4 h-4 shrink-0 rounded bg-blue-500 text-white animate-pulse text-[9px] font-black inline-flex items-center justify-center">
                   ●
                 </span>
                 <span className="font-medium truncate">Đang làm</span>
@@ -824,7 +824,7 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
 
               {/* Đi làm lễ (lương x4) */}
               <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-amber-200">
-                <span className="w-4 h-4 shrink-0 rounded bg-emerald-500 text-white ring-2 ring-yellow-400 text-[9px] font-black inline-flex items-center justify-center">
+                <span className="w-4 h-4 shrink-0 rounded bg-blue-500 text-white ring-2 ring-yellow-400 text-[9px] font-black inline-flex items-center justify-center">
                   ★
                 </span>
                 <span className="font-medium truncate">Đi làm lễ (lương x{multiplier})</span>
@@ -1019,7 +1019,7 @@ function DayCell({
           {cell.adjusted && <span className="w-1.5 h-1.5 rounded-full bg-slate-800" title="HR đã điều chỉnh" />}
         </div>
         {cell.isHolidayWork ? (
-          <span className="w-4 h-4 shrink-0 rounded bg-emerald-500 text-white ring-2 ring-yellow-400 text-[9px] font-black inline-flex items-center justify-center">
+          <span className="w-4 h-4 shrink-0 rounded bg-blue-500 text-white ring-2 ring-yellow-400 text-[9px] font-black inline-flex items-center justify-center">
             ★
           </span>
         ) : st.badge ? (
@@ -1278,7 +1278,7 @@ function DayDetailModal({
             <button
               type="button"
               onClick={() => setShowForm(true)}
-              className="w-full py-2.5 rounded-xl border-2 border-dashed border-emerald-300 text-emerald-700 hover:bg-emerald-50 text-xs font-bold flex items-center justify-center gap-1.5"
+              className="w-full py-2.5 rounded-xl border-2 border-dashed border-blue-300 text-blue-700 hover:bg-blue-50 text-xs font-bold flex items-center justify-center gap-1.5"
             >
               <Send className="w-3.5 h-3.5" />
               Gửi đơn cho ngày này
@@ -1298,7 +1298,7 @@ function DayDetailModal({
                       className={`px-2 py-1.5 rounded-lg border text-xs font-semibold ${locked
                         ? "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed line-through"
                         : type === t
-                          ? "bg-emerald-600 border-emerald-600 text-white"
+                          ? "bg-blue-600 border-blue-600 text-white"
                           : "bg-white border-slate-200 text-slate-600"
                         }`}
                     >
@@ -1314,7 +1314,7 @@ function DayDetailModal({
                   value={reason}
                   onChange={(e) => setReason(e.target.value.slice(0, LEAVE_REASON_MAX))}
                   placeholder="Lý do..."
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                 />
                 <span
                   className={`block text-right text-[10px] ${reason.length >= LEAVE_REASON_MAX ? "text-rose-600 font-bold" : "text-slate-400"
@@ -1335,7 +1335,7 @@ function DayDetailModal({
                 <button
                   type="submit"
                   disabled={sending}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg disabled:opacity-50"
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg disabled:opacity-50"
                 >
                   {sending ? "Đang gửi..." : "Gửi đơn"}
                 </button>

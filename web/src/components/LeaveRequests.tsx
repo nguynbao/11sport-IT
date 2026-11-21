@@ -51,7 +51,7 @@ export const LEAVE_TYPE_META: Record<
   OFF: {
     label: "Xin off",
     desc: "Nghỉ cả ngày, không tính công",
-    cls: "bg-sky-100 text-sky-800 border-sky-300",
+    cls: "bg-blue-100 text-blue-800 border-blue-300",
     icon: <CalendarOff className="w-4 h-4" />,
   },
   CHANGE_OFF: {
@@ -82,7 +82,7 @@ export const LEAVE_TYPE_META: Record<
 
 const STATUS_META: Record<string, { label: string; cls: string }> = {
   PENDING: { label: "Chờ duyệt", cls: "bg-amber-100 text-amber-800" },
-  APPROVED: { label: "Đã duyệt", cls: "bg-emerald-100 text-emerald-800" },
+  APPROVED: { label: "Đã duyệt", cls: "bg-blue-100 text-blue-800" },
   REJECTED: { label: "Từ chối", cls: "bg-rose-100 text-rose-700" },
 };
 
@@ -279,7 +279,7 @@ export function LeaveRequestModal({
       <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl shadow-2xl max-h-[92vh] overflow-y-auto">
         <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
           <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-            <FileText className="w-5 h-5 text-emerald-600" />
+            <FileText className="w-5 h-5 text-blue-600" />
             Tạo đơn xin phép
           </h3>
           <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-slate-700">
@@ -302,7 +302,7 @@ export function LeaveRequestModal({
                   className={`p-2.5 rounded-xl border-2 text-left transition ${locked
                     ? "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed opacity-70"
                     : active
-                      ? `${meta.cls} ring-2 ring-offset-1 ring-emerald-500`
+                      ? `${meta.cls} ring-2 ring-offset-1 ring-blue-500`
                       : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
                     }`}
                 >
@@ -400,7 +400,7 @@ export function LeaveRequestModal({
                     setFromDate(e.target.value);
                     if (toDate < e.target.value) setToDate(e.target.value);
                   }}
-                  className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </label>
               {allowRange && (
@@ -412,14 +412,14 @@ export function LeaveRequestModal({
                     min={fromDate}
                     value={toDate}
                     onChange={(e) => setToDate(e.target.value)}
-                    className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </label>
               )}
             </div>
           )}
           {type !== "CHANGE_OFF" && allowRange && dates.length > 1 && (
-            <p className="text-[11px] text-emerald-700 font-semibold">
+            <p className="text-[11px] text-blue-700 font-semibold">
               Sẽ tạo {dates.length} đơn cho {dates.length} ngày làm việc
               {department === "OFFICE" ? " (đã bỏ Chủ nhật)" : ""}.
             </p>
@@ -437,7 +437,7 @@ export function LeaveRequestModal({
               maxLength={LEAVE_REASON_MAX}
               value={reason}
               onChange={(e) => setReason(e.target.value.slice(0, LEAVE_REASON_MAX))}
-              className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+              className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 resize-none"
             />
             <span
               className={`block text-right text-[10px] mt-0.5 ${reason.length >= LEAVE_REASON_MAX ? "text-rose-600 font-bold" : "text-slate-400"
@@ -456,7 +456,7 @@ export function LeaveRequestModal({
             <button
               type="submit"
               disabled={sending}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg disabled:opacity-50 inline-flex items-center gap-1.5"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg disabled:opacity-50 inline-flex items-center gap-1.5"
             >
               <Send className="w-3.5 h-3.5" />
               {sending ? "Đang gửi..." : "Gửi đơn"}
@@ -535,7 +535,7 @@ export function MyLeaveRequestsPanel({
       {/* Tiêu đề + nút tạo đơn */}
       <div className="px-3 py-2.5 border-b border-slate-100 flex items-center justify-between gap-2">
         <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5 min-w-0">
-          <FileText className="w-4 h-4 text-emerald-600 shrink-0" />
+          <FileText className="w-4 h-4 text-blue-600 shrink-0" />
           <span className="truncate">Đơn từ của tôi</span>
           {counts.PENDING > 0 && (
             <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold shrink-0">
@@ -546,7 +546,7 @@ export function MyLeaveRequestsPanel({
         <button
           type="button"
           onClick={onCreate}
-          className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold inline-flex items-center gap-1 shrink-0"
+          className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold inline-flex items-center gap-1 shrink-0"
         >
           <Send className="w-3 h-3" />
           Tạo đơn

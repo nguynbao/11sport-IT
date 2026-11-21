@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import { ApiError } from '../utils/errors';
+import { requireAuth } from '../middleware/auth';
 
 export const wiseRouter = Router();
+wiseRouter.use('/wise', requireAuth);
 
 export interface WiseCurrencyInfo {
   code: string;

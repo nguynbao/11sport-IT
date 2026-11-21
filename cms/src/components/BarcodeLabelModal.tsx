@@ -296,7 +296,10 @@ export default function BarcodeLabelModal({
       const baseCode = String(item.productCode || item.code || "ITEM").trim();
       const rawCode = String(item.code || item.productCode || "ITEM").trim();
       const hasAttr = Boolean((item.color && item.color.trim()) || (item.size && item.size.trim()));
-      const code = hasAttr
+      // v5.0: ưu tiên mã con do server sinh (item.code). Chỉ tự ghép mã (công thức cũ) khi caller
+      // không truyền mã con riêng — tem in đúng nguyên mã, không cắt bớt.
+      const hasExplicitChildCode = Boolean(item.code && item.code.trim() && item.code.trim() !== baseCode);
+      const code = hasAttr && !hasExplicitChildCode
         ? generateVariantProductCode(baseCode, item.color, item.size)
         : rawCode;
       const name = String(item.name || item.productName || "Sản phẩm").trim();
@@ -963,7 +966,7 @@ export default function BarcodeLabelModal({
             </div>
           ) : (
             <div style={{ width: "100%", flexShrink: 0, fontSize: 10.5, fontWeight: 700, color: "#dc2626", lineHeight: 1.05 }}>
-              Chưa nhập giá bán
+              Chưa nhập giá niêm yết
             </div>
           )
         )}
@@ -1268,7 +1271,7 @@ export default function BarcodeLabelModal({
                       onChange={(e) => setShowPrice(e.target.checked)}
                       style={{ width: 15, height: 15, accentColor: "#0284c7" }}
                     />
-                    In giá bán lẻ
+                    In giá niêm yết
                   </label>
                 </div>
 
@@ -1542,7 +1545,7 @@ export default function BarcodeLabelModal({
                               type="text"
                               inputMode="numeric"
                               value={effPrice > 0 ? formatNumberDots(effPrice) : ""}
-                              placeholder="Nhập giá bán..."
+                              placeholder="Nhập giá niêm yết..."
                               onChange={(e) => {
                                 const nextVal = parseNumberDots(e.target.value);
                                 setCustomPrices((prev) => ({

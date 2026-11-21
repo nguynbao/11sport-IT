@@ -34,11 +34,24 @@ export async function ensureStandardProductCodesMigrated(): Promise<void> {
 
   codeMigrationPromise = (async () => {
     try {
-      const [categories, products, receipts] = await Promise.all([
+      const [categories, allProducts, receipts] = await Promise.all([
         categoryRepo.find({}),
         productRepo.find({}),
         importReceiptRepo.find({}),
       ]);
+      // v5.0: KHÔNG đụng tới sản phẩm theo quy chuẩn mã mới (có brandId/versionCode/legacyCode) —
+      // trước đây hàm này ép mọi mã không theo dạng [A-Z][6 số] về mã cũ (lỗi "bắt về mã cũ").
+      const isModern = (p: any) => Boolean(p?.versionCode || p?.brandId || p?.legacyCode);
+      const products = allProducts.filter((p) => !isModern(p));
+      const modernCodes = new Set<string>();
+      for (const p of allProducts as any[]) {
+        if (!isModern(p)) continue;
+        modernCodes.add(normalizeToCompactUpperCode(p.code || ''));
+        for (const v of p.variants || []) modernCodes.add(normalizeToCompactUpperCode(v.variantCode || ''));
+      }
+      const isModernItem = (it: any) =>
+        modernCodes.has(normalizeToCompactUpperCode(it?.productCode || '')) ||
+        allProducts.some((p: any) => isModern(p) && String(p._id) === String(it?.productId || ''));
 
       const catMap = new Map(categories.map((c) => [String(c._id), c]));
       const needsProductMigration = products.some(
@@ -54,9 +67,10 @@ export async function ensureStandardProductCodesMigrated(): Promise<void> {
       const needsReceiptMigration = receipts.some((r) =>
         (r.items || []).some(
           (it: any) =>
-            !isStandardSixDigitProductCode(it.productCode) ||
+            !isModernItem(it) &&
+            (!isStandardSixDigitProductCode(it.productCode) ||
             !it.variantCode ||
-            it.variantCode !== generateVariantProductCode(it.productCode, it.color, it.size)
+            it.variantCode !== generateVariantProductCode(it.productCode, it.color, it.size))
         )
       );
 
@@ -67,7 +81,8 @@ export async function ensureStandardProductCodesMigrated(): Promise<void> {
       const oldToNewCode = new Map<string, string>();
       const usedCodes = new Set<string>();
 
-      // Giữ lại các mã đã đúng chuẩn trước
+      // Giữ lại các mã đã đúng chuẩn trước (kể cả mã mới để không sinh trùng)
+      modernCodes.forEach((c) => c && usedCodes.add(c));
       for (const p of products) {
         if (isStandardSixDigitProductCode(p.code)) {
           usedCodes.add(p.code);
@@ -140,6 +155,7 @@ export async function ensureStandardProductCodesMigrated(): Promise<void> {
         let changed = false;
         const defaultCat = catMap.get(String(rc.defaultCategoryId)) || categories[0];
         const nextItems = (rc.items || []).map((it: any) => {
+          if (isModernItem(it)) return it;
           const itemCat = catMap.get(String(it.categoryId)) || defaultCat;
           const compactOld = normalizeToCompactUpperCode(it.productCode || '');
           const mappedCode =

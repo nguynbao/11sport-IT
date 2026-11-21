@@ -22,6 +22,8 @@ export interface ParsedImportFileRow {
   sellingPrice: number;
   barcode: string;
   note: string;
+  /** v5.0: true nếu file có cột Mã SP hợp lệ (mã do người dùng cung cấp, không phải mã tự sinh) */
+  hasExplicitCode?: boolean;
 }
 
 function decodeXmlEntities(str: string): string {
@@ -512,6 +514,7 @@ export function convertMatrixToImportRows(matrix: string[][]): ParsedImportFileR
       brand: brand || extracted.brand,
       productName: cleanBaseName,
       productCode: finalCode,
+      hasExplicitCode: Boolean(explicitCode && isStandardSixDigitProductCode(explicitCode)),
       variantCode: childVariantCode,
       color: finalColor,
       size: finalSize,

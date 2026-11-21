@@ -1,5 +1,34 @@
 import { WarehouseFloor, IProductVariant } from '../models/Product';
-import { buildVariantKey, generateVariantProductCode } from './productCode';
+import {
+  buildVariantKey,
+  generateVariantProductCode,
+  buildVariantSku,
+  isLegacyProductCode,
+  isNewSchemeProduct,
+  normalizeToCompactUpperCode,
+  suggestColorCode,
+} from './productCode';
+
+export interface NormalizeVariantOptions {
+  /**
+   * true  = sản phẩm theo quy chuẩn mới (Mã con = Mã gốc + ColorCode + SizeCode)
+   * false = sản phẩm legacy ([Mã gốc][MÀU VIẾT LIỀN][SIZE])
+   * Mặc định: suy ra từ baseCode (mã không theo định dạng cũ [A-Z]{2,}[0-9]{6} => mới).
+   */
+  newScheme?: boolean;
+}
+
+function cleanMoney(raw: any): number | undefined {
+  if (raw === undefined || raw === null || raw === '') return undefined;
+  const n = Math.round(Number(raw));
+  if (isNaN(n) || n < 0) return undefined;
+  return n;
+}
+
+/** Xác định quy chuẩn mã của 1 sản phẩm để truyền vào normalizeVariants */
+export function variantOptionsForProduct(product: any): NormalizeVariantOptions {
+  return { newScheme: isNewSchemeProduct(product) };
+}
 
 export function normalizeFloor(val?: any): WarehouseFloor {
   return String(val || '').toUpperCase() === 'FLOOR_2' ? 'FLOOR_2' : 'FLOOR_1';
@@ -33,11 +62,42 @@ export function sanitizeColorHexes(rawHexes?: any): string[] {
  * Tự động gắn Mã con (variantCode / barcode) theo thuộc tính (Màu, Size) từ baseCode (Mã gốc)
  * và đồng bộ colorHexes giữa các biến thể cùng tên màu.
  */
-export function normalizeVariants(rawVariants?: any[], baseCode?: string): IProductVariant[] {
+export function normalizeVariants(
+  rawVariants?: any[],
+  baseCode?: string,
+  opts?: NormalizeVariantOptions
+): IProductVariant[] {
   if (!Array.isArray(rawVariants) || rawVariants.length === 0) return [];
   const map = new Map<string, IProductVariant>();
   const cleanBaseCode = String(baseCode || '').trim();
   const colorHexByColorKey = new Map<string, string[]>();
+  const newScheme =
+    opts?.newScheme ?? (cleanBaseCode ? !isLegacyProductCode(cleanBaseCode) : false);
+
+  // v5.0: ColorCode thống nhất theo màu trong 1 sản phẩm (1 màu <-> 1 colorCode)
+  const colorCodeByColorKey = new Map<string, string>();
+  const usedColorCodes = new Set<string>();
+  for (const raw of rawVariants) {
+    if (!raw || typeof raw !== 'object') continue;
+    const cc = normalizeToCompactUpperCode(String(raw.colorCode || ''));
+    const ck = normalizeToCompactUpperCode(String(raw.color || ''));
+    if (cc && ck && !colorCodeByColorKey.has(ck)) {
+      colorCodeByColorKey.set(ck, cc);
+      usedColorCodes.add(cc);
+    }
+  }
+  const resolveColorCode = (color: string, rawCode: any): string => {
+    const ck = normalizeToCompactUpperCode(color);
+    if (!ck) return '';
+    const explicit = normalizeToCompactUpperCode(String(rawCode || ''));
+    if (colorCodeByColorKey.has(ck)) return colorCodeByColorKey.get(ck)!;
+    if (explicit) return explicit;
+    if (!newScheme) return '';
+    const suggested = suggestColorCode(color, usedColorCodes);
+    colorCodeByColorKey.set(ck, suggested);
+    usedColorCodes.add(suggested);
+    return suggested;
+  };
 
   for (const raw of rawVariants) {
     if (!raw || typeof raw !== 'object') continue;
@@ -54,9 +114,18 @@ export function normalizeVariants(rawVariants?: any[], baseCode?: string): IProd
     const explicitStock = raw.stock !== undefined ? Math.max(0, Math.round(Number(raw.stock) || 0)) : f1 + f2;
     const finalF1 = f1 === 0 && f2 === 0 && explicitStock > 0 ? explicitStock : f1;
     const finalF2 = f2;
+    const colorCode = resolveColorCode(color, raw.colorCode);
     const computedVariantCode = cleanBaseCode
-      ? generateVariantProductCode(cleanBaseCode, color, size)
+      ? newScheme
+        ? buildVariantSku(cleanBaseCode, colorCode, size)
+        : generateVariantProductCode(cleanBaseCode, color, size)
       : String(raw.variantCode || raw.barcode || '').trim();
+    const vSelling = cleanMoney(raw.sellingPrice);
+    const vCost = cleanMoney(raw.costPrice);
+    const legacyVariantCode = String(raw.legacyVariantCode || '').trim().toUpperCase();
+    const legacyVariantCodes: string[] = Array.isArray(raw.legacyVariantCodes)
+      ? raw.legacyVariantCodes.map((c: any) => String(c || '').trim().toUpperCase()).filter(Boolean)
+      : [];
     const existing = map.get(variantKey);
 
     if (existing) {
@@ -70,8 +139,16 @@ export function normalizeVariants(rawVariants?: any[], baseCode?: string): IProd
       if (colorHexes.length > 0) {
         existing.colorHexes = colorHexes;
       }
+      if (!existing.sellingPrice && vSelling) existing.sellingPrice = vSelling;
+      if (!existing.costPrice && vCost) existing.costPrice = vCost;
+      if (!existing.legacyVariantCode && legacyVariantCode) existing.legacyVariantCode = legacyVariantCode;
+      if (legacyVariantCodes.length > 0) {
+        existing.legacyVariantCodes = Array.from(
+          new Set([...(existing.legacyVariantCodes || []), ...legacyVariantCodes])
+        );
+      }
     } else {
-      map.set(variantKey, {
+      const record: IProductVariant = {
         variantKey,
         color,
         colorHexes,
@@ -81,7 +158,13 @@ export function normalizeVariants(rawVariants?: any[], baseCode?: string): IProd
         stockFloor1: finalF1,
         stockFloor2: finalF2,
         stock: finalF1 + finalF2,
-      });
+      };
+      if (colorCode) record.colorCode = colorCode;
+      if (vSelling !== undefined) record.sellingPrice = vSelling;
+      if (vCost !== undefined) record.costPrice = vCost;
+      if (legacyVariantCode) record.legacyVariantCode = legacyVariantCode;
+      if (legacyVariantCodes.length > 0) record.legacyVariantCodes = legacyVariantCodes;
+      map.set(variantKey, record);
     }
   }
 
@@ -102,14 +185,15 @@ export function normalizeVariants(rawVariants?: any[], baseCode?: string): IProd
  */
 export function summarizeVariants(
   rawVariants?: any[],
-  baseCode?: string
+  baseCode?: string,
+  opts?: NormalizeVariantOptions
 ): {
   variants: IProductVariant[];
   stockFloor1: number;
   stockFloor2: number;
   stock: number;
 } {
-  const variants = normalizeVariants(rawVariants, baseCode);
+  const variants = normalizeVariants(rawVariants, baseCode, opts);
   const stockFloor1 = variants.reduce((sum, v) => sum + v.stockFloor1, 0);
   const stockFloor2 = variants.reduce((sum, v) => sum + v.stockFloor2, 0);
   return {
@@ -131,7 +215,7 @@ export function getFloorStocks(product: any): {
   variants: IProductVariant[];
 } {
   const baseCode = String(product?.code || '').trim();
-  const variants = normalizeVariants(product?.variants, baseCode);
+  const variants = normalizeVariants(product?.variants, baseCode, variantOptionsForProduct(product));
   if (variants.length > 0) {
     const f1 = variants.reduce((s, v) => s + v.stockFloor1, 0);
     const f2 = variants.reduce((s, v) => s + v.stockFloor2, 0);
@@ -221,7 +305,8 @@ export function applyFloorDelta(
   delta: number,
   color?: string,
   size?: string,
-  colorHexes?: string[]
+  colorHexes?: string[],
+  colorCode?: string
 ): {
   stockFloor1: number;
   stockFloor2: number;
@@ -262,9 +347,31 @@ export function applyFloorDelta(
       ? buildVariantKey(cleanColor, cleanSize)
       : variants[0]?.variantKey || 'DEFAULT';
 
+    const newScheme = isNewSchemeProduct(product);
     let targetVariant = variants.find((v) => v.variantKey === targetKey);
     if (!targetVariant) {
-      const childCode = baseCode ? generateVariantProductCode(baseCode, cleanColor, cleanSize) : '';
+      // Mã con tính lại theo đúng quy chuẩn ở bước summarizeVariants bên dưới
+      const explicitCC = colorCode && cleanColor ? String(colorCode).trim().toUpperCase() : '';
+      const existingSameColor = cleanColor
+        ? variants.find(
+            (v) =>
+              v.colorCode &&
+              normalizeToCompactUpperCode(String(v.color || '')) ===
+                normalizeToCompactUpperCode(cleanColor)
+          )
+        : undefined;
+      const usedCC = new Set(
+        variants.map((v) => String(v.colorCode || '').toUpperCase()).filter(Boolean)
+      );
+      const resolvedCC =
+        newScheme && cleanColor
+          ? explicitCC || existingSameColor?.colorCode || suggestColorCode(cleanColor, usedCC)
+          : '';
+      const childCode = baseCode
+        ? newScheme
+          ? buildVariantSku(baseCode, resolvedCC, cleanSize)
+          : generateVariantProductCode(baseCode, cleanColor, cleanSize)
+        : '';
       targetVariant = {
         variantKey: targetKey,
         color: cleanColor,
@@ -276,6 +383,7 @@ export function applyFloorDelta(
         stockFloor2: 0,
         stock: 0,
       };
+      if (resolvedCC) targetVariant.colorCode = resolvedCC;
       variants.push(targetVariant);
     } else if (cleanHexes.length > 0) {
       targetVariant.colorHexes = cleanHexes;
@@ -298,7 +406,7 @@ export function applyFloorDelta(
     }
     targetVariant.stock = targetVariant.stockFloor1 + targetVariant.stockFloor2;
 
-    const summary = summarizeVariants(variants, baseCode);
+    const summary = summarizeVariants(variants, baseCode, variantOptionsForProduct(product));
     return {
       stockFloor1: summary.stockFloor1,
       stockFloor2: summary.stockFloor2,
@@ -371,7 +479,7 @@ export function deductStockForSale(
       }
     }
 
-    const summary = summarizeVariants(variants, baseCode);
+    const summary = summarizeVariants(variants, baseCode, variantOptionsForProduct(product));
     return {
       stockFloor1: summary.stockFloor1,
       stockFloor2: summary.stockFloor2,

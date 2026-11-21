@@ -159,7 +159,7 @@ export default function OrdersReturnsModule({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
-              <ShoppingBag className="w-5 h-5 text-emerald-600" />
+              <ShoppingBag className="w-5 h-5 text-teal-600" />
               Quản lý Toàn bộ Đơn hàng POS, Bản Nháp & Xuất Hóa Đơn PDF
             </h3>
             <p className="text-xs text-slate-500">
@@ -228,7 +228,7 @@ export default function OrdersReturnsModule({
         {actionMsg && (
           <div
             className={`p-3 rounded-lg text-xs font-semibold border ${actionMsg.type === "success"
-              ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+              ? "bg-teal-50 border-teal-200 text-teal-800"
               : "bg-red-50 border-red-200 text-red-700"
               }`}
           >
@@ -239,7 +239,7 @@ export default function OrdersReturnsModule({
         {/* Bảng Đơn hàng */}
         <div className="overflow-x-auto border border-slate-200 rounded-xl">
           <table className="w-full text-xs text-left">
-            <thead className="bg-slate-900 text-white uppercase">
+            <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 uppercase">
               <tr>
                 <th className="py-3 px-3">Mã Đơn</th>
                 <th className="py-3 px-3">Khách hàng (SĐT)</th>
@@ -301,7 +301,7 @@ export default function OrdersReturnsModule({
                         </div>
                       )}
                       {ord.debtStatus === "SETTLED" && Number(ord.initialDebtAmount || 0) > 0 && (
-                        <div className="mt-1 inline-block px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-bold">
+                        <div className="mt-1 inline-block px-2 py-0.5 rounded bg-teal-100 text-teal-800 border border-teal-300 text-[10px] font-bold">
                           Đã tất toán nợ
                         </div>
                       )}
@@ -312,7 +312,7 @@ export default function OrdersReturnsModule({
                         <span>{ord.createdByName || ord.soldByName || "-"}</span>
                       </div>
                       {ord.status !== "DRAFT" ? (
-                        <div className="text-[11px] text-emerald-700">
+                        <div className="text-[11px] text-teal-700">
                           <span className="text-[10px] text-slate-400">Chốt: </span>
                           <span>{ord.confirmedByName || ord.createdByName || "-"}</span>
                         </div>
@@ -331,7 +331,7 @@ export default function OrdersReturnsModule({
                     <td className="py-3 px-3 text-right font-mono text-amber-700">
                       {formatVND(ord.cardFee)}
                     </td>
-                    <td className="py-3 px-3 text-right font-mono font-extrabold text-emerald-700">
+                    <td className="py-3 px-3 text-right font-mono font-extrabold text-teal-700">
                       {formatVND(ord.totalAmount)}
                     </td>
                     <td className="py-3 px-3 text-center">
@@ -339,7 +339,7 @@ export default function OrdersReturnsModule({
                         className={`px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap ${ord.status === "DRAFT"
                           ? "bg-indigo-100 text-indigo-800 border border-indigo-300"
                           : ord.status === "PAID"
-                            ? "bg-emerald-100 text-emerald-800"
+                            ? "bg-teal-100 text-teal-800"
                             : ord.status === "PARTIALLY_RETURNED"
                               ? "bg-amber-100 text-amber-800"
                               : "bg-red-100 text-red-700"
@@ -355,7 +355,7 @@ export default function OrdersReturnsModule({
                             <button
                               type="button"
                               onClick={() => handleConfirmDraft(ord)}
-                              className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold inline-flex items-center gap-1"
+                              className="px-2.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold inline-flex items-center gap-1"
                               title="Chốt thanh toán & trừ kho Tầng 1"
                             >
                               <CheckCircle2 className="w-3.5 h-3.5" /> Chốt đơn
@@ -373,7 +373,7 @@ export default function OrdersReturnsModule({
                         <button
                           type="button"
                           onClick={() => onOpenInvoice(ord)}
-                          className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold inline-flex items-center gap-1"
+                          className="px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold inline-flex items-center gap-1"
                         >
                           <Printer className="w-3.5 h-3.5" /> PDF (K80/A4)
                         </button>
@@ -398,7 +398,7 @@ export default function OrdersReturnsModule({
         </div>
         <div className="overflow-x-auto border border-slate-200 rounded-xl">
           <table className="w-full text-xs text-left">
-            <thead className="bg-slate-900 text-white uppercase">
+            <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 uppercase">
               <tr>
                 <th className="py-3 px-3">Mã Phiếu</th>
                 <th className="py-3 px-3">Đơn hàng gốc</th>
@@ -417,14 +417,14 @@ export default function OrdersReturnsModule({
                   <td className="py-3 px-3 font-mono font-bold">
                     {r.returnCode || r.code}
                   </td>
-                  <td className="py-3 px-3 font-mono font-semibold text-blue-700">
+                  <td className="py-3 px-3 font-mono font-semibold text-teal-700">
                     {r.orderCode}
                   </td>
                   <td className="py-3 px-3 font-bold">{r.type}</td>
                   <td className="py-3 px-3 text-right font-mono">
                     <div>{formatVND(r.returnTotal)}</div>
                     {Number(r.refundedCardFee) > 0 && (
-                      <div className="text-[10px] text-emerald-700 font-sans font-semibold">
+                      <div className="text-[10px] text-teal-700 font-sans font-semibold">
                         (gồm phí thẻ {formatVND(Number(r.refundedCardFee))})
                       </div>
                     )}
@@ -443,7 +443,7 @@ export default function OrdersReturnsModule({
                     {r.netDifference < 0 && Number(r.debtReduction) > 0 && (
                       <div className="text-[10px] font-sans font-semibold text-purple-700 mt-0.5 space-y-0.5">
                         <div>• Cấn trừ nợ: -{formatVND(Number(r.debtReduction))}</div>
-                        <div className="text-emerald-700">
+                        <div className="text-teal-700">
                           • Thực hoàn tiền: {formatVND(Number(r.cashRefund ?? 0))}
                         </div>
                       </div>

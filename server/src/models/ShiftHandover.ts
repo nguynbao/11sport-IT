@@ -2,6 +2,8 @@ import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IHandoverDiscrepancy {
   productCode: string;
+  /** v5.0: mã cũ trước chuẩn hoá */
+  legacyCode?: string;
   productName?: string;
   categoryName?: string;
   expected: number;
@@ -73,6 +75,7 @@ const ShiftHandoverSchema = new Schema<IShiftHandover>(
     discrepancies: [
       {
         productCode: { type: String, required: true },
+        legacyCode: { type: String },
         productName: { type: String, default: '' },
         categoryName: { type: String, default: '' },
         expected: { type: Number, required: true },

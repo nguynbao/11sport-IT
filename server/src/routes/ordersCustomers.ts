@@ -26,7 +26,7 @@ import {
   formatProductWithVariant,
 } from '../utils/warehouseFloor';
 import { executeUnpackSetToRetail } from '../utils/unpackSet';
-import { buildVariantKey } from '../utils/productCode';
+import { buildVariantKey, resolveVariantPricing } from '../utils/productCode';
 import { filterAndRankBySearch, normalizePhoneDigits } from '../utils/search';
 import { withOrderLock } from '../utils/orderLock';
 
@@ -160,24 +160,47 @@ export function getOrderEffectiveShiftAndDate(order: any): {
   return { shiftDate, shiftCode };
 }
 
+export const SALES_MAX_BILL_CHECK_DAYS = 3;
+
+export function getSalesAllowedBillDates(
+  ref: Date | string = new Date(),
+  maxDays: number = SALES_MAX_BILL_CHECK_DAYS
+): string[] {
+  let baseDate: Date;
+  if (typeof ref === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(ref.trim())) {
+    const [y, m, d] = ref.trim().split('-').map(Number);
+    baseDate = new Date(y, m - 1, d, 12, 0, 0, 0);
+  } else if (ref instanceof Date && !isNaN(ref.getTime())) {
+    baseDate = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate(), 12, 0, 0, 0);
+  } else {
+    const now = new Date();
+    baseDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0, 0);
+  }
+
+  const dates: string[] = [];
+  const count = Math.max(1, Math.min(30, Math.floor(maxDays)));
+  for (let i = 0; i < count; i++) {
+    const dt = new Date(baseDate);
+    dt.setDate(baseDate.getDate() - i);
+    dates.push(toLocalDateStr(dt));
+  }
+  return dates;
+}
+
 /**
- * Kiểm tra đơn hàng có thuộc đúng ca làm việc hiện tại trong ngày hôm nay của nhân viên Sales hay không:
- * 1. Qua ngày mới (shiftDate !== todayStr): KHÔNG được xem đơn cũ.
- * 2. Trong cùng ngày hôm nay (shiftDate === todayStr): chỉ được xem đơn thuộc đúng ca làm việc đó
- *    (SHIFT_1 chỉ xem SHIFT_1, SHIFT_2 chỉ xem SHIFT_2, BOTH xem được đơn trong ngày, OFF không xem được).
+ * Kiểm tra đơn hàng có thuộc phạm vi ngày cho phép kiểm tra Bill của nhân viên Sales hay không:
+ * 1. Bỏ ràng buộc theo ca: Sales được xem toàn bộ bill trong ngày của mọi ca (SHIFT_1, SHIFT_2, BOTH), kể cả khi lịch OFF.
+ * 2. Giới hạn tối đa 3 ngày gần nhất (Hôm nay, Hôm qua, Hôm kia). Đơn cũ quá 3 ngày không được xem.
  */
 export function isOrderInSalesCurrentShift(
   order: any,
-  staffShift: 'SHIFT_1' | 'SHIFT_2' | 'BOTH' | 'OFF',
-  todayStr: string
+  _staffShift?: 'SHIFT_1' | 'SHIFT_2' | 'BOTH' | 'OFF',
+  todayStr: string = toLocalDateStr(new Date()),
+  maxDays: number = SALES_MAX_BILL_CHECK_DAYS
 ): boolean {
-  if (staffShift === 'OFF') return false;
-  const { shiftDate, shiftCode } = getOrderEffectiveShiftAndDate(order);
-  if (shiftDate !== todayStr) return false;
-  if (staffShift === 'BOTH') return true;
-  if (staffShift === 'SHIFT_1') return shiftCode === 'SHIFT_1';
-  if (staffShift === 'SHIFT_2') return shiftCode === 'SHIFT_2';
-  return false;
+  const { shiftDate } = getOrderEffectiveShiftAndDate(order);
+  const allowedDates = getSalesAllowedBillDates(todayStr, maxDays);
+  return allowedDates.includes(shiftDate);
 }
 
 function computeShiftOrdersSummary(orders: any[]) {
@@ -299,23 +322,9 @@ ordersCustomersRouter.get('/customers/lookup', async (req, res, next) => {
       }
     }
 
-    // Bảo mật theo ca & ngày đối với nhân viên SALES:
-    // Chỉ trả về các đơn hàng thuộc đúng ca làm việc hiện tại của ngày hôm nay (không lộ đơn của ca khác hoặc ngày cũ)
-    const now = new Date();
-    const todayStr = toLocalDateStr(now);
-    const isSales = isSalesOnlyUser(req.user);
-    const staffShift = isSales
-      ? await resolveStaffShiftForDate(req.user, todayStr, now)
-      : 'BOTH';
-
-    const orders = isSales
-      ? allCustomerOrders.filter((o) => isOrderInSalesCurrentShift(o, staffShift, todayStr))
-      : allCustomerOrders;
-
-    const visibleOrderIdSet = new Set(orders.map((o) => String(o._id)));
-    const returns = isSales
-      ? allCustomerReturns.filter((r) => visibleOrderIdSet.has(String(r.orderId)))
-      : allCustomerReturns;
+    // Tra cứu lịch sử khách hàng: trả về toàn bộ đơn hàng và phiếu trả/đổi (không giới hạn ca hay số ngày).
+    const orders = allCustomerOrders;
+    const returns = allCustomerReturns;
 
     res.json({
       data: {
@@ -335,14 +344,6 @@ ordersCustomersRouter.get('/customers/lookup', async (req, res, next) => {
         totalDebtAmount,
         unpaidOrdersCount,
         overdueOrdersCount,
-        ...(isSales
-          ? {
-              shiftRestricted: true,
-              shiftDate: todayStr,
-              shiftCode: staffShift,
-              shiftLabel: getShiftDisplayLabel(staffShift),
-            }
-          : {}),
       },
     });
   } catch (err) {
@@ -372,26 +373,43 @@ ordersCustomersRouter.get('/customers', async (req, res, next) => {
   }
 });
 
-// GET /api/v1/orders/current-shift — Xem Bill bán hàng trong ca làm việc hiện tại của ngày hôm nay
+// GET /api/v1/orders/current-shift — Tra cứu Bill bán hàng theo ngày hoặc toàn bộ lịch sử (không giới hạn ca hay số ngày)
 ordersCustomersRouter.get('/orders/current-shift', async (req, res, next) => {
   try {
-    const { search, status, paymentMethod, shiftCode: queryShiftCode } = req.query;
+    const {
+      search,
+      status,
+      paymentMethod,
+      shiftCode: queryShiftCode,
+      date: queryDate,
+    } = req.query;
     const now = new Date();
     const todayStr = toLocalDateStr(now);
-    const isSales = isSalesOnlyUser(req.user);
+
+    const rawDate = String(queryDate || '').trim();
+    const isAllDates =
+      !rawDate ||
+      rawDate.toUpperCase() === 'ALL' ||
+      rawDate.toUpperCase() === '3DAYS';
+
+    if (!isAllDates) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+        throw new ApiError(400, 'INVALID_DATE', 'Định dạng ngày lọc không hợp lệ (YYYY-MM-DD)');
+      }
+    }
 
     const staffShift = await resolveStaffShiftForDate(req.user, todayStr, now);
     const allOrders = await orderRepo.find({}, { createdAt: -1 });
+    const qShift = String(queryShiftCode || '').trim().toUpperCase();
 
-    // 1. Lọc danh sách đơn thuộc ca hiện tại trong ngày hôm nay (tuyệt đối không lấy đơn ngày cũ hoặc ca khác cho Sales)
+    // 1. Lọc danh sách đơn theo ngày (nếu chọn) hoặc toàn bộ ngày (khi chọn ALL), không giới hạn ca hay số ngày
     const shiftOrders = allOrders
       .filter((o) => {
-        if (isSales) {
-          return isOrderInSalesCurrentShift(o, staffShift, todayStr);
-        }
         const eff = getOrderEffectiveShiftAndDate(o);
-        if (eff.shiftDate !== todayStr) return false;
-        const qShift = String(queryShiftCode || '').trim().toUpperCase();
+        if (!isAllDates && eff.shiftDate !== rawDate) {
+          return false;
+        }
+
         if (qShift === 'SHIFT_1' || qShift === 'SHIFT_2') {
           return eff.shiftCode === qShift;
         }
@@ -408,7 +426,7 @@ ordersCustomersRouter.get('/orders/current-shift', async (req, res, next) => {
 
     const summary = computeShiftOrdersSummary(shiftOrders);
 
-    // 2. Áp dụng bộ lọc phụ (status, paymentMethod, search) trên các đơn của ca
+    // 2. Áp dụng bộ lọc phụ (status, paymentMethod, search)
     const subFiltered = shiftOrders.filter((o) => {
       if (status && String(status).toUpperCase() !== 'ALL') {
         if (o.status !== String(status).toUpperCase()) return false;
@@ -437,21 +455,30 @@ ordersCustomersRouter.get('/orders/current-shift', async (req, res, next) => {
         ])
       : subFiltered;
 
-    const effectiveShiftForMeta = isSales
-      ? staffShift
-      : String(queryShiftCode || '').toUpperCase() === 'SHIFT_1'
+    const effectiveShiftForMeta: 'SHIFT_1' | 'SHIFT_2' | 'BOTH' =
+      qShift === 'SHIFT_1'
         ? 'SHIFT_1'
-        : String(queryShiftCode || '').toUpperCase() === 'SHIFT_2'
+        : qShift === 'SHIFT_2'
           ? 'SHIFT_2'
           : 'BOTH';
+
+    const effectiveShiftLabel =
+      effectiveShiftForMeta === 'SHIFT_1'
+        ? getShiftDisplayLabel('SHIFT_1')
+        : effectiveShiftForMeta === 'SHIFT_2'
+          ? getShiftDisplayLabel('SHIFT_2')
+          : 'Cả ngày (Mọi ca)';
 
     res.json({
       data: filtered,
       meta: {
         total: filtered.length,
-        date: todayStr,
+        date: !isAllDates ? rawDate : todayStr,
+        dateFilter: !isAllDates ? rawDate : 'ALL',
+        maxDate: todayStr,
+        staffShift,
         shiftCode: effectiveShiftForMeta,
-        shiftLabel: getShiftDisplayLabel(effectiveShiftForMeta),
+        shiftLabel: effectiveShiftLabel,
         summary,
       },
     });
@@ -471,38 +498,19 @@ ordersCustomersRouter.get('/orders', async (req, res, next) => {
       debtStatus,
       date: queryDate,
       shiftCode: queryShiftCode,
-      forReturn,
     } = req.query;
     const allOrders = await orderRepo.find({}, { createdAt: -1 });
     const normFilterPhone = phone ? normalizePhoneDigits(String(phone)) : '';
     const now = new Date();
     const nowMs = now.getTime();
-    const todayStr = toLocalDateStr(now);
-    const isSales = isSalesOnlyUser(req.user);
-    const staffShift = isSales
-      ? await resolveStaffShiftForDate(req.user, todayStr, now)
-      : 'BOTH';
-
-    // Ngoại lệ duy nhất cho Sales: khi tra cứu ở mục 4. Trả / Đổi hàng (forReturn=true kèm từ khóa cụ thể >= 2 ký tự)
-    const isReturnLookupWithQuery =
-      String(forReturn || '').toLowerCase() === 'true' &&
-      (String(search || '').trim().length >= 2 || String(phone || '').trim().length >= 3);
 
     const baseFiltered = allOrders.filter((o) => {
-      if (isSales && !isReturnLookupWithQuery) {
-        if (!isOrderInSalesCurrentShift(o, staffShift, todayStr)) {
-          return false;
-        }
+      const eff = getOrderEffectiveShiftAndDate(o);
+      if (typeof queryDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(queryDate.trim())) {
+        if (eff.shiftDate !== queryDate.trim()) return false;
       }
-
-      if (!isSales) {
-        const eff = getOrderEffectiveShiftAndDate(o);
-        if (typeof queryDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(queryDate.trim())) {
-          if (eff.shiftDate !== queryDate.trim()) return false;
-        }
-        if (typeof queryShiftCode === 'string' && queryShiftCode.trim() && queryShiftCode !== 'ALL') {
-          if (eff.shiftCode !== queryShiftCode.trim().toUpperCase()) return false;
-        }
+      if (typeof queryShiftCode === 'string' && queryShiftCode.trim() && queryShiftCode !== 'ALL') {
+        if (eff.shiftCode !== queryShiftCode.trim().toUpperCase()) return false;
       }
 
       if (phone) {
@@ -561,13 +569,6 @@ ordersCustomersRouter.get('/orders', async (req, res, next) => {
       data: filtered,
       meta: {
         total: filtered.length,
-        ...(isSales
-          ? {
-              shiftDate: todayStr,
-              shiftCode: staffShift,
-              shiftLabel: getShiftDisplayLabel(staffShift),
-            }
-          : {}),
       },
     });
   } catch (err) {
@@ -608,20 +609,6 @@ ordersCustomersRouter.get('/orders/:id', async (req, res, next) => {
 
     if (!order) {
       throw new ApiError(404, 'ORDER_NOT_FOUND', 'Không tìm thấy đơn hàng');
-    }
-
-    const isForReturn = String(req.query.forReturn || '').toLowerCase() === 'true';
-    if (isSalesOnlyUser(req.user) && !isForReturn) {
-      const now = new Date();
-      const todayStr = toLocalDateStr(now);
-      const staffShift = await resolveStaffShiftForDate(req.user, todayStr, now);
-      if (!isOrderInSalesCurrentShift(order, staffShift, todayStr)) {
-        throw new ApiError(
-          403,
-          'ORDER_SHIFT_RESTRICTED',
-          'Nhân viên Sales chỉ được xem đơn hàng trong ca làm việc hiện tại của ngày hôm nay (không được xem đơn của ca khác hoặc ngày cũ).'
-        );
-      }
     }
 
     const returns = await returnExchangeRepo.find({ orderId: order._id }, { createdAt: -1 });
@@ -731,8 +718,11 @@ async function prepareOrderData(body: any, isDraft: boolean) {
     const rawItemDiscType = String(rawItem.discountType || 'NONE').toUpperCase();
     const isGift = Boolean(rawItem.isGift) || rawItemDiscType === 'GIFT';
 
+    // v5.0 (R8): giá hiệu lực theo biến thể (màu + size), fallback giá sản phẩm gốc
+    const variantPricing = resolveVariantPricing(product, itemColor, itemSize);
+
     // BR-04: Chặn bán sản phẩm có sellingPrice <= 0 (trừ khi chọn làm hàng tặng)
-    if (!isGift && (!product.sellingPrice || product.sellingPrice <= 0)) {
+    if (!isGift && variantPricing.sellingPrice <= 0) {
       throw new ApiError(
         400,
         'PRODUCT_PRICE_NOT_SET',
@@ -749,8 +739,8 @@ async function prepareOrderData(body: any, isDraft: boolean) {
     const totalRequestedForVariant = (requestedQtyByVariant.get(variantKey) || 0) + qty;
     requestedQtyByVariant.set(variantKey, totalRequestedForVariant);
 
-    const originalUnitPrice = Math.round(Number(product.sellingPrice) || 0);
-    const unitCost = Math.max(0, Math.round(Number(product.costPrice) || 0));
+    const originalUnitPrice = variantPricing.sellingPrice;
+    const unitCost = variantPricing.costPrice;
 
     if (isGift) {
       orderItems.push({

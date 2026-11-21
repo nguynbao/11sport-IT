@@ -146,7 +146,7 @@ Hệ thống phục vụ cửa hàng **11Sport** quản lý toàn bộ vòng đ�
   - **Quy tắc hiển thị & Phân quyền nghiêm ngặt phía Server cho tài khoản `SALES`**:
     - **Không được xem đơn cũ qua ngày mới**: Khi sang ngày mới (`shiftDate !== todayStr`), nhân viên `SALES` không thể xem lại bất kỳ bill/đơn hàng nào của các ngày trước đó tại mục **Xem Bill trong ca** và **Tra cứu Khách hàng**.
     - **Không được xem đơn của ca khác**: Trong cùng ngày hôm nay (`shiftDate === todayStr`), nhân viên `SALES` thuộc Ca 1 (`SHIFT_1`) chỉ xem được các đơn thuộc `SHIFT_1`; nhân viên thuộc Ca 2 (`SHIFT_2`) chỉ xem được các đơn thuộc `SHIFT_2`; nhân viên làm cả 2 ca (`BOTH`) xem được các đơn trong ngày hôm nay; nhân viên nghỉ (`OFF`) không xem được đơn nào.
-    - **Ngoại lệ cho mục `4. Trả / Đổi hàng`**: Nhân viên `SALES` vẫn được phép tra cứu đơn gốc theo Mã đơn (`GET /api/v1/orders/by-code/:code` hoặc `GET /api/v1/orders?search=...&forReturn=true`) để xử lý nghiệp vụ đổi/trả hàng cho khách.
+    - **Ngoại lệ cho mục `4. Trả / Đổi hàng`**: Nhân viên `SALES` vẫn được phép tra cứu đơn gốc theo Mã đơn (`GET /api/v1/orders/by-code/:code` hoặc `GET /api/v1/orders?search=...&forReturn=true`) để xử lý nghiệp vụ đổi hàng cho khách.
     - **Tài khoản Quản lý (`CEO`, `ADMIN`, `ACCOUNTANT`, `HR`)**: Giữ nguyên toàn quyền xem toàn bộ đơn hàng của mọi ca và mọi ngày.
   - **Giao diện Xem Bill trong ca ngay tại Tab `1. Bán hàng (POS)` (`PosTab.tsx`)**:
     - Bổ sung khu vực / cửa sổ **"Bill bán trong ca"** ngay trên màn hình Bán hàng POS giúp nhân viên Sales xem danh sách đơn bán hàng trong ca hiện tại, lọc theo phương thức thanh toán / tìm mã đơn / SĐT khách, xem chi tiết mặt hàng và bấm **In lại Bill PDF (K80/A4)** nhanh tại quầy; tự động làm mới khi sang ngày mới (`00:00`).

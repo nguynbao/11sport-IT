@@ -2,9 +2,81 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  background-color: #f8fafc;
-  color: #0f172a;
+@layer base {
+  body {
+    background-color: #f8fafc;
+    color: #0f172a;
+    font-weight: 500;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-weight: 800;
+    letter-spacing: -0.01em;
+  }
+
+  th {
+    font-weight: 800;
+  }
+
+  input,
+  select,
+  textarea {
+    font-weight: 600;
+  }
+
+  button {
+    font-weight: 700;
+  }
+}
+
+@keyframes chartGrowY {
+  from {
+    transform: scaleY(0);
+    opacity: 0.4;
+  }
+  to {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+@keyframes chartGrowX {
+  from {
+    transform: scaleX(0);
+    opacity: 0.4;
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
+@keyframes chartRevealX {
+  from {
+    clip-path: inset(0 100% 0 0);
+    opacity: 0.4;
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+}
+
+.animate-chart-grow-y {
+  transform-origin: bottom;
+  animation: chartGrowY 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-chart-grow-x {
+  transform-origin: left;
+  animation: chartGrowX 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-chart-reveal-x {
+  animation: chartRevealX 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @media print {

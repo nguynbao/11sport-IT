@@ -229,9 +229,9 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
     <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
       <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-fade-in">
         {/* Header */}
-        <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+        <div className="bg-blue-600 text-white px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <Clock className="w-5 h-5 text-emerald-400" />
+            <Clock className="w-5 h-5 text-blue-400" />
             <div>
               <h3 className="font-extrabold text-base">Chấm Công & Ca Làm Việc</h3>
               <p className="text-xs text-slate-400">{officeName}</p>
@@ -248,12 +248,12 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
             <div
               className={`p-3.5 rounded-2xl border font-semibold flex items-center gap-2 ${
                 statusMsg.type === "success"
-                  ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                  ? "bg-blue-50 border-blue-200 text-blue-800"
                   : "bg-rose-50 border-rose-200 text-rose-800"
               }`}
             >
               {statusMsg.type === "success" ? (
-                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-blue-600" />
               ) : (
                 <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
               )}
@@ -285,7 +285,7 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
                         <span className="font-bold text-slate-900">{p.name}</span>{" "}
                         <span className="font-mono text-slate-500">({p.code})</span>
                       </div>
-                      <div className="font-mono font-bold text-emerald-700 shrink-0">
+                      <div className="font-mono font-bold text-blue-700 shrink-0">
                         Tồn T1: {p.stockQtyFloor1} {p.unit || "cây"}
                       </div>
                     </div>
@@ -296,7 +296,7 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
               <div className="flex gap-2 pt-1">
                 <button
                   onClick={() => handleConfirmIncomingHandover(true)}
-                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-xs transition cursor-pointer"
+                  className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-xs transition cursor-pointer"
                 >
                   ✓ Đã kiểm hàng & Đồng ý nhận ca
                 </button>
@@ -335,7 +335,7 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
           <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center gap-2.5">
             <Wifi
               className={`w-4 h-4 shrink-0 ${
-                isWfhToday || isCurrentIpAllowed ? "text-emerald-600" : "text-rose-500"
+                isWfhToday || isCurrentIpAllowed ? "text-blue-600" : "text-rose-500"
               }`}
             />
             <div>
@@ -358,7 +358,7 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
                   onClick={() => setSelectedShift("SHIFT_1")}
                   className={`p-3 rounded-2xl border font-bold text-left transition ${
                     selectedShift === "SHIFT_1"
-                      ? "bg-emerald-50 border-emerald-600 text-emerald-950 shadow-xs"
+                      ? "bg-blue-50 border-blue-600 text-blue-950 shadow-xs"
                       : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
                   }`}
                 >
@@ -371,7 +371,7 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
                   onClick={() => setSelectedShift("SHIFT_2")}
                   className={`p-3 rounded-2xl border font-bold text-left transition ${
                     selectedShift === "SHIFT_2"
-                      ? "bg-emerald-50 border-emerald-600 text-emerald-950 shadow-xs"
+                      ? "bg-blue-50 border-blue-600 text-blue-950 shadow-xs"
                       : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
                   }`}
                 >
@@ -384,7 +384,7 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
                   onClick={() => setSelectedShift("BOTH")}
                   className={`p-3 rounded-2xl border font-bold text-left transition ${
                     selectedShift === "BOTH"
-                      ? "bg-emerald-50 border-emerald-600 text-emerald-950 shadow-xs"
+                      ? "bg-blue-50 border-blue-600 text-blue-950 shadow-xs"
                       : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
                   }`}
                 >
@@ -397,13 +397,13 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
 
           {/* Trạng thái đã Check-in */}
           {attendance && (
-            <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl space-y-2">
+            <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-2xl space-y-2">
               <div className="flex items-center justify-between">
-                <span className="font-bold text-emerald-900 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <span className="font-bold text-blue-900 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-blue-600" />
                   Đã Check-in vào ca
                 </span>
-                <span className="font-mono font-bold text-emerald-800">
+                <span className="font-mono font-bold text-blue-800">
                   {new Date(attendance.checkInTime).toLocaleTimeString("vi-VN", {
                     hour: "2-digit",
                     minute: "2-digit",
@@ -454,7 +454,7 @@ export default function AttendanceModal({ currentUser, onClose }: Props) {
                 type="button"
                 onClick={handleCheckIn}
                 disabled={actionLoading}
-                className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-2xl font-bold text-sm shadow-xl transition flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-2xl font-bold text-sm shadow-xl transition flex items-center justify-center gap-2 cursor-pointer"
               >
                 <LogIn className="w-5 h-5" />
                 {actionLoading ? "Đang xác thực mạng Wi-Fi..." : "BẤM CHECK-IN VÀO CA"}

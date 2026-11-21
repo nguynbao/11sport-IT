@@ -222,11 +222,11 @@ export default function HeaderAttendanceBar({ currentUser, onOpenMyAttendance }:
 
   return (
     <div className="relative flex items-center justify-center">
-      <div className="flex items-center gap-2 bg-slate-800/95 border border-slate-700 px-3 py-1.5 rounded-2xl shadow-inner">
+      <div className="flex items-center gap-2 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-2xl shadow-2xs text-slate-800">
         {isWfhToday && (
           <span
             title="Hôm nay được duyệt làm việc từ xa (WFH)"
-            className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-purple-500/20 border border-purple-400/30 text-purple-300 text-[11px] font-bold"
+            className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-purple-100 border border-purple-200 text-purple-700 text-[11px] font-bold"
           >
             <Home className="w-3 h-3" />
             WFH
@@ -240,7 +240,7 @@ export default function HeaderAttendanceBar({ currentUser, onOpenMyAttendance }:
             onClick={handlePlayCheckIn}
             disabled={actionLoading}
             title="Bấm Play để bắt đầu tính giờ chấm công"
-            className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-extrabold text-xs flex items-center gap-2 shadow-md transition cursor-pointer"
+            className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white font-extrabold text-xs flex items-center gap-2 shadow-xs transition cursor-pointer"
           >
             <Play className="w-3.5 h-3.5 fill-current" />
             <span className="font-mono text-sm tracking-wider">00:00:00</span>
@@ -255,7 +255,7 @@ export default function HeaderAttendanceBar({ currentUser, onOpenMyAttendance }:
               onClick={() => handlePauseCheckOut(false)}
               disabled={actionLoading}
               title="Bấm Pause để kết thúc ca (Check-out)"
-              className="p-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-extrabold text-xs flex items-center justify-center shadow-md transition cursor-pointer"
+              className="p-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-extrabold text-xs flex items-center justify-center shadow-xs transition cursor-pointer"
             >
               <Pause className="w-3.5 h-3.5 fill-current" />
             </button>
@@ -263,10 +263,10 @@ export default function HeaderAttendanceBar({ currentUser, onOpenMyAttendance }:
             <div className="flex items-center gap-2 px-1.5 py-0.5">
               <span
                 className={`w-2 h-2 rounded-full ${
-                  isLunchPaused ? "bg-amber-400" : "bg-emerald-400 animate-pulse"
+                  isLunchPaused ? "bg-amber-500" : "bg-teal-600 animate-pulse"
                 }`}
               />
-              <span className="font-mono font-black text-sm sm:text-base text-emerald-400 tracking-wider">
+              <span className="font-mono font-black text-sm sm:text-base text-teal-600 tracking-wider">
                 {elapsedText}
               </span>
             </div>
@@ -276,16 +276,16 @@ export default function HeaderAttendanceBar({ currentUser, onOpenMyAttendance }:
         {/* Đã Check-out hoàn tất trong ngày: Chỉ hiện icon hoàn tất + Đồng hồ tổng giờ */}
         {isCompleted && (
           <div className="flex items-center gap-2 px-2 py-0.5 text-xs">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span className="font-mono font-black text-sm sm:text-base text-emerald-300 tracking-wider">
+            <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0" />
+            <span className="font-mono font-black text-sm sm:text-base text-teal-700 tracking-wider">
               {elapsedText}
             </span>
           </div>
         )}
 
         {loading && (
-          <div className="flex items-center gap-1.5 px-2 py-1 text-xs text-slate-400 font-mono">
-            <Clock className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+          <div className="flex items-center gap-1.5 px-2 py-1 text-xs text-slate-500 font-mono">
+            <Clock className="w-3.5 h-3.5 animate-spin text-teal-600" />
             <span>--:--:--</span>
           </div>
         )}
@@ -295,9 +295,9 @@ export default function HeaderAttendanceBar({ currentUser, onOpenMyAttendance }:
             type="button"
             onClick={onOpenMyAttendance}
             title="Xem lịch chấm công cá nhân & gửi đơn từ"
-            className="ml-1 px-2.5 py-1 rounded-xl bg-slate-700/80 hover:bg-slate-600 text-emerald-300 hover:text-white border border-slate-600 text-[11px] font-bold inline-flex items-center gap-1.5 transition cursor-pointer"
+            className="ml-1 px-2.5 py-1 rounded-xl bg-slate-700/80 hover:bg-slate-600 text-teal-300 hover:text-white border border-slate-600 text-[11px] font-bold inline-flex items-center gap-1.5 transition cursor-pointer"
           >
-            <CalendarDays className="w-3.5 h-3.5 text-emerald-400" />
+            <CalendarDays className="w-3.5 h-3.5 text-teal-400" />
             <span className="hidden md:inline">Lịch chấm công</span>
           </button>
         )}
@@ -307,12 +307,12 @@ export default function HeaderAttendanceBar({ currentUser, onOpenMyAttendance }:
         <div
           className={`absolute top-full mt-1.5 z-50 whitespace-nowrap px-3 py-1.5 rounded-xl text-xs font-bold shadow-lg flex items-center gap-1.5 border ${
             feedback.type === "ok"
-              ? "bg-emerald-950/95 text-emerald-300 border-emerald-700"
+              ? "bg-teal-950/95 text-teal-300 border-teal-700"
               : "bg-rose-950/95 text-rose-300 border-rose-700"
           }`}
         >
           {feedback.type === "ok" ? (
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <CheckCircle2 className="w-3.5 h-3.5 text-teal-400 shrink-0" />
           ) : (
             <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
           )}

@@ -505,9 +505,9 @@ shiftsRouter.post('/shifts/my-schedule/seen', async (req, res, next) => {
     const unseen = allAssign.filter(
       (a: any) => String(a.staffId) === String(user.userId) && a.assignedBy === 'HR' && !a.seenByStaff
     );
-    for (const a of unseen) {
-      await shiftAssignmentRepo.updateById(a._id, { seenByStaff: true });
-    }
+    await Promise.all(
+      unseen.map((a) => shiftAssignmentRepo.updateById(a._id, { seenByStaff: true }))
+    );
 
     res.json({
       data: { markedSeen: unseen.length, markedCount: unseen.length },

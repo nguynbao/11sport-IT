@@ -1,4 +1,6 @@
-# Hợp đồng API (API Contract) - 11 Sport (v1.0)
+# Hợp đồng API (API Contract) - 11 Sport (v5.0)
+
+> **v5.0 (2026-11-17)**: Chuẩn hoá mã sản phẩm `CATE + BRAND + VERSION + MÀU + SIZE`, danh mục Thương hiệu (`/brands`), giá theo biến thể, `POST /products/preview-code`, `GET /products/lookup`. Xem **mục 2.19**.
 
 > Mọi thay đổi chạm API giữa `server/`, `web/`, và `cms/` bắt buộc phải cập nhật tài liệu này TRƯỚC khi code.
 
@@ -55,11 +57,12 @@
     - Nếu không truyền (VD `ADMIN` tạo nhanh), server mặc định **`PROBATION` (Thử việc)** — không còn mặc định Chính thức.
     - **Thử việc tối đa 2 tháng (`probationMonths`: `0 | 1 | 2`, mặc định `2` tháng cho `PROBATION`, có thể ký chính thức sau `1` tháng)**: Mỗi tháng thử việc tích lũy **1 ngày phép có lương**. Khi chuyển từ `PROBATION` lên `FULLTIME` (`PATCH /api/v1/staff/:id`), nhân viên được cộng số ngày phép tương đương với số tháng thử việc (`1` hoặc `2` ngày) vào quỹ phép chính thức, và mỗi tháng chính thức có thêm **1 ngày phép** (được để dành & cộng dồn). Riêng trường `recordedLeaveDays` (`Số ngày nghỉ` từ file Excel HR) chỉ lưu theo dõi trên hồ sơ nhân sự, không thay đổi công thức tự tính phép chấm công.
 - `PATCH /api/v1/staff/:id` — Cập nhật thông tin nhân sự & phân quyền:
-  - `HR` được chỉnh sửa toàn bộ thông tin hồ sơ nhân sự (bao gồm các trường cá nhân, học vấn, STK, vị trí `positionTitle`, số hợp đồng `internContractNumber` / `probationContractNumber` / `officialContractNumber`, thời gian đóng BHXH `bhxhStartDate` / `bhxhEndDate`, `recordedLeaveDays`, tải lên/thay thế/xóa file hợp đồng, `password`, `baseSalary`, `allowance`, `bonus`, `insurance`) và đổi `role` giữa `SALES | HR | ACCOUNTANT | MARKETING`, nhưng **không được phép** nâng quyền user thành `ADMIN` hoặc chỉnh sửa tài khoản `ADMIN` (`403 FORBIDDEN`), và **không được phép** khóa/mở khóa tài khoản (`status`).
+  - `CEO` (quyền cao nhất): Được toàn quyền cập nhật hồ sơ nhân sự, lương/phụ cấp/thưởng/bảo hiểm, cấp/đổi mọi `role` (kể cả `CEO` và `ADMIN`), đổi mật khẩu (`password`) và khóa/mở khóa (`status: "ACTIVE" | "LOCKED"`) cho mọi tài khoản.
+  - `HR`: Được chỉnh sửa toàn bộ thông tin hồ sơ nhân sự & lương/đãi ngộ cho **mọi tài khoản (kể cả `ADMIN` và `CEO`)**; được đổi `role` giữa `SALES | HR | ACCOUNTANT | MARKETING`, đổi mật khẩu và khóa/mở khóa đối với nhân sự thường, nhưng **không được phép** khóa/mở khóa tài khoản `ADMIN` và `CEO`, **không được phép** đổi mật khẩu của `ADMIN` và `CEO`, và **không được phép** thay đổi `role` của `ADMIN` / `CEO` hoặc nâng quyền lên `ADMIN` / `CEO` (`403 FORBIDDEN`).
+  - `ADMIN`: Được phép đổi mật khẩu, khóa/mở khóa tài khoản (`status: "ACTIVE" | "LOCKED"`) và cấp `role` (tới `ADMIN`) cho các tài khoản không phải `CEO`, nhưng **không được phép** đổi mật khẩu, khóa/mở khóa hoặc sửa `role` của tài khoản `CEO` (`403 FORBIDDEN`).
   - **Phân quyền tự cập nhật Hồ sơ cá nhân của Nhân viên**:
     - Nhân viên được phép **xem đầy đủ** toàn bộ hồ sơ của chính mình và **tự chỉnh sửa** nhóm thông tin cá nhân & ngân hàng: `fullName`, `phone`, `email`, `companyEmail`, `dateOfBirth`, `gender`, `nationality`, `citizenId`, `citizenIssueDate`, `citizenIssuePlace`, `permanentAddress`, `currentAddress` (`address`), `school`, `major`, `bankAccount`.
-    - Các trường quản trị nhân sự & chế độ đãi ngộ (`positionTitle`, `contractType`, `contractStartDate`, `contractEndDate`, `internContractNumber`, `probationContractNumber`, `officialContractNumber`, `bhxhStartDate`, `bhxhEndDate`, `recordedLeaveDays`, `baseSalary`, `allowance`, `bonus`, `insurance`, `contractFileUrl`, `contractFileName`) **chỉ `HR` được sửa** (`403 FORBIDDEN` nếu nhân viên tự gửi yêu cầu sửa; trong đó 4 trường lương/bảo hiểm `baseSalary`, `allowance`, `bonus`, `insurance` chỉ duy nhất `role === "HR"` được sửa).
-  - `ADMIN` được phép cấp mọi `role` (bao gồm `ADMIN`) và khóa/mở khóa tài khoản (`status: "ACTIVE" | "LOCKED"`).
+    - Các trường quản trị nhân sự & chế độ đãi ngộ (`positionTitle`, `contractType`, `contractStartDate`, `contractEndDate`, `internContractNumber`, `probationContractNumber`, `officialContractNumber`, `bhxhStartDate`, `bhxhEndDate`, `recordedLeaveDays`, `baseSalary`, `allowance`, `bonus`, `insurance`, `contractFileUrl`, `contractFileName`) **chỉ `HR` và `CEO` được sửa** (`403 FORBIDDEN` nếu nhân viên tự gửi yêu cầu sửa).
 
 ### 2.2 Danh mục - Category (`/categories`)
 - `GET /api/v1/categories`
@@ -243,23 +246,29 @@
 ### 2.5 Bán hàng POS & Khách hàng (`/orders`, `/customers`)
 - `GET /api/v1/customers/lookup?phone=...`
   - Tra cứu khách hàng theo SĐT (tự động chuẩn hóa khoảng trắng, dấu chấm/gạch và đầu số `+84`/`84` về `0`), trả về thông tin khách hàng (`customer`, `debtSummary`) và lịch sử đơn hàng + phiếu trả/đổi.
-  - *(v4.2)* **Giới hạn theo ca & ngày đối với nhân viên `SALES`**: Khi người gọi là `SALES` (không phải `CEO`/`ADMIN`/`ACCOUNTANT`/`HR`), danh sách `orders` và `returns` trả về trong `/customers/lookup` chỉ bao gồm các đơn hàng thuộc **đúng ca làm việc hiện tại trong ngày hôm nay** (`shiftDate === today` và khớp `shiftCode` của nhân viên). Đơn của ca khác hoặc từ ngày hôm trước trở về trước bị ẩn hoàn toàn.
+  - *(Cập nhật v4.3)* **Phân quyền kiểm tra bill trong ngày (bỏ ràng buộc theo ca, tối đa 3 ngày) đối với nhân viên `SALES`**: Khi người gọi là `SALES` (không phải `CEO`/`ADMIN`/`ACCOUNTANT`/`HR`), danh sách `orders` và `returns` trả về trong `/customers/lookup` bao gồm toàn bộ các đơn hàng trong ngày của **mọi ca (`SHIFT_1`, `SHIFT_2`, `BOTH`)** trong phạm vi **tối đa 3 ngày gần nhất** (`today`, `today - 1`, `today - 2`). Đơn cũ hơn 3 ngày bị ẩn.
 - `GET /api/v1/customers` — Danh sách khách hàng (hỗ trợ `?search=...` tìm thông minh theo SĐT chuẩn hóa hoặc tên tiếng Việt không dấu/đa từ khóa, sắp xếp theo độ liên quan).
-- `GET /api/v1/orders/current-shift` *(v4.2 — Xem Bill bán hàng trong ca hiện tại)*
-  - Query: `?search=...&status=PAID|DRAFT|PARTIALLY_RETURNED|FULLY_RETURNED&paymentMethod=CASH|BANKING|CARD|OTHER`
+- `GET /api/v1/orders/current-shift` *(Cập nhật v4.3 — Kiểm tra Bill bán hàng trong ngày, bỏ ràng buộc theo ca, tối đa 3 ngày cho Sales)*
+  - Query: `?date=YYYY-MM-DD|ALL&shiftCode=ALL|SHIFT_1|SHIFT_2&search=...&status=PAID|DRAFT|PARTIALLY_RETURNED|FULLY_RETURNED&paymentMethod=CASH|BANKING|CARD|OTHER`
   - Nghiệp vụ & Phân quyền:
-    - Xác định ngày hiện tại `todayStr` (`YYYY-MM-DD` theo giờ local của server) và ca làm việc hiện tại của nhân viên (`staffShift`: ưu tiên lấy từ bản ghi chấm công `Attendance` hôm nay -> lịch phân ca `ShiftAssignment` hôm nay -> khung giờ thực tế `SHIFT_1` trước `17:30`, `SHIFT_2` từ `17:30` trở đi).
-    - **Với nhân viên `SALES`**: Chỉ trả về các đơn hàng có `shiftDate === todayStr` VÀ thuộc đúng ca làm việc của nhân viên đó (`SHIFT_1` chỉ thấy đơn `SHIFT_1`, `SHIFT_2` chỉ thấy đơn `SHIFT_2`, `BOTH` thấy đơn trong ngày hôm nay, `OFF` trả về danh sách rỗng `[]`). Tuyệt đối không trả về đơn của ca khác hoặc đơn của ngày cũ (`shiftDate < todayStr`).
-    - **Với `CEO` / `ADMIN` / `ACCOUNTANT` / `HR`**: Xem được toàn bộ đơn bán trong ngày hôm nay (có thể truyền thêm `?shiftCode=SHIFT_1|SHIFT_2` để lọc theo ca).
+    - Xác định ngày hiện tại `todayStr` (`YYYY-MM-DD` theo giờ local của server) và danh sách 3 ngày cho phép `allowedDates = [todayStr, yesterdayStr, twoDaysAgoStr]` (`maxDays = 3`).
+    - **Với nhân viên `SALES`**:
+      - **Bỏ ràng buộc theo ca**: Xem được toàn bộ đơn hàng trong ngày của cả Ca 1 (`SHIFT_1`), Ca 2 (`SHIFT_2`) và Cả ngày (`BOTH`), kể cả khi nhân viên đang ở ca khác hoặc lịch nghỉ (`OFF`). Có thể chủ động lọc theo `?shiftCode=SHIFT_1|SHIFT_2` nếu cần.
+      - **Giới hạn tối đa 3 ngày gần nhất**: Chỉ được phép kiểm tra bill thuộc `allowedDates` (tối đa 3 ngày tính đến hiện tại). Nếu truyền `?date=YYYY-MM-DD` nằm ngoài 3 ngày gần nhất sẽ trả lỗi `403 ORDER_SHIFT_RESTRICTED`. Khi truyền `?date=YYYY-MM-DD` hợp lệ sẽ lọc bill của đúng ngày đó; khi truyền `?date=ALL` hoặc không truyền `date` sẽ trả về bill trong phạm vi cho phép (mặc định lọc theo ngày được chọn hoặc phạm vi 3 ngày).
+    - **Với `CEO` / `ADMIN` / `ACCOUNTANT` / `HR`**: Xem được đơn bán của ngày bất kỳ (mặc định hôm nay hoặc theo `?date=...`) và lọc theo `?shiftCode=SHIFT_1|SHIFT_2`.
   - Response:
     ```json
     {
       "data": [Order],
       "meta": {
         "total": 5,
-        "date": "2026-11-16",
-        "shiftCode": "SHIFT_1",
-        "shiftLabel": "Ca 1 (08:30 - 17:30)",
+        "date": "2026-11-18",
+        "allowedDates": ["2026-11-18", "2026-11-17", "2026-11-16"],
+        "minDate": "2026-11-16",
+        "maxDate": "2026-11-18",
+        "maxDays": 3,
+        "shiftCode": "BOTH",
+        "shiftLabel": "Cả ngày (Mọi ca)",
         "summary": {
           "paidOrdersCount": 4,
           "draftOrdersCount": 1,
@@ -273,10 +282,10 @@
     }
     ```
 - `GET /api/v1/orders` — Danh sách đơn hàng (lọc theo `search`, `phone`, `status`, `paymentMethod`, `shiftCode`, `date`, `forReturn`; `search` hỗ trợ tìm không dấu/đa từ khóa trên mã đơn, tên/SĐT khách, mã/tên sản phẩm trong đơn, nhân viên bán, ghi chú).
-  - *(v4.2)* **Phân quyền xem đơn theo ca & ngày đối với `SALES`**:
-    - Mặc định (khi không truyền `forReturn=true`), tài khoản `SALES` gọi `GET /api/v1/orders` chỉ nhận được các đơn hàng thuộc **đúng ca làm việc hiện tại của ngày hôm nay** (`shiftDate === todayStr` và khớp `shiftCode`). Qua 00:00 sang ngày mới, toàn bộ đơn hàng của ngày cũ (kể cả đơn nháp hay đơn đã thanh toán) đều không hiển thị cho `SALES`.
-    - Khi truyền `forReturn=true` kèm từ khóa tra cứu (`search` hoặc `phone` từ 2 ký tự trở lên, dùng riêng tại tab **4. Trả / Đổi hàng**), hệ thống cho phép `SALES` tìm đơn gốc để phục vụ đổi/trả hàng cho khách.
-- `GET /api/v1/orders/:id` — Chi tiết đơn hàng (với `SALES`, chỉ cho phép xem đơn trong ca hiện tại của ngày hôm nay trừ khi truyền `?forReturn=true`; vi phạm trả `403 ORDER_SHIFT_RESTRICTED`). Tra cứu theo mã đơn cho nghiệp vụ đổi/trả qua `GET /api/v1/orders/by-code/:code`.
+  - *(Cập nhật v4.3)* **Phân quyền xem đơn trong ngày (tối đa 3 ngày, bỏ ràng buộc ca) đối với `SALES`**:
+    - Mặc định (khi không truyền `forReturn=true`), tài khoản `SALES` gọi `GET /api/v1/orders` nhận được toàn bộ đơn hàng trong ngày (mọi ca `SHIFT_1`, `SHIFT_2`, `BOTH`) trong phạm vi **tối đa 3 ngày gần nhất** (`allowedDates`). Có thể lọc theo `?date=YYYY-MM-DD` (nằm trong 3 ngày gần nhất; nếu truyền ngày cũ hơn 3 ngày sẽ trả `403 ORDER_SHIFT_RESTRICTED`) và `?shiftCode=SHIFT_1|SHIFT_2`.
+    - Khi truyền `forReturn=true` kèm từ khóa tra cứu (`search` hoặc `phone` từ 2 ký tự trở lên, dùng riêng tại tab **Trả / Đổi hàng**), hệ thống cho phép `SALES` tìm đơn gốc (kể cả đơn cũ hơn 3 ngày) để phục vụ đổi hàng cho khách.
+- `GET /api/v1/orders/:id` — Chi tiết đơn hàng (với `SALES`, cho phép xem mọi đơn hàng trong ngày của mọi ca trong phạm vi tối đa **3 ngày gần nhất** trừ khi truyền `?forReturn=true`; đơn cũ hơn 3 ngày trả `403 ORDER_SHIFT_RESTRICTED`). Tra cứu theo mã đơn cho nghiệp vụ đổi qua `GET /api/v1/orders/by-code/:code`.
 - `POST /api/v1/orders` *(Cập nhật v2.2 — Chỉ bán tồn Kho Tầng 1 + Giảm giá Sản phẩm, Tặng hàng 0đ & Giảm giá Bill)*
   - Body:
     ```json
@@ -425,25 +434,34 @@
     ```
   - Nguồn dữ liệu: đơn hàng (`createdBy`), phiếu trả/đổi (`performedBy`), phiếu nhập (`createdBy`, `completedBy`, `items[].scanCounts`), sổ kho loại `ADJUSTMENT` (`performedBy`). Thao tác không gắn được với nhân viên nào được gom vào dòng "Không xác định" (`staffId = ""`).
 
-### 2.8 Dashboard Doanh thu chi tiết & Phân tích Sản phẩm (`/reports/revenue-dashboard`) *(v2.3 & v4.1)*
+### 2.8 Dashboard Doanh thu chi tiết & Phân tích Sản phẩm (`/reports/revenue-dashboard`) *(v2.3, v4.1 & v4.4)*
 - `GET /api/v1/reports/revenue-dashboard?from=YYYY-MM-DD&to=YYYY-MM-DD&categoryId=...&paymentMethod=...`
   - Chỉ role `CEO` (Giám đốc), `ADMIN` (Quản lý) hoặc `ACCOUNTANT` (Kế toán) → role khác `403 FORBIDDEN`.
   - Trả về:
     - `summary`:
-      - Doanh thu & giảm giá: `grossRevenue` (tổng giá gốc × SL không tính quà), `itemDiscountTotal` (giảm giá SP), `billDiscountTotal` (giảm giá Bill), `totalDiscount`, `orderRevenue` (**tiền hàng bán sau giảm SP & giảm Bill `S - B`, KHÔNG gồm phí quẹt thẻ**).
+      - Doanh thu & giảm giá: `grossRevenue` (tổng giá niêm yết × SL không tính quà + tổng giá gốc dịch vụ), `itemDiscountTotal` (giảm giá SP + dòng dịch vụ), `billDiscountTotal` (giảm giá Bill bán hàng + phiếu dịch vụ), `totalDiscount`, `orderRevenue` (**tổng tiền hàng bán + tiền dịch vụ sau giảm SP & giảm Bill `S - B`, KHÔNG gồm phí quẹt thẻ**), kèm tách riêng `productOrderRevenue`, `productNetRevenue` và `serviceRevenue`.
       - Trả/đổi hàng: `returnGoodsTotal` (tổng tiền hàng trả đã phân bổ giảm Bill), `exchangeGoodsTotal` (tổng tiền hàng xuất đổi), `returnTotal`, `exchangeTotal`, `netReturnImpact`, `netReturnRefund`, `returnFromPriorPeriods` (phần `returnGoodsTotal` của phiếu trong kỳ nhưng thuộc đơn gốc tạo trước đầu kỳ `from`).
-      - **Doanh thu thuần (`netRevenue`)**: `orderRevenue - returnGoodsTotal + exchangeGoodsTotal` (**KHÔNG gồm phí quẹt thẻ**).
-      - **Phí quẹt thẻ hiển thị riêng**: `cardFeeCollected` (phí thẻ thu từ đơn trong kỳ), `cardFeeRefunded` (phí thẻ hoàn lại trên phiếu trả trong kỳ), `cardFeeNet = cardFeeCollected - cardFeeRefunded` (kèm `cardFeeTotal = cardFeeNet` để tương thích ngược). Khi lọc `categoryId`, các trường `cardFee* = 0`.
-      - **Giá vốn & Lãi gộp**: `estimatedCogs` (tính từ `unitCost` lưu lúc bán/trả/đổi; dòng trả chỉ đảo giá vốn khi `condition === "GOOD"` / `restocked`; nếu có dòng đơn/phiếu cũ thiếu `unitCost` phải fallback `product.costPrice` hiện tại thì `cogsEstimated = true`), `cogsEstimated` (`boolean`), `grossProfit = netRevenue - estimatedCogs`, `grossMarginPercent`.
-      - **Thực thu & Công nợ trong kỳ**:
-        - `cashAtPurchase`: tổng tiền khách trả ngay lúc mua của các đơn trong kỳ (`totalAmount - initialDebtAmount`, bao gồm phí thẻ thực thu).
+      - **Doanh thu thuần (`netRevenue`)**: `orderRevenue - returnGoodsTotal + exchangeGoodsTotal` (`= productNetRevenue + serviceRevenue`, **KHÔNG gồm phí quẹt thẻ**).
+      - **Quy tắc tính Doanh thu & Thực thu Dịch vụ (`ServiceOrder`) *(v4.4)***:
+        - **Doanh thu dịch vụ (`serviceRevenue`)**: Tính theo ngày tạo đơn dịch vụ (`createdAt` trong kỳ, áp dụng cho mọi đơn dịch vụ có `status !== "CANCELLED"`). Giá vốn dịch vụ = `0đ` (100% `serviceRevenue` cộng vào `grossProfit`).
+        - **Thực thu dịch vụ (`serviceCashCollected`)**: **Chỉ tính vào Thực thu (`cashCollected`) sau khi đơn dịch vụ đã hoàn thành (`status === "RETURNED"`)** đối với tất cả các trường hợp (trả lúc gửi đồ, đặt cọc, trả lúc nhận đồ), xét theo mốc hoàn thành `returnedAt || updatedAt || createdAt`. Các đơn dịch vụ chưa hoàn thành (`RECEIVED | IN_PROGRESS | READY`) được ghi nhận vào `servicePendingCollection` (chờ hoàn thành).
+      - **Phí quẹt thẻ thu hộ ngân hàng (Tách riêng, KHÔNG tính vào Doanh thu thuần & Thực thu)**: `cardFeeCollected` (phí thẻ thu hộ từ đơn bán hàng + đơn dịch vụ trong kỳ), `cardFeeRefunded` (phí thẻ hoàn lại trên phiếu trả trong kỳ), `cardFeeNet = cardFeeCollected - cardFeeRefunded` (kèm `cardFeeTotal = cardFeeNet` để tương thích ngược). Khi lọc `categoryId` sản phẩm, các trường `cardFee* = 0`.
+      - **Giá vốn & Lãi gộp (Tách rõ Giá vốn hàng bán & Chi phí giá vốn quà tặng)**:
+        - `salesCogs`: tổng giá vốn của hàng bán thu tiền (+ hàng đổi − hàng trả `GOOD` không phải quà tặng).
+        - `giftCogs`: tổng chi phí giá vốn của hàng xuất tặng khuyến mãi 0đ (`isGift = true`, trừ hàng tặng trả lại `GOOD` nếu có).
+        - `giftRetailValue`: tổng trị giá niêm yết của các mặt hàng xuất tặng 0đ.
+        - `estimatedCogs = salesCogs + giftCogs` (tổng giá vốn trừ vào lãi gộp; giá vốn dịch vụ = `0đ`), `cogsEstimated` (`boolean`), `grossProfit = netRevenue - estimatedCogs`, `grossMarginPercent`.
+      - **Thực thu & Công nợ trong kỳ (Không gồm phí thẻ thu hộ ngân hàng)**:
+        - `cashAtPurchase`: tổng tiền hàng thực thu ngay lúc mua của các đơn bán hàng trong kỳ (`afterBillDiscount - initialDebtAmount`, **không gồm phí quẹt thẻ thu hộ ngân hàng**).
+        - `serviceCashCollected`: tổng tiền dịch vụ thực thu (không gồm phí thẻ) từ các đơn dịch vụ **đã hoàn thành (`status === "RETURNED"`)** trong kỳ.
+        - `servicePendingCollection`: tổng tiền dịch vụ (không gồm phí thẻ) của các đơn dịch vụ tạo trong kỳ nhưng **chưa hoàn thành (`status !== "RETURNED"`)**.
         - `debtCollectedInPeriod`: tổng tiền thu nợ (`debtPayments[].amount`) có `paidAt` trong kỳ (mọi đơn, kể cả đơn kỳ trước).
-        - `cashRefunded`: tổng tiền mặt/CK/thẻ thực hoàn cho khách trong kỳ (`cashRefund`, không gồm phần cấn trừ công nợ `debtReduction`).
-        - `cashCollected` (kèm `collectedRevenue = cashCollected` tương thích ngược): **`cashAtPurchase + debtCollectedInPeriod - cashRefunded`** (có thể `< 0` trong ngày chỉ có hoàn tiền, không clamp `0`; bằng `null` nếu lọc theo `categoryId`).
+        - `cashRefunded`: tổng tiền hàng thực hoàn cho khách trong kỳ (không gồm phần cấn trừ công nợ `debtReduction` và không gồm `refundedCardFee`).
+        - `cashCollected` (kèm `collectedRevenue = cashCollected` tương thích ngược): **`cashAtPurchase + serviceCashCollected + debtCollectedInPeriod - cashRefunded`** (khớp `netRevenue - outstandingDebtInPeriod - servicePendingCollection` trong kỳ khép kín; bằng `null` nếu lọc theo `categoryId` sản phẩm).
         - `debtReducedByReturnInPeriod`: tổng công nợ giảm do trả hàng trong kỳ (`Σ debtReduction`).
-        - `outstandingDebtInPeriod` (và `outstandingDebt`): dư nợ hiện tại của các đơn tạo trong kỳ.
-        - Đồng nhất thức kỳ khép kín: `cashCollected = netRevenue + cardFeeNet - outstandingDebtInPeriod`.
-      - Thống kê đơn & SL: `totalOrders`, `paidOrders`, `returnedOrders` (số đơn `PARTIALLY_RETURNED` hoặc `FULLY_RETURNED`), `avgOrderValue`, `totalUnitsSold`, `totalGiftUnits`, `totalUnitsReturned`.
+        - `outstandingDebtInPeriod` (và `outstandingDebt`): dư nợ hiện tại của các đơn bán hàng tạo trong kỳ.
+      - Thống kê đơn & SL: `totalOrders` (`= productOrdersCount + serviceOrdersCount`), `productOrdersCount`, `serviceOrdersCount`, `completedServiceOrdersCount`, `pendingServiceOrdersCount`, `paidOrders`, `returnedOrders`, `avgOrderValue`, `totalUnitsSold`, `totalServiceUnits`, `totalGiftUnits`, `totalUnitsReturned`.
+    - `serviceStats`: Khối thống kê chi tiết mảng Dịch vụ (`summary` & `byServiceType[]`).
     - `byPaymentMethod`: Cơ cấu doanh thu (`orderRevenue` không gồm phí thẻ) theo hình thức thanh toán (`CASH`, `BANKING`, `CARD`, `OTHER`), tổng `revenue` khớp `orderRevenue`.
     - `byCategory`: Cơ cấu doanh thu thuần (`revenue`), số lượng bán, giá vốn và lãi gộp theo từng Category; tổng `revenue` (khi không lọc) khớp `netRevenue` (chênh lệch làm tròn = 0 nhờ dòng cuối nhận phần dư).
     - `dailyTrend`: Chuỗi doanh thu & lợi nhuận theo từng ngày trong kỳ (`grossRevenue`, `discountTotal`, `orderRevenue`, `returnImpact`, `netRevenue`, `cogs`, `grossProfit`, `cashCollected`), tổng các ngày khớp `summary`.
@@ -1219,3 +1237,143 @@
     - **Drawer Menu bên trái (`Menu CMS`)**: Chỉ chứa các phân hệ quản trị nghiệp vụ theo vai trò.
     - **Drawer Menu bên phải (`MENU CÁ NHÂN`)**: Trượt từ bên phải khi bấm nút Tài khoản / Menu cá nhân ở góc phải Header CMS, tích hợp **1. Chấm công & Lịch công tháng (`MY_ATTENDANCE`)**, **2. Thông tin tài khoản cá nhân (`PROFILE`)**, **Đổi mật khẩu** và **Đăng xuất tài khoản**.
 
+
+---
+
+### 2.19 Chuẩn hoá Mã Sản Phẩm `CATE + BRAND + VERSION + MÀU + SIZE`, Thương hiệu (`/brands`) & Giá theo biến thể *(v5.0)*
+
+> Nguồn yêu cầu: `docs/requirements/ma-san-pham-brand-version-v1.md` (R1–R11). Các endpoint/trường cũ vẫn giữ để tương thích ngược; trường `brand` (string) của sản phẩm luôn = `brandName`.
+
+#### A. Quy tắc mã
+| Phần | Nguồn | Ràng buộc |
+|---|---|---|
+| `CateCode` | `Category.skuCode` | 1–3 ký tự `A-Z0-9`, duy nhất giữa các Category |
+| `BrandCode` | `Brand.code` | 2–4 ký tự `A-Z0-9`, duy nhất. Brand hệ thống `NN` (không hãng) dùng cho mọi Category |
+| `VersionCode` | `Product.versionCode` | 1–6 ký tự `A-Z0-9` (gợi ý tự động từ `versionName`, admin sửa được) |
+| `ColorCode` | `variants[].colorCode` | 2–3 ký tự `A-Z0-9` (gợi ý tự động từ tên màu, sửa được). Trong 1 sản phẩm: 1 màu ↔ 1 colorCode |
+| `SizeCode` | `variants[].size` | Viết liền, IN HOA, bỏ ký tự đặc biệt (`42,5` → `425`) |
+
+- **Mã gốc** `code` = `CateCode + BrandCode + VersionCode` (VD `G`+`ASC`+`SSFF4` = `GASCSSFF4`).
+- **Mã con** `variants[].variantCode` = `barcode` = Mã gốc + `ColorCode` + `SizeCode` (VD `GASCSSFF4DO40`). Không màu/size thì bỏ phần đó.
+- **Duy nhất (R4)**: bộ `(categoryId, brandId, versionCode)` chỉ có 1 sản phẩm gốc; `(màu, size)` trong 1 sản phẩm chỉ có 1 biến thể.
+- Mã gốc mới **không được** trùng định dạng mã cũ `[A-Z]{2,}[0-9]{6}` (tránh nhập nhằng với tem cũ) → `400 INVALID_VERSION_CODE`.
+- Mã sản phẩm (và vì vậy `brandId`, `versionCode`, `skuCode` của category đang có sản phẩm) **không sửa được** sau khi tạo (`PRODUCT_CODE_IMMUTABLE`).
+- Tạo mới **không bao giờ** tự khớp/gộp về sản phẩm cũ theo tên (R9). Trùng bộ R4 → `409 PRODUCT_DUPLICATE`.
+
+#### B. Thương hiệu (`/brands`)
+Đối tượng Brand:
+```json
+{
+  "_id": "...", "code": "ASC", "name": "Asics", "status": "ACTIVE | INACTIVE",
+  "aliases": ["ASICS", "Asic"], "categoryIds": ["<categoryId>"], "isSystem": false,
+  "productCount": 3, "createdAt": "...", "updatedAt": "..."
+}
+```
+- `GET /api/v1/brands` — mọi role đã đăng nhập.
+  - Query: `?categoryId=<id>` (chỉ Brand gắn Category đó **+ Brand hệ thống `NN`**), `?status=ACTIVE|INACTIVE`, `?search=` (theo code/name/aliases).
+  - Response: `{ "data": Brand[], "meta": { "total": n } }` (kèm `productCount`).
+- `POST /api/v1/brands` — chỉ `CEO`/`ADMIN` (`403 FORBIDDEN`).
+  - Body: `{ "code": "ASC", "name": "Asics", "categoryIds": ["..."], "aliases"?: ["Asic"], "status"?: "ACTIVE" }`. Nếu thiếu `code` → server gợi ý từ `name`.
+  - Lỗi: `400 VALIDATION_ERROR` (thiếu `name`, `categoryIds` rỗng), `400 INVALID_BRAND_CODE` (không đúng 2–4 ký tự `A-Z0-9`), `400 DUPLICATE_BRAND_CODE`, `400 DUPLICATE_BRAND_NAME`, `400 CATEGORY_NOT_FOUND`.
+- `PATCH /api/v1/brands/:id` — chỉ `CEO`/`ADMIN`.
+  - Body (tuỳ chọn): `{ "name", "aliases", "categoryIds", "status", "code" }`.
+  - Lỗi: `404 BRAND_NOT_FOUND`; `400 BRAND_CODE_IMMUTABLE` (đổi `code` khi đã có sản phẩm); `400 BRAND_SYSTEM_LOCKED` (sửa code/status/categoryIds của `NN`); `400 BRAND_CATEGORY_IN_USE` (bỏ Category đang có sản phẩm của Brand này, `fields.categoryIds`).
+- `DELETE /api/v1/brands/:id` — chỉ `CEO`/`ADMIN`.
+  - `409 BRAND_HAS_PRODUCTS` nếu `productCount > 0` (chỉ được ngừng sử dụng: `PATCH status=INACTIVE`) — R11. `400 BRAND_SYSTEM_LOCKED` với `NN`.
+
+#### C. Category — trường mới
+- `skuCode` (1–3 ký tự). `POST /categories` nhận `skuCode` tuỳ chọn (thiếu → gợi ý chữ cái đầu của tên, tự tránh trùng). `PATCH /categories/:id` nhận `skuCode`; lỗi `400 INVALID_SKU_CODE`, `400 DUPLICATE_SKU_CODE`, `400 CATEGORY_SKU_CODE_IMMUTABLE` (đã có sản phẩm). `code` cũ (VD `VOT`, `BONG_THI_DAU`) giữ nguyên làm khoá định danh.
+
+#### D. Product — trường mới (response `GET /products`, `POST/PATCH /products`)
+```json
+{
+  "code": "GASCSSFF4", "barcode": "GASCSSFF4", "name": "Asics Solution Speed FF4",
+  "brand": "Asics", "brandId": "...", "brandCode": "ASC", "brandName": "Asics",
+  "versionName": "Solution Speed FF4", "versionCode": "SSFF4",
+  "legacyCode": "GASICS497140", "legacyCodes": ["GASICS497140"],
+  "note": "Hàng chính hãng bảo hành 6 tháng",
+  "sellingPrice": 1300000, "costPrice": 900000,
+  "variants": [
+    {
+      "variantKey": "DO_40", "color": "Đỏ", "colorCode": "DO", "size": "40",
+      "variantCode": "GASCSSFF4DO40", "barcode": "GASCSSFF4DO40",
+      "sellingPrice": 1200000, "costPrice": 850000,
+      "effectiveSellingPrice": 1200000,
+      "legacyVariantCode": "GASICS497140CHERRYTOMATO40",
+      "stockFloor1": 1, "stockFloor2": 0, "stock": 1
+    }
+  ]
+}
+```
+- `variants[].sellingPrice` / `costPrice`: tuỳ chọn, số nguyên VND; `0`/trống → dùng giá sản phẩm gốc (R8). `effectiveSellingPrice` do server tính sẵn. Role `SALES` không nhận `costPrice` (gốc và biến thể).
+- `note` *(tuỳ chọn)*: ghi chú của sản phẩm (string, mặc định `""`), lưu khi tạo/sửa sản phẩm (`POST /products`, `PATCH /products/:id`) và trả về trong `GET /products`, `GET /products/lookup`. Hỗ trợ tìm kiếm theo từ khoá trong `GET /products?search=`.
+- `legacyCode`/`legacyCodes`/`legacyVariantCode`: mã cũ trước chuẩn hoá — chỉ dùng tra cứu/quét tem cũ. `GET /products?search=` tìm được cả theo mã cũ, `brandName`, `versionName`, `note`.
+
+#### E. `POST /api/v1/products/preview-code` (xem trước mã, không ghi DB)
+- Body: `{ "categoryId": "...", "brandId": "...", "versionName": "Solution Speed FF4", "versionCode"?: "SSFF4", "variants"?: [{ "color": "Đỏ", "colorCode"?: "DO", "size": "40" }] }`
+- Response `200`:
+```json
+{ "data": {
+  "categoryCode": "G", "brandCode": "ASC", "versionCode": "SSFF4", "suggestedVersionCode": "SSFF4",
+  "code": "GASCSSFF4",
+  "variants": [{ "color": "Đỏ", "colorCode": "DO", "size": "40", "sizeCode": "40", "variantCode": "GASCSSFF4DO40" }],
+  "duplicate": null,
+  "conflicts": []
+} }
+```
+  - `duplicate`: sản phẩm đã có cùng bộ R4 (`{ _id, code, name, versionName }`) hoặc `null`.
+  - `conflicts`: danh sách `{ type: "CODE_CONFLICT", code, productId, productCode }` khi mã gốc/mã con trùng với mã (kể cả mã cũ) của sản phẩm khác.
+- Lỗi: `400 VALIDATION_ERROR`, `400 CATEGORY_NOT_FOUND`, `400 BRAND_NOT_FOUND`, `400 BRAND_NOT_IN_CATEGORY`, `400 INVALID_VERSION_CODE`, `400 INVALID_COLOR_CODE`.
+
+#### F. `POST /api/v1/products` — luồng mới (khi body có `brandId`)
+- Body: `{ "categoryId", "brandId", "versionName", "versionCode"?, "name"?, "unit"?, "note"?, "sellingPrice"?, "costPrice"?, "quantity"?, "targetWarehouse"?, "color"?, "colorCode"?, "size"?, "variants"?: [{ "color", "colorCode"?, "size", "sellingPrice"?, "costPrice"?, "stockFloor1"?, "stockFloor2"?, "quantity"? }], "parentSetProductId"?, "packSize"? }`
+  - `name` mặc định = `brandName + " " + versionName`. Phân quyền giá/tồn giữ như cũ (`SELLING_PRICE_FORBIDDEN`, `COST_PRICE_FORBIDDEN`, `DIRECT_STOCK_FORBIDDEN`).
+- `201`: sản phẩm mới với mã sinh theo mục A.
+- Lỗi:
+  - `409 PRODUCT_DUPLICATE` — trùng bộ (Category, Brand, VersionCode). `fields.existingProductId`, `fields.existingProductCode`; admin chủ động dùng `POST /products/:id/variants` để thêm biến thể vào sản phẩm đó.
+  - `409 CODE_CONFLICT` — mã gốc/mã con sinh ra trùng mã (hoặc mã cũ) của sản phẩm khác (R10) → admin sửa `versionCode`/`colorCode`. `fields.code`, `fields.conflictProductId`.
+  - `400 BRAND_NOT_IN_CATEGORY`, `400 BRAND_NOT_FOUND`, `400 BRAND_INACTIVE`, `400 INVALID_VERSION_CODE`, `400 INVALID_COLOR_CODE`, `400 COLOR_CODE_DUPLICATE` (2 màu khác nhau cùng colorCode / 1 màu 2 colorCode), `400 DUPLICATE_VARIANT`.
+- Luồng cũ (không có `brandId`) vẫn hoạt động cho tương thích (deprecated). **Thay đổi hành vi**: chỉ cộng dồn vào sản phẩm đã có khi gửi `upsertIfExists: true`; nếu không → `409 PRODUCT_DUPLICATE` (trước đây tự gộp khi có màu/size). Khi `upsertIfExists: true` cộng dồn vào sản phẩm đích là mã mới (có `versionCode` hoặc `brandId` hoặc mã gốc theo scheme mới), hệ thống luôn truyền `newScheme: true` trong `applyFloorDelta` / `summarizeVariants` để sinh `variantCode` theo scheme mới (`Mã gốc + ColorCode + SizeCode`), không sinh theo công thức cũ.
+
+#### G. `POST /api/v1/products/:id/variants` & `PATCH /api/v1/products/:id/variants` — thêm / sửa biến thể trên sản phẩm có sẵn
+- `POST /api/v1/products/:id/variants` — thêm biến thể mới vào sản phẩm có sẵn:
+  - Quyền: `CEO`/`ADMIN`/`ACCOUNTANT` khi thêm biến thể có tồn = `0`; **chỉ `CEO`/`ADMIN`** khi truyền số lượng tồn > `0` (`quantity > 0` hoặc `stockFloor1 > 0` hoặc `stockFloor2 > 0`; các role khác trả `403 DIRECT_STOCK_FORBIDDEN`).
+  - Body: `{ "targetWarehouse"?: "FLOOR_1 | FLOOR_2", "variants": [{ "color", "colorCode"?, "size", "sellingPrice"?, "costPrice"?, "colorHexes"?, "quantity"?, "stockFloor1"?, "stockFloor2"?, "targetWarehouse"?: "FLOOR_1 | FLOOR_2" }] }`
+  - Khi biến thể có số lượng tồn > `0`: cộng tồn vào tầng kho tương ứng (`stockFloor1` / `stockFloor2`) và ghi `StockMovement` loại `ADJUSTMENT` (`referenceType: "ADJUSTMENT"`) như nhập trực tiếp.
+  - `200`: sản phẩm sau cập nhật. Lỗi: `404 PRODUCT_NOT_FOUND`, `400 INVALID_QUANTITY`, `400 DUPLICATE_VARIANT`, `400 COLOR_CODE_DUPLICATE`, `400 INVALID_COLOR_CODE`, `403 DIRECT_STOCK_FORBIDDEN`, `409 CODE_CONFLICT`.
+- `PATCH /api/v1/products/:id/variants` — sửa thuộc tính (`color`, `size`, `colorCode`, giá, màu Hex) của biến thể hiện có:
+  - Quyền: `CEO`/`ADMIN`/`ACCOUNTANT`.
+  - Body: `{ "variants": [{ "variantCode"?, "variantKey"?, "fromVariantCode"?, "fromVariantKey"?, "color"?, "colorCode"?, "size"?, "sellingPrice"?, "costPrice"?, "colorHexes"? }] }` (hoặc truyền trực tiếp 1 object biến thể ở cấp gốc body).
+  - **Hành vi trên sản phẩm mã mới (`isNewSchemeProduct`)**:
+    - Khi sửa `color`, `size` hoặc `colorCode`, hệ thống kiểm tra `INVALID_COLOR_CODE`, `COLOR_CODE_DUPLICATE`, `DUPLICATE_VARIANT`, `CODE_CONFLICT` và **sinh lại `variantCode` (cùng `barcode`) theo scheme mới** (`Mã gốc + ColorCode + SizeCode`).
+    - Nếu `variantCode` mới khác `variantCode` trước khi sửa: tự động đẩy `variantCode` cũ vào mảng `legacyVariantCodes` và gán `legacyVariantCode = <variantCode cũ>` (nếu `legacyVariantCode` chưa có) để các tem nhãn đã in trước đó vẫn quét tra cứu (`GET /products/lookup`), bán hàng POS và kiểm kho bình thường.
+  - `200`: sản phẩm sau cập nhật. Lỗi: `404 PRODUCT_NOT_FOUND`, `404 VARIANT_NOT_FOUND`, `400 INVALID_COLOR_CODE`, `400 COLOR_CODE_DUPLICATE`, `400 DUPLICATE_VARIANT`, `409 CODE_CONFLICT`.
+
+#### H. `PATCH /api/v1/products/:id` — trường mới
+- `versionName` (sửa được), `note` (ghi chú sản phẩm, sửa được), `variantPrices: [{ "variantKey" | "variantCode", "sellingPrice"?, "costPrice"? }]` (sửa giá biến thể, không cần `allowDirectStock`; `sellingPrice` cần quyền sửa giá bán, `costPrice` cần `CEO/ADMIN/ACCOUNTANT`; lỗi `404 VARIANT_NOT_FOUND`).
+- Gửi `brandId`/`versionCode` khác giá trị hiện tại → `400 PRODUCT_CODE_IMMUTABLE`. Đổi `categoryId` của sản phẩm mã mới sang category có `skuCode` khác → `400 PRODUCT_CODE_IMMUTABLE`.
+- Khi gửi `variants[]` (sửa tồn trực tiếp), các trường `colorCode`/`sellingPrice`/`costPrice`/`legacyVariantCode`/`legacyVariantCodes` không gửi lên sẽ được giữ nguyên; nếu sửa `color`/`size`/`colorCode` trên sản phẩm mã mới làm đổi `variantCode` thì `variantCode` cũ cũng được đẩy vào `legacyVariantCodes` (và đặt `legacyVariantCode` nếu chưa có).
+
+#### I. `GET /api/v1/products/lookup?code=<mã quét>`
+- Tra theo thứ tự: mã gốc/barcode → mã con → mã cũ (`legacyCode(s)`) → mã con cũ (`legacyVariantCode(s)`) → mã rút gọn Code128 cũ.
+- `200`: `{ "data": { "product": {...}, "variant": {...} | null, "matchedBy": "CODE | VARIANT_CODE | LEGACY_CODE | LEGACY_VARIANT_CODE | COMPACT_BARCODE", "sellingPrice": 1200000 } }` (`sellingPrice` = giá hiệu lực của biến thể).
+- `404 PRODUCT_NOT_FOUND`.
+
+#### J. Giá biến thể & Mã mới trong nghiệp vụ
+- **POS/Đơn hàng** (`POST/PUT /orders`): `originalUnitPrice` = giá bán biến thể (theo `color`+`size`) nếu > 0, ngược lại giá gốc; `unitCost` tương tự với giá vốn. `PRODUCT_PRICE_NOT_SET` xét theo giá hiệu lực.
+- **Đổi trả** (`POST /returns`, `/returns/calculate`): hàng đổi mới dùng giá hiệu lực của biến thể; tra hàng đổi theo cả mã con cũ.
+- **Khuyến mãi** (`POST /promotions/evaluate`): `items[]` có thể gửi `color`, `size` để tính theo giá biến thể.
+- **Nhập kho** (`POST /api/v1/imports`, `PUT /api/v1/imports/:id`, `POST /api/v1/imports/:id/complete`):
+  - Mỗi dòng `items[]` (`ImportReceipt.items[]`) nhận thêm tuỳ chọn `brandId`, `versionName`, `versionCode`, `colorCode`.
+  - Khi sản phẩm chưa khớp sẵn theo `productId`/`productCode` và dòng nhập truyền `brandId` + (`versionCode` hoặc `versionName`):
+    - Sinh mã gốc `productCode` và mã con `variantCode` theo scheme mới **chính xác từ các trường đó** (không đoán từ tên sản phẩm).
+    - Kiểm tra `brandId` thuộc danh mục của dòng (`400 BRAND_NOT_IN_CATEGORY`), kiểm tra `INVALID_VERSION_CODE`, `INVALID_COLOR_CODE`, `COLOR_CODE_DUPLICATE` và kiểm tra xung đột mã với sản phẩm khác (`409 CODE_CONFLICT`).
+    - Nếu trùng bộ `(categoryId, brandId, versionCode)` với sản phẩm đã có trên DB thì tự động gắn vào sản phẩm đó (`productId`, `productCode`) và thêm/cập nhật biến thể theo đúng nghiệp vụ nhập kho.
+  - Dòng có màu/size và `costPrice > 0` → cập nhật `variants[].costPrice` của biến thể đó (đồng thời giữ cập nhật `costPrice` gốc = giá nhập gần nhất như cũ). Dòng có `productId`/`productCode` (kể cả mã mới hoặc mã cũ) khớp sản phẩm có sẵn → dùng đúng sản phẩm đó, **không** sinh lại mã theo tên. Sản phẩm chưa có trên hệ thống và không truyền `brandId` → tạo theo quy tắc mới (Brand nhận diện qua tên/aliases, không có → `NN`).
+
+#### K. Mã lỗi mới (tổng hợp)
+`PRODUCT_DUPLICATE` (409), `CODE_CONFLICT` (409), `BRAND_HAS_PRODUCTS` (409), `BRAND_NOT_IN_CATEGORY` (400), `BRAND_NOT_FOUND`, `BRAND_INACTIVE`, `BRAND_CODE_IMMUTABLE`, `BRAND_SYSTEM_LOCKED`, `BRAND_CATEGORY_IN_USE`, `INVALID_BRAND_CODE`, `DUPLICATE_BRAND_CODE`, `DUPLICATE_BRAND_NAME`, `INVALID_VERSION_CODE`, `INVALID_COLOR_CODE`, `COLOR_CODE_DUPLICATE`, `DUPLICATE_VARIANT`, `VARIANT_NOT_FOUND`, `INVALID_SKU_CODE`, `DUPLICATE_SKU_CODE`, `CATEGORY_SKU_CODE_IMMUTABLE`.
+
+#### L. Chuyển đổi dữ liệu cũ (chỉ DB local)
+- Migration `20261117000001-seed-brands-and-category-skucodes` (chạy cả prod, chỉ thêm dữ liệu): đặt `skuCode` cho Category, tạo Brand từ `KNOWN_BRANDS` + brand đang có trong sản phẩm, Brand hệ thống `NN`.
+- Script `npm run recode:products -- --dry-run` / `-- --apply <file.csv>` (`server/src/scripts/recodeProducts.ts`): **từ chối chạy** nếu `MONGODB_URI` không phải `127.0.0.1`/`localhost` hoặc là `mongodb+srv`.

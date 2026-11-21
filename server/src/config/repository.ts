@@ -38,7 +38,14 @@ function matchFilter(doc: CollectionRecord, filter: Record<string, any> = {}): b
         const flags = val.$options || '';
         const regex = new RegExp(val.$regex, flags);
         if (!regex.test(String(docVal ?? ''))) return false;
-      } else if ('$gte' in val || '$lte' in val || '$gt' in val || '$lt' in val || '$in' in val) {
+      } else if (
+        '$gte' in val ||
+        '$lte' in val ||
+        '$gt' in val ||
+        '$lt' in val ||
+        '$in' in val ||
+        '$ne' in val
+      ) {
         const dVal = docVal instanceof Date ? docVal.getTime() : docVal;
         if ('$gte' in val) {
           const cmp = val.$gte instanceof Date ? val.$gte.getTime() : val.$gte;
@@ -55,6 +62,9 @@ function matchFilter(doc: CollectionRecord, filter: Record<string, any> = {}): b
         if ('$lt' in val) {
           const cmp = val.$lt instanceof Date ? val.$lt.getTime() : val.$lt;
           if (!(dVal < cmp)) return false;
+        }
+        if ('$ne' in val) {
+          if (String(docVal) === String(val.$ne)) return false;
         }
         if ('$in' in val && Array.isArray(val.$in)) {
           if (!val.$in.map(String).includes(String(docVal))) return false;

@@ -168,11 +168,8 @@ function toCompactBarcode128(rawCode: string, maxDots = 200): string {
 
   const m = clean.match(/^([A-Z])([A-Z]+?)(\d{6})([A-Z0-9]*)$/);
   if (!m) {
-    let trimmed = clean;
-    while (trimmed.length > 8 && encodeCode128RawPattern(trimmed).length > maxDots) {
-      trimmed = trimmed.slice(0, -1);
-    }
-    return trimmed;
+    // v5.0: mã quy chuẩn mới do server sinh — không cắt bớt
+    return clean;
   }
 
   const [, cat, brand, sixDigits, suffix] = m;

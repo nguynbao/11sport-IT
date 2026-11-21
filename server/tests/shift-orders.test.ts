@@ -108,7 +108,7 @@ describe('Shift Bills (Xem Bill trong ca) & Phân quyền xem đơn theo Ca / Ng
     await disconnectDatabase();
   });
 
-  it('1. Tự động gắn shiftDate & shiftCode theo ca của Sales và chỉ cho xem Bill trong đúng ca làm việc đó', async () => {
+  it('1. Tự động gắn shiftDate & shiftCode theo ca của Sales và cho phép tra cứu Bill mọi ca trong ngày', async () => {
     // Sales 1 (Ca 1) tạo đơn bán hàng
     const orderShift1Res = await request(app)
       .post('/api/v1/orders')
@@ -124,7 +124,7 @@ describe('Shift Bills (Xem Bill trong ca) & Phân quyền xem đơn theo Ca / Ng
     expect(orderShift1.shiftDate).toBe(todayStr);
     expect(orderShift1.shiftCode).toBe('SHIFT_1');
 
-    // Sales 2 (Ca 2) tạo đơn bán hàng (cùng SĐT khách để kiểm tra cả lọc trong /customers/lookup)
+    // Sales 2 (Ca 2) tạo đơn bán hàng (cùng SĐT khách để kiểm tra cả /customers/lookup)
     const orderShift2Res = await request(app)
       .post('/api/v1/orders')
       .set('Authorization', `Bearer ${sales2Token}`)
@@ -139,49 +139,46 @@ describe('Shift Bills (Xem Bill trong ca) & Phân quyền xem đơn theo Ca / Ng
     expect(orderShift2.shiftDate).toBe(todayStr);
     expect(orderShift2.shiftCode).toBe('SHIFT_2');
 
-    // Kiểm tra GET /api/v1/orders/current-shift cho Sales 1 (Ca 1): chỉ thấy đơn Ca 1, KHÔNG thấy đơn Ca 2
+    // Kiểm tra GET /api/v1/orders/current-shift cho Sales 1: xem được bill mọi ca trong ngày (BOTH)
     const currentShift1Res = await request(app)
       .get('/api/v1/orders/current-shift')
       .set('Authorization', `Bearer ${sales1Token}`);
     expect(currentShift1Res.status).toBe(200);
-    expect(currentShift1Res.body.meta.shiftCode).toBe('SHIFT_1');
-    expect(currentShift1Res.body.meta.summary.paidOrdersCount).toBe(1);
-    expect(currentShift1Res.body.meta.summary.totalRevenue).toBe(500000);
-    expect(currentShift1Res.body.data.map((o: any) => o._id)).toEqual([orderShift1._id]);
+    expect(currentShift1Res.body.meta.shiftCode).toBe('BOTH');
+    expect(currentShift1Res.body.meta.summary.paidOrdersCount).toBe(2);
+    expect(currentShift1Res.body.meta.summary.totalRevenue).toBe(1500000);
+    expect(currentShift1Res.body.data.map((o: any) => o._id)).toEqual([
+      orderShift2._id,
+      orderShift1._id,
+    ]);
 
-    // Kiểm tra GET /api/v1/orders/current-shift cho Sales 2 (Ca 2): chỉ thấy đơn Ca 2, KHÔNG thấy đơn Ca 1
-    const currentShift2Res = await request(app)
-      .get('/api/v1/orders/current-shift')
-      .set('Authorization', `Bearer ${sales2Token}`);
-    expect(currentShift2Res.status).toBe(200);
-    expect(currentShift2Res.body.meta.shiftCode).toBe('SHIFT_2');
-    expect(currentShift2Res.body.meta.summary.paidOrdersCount).toBe(1);
-    expect(currentShift2Res.body.meta.summary.totalRevenue).toBe(1000000);
-    expect(currentShift2Res.body.data.map((o: any) => o._id)).toEqual([orderShift2._id]);
-
-    // Kiểm tra GET /api/v1/orders cho Sales 1 & Sales 2: không xem được đơn của ca khác
-    const listForSales1 = await request(app)
-      .get('/api/v1/orders')
+    // Lọc riêng Ca 2 qua query shiftCode=SHIFT_2 vẫn hoạt động chuẩn xác
+    const filterShift2Res = await request(app)
+      .get('/api/v1/orders/current-shift?shiftCode=SHIFT_2')
       .set('Authorization', `Bearer ${sales1Token}`);
-    expect(listForSales1.status).toBe(200);
-    expect(listForSales1.body.data.map((o: any) => o._id)).toEqual([orderShift1._id]);
+    expect(filterShift2Res.status).toBe(200);
+    expect(filterShift2Res.body.meta.shiftCode).toBe('SHIFT_2');
+    expect(filterShift2Res.body.data.map((o: any) => o._id)).toEqual([orderShift2._id]);
 
-    // Sales 1 cố tình gọi GET /api/v1/orders/:id của đơn Ca 2 -> bị chặn 403 ORDER_SHIFT_RESTRICTED
-    const detailForbidden = await request(app)
+    // Sales 1 gọi GET /api/v1/orders/:id của đơn Ca 2 -> được phép xem chi tiết
+    const detailRes = await request(app)
       .get(`/api/v1/orders/${orderShift2._id}`)
       .set('Authorization', `Bearer ${sales1Token}`);
-    expect(detailForbidden.status).toBe(403);
-    expect(detailForbidden.body.code).toBe('ORDER_SHIFT_RESTRICTED');
+    expect(detailRes.status).toBe(200);
+    expect(detailRes.body.data._id).toBe(orderShift2._id);
 
-    // Kiểm tra GET /api/v1/customers/lookup cho Sales 1: chỉ trả về đơn của Ca 1
+    // Kiểm tra GET /api/v1/customers/lookup cho Sales 1: trả về toàn bộ đơn hàng của khách
     const lookupSales1 = await request(app)
       .get('/api/v1/customers/lookup?phone=0909111222')
       .set('Authorization', `Bearer ${sales1Token}`);
     expect(lookupSales1.status).toBe(200);
-    expect(lookupSales1.body.data.orders.map((o: any) => o._id)).toEqual([orderShift1._id]);
+    expect(lookupSales1.body.data.orders.map((o: any) => o._id)).toEqual([
+      orderShift2._id,
+      orderShift1._id,
+    ]);
   });
 
-  it('2. Qua ngày mới (00:00) nhân viên Sales không được xem đơn cũ của ngày hôm trước (riêng Trả/Đổi vẫn tra được theo mã)', async () => {
+  it('2. Bỏ ràng buộc 3 ngày: Sales tra cứu được lịch sử bill & khách hàng mọi ngày cũ', async () => {
     // Tạo 1 đơn hàng của Ca 1 nhưng thuộc ngày hôm qua (2026-11-15)
     const oldOrder = await orderRepo.create({
       orderCode: 'HD-OLD01',
@@ -239,32 +236,38 @@ describe('Shift Bills (Xem Bill trong ca) & Phân quyền xem đơn theo Ca / Ng
       confirmedAt: new Date('2026-01-01T10:00:00.000Z'),
     });
 
-    // Sales 1 (đang làm SHIFT_1 hôm nay) gọi /orders/current-shift và /orders -> TUYỆT ĐỐI KHÔNG thấy đơn ngày cũ
-    const shiftRes = await request(app)
-      .get('/api/v1/orders/current-shift')
+    // Sales 1 gọi /orders/current-shift?date=ALL, ?date=2026-01-01 và /orders -> ĐỀU thấy đơn ngày cũ (không còn bị chặn 3 ngày)
+    const shiftAllRes = await request(app)
+      .get('/api/v1/orders/current-shift?date=ALL')
       .set('Authorization', `Bearer ${sales1Token}`);
-    expect(shiftRes.status).toBe(200);
-    expect(shiftRes.body.data.some((o: any) => o._id === oldOrder._id)).toBe(false);
+    expect(shiftAllRes.status).toBe(200);
+    expect(shiftAllRes.body.data.some((o: any) => o._id === oldOrder._id)).toBe(true);
+
+    const shiftOldDateRes = await request(app)
+      .get('/api/v1/orders/current-shift?date=2026-01-01')
+      .set('Authorization', `Bearer ${sales1Token}`);
+    expect(shiftOldDateRes.status).toBe(200);
+    expect(shiftOldDateRes.body.data.some((o: any) => o._id === oldOrder._id)).toBe(true);
 
     const ordersRes = await request(app)
       .get('/api/v1/orders')
       .set('Authorization', `Bearer ${sales1Token}`);
     expect(ordersRes.status).toBe(200);
-    expect(ordersRes.body.data.some((o: any) => o._id === oldOrder._id)).toBe(false);
+    expect(ordersRes.body.data.some((o: any) => o._id === oldOrder._id)).toBe(true);
 
-    // Sales 1 gọi /customers/lookup?phone=0909111222 -> KHÔNG thấy đơn ngày cũ
+    // Sales 1 gọi /customers/lookup?phone=0909111222 -> thấy đầy đủ cả đơn ngày cũ
     const lookupRes = await request(app)
       .get('/api/v1/customers/lookup?phone=0909111222')
       .set('Authorization', `Bearer ${sales1Token}`);
     expect(lookupRes.status).toBe(200);
-    expect(lookupRes.body.data.orders.some((o: any) => o._id === oldOrder._id)).toBe(false);
+    expect(lookupRes.body.data.orders.some((o: any) => o._id === oldOrder._id)).toBe(true);
 
-    // Sales 1 gọi trực tiếp GET /orders/:id cho đơn ngày cũ -> bị chặn 403 ORDER_SHIFT_RESTRICTED
+    // Sales 1 gọi trực tiếp GET /orders/:id cho đơn ngày cũ -> được phép xem chi tiết (200)
     const oldDetailRes = await request(app)
       .get(`/api/v1/orders/${oldOrder._id}`)
       .set('Authorization', `Bearer ${sales1Token}`);
-    expect(oldDetailRes.status).toBe(403);
-    expect(oldDetailRes.body.code).toBe('ORDER_SHIFT_RESTRICTED');
+    expect(oldDetailRes.status).toBe(200);
+    expect(oldDetailRes.body.data.orderCode).toBe('HD-OLD01');
 
     // Ngoại lệ ở mục 4. Trả / Đổi hàng: Sales tra theo mã đơn (by-code hoặc forReturn=true) để đổi trả cho khách thì được phép
     const returnLookupByCode = await request(app)

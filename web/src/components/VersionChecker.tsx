@@ -143,8 +143,8 @@ export default function VersionChecker() {
       aria-live="polite"
       className="fixed bottom-4 inset-x-3 sm:inset-x-auto sm:right-5 sm:bottom-5 z-[9999] max-w-md mx-auto sm:mx-0"
     >
-      <div className="flex items-center gap-3 rounded-2xl bg-slate-900/95 text-white px-4 py-3.5 shadow-2xl border border-emerald-500/40 backdrop-blur-md">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-400">
+      <div className="flex items-center gap-3 rounded-2xl bg-slate-900/95 text-white px-4 py-3.5 shadow-2xl border border-blue-500/40 backdrop-blur-md">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/20 text-blue-400">
           <Sparkles className="h-5 w-5" />
         </div>
         <div className="min-w-0 flex-1">
@@ -160,7 +160,7 @@ export default function VersionChecker() {
             type="button"
             onClick={handleReloadNow}
             disabled={isReloading}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 px-3.5 py-2 text-xs font-bold text-slate-950 shadow-sm transition disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-blue-500 hover:bg-blue-400 active:bg-blue-600 px-3.5 py-2 text-xs font-bold text-slate-950 shadow-sm transition disabled:opacity-60"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${isReloading ? "animate-spin" : ""}`} />
             {isReloading ? "Đang tải..." : "Cập nhật ngay"}
@@ -170,7 +170,7 @@ export default function VersionChecker() {
             onClick={() => setHasNewVersion(false)}
             title="Để sau"
             aria-label="Đóng thông báo cập nhật"
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition"
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-blue-700 hover:text-white transition"
           >
             <X className="h-4 w-4" />
           </button>

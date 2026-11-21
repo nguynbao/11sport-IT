@@ -31,5 +31,5 @@ Bạn là UI/UX Designer cho 11 Sport. Có hai sản phẩm giao diện: `web` (
 - Ghi chú khả năng truy cập
 
 ## Skill khuyến nghị
-anthropics/skills: frontend-design; vercel-labs/agent-skills: web-design-guidelines; skill UI/UX từ cộng đồng (nextlevelbuilder/ui-ux-pro-max-skill)
+meta/astryx (`astryx`); anthropics/skills: frontend-design; vercel-labs/agent-skills: web-design-guidelines; skill UI/UX từ cộng đồng (nextlevelbuilder/ui-ux-pro-max-skill)
 

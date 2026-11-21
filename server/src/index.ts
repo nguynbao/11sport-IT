@@ -7,10 +7,12 @@ import { createApp } from './app';
 import { connectDatabase } from './config/db';
 import { seedDatabaseIfNeeded } from './config/seed';
 import { startKeepAlive } from './utils/keepAlive';
+import { assertSecurityEnvironment } from './utils/auth';
 
 const PORT = Number(process.env.PORT || 4000);
 
 async function bootstrap() {
+  assertSecurityEnvironment();
   await connectDatabase();
   await seedDatabaseIfNeeded();
 

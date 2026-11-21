@@ -748,6 +748,9 @@ export function toCompactBarcode128(rawCode: string, maxDots = 200): string {
 
   const m = clean.match(/^([A-Z])([A-Z]+?)(\d{6})([A-Z0-9]*)$/);
   if (!m) {
+    // v5.0: mã theo quy chuẩn mới (Cate+Brand+Version+Màu+Size) KHÔNG được cắt bớt — cắt sẽ ra mã không tồn tại.
+    // Mã quá dài phải được rút gọn từ nguồn (VersionCode/ColorCode) khi tạo.
+    if (/[A-Z]/.test(clean) && !/\d{6}/.test(clean)) return clean;
     let trimmed = clean;
     while (trimmed.length > 8 && estimateCode128Dots(trimmed) > maxDots) {
       trimmed = trimmed.slice(0, -1);
@@ -838,4 +841,277 @@ export function isCompactBarcodeMatchVariant(scannedRaw: string, targetVariantCo
     }
   }
   return false;
+}
+
+/* =====================================================================================
+ * v5.0 — Quy chuẩn mã mới: CateCode + BrandCode + VersionCode (+ ColorCode + SizeCode)
+ * Xem docs/requirements/ma-san-pham-brand-version-v1.md (R1–R11) & docs/api-contract.md mục 2.19.
+ * Các hàm cũ ở trên được giữ lại để đọc dữ liệu legacy / quét tem cũ.
+ * ===================================================================================== */
+
+export const SKU_PART_LIMITS = {
+  category: { min: 1, max: 3 },
+  brand: { min: 2, max: 4 },
+  version: { min: 1, max: 6 },
+  color: { min: 2, max: 3 },
+} as const;
+
+export const NO_BRAND_CODE = 'NN';
+
+/** Danh sách thương hiệu dựng sẵn (dùng để seed Brand & nhận diện khi chuyển đổi dữ liệu). */
+export function getKnownBrandList(): { code: string; display: string; pattern: RegExp }[] {
+  return KNOWN_BRANDS.map((b) => ({ ...b }));
+}
+
+export function isNoBrandToken(input?: string): boolean {
+  return NO_BRAND_TOKENS.has(normalizeToCompactUpperCode(String(input || '')));
+}
+
+/** Kiểm tra 1 phần mã ngắn chỉ gồm A-Z0-9 và nằm trong giới hạn độ dài. */
+export function isValidSkuPart(value: string, kind: keyof typeof SKU_PART_LIMITS): boolean {
+  const v = String(value || '');
+  const { min, max } = SKU_PART_LIMITS[kind];
+  return /^[A-Z0-9]+$/.test(v) && v.length >= min && v.length <= max;
+}
+
+/** Mã cũ dạng [A-Z]{2,}[0-9]{6} (VD GASICS497140) — dùng phân biệt sản phẩm legacy. */
+export function isLegacyProductCode(code?: string): boolean {
+  return isStandardSixDigitProductCode(code);
+}
+
+/** Sản phẩm theo quy chuẩn mới (có versionCode, brandId, hoặc mã gốc không theo định dạng cũ). */
+export function isNewSchemeProduct(product: any): boolean {
+  if (!product) return false;
+  if (product.versionCode && String(product.versionCode).trim()) return true;
+  if (product.brandId && String(product.brandId).trim()) return true;
+  const code = String(product.code || '').trim();
+  return Boolean(code) && !isLegacyProductCode(code);
+}
+
+export function toSizeCode(size?: string): string {
+  return normalizeToCompactUpperCode(String(size || '').trim());
+}
+
+/** R1: Mã gốc = CateCode + BrandCode + VersionCode */
+export function buildRootCode(categoryCode: string, brandCode: string, versionCode: string): string {
+  return `${normalizeToCompactUpperCode(categoryCode)}${normalizeToCompactUpperCode(brandCode)}${normalizeToCompactUpperCode(versionCode)}`;
+}
+
+/** R2: Mã con = Mã gốc + ColorCode + SizeCode (bỏ phần trống) */
+export function buildVariantSku(rootCode: string, colorCode?: string, size?: string): string {
+  const root = normalizeToCompactUpperCode(rootCode);
+  if (!root) return '';
+  return `${root}${normalizeToCompactUpperCode(String(colorCode || ''))}${toSizeCode(size)}`;
+}
+
+const VOWELS = new Set(['A', 'E', 'I', 'O', 'U', 'Y']);
+
+function consonantAbbrev(word: string, maxLen: number): string {
+  if (!word) return '';
+  let out = word[0];
+  for (let i = 1; i < word.length && out.length < maxLen; i++) {
+    const ch = word[i];
+    if (VOWELS.has(ch) || /\d/.test(ch)) continue;
+    if (out[out.length - 1] === ch) continue;
+    out += ch;
+  }
+  return out;
+}
+
+function firstFree(candidates: string[], used: Set<string>, kind: keyof typeof SKU_PART_LIMITS): string {
+  for (const c of candidates) {
+    if (c && isValidSkuPart(c, kind) && !used.has(c)) return c;
+  }
+  return '';
+}
+
+/** Gợi ý CateCode (1–3 ký tự) từ tên Category, tránh trùng các mã đã dùng. */
+export function suggestCategorySkuCode(name: string, code?: string, used: Set<string> = new Set()): string {
+  const words = tokenizeUpperAlphaNum(name || code || '').filter((w) => /[A-Z]/.test(w));
+  const compact = words.join('') || normalizeToCompactUpperCode(code || '') || 'C';
+  const initials = words.map((w) => w[0]).join('');
+  const candidates = [
+    compact[0],
+    initials.slice(0, 2),
+    initials.slice(0, 3),
+    compact.slice(0, 2),
+    consonantAbbrev(compact, 2),
+    compact.slice(0, 3),
+    consonantAbbrev(compact, 3),
+  ];
+  const found = firstFree(candidates, used, 'category');
+  if (found) return found;
+  for (let i = 1; i <= 99; i++) {
+    const c = `${compact[0]}${i}`;
+    if (!used.has(c)) return c;
+  }
+  return compact.slice(0, 3);
+}
+
+/** Gợi ý BrandCode (2–4 ký tự) từ tên hãng. VD Asics → ASC, Kamito → KMT, Wika → WIKA. */
+export function suggestBrandCode(name: string, used: Set<string> = new Set()): string {
+  const words = tokenizeUpperAlphaNum(name);
+  const compact = words.join('');
+  if (!compact || isNoBrandToken(name)) return NO_BRAND_CODE;
+  const blocked = new Set(used);
+  blocked.add(NO_BRAND_CODE);
+  const candidates: string[] = [];
+  if (compact.length >= 2 && compact.length <= 4) candidates.push(compact);
+  if (words.length > 1) {
+    const initials = words.map((w) => w[0]).join('');
+    candidates.push(initials.slice(0, 4));
+    candidates.push(`${words[0].slice(0, 2)}${words[1][0]}`);
+  }
+  candidates.push(consonantAbbrev(compact, 3));
+  candidates.push(compact.slice(0, 3));
+  candidates.push(consonantAbbrev(compact, 4));
+  candidates.push(compact.slice(0, 4));
+  candidates.push(`${compact.slice(0, 2)}${compact[compact.length - 1]}`);
+  const found = firstFree(candidates, blocked, 'brand');
+  if (found) return found;
+  const base = compact.slice(0, 2).padEnd(2, 'X');
+  for (let i = 1; i <= 99; i++) {
+    const c = `${base}${i}`;
+    if (!blocked.has(c) && isValidSkuPart(c, 'brand')) return c;
+  }
+  return compact.slice(0, 4);
+}
+
+const ROMAN_NUMERALS = new Set(['II', 'III', 'IV', 'VI', 'VII', 'VIII', 'IX', 'XI', 'XII']);
+
+const GENERIC_LEADING_WORDS = new Set([
+  'GIAY', 'AO', 'QUAN', 'VOT', 'BONG', 'CHAN', 'VAY', 'SET', 'BALO', 'TUI', 'MU', 'NON', 'DAM', 'ACC', 'ESS',
+]);
+
+/** Gợi ý VersionCode (≤ 6 ký tự). VD "Solution Speed FF4" → SSFF4, "Fusion" → FUSION. */
+export function suggestVersionCode(versionName: string): string {
+  let tokens = tokenizeUpperAlphaNum(versionName);
+  while (tokens.length > 1 && GENERIC_LEADING_WORDS.has(tokens[0])) tokens = tokens.slice(1);
+  if (tokens.length === 0) return '';
+  if (tokens.length === 1) return tokens[0].slice(0, 6);
+  const keepWhole = (t: string) => /\d/.test(t) || t.length <= 2 || ROMAN_NUMERALS.has(t);
+  let parts = tokens.map((t) => (keepWhole(t) ? t : t[0]));
+  let joined = parts.join('');
+  if (joined.length < 4) {
+    // Mở rộng từ dài CUỐI CÙNG (thường là phần phân biệt mẫu: "Pickleball ACE" -> PACE, "Alpha X" -> ALPHX)
+    let idx = -1;
+    tokens.forEach((t, i) => {
+      if (!keepWhole(t)) idx = i;
+    });
+    if (idx >= 0) {
+      const take = Math.max(1, Math.min(4, 6 - (joined.length - parts[idx].length)));
+      parts = parts.map((p, i) => (i === idx ? tokens[i].slice(0, take) : p));
+      joined = parts.join('');
+    }
+  }
+  if (joined.length > 6 && parts.length > 1) {
+    // Giữ nguyên token cuối ngắn (VD "V2", "3S", "X") vì thường là phần phân biệt giữa các mẫu
+    const last = parts[parts.length - 1];
+    if (last.length <= 3) {
+      return `${parts.slice(0, -1).join('').slice(0, 6 - last.length)}${last}`;
+    }
+  }
+  return joined.slice(0, 6);
+}
+
+const COLOR_WORD_CODES: Record<string, string> = {
+  TRANG: 'TR',
+  XANH: 'XA',
+  VANG: 'VA',
+  HONG: 'HO',
+  NAVY: 'NV',
+  WHITE: 'WH',
+  BLACK: 'BK',
+  GREEN: 'GR',
+  BLUE: 'BL',
+  PINK: 'PK',
+  GREY: 'GY',
+  GRAY: 'GY',
+  YELLOW: 'YL',
+  PURPLE: 'PU',
+  ORANGE: 'OR',
+  GOLD: 'GD',
+  SILVER: 'SV',
+};
+
+/** Gợi ý ColorCode (2–3 ký tự). VD Đỏ → DO, Xanh Dương → XD, Trắng → TR. Tránh trùng trong cùng sản phẩm. */
+export function suggestColorCode(color: string, used: Set<string> = new Set()): string {
+  let words = tokenizeUpperAlphaNum(color);
+  if (words.length > 1 && words[0] === 'MAU') words = words.slice(1);
+  if (words.length === 0) return '';
+  const digits = words.filter((w) => /^\d+$/.test(w)).join('');
+  const alpha = words.filter((w) => !/^\d+$/.test(w));
+  const candidates: string[] = [];
+  if (alpha.length === 0) {
+    candidates.push(digits.slice(0, 3), `C${digits.slice(0, 2)}`);
+  } else if (alpha.length === 1) {
+    const w = alpha[0];
+    if (COLOR_WORD_CODES[w]) candidates.push(COLOR_WORD_CODES[w]);
+    if (w.length >= 2 && w.length <= 3) candidates.push(w);
+    candidates.push(w.slice(0, 2), consonantAbbrev(w, 3), w.slice(0, 3));
+    if (digits) candidates.push(`${w[0]}${digits.slice(0, 2)}`, `${w.slice(0, 2)}${digits[0]}`);
+  } else {
+    const initials = alpha.map((w) => w[0]).join('');
+    candidates.push(initials.slice(0, 3));
+    if (digits) candidates.push(`${initials.slice(0, 2)}${digits[0]}`, `${initials[0]}${digits.slice(0, 2)}`);
+    candidates.push(`${alpha[0].slice(0, 2)}${alpha[1][0]}`, `${alpha[0][0]}${alpha[1].slice(0, 2)}`);
+    candidates.push(`${alpha[0][0]}${alpha[alpha.length - 1].slice(0, 2)}`);
+  }
+  const found = firstFree(candidates.map((c) => (c.length === 1 ? `${c}${c}` : c)), used, 'color');
+  if (found) return found;
+  const base = (alpha[0] || digits || 'C').slice(0, 2).padEnd(2, 'X');
+  for (let i = 1; i <= 9; i++) {
+    const c = `${base}${i}`;
+    if (!used.has(c)) return c;
+  }
+  return base;
+}
+
+/**
+ * Mã con của 1 biến thể theo đúng quy chuẩn của sản phẩm:
+ * - Sản phẩm mã mới: Mã gốc + ColorCode + SizeCode
+ * - Sản phẩm legacy: [Mã gốc][MÀU VIẾT LIỀN][SIZE] (generateVariantProductCode)
+ */
+export function computeVariantCodeForProduct(
+  product: any,
+  color?: string,
+  size?: string,
+  colorCode?: string
+): string {
+  const root = String(product?.code || '').trim();
+  if (!root) return '';
+  if (isNewSchemeProduct(product)) {
+    let cc = String(colorCode || '').trim().toUpperCase();
+    if (!cc && color) {
+      const key = normalizeToCompactUpperCode(color);
+      const found = (Array.isArray(product?.variants) ? product.variants : []).find(
+        (v: any) => v?.colorCode && normalizeToCompactUpperCode(v.color || '') === key
+      );
+      cc = found?.colorCode || suggestColorCode(color);
+    }
+    return buildVariantSku(root, cc, size);
+  }
+  return generateVariantProductCode(root, color, size);
+}
+
+/** Giá hiệu lực của biến thể (R8): giá biến thể > 0 thì dùng, ngược lại dùng giá sản phẩm gốc. */
+export function resolveVariantPricing(
+  product: any,
+  color?: string,
+  size?: string
+): { sellingPrice: number; costPrice: number; variant: any | null } {
+  const baseSelling = Math.max(0, Math.round(Number(product?.sellingPrice) || 0));
+  const baseCost = Math.max(0, Math.round(Number(product?.costPrice) || 0));
+  const c = String(color || '').trim();
+  const s = String(size || '').trim();
+  const variants: any[] = Array.isArray(product?.variants) ? product.variants : [];
+  const variant =
+    c || s ? variants.find((v) => buildVariantKey(v?.color, v?.size) === buildVariantKey(c, s)) || null : null;
+  const vSelling = Math.round(Number(variant?.sellingPrice) || 0);
+  const vCost = Math.round(Number(variant?.costPrice) || 0);
+  return {
+    sellingPrice: vSelling > 0 ? vSelling : baseSelling,
+    costPrice: vCost > 0 ? vCost : baseCost,
+    variant,
+  };
 }

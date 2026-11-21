@@ -308,8 +308,8 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
     <div className="space-y-6">
       {/* Toast Alert */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-fade-in">
-          <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+        <div className="fixed bottom-6 right-6 z-50 bg-teal-600 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-fade-in">
+          <CheckCircle2 className="w-5 h-5 text-teal-400" />
           <span className="text-sm font-medium">{toastMessage}</span>
         </div>
       )}
@@ -319,7 +319,7 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
         <button
           onClick={() => setActiveTab("CALENDAR")}
           className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition flex items-center gap-2 ${activeTab === "CALENDAR"
-            ? "bg-emerald-600 text-white shadow-md"
+            ? "bg-teal-600 text-white shadow-md"
             : "text-slate-600 hover:bg-slate-100"
             }`}
         >
@@ -330,7 +330,7 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
         <button
           onClick={() => setActiveTab("LEAVE_REQUESTS")}
           className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition flex items-center gap-2 ${activeTab === "LEAVE_REQUESTS"
-            ? "bg-emerald-600 text-white shadow-md"
+            ? "bg-teal-600 text-white shadow-md"
             : "text-slate-600 hover:bg-slate-100"
             }`}
         >
@@ -350,7 +350,7 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
         <button
           onClick={() => setActiveTab("SHIFTS")}
           className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition flex items-center gap-2 ${activeTab === "SHIFTS"
-            ? "bg-emerald-600 text-white shadow-md"
+            ? "bg-teal-600 text-white shadow-md"
             : "text-slate-600 hover:bg-slate-100"
             }`}
         >
@@ -370,7 +370,7 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
         <button
           onClick={() => setActiveTab("ATTENDANCE_LOG")}
           className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition flex items-center gap-2 ${activeTab === "ATTENDANCE_LOG"
-            ? "bg-emerald-600 text-white shadow-md"
+            ? "bg-teal-600 text-white shadow-md"
             : "text-slate-600 hover:bg-slate-100"
             }`}
         >
@@ -381,7 +381,7 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
         <button
           onClick={() => setActiveTab("STAFF_ACCOUNTS")}
           className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition flex items-center gap-2 ${activeTab === "STAFF_ACCOUNTS"
-            ? "bg-emerald-600 text-white shadow-md"
+            ? "bg-teal-600 text-white shadow-md"
             : "text-slate-600 hover:bg-slate-100"
             }`}
         >
@@ -396,7 +396,7 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
           {/* Header gọn gàng */}
           <div className="flex flex-wrap items-center justify-between gap-3 pb-3.5 border-b border-slate-100">
             <div className="flex items-center gap-2.5">
-              <CalendarIcon className="w-5 h-5 text-emerald-600" />
+              <CalendarIcon className="w-5 h-5 text-teal-600" />
               <h2 className="text-base sm:text-lg font-bold text-slate-900">
                 Lịch Công Ty & Ngày Lễ
               </h2>
@@ -422,7 +422,7 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
                   setHolidayNote("");
                   setShowAddHolidayModal(true);
                 }}
-                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-semibold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 Thêm Ngày Lễ
@@ -527,8 +527,8 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
                             ? "bg-rose-50 border-2 border-rose-400 hover:border-rose-500 shadow-2xs"
                             : "bg-amber-50/85 border-2 border-amber-400 hover:border-amber-500 shadow-2xs"
                           : cell.isToday
-                            ? "bg-blue-50/80 border-2 border-blue-500 ring-2 ring-blue-500/20 shadow-xs"
-                            : "bg-white border-2 border-slate-300 hover:border-emerald-500 shadow-2xs cursor-pointer"
+                            ? "bg-teal-50/80 border-2 border-teal-500 ring-2 ring-teal-500/20 shadow-xs"
+                            : "bg-white border-2 border-slate-300 hover:border-teal-500 shadow-2xs cursor-pointer"
                         }`}
                     >
                       {/* Label chéo góc trên phải rõ nét: phân biệt LỄ (Đỏ) vs SỰ KIỆN (Vàng cam) */}
@@ -545,7 +545,7 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
                       <div className="flex items-center justify-between z-10">
                         <span
                           className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${cell.isToday
-                            ? "bg-blue-600 text-white shadow-2xs"
+                            ? "bg-teal-600 text-white shadow-2xs"
                             : !cell.isCurrentMonth
                               ? "text-slate-300 font-medium"
                               : hasHoliday
@@ -585,7 +585,7 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
                             {cell.holiday.name}
                           </div>
                         ) : cell.isToday ? (
-                          <div className="text-[9px] font-bold text-blue-600 truncate">
+                          <div className="text-[9px] font-bold text-teal-600 truncate">
                             Hôm nay
                           </div>
                         ) : null}
@@ -607,7 +607,7 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
                     Lễ sự kiện / Kỷ niệm
                   </span>
                   <span className="inline-flex items-center gap-1">
-                    <span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-teal-600 inline-block" />
                     Hôm nay
                   </span>
                 </div>
@@ -734,7 +734,7 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
                       required
                       value={holidayDate}
                       onChange={(e) => setHolidayDate(e.target.value)}
-                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 outline-none"
                     />
                   </div>
                   <div>
@@ -787,7 +787,7 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
                       placeholder="VD: Nghỉ Du Lịch Công Ty, Tết Dương Lịch..."
                       value={holidayName}
                       onChange={(e) => setHolidayName(e.target.value)}
-                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 outline-none"
                     />
                   </div>
                   <div>
@@ -797,7 +797,7 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
                       placeholder="Ghi chú thêm về ngày nghỉ..."
                       value={holidayNote}
                       onChange={(e) => setHolidayNote(e.target.value)}
-                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 outline-none"
                     />
                   </div>
 
@@ -812,7 +812,7 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
                     <button
                       type="submit"
                       disabled={holidayLoading}
-                      className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-xl shadow-md transition disabled:opacity-50"
+                      className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold rounded-xl shadow-md transition disabled:opacity-50"
                     >
                       {holidayLoading ? "Đang lưu..." : "Lưu Ngày Lễ"}
                     </button>
@@ -830,7 +830,7 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
             <div>
               <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                <FileText className="w-6 h-6 text-emerald-600" />
+                <FileText className="w-6 h-6 text-teal-600" />
                 Phê Duyệt Đơn Từ (WFH, Nghỉ phép, Đổi ngày off, Đi trễ/Về sớm)
               </h2>
             </div>
@@ -947,7 +947,7 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
                       <td className="py-3.5 px-4">
                         <span
                           className={`px-2.5 py-1 rounded-full text-xs font-semibold ${r.status === "APPROVED"
-                            ? "bg-emerald-100 text-emerald-800"
+                            ? "bg-teal-100 text-teal-800"
                             : r.status === "REJECTED"
                               ? "bg-rose-100 text-rose-800"
                               : "bg-amber-100 text-amber-800"
@@ -965,7 +965,7 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
                           <div className="flex items-center justify-center gap-2">
                             <button
                               onClick={() => handleReviewRequest(r._id, "APPROVED")}
-                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-sm"
+                              className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-sm"
                             >
                               <Check className="w-3.5 h-3.5" /> Duyệt
                             </button>

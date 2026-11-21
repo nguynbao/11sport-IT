@@ -461,9 +461,9 @@ export default function TagCheckScannerModal({
   /* ------------------------------ Render ------------------------------ */
 
   const resultStyle: Record<ResultKind, { box: string; icon: React.ReactNode }> = {
-    added: { box: "bg-emerald-600 text-white", icon: <CheckCircle2 className="w-14 h-14" /> },
-    full: { box: "bg-emerald-600 text-white", icon: <CheckCircle2 className="w-14 h-14" /> },
-    undone: { box: "bg-sky-600 text-white", icon: <Undo2 className="w-14 h-14" /> },
+    added: { box: "bg-blue-600 text-white", icon: <CheckCircle2 className="w-14 h-14" /> },
+    full: { box: "bg-blue-600 text-white", icon: <CheckCircle2 className="w-14 h-14" /> },
+    undone: { box: "bg-blue-600 text-white", icon: <Undo2 className="w-14 h-14" /> },
     alreadyFull: { box: "bg-amber-400 text-slate-950", icon: <AlertTriangle className="w-14 h-14" /> },
     notfound: { box: "bg-red-600 text-white", icon: <XCircle className="w-14 h-14" /> },
     unreadable: { box: "bg-slate-700 text-white", icon: <HelpCircle className="w-14 h-14" /> },
@@ -474,7 +474,7 @@ export default function TagCheckScannerModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-2 sm:p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[96vh]">
         {/* Header + tiến trình */}
-        <div className="bg-slate-900 text-white px-3 sm:px-5 py-3 space-y-2">
+        <div className="bg-blue-600 text-white px-3 sm:px-5 py-3 space-y-2">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <ScanLine className="w-5 h-5 text-amber-400 shrink-0" />
@@ -494,7 +494,7 @@ export default function TagCheckScannerModal({
           </div>
           <div className="flex items-center gap-3">
             <div className="flex-1 h-2.5 rounded-full bg-slate-700 overflow-hidden">
-              <div className="h-full bg-emerald-500 transition-all duration-300" style={{ width: `${percent}%` }} />
+              <div className="h-full bg-blue-500 transition-all duration-300" style={{ width: `${percent}%` }} />
             </div>
             <span className="text-xs sm:text-sm font-extrabold font-mono whitespace-nowrap">
               {scannedUnits}/{expectedUnits} chiếc · {fullRows}/{totalRows} dòng đủ
@@ -618,7 +618,7 @@ export default function TagCheckScannerModal({
                           className="w-full text-left px-3 py-2 min-h-[44px] rounded-lg border border-slate-200 hover:border-amber-500 text-xs"
                         >
                           <span className="font-bold">#{c.index + 1}</span> {c.productName}
-                          <span className={`ml-1 font-bold ${full ? "text-emerald-700" : "text-amber-700"}`}>
+                          <span className={`ml-1 font-bold ${full ? "text-blue-700" : "text-amber-700"}`}>
                             ({c.scannedQuantity ?? 0}/{c.expectedQuantity ?? 0})
                           </span>
                         </button>
@@ -652,13 +652,13 @@ export default function TagCheckScannerModal({
                     value={manualQuery}
                     onChange={(e) => setManualQuery(e.target.value)}
                     placeholder="Bắn súng mã vạch hoặc nhập mã SKU / tên hàng (+1)..."
-                    className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 text-base sm:text-sm focus:border-emerald-600 focus:outline-none"
+                    className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 text-base sm:text-sm focus:border-blue-600 focus:outline-none"
                   />
                 </div>
                 <button
                   type="submit"
                   disabled={busy || !manualQuery.trim()}
-                  className="px-4 min-h-[44px] rounded-xl bg-slate-900 text-white text-sm font-bold disabled:opacity-50"
+                  className="px-4 min-h-[44px] rounded-xl bg-blue-600 text-white text-sm font-bold disabled:opacity-50"
                 >
                   Kiểm
                 </button>
@@ -669,7 +669,7 @@ export default function TagCheckScannerModal({
           {/* Cột danh sách cần kiểm */}
           <div className="lg:col-span-2 space-y-2">
             {allDone && (
-              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-sm font-bold flex items-center gap-2">
+              <div className="p-3 rounded-xl bg-blue-50 border border-blue-300 text-blue-900 text-sm font-bold flex items-center gap-2">
                 <CheckCircle2 className="w-5 h-5 shrink-0" /> Đã kiểm đủ tất cả {totalRows} dòng! Đóng cửa sổ và bấm
                 &quot;Hoàn thành Nhập Kho&quot;.
               </div>
@@ -688,9 +688,9 @@ export default function TagCheckScannerModal({
                     key={idx}
                     className={`px-2.5 py-2 rounded-lg border text-xs transition ${
                       highlightIndex === idx
-                        ? "border-emerald-500 ring-2 ring-emerald-300 bg-emerald-50"
+                        ? "border-blue-500 ring-2 ring-blue-300 bg-blue-50"
                         : full
-                        ? "border-emerald-200 bg-emerald-50/50"
+                        ? "border-blue-200 bg-blue-50/50"
                         : scanned > 0
                         ? "border-amber-200 bg-amber-50/50"
                         : "border-slate-200 bg-white"
@@ -699,13 +699,13 @@ export default function TagCheckScannerModal({
                     <div className="flex items-start gap-2">
                       <span
                         className={`mt-0.5 w-4 h-4 shrink-0 rounded border flex items-center justify-center ${
-                          full ? "bg-emerald-600 border-emerald-600 text-white" : "border-slate-300 bg-white"
+                          full ? "bg-blue-600 border-blue-600 text-white" : "border-slate-300 bg-white"
                         }`}
                       >
                         {full && <CheckCircle2 className="w-3 h-3" />}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <div className={`font-semibold break-words whitespace-normal leading-snug ${full ? "text-emerald-900" : "text-slate-900"}`}>
+                        <div className={`font-semibold break-words whitespace-normal leading-snug ${full ? "text-blue-900" : "text-slate-900"}`}>
                           #{idx + 1} {it.productName}
                         </div>
                         <div className="text-[10px] text-slate-500 font-mono break-all whitespace-normal">
@@ -715,7 +715,7 @@ export default function TagCheckScannerModal({
                       </div>
                       <span
                         className={`font-mono font-extrabold whitespace-nowrap ${
-                          full ? "text-emerald-700" : scanned > 0 ? "text-amber-700" : "text-slate-500"
+                          full ? "text-blue-700" : scanned > 0 ? "text-amber-700" : "text-slate-500"
                         }`}
                       >
                         {scanned}/{expected}
@@ -724,7 +724,7 @@ export default function TagCheckScannerModal({
                     <div className="mt-1.5 flex items-center gap-2">
                       <div className="flex-1 h-1.5 rounded-full bg-slate-200 overflow-hidden">
                         <div
-                          className={`h-full ${full ? "bg-emerald-500" : "bg-amber-400"}`}
+                          className={`h-full ${full ? "bg-blue-500" : "bg-amber-400"}`}
                           style={{ width: `${rowPct}%` }}
                         />
                       </div>
@@ -760,7 +760,7 @@ export default function TagCheckScannerModal({
             type="button"
             onClick={closeModal}
             className={`w-full sm:w-auto px-6 min-h-[44px] rounded-xl font-extrabold text-sm ${
-              allDone ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "bg-slate-200 text-slate-900"
+              allDone ? "bg-blue-600 hover:bg-blue-700 text-white" : "bg-slate-200 text-slate-900"
             }`}
           >
             {allDone ? "Xong — Đóng & Hoàn thành nhập kho" : "Đóng (tiếp tục sau)"}

@@ -5,8 +5,10 @@ import express from 'express';
 import cors from 'cors';
 import { getDbMode } from './config/db';
 import { attachUserContext, errorHandler } from './middleware/auth';
+import { securityHeaders, createRateLimiter } from './middleware/security';
 import { authStaffRouter } from './routes/authStaff';
 import { categoriesRouter } from './routes/categories';
+import { brandsRouter } from './routes/brands';
 import { productsInventoryRouter } from './routes/productsInventory';
 import { importsRouter } from './routes/imports';
 import { ordersCustomersRouter } from './routes/ordersCustomers';
@@ -24,7 +26,9 @@ import { servicesRouter } from './routes/services';
 
 export function createApp() {
   const app = express();
+  app.disable('x-powered-by');
   app.set('trust proxy', true);
+  app.use(securityHeaders);
 
   const defaultOrigins = [
     'https://11sport-it.vercel.app',
@@ -70,7 +74,37 @@ export function createApp() {
     })
   );
 
-  app.use(express.json({ limit: '16mb' }));
+  const heavyBodyJson = express.json({ limit: '16mb' });
+  const defaultBodyJson = express.json({ limit: '2mb' });
+  app.use((req, res, next) => {
+    const p = req.path || '';
+    if (
+      p.startsWith('/api/v1/imports') ||
+      p === '/api/v1/staff/parse-import-file' ||
+      p.startsWith('/api/v1/products')
+    ) {
+      heavyBodyJson(req, res, next);
+      return;
+    }
+    defaultBodyJson(req, res, next);
+  });
+
+  const authRateLimiter = createRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    max: 30,
+    keyPrefix: 'auth',
+    message: 'Thử đăng nhập hoặc đổi mật khẩu quá nhiều lần. Vui lòng thử lại sau 15 phút.',
+  });
+  const apiRateLimiter = createRateLimiter({
+    windowMs: 60 * 1000,
+    max: 300,
+    keyPrefix: 'api',
+    message: 'Hệ thống đang nhận quá nhiều yêu cầu, vui lòng thao tác chậm lại.',
+  });
+
+  app.use('/api/v1/auth/login', authRateLimiter);
+  app.use('/api/v1/auth/change-password', authRateLimiter);
+  app.use('/api/v1', apiRateLimiter);
   app.use(attachUserContext);
 
   // Root & Health check (hỗ trợ Render default health check tại / và /api/v1/health)
@@ -108,6 +142,7 @@ export function createApp() {
   // Mount API v1 routers
   app.use('/api/v1', authStaffRouter);
   app.use('/api/v1', categoriesRouter);
+  app.use('/api/v1', brandsRouter);
   app.use('/api/v1', productsInventoryRouter);
   app.use('/api/v1', importsRouter);
   app.use('/api/v1', ordersCustomersRouter);
