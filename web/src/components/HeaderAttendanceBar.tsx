@@ -244,17 +244,25 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
     if (!isWorkingNow) return;
 
     const timer = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
       pollPendingHandover();
-    }, 6000);
+    }, 15000);
 
     const handleFocus = () => {
       pollPendingHandover();
     };
+    const handleVisibility = () => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        pollPendingHandover();
+      }
+    };
     window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
       clearInterval(timer);
       window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [currentUser, attendance, pollPendingHandover]);
 
@@ -592,12 +600,12 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
 
   return (
     <div className="relative flex items-center justify-center">
-      <div className="flex items-center gap-2 bg-slate-800/95 border border-slate-700 px-3 py-1.5 rounded-2xl shadow-inner">
+      <div className="flex items-center gap-2 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-2xl shadow-2xs text-slate-800">
         {/* Badge WFH nếu có */}
         {isWfhToday && (
           <span
             title="Hôm nay được duyệt làm việc từ xa (WFH)"
-            className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-purple-500/20 border border-purple-400/30 text-purple-300 text-[11px] font-bold"
+            className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-purple-100 border border-purple-200 text-purple-700 text-[11px] font-bold"
           >
             <Home className="w-3 h-3" />
             WFH
@@ -611,7 +619,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
             onClick={handlePlayCheckIn}
             disabled={actionLoading}
             title="Bấm Play để bắt đầu tính giờ chấm công & kiểm tra nhận ca"
-            className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-extrabold text-xs flex items-center gap-2 shadow-md transition cursor-pointer"
+            className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-extrabold text-xs flex items-center gap-2 shadow-xs transition cursor-pointer"
           >
             <Play className="w-3.5 h-3.5 fill-current" />
             <span className="font-mono text-sm tracking-wider">00:00:00</span>
@@ -630,9 +638,9 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
                   ? "Đã chốt giờ gửi bàn giao - Đang chờ Ca 2 xác nhận"
                   : "Bấm Pause để kết thúc ca (Check-out)"
               }
-              className={`p-1.5 rounded-xl font-extrabold text-xs flex items-center justify-center shadow-md transition cursor-pointer disabled:opacity-50 ${
+              className={`p-1.5 rounded-xl font-extrabold text-xs flex items-center justify-center shadow-xs transition cursor-pointer disabled:opacity-50 ${
                 isAwaitingNextShiftConfirm
-                  ? "bg-sky-500 hover:bg-sky-400 text-slate-950"
+                  ? "bg-blue-600 hover:bg-blue-700 text-white"
                   : "bg-amber-500 hover:bg-amber-400 text-slate-950"
               }`}
             >
@@ -643,38 +651,38 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
               <span
                 className={`w-2 h-2 rounded-full ${
                   isAwaitingNextShiftConfirm
-                    ? "bg-sky-400"
+                    ? "bg-blue-600"
                     : isLunchPaused
-                    ? "bg-amber-400"
-                    : "bg-emerald-400 animate-pulse"
+                    ? "bg-amber-500"
+                    : "bg-blue-600 animate-pulse"
                 }`}
               />
-              <span className="font-mono font-black text-sm sm:text-base text-emerald-400 tracking-wider">
+              <span className="font-mono font-black text-sm sm:text-base text-brand-ink tracking-wider">
                 {elapsedText}
               </span>
             </div>
 
             {/* Nút Kiểm hàng luôn hiển thị cạnh đồng hồ đếm giờ cho nhân viên Sales */}
             {isSalesStaff && !isWfhToday && (
-              <div className="flex items-center pl-2 border-l border-slate-700">
+              <div className="flex items-center pl-2 border-l border-slate-300">
                 <button
                   type="button"
                   onClick={() => setShowHandoverModal(true)}
                   title="Mở bảng Kiểm hàng (Tổng số lượng mặt hàng kiểm trong ngày, Tiền mặt trong quầy & Lý do)"
-                  className={`px-2.5 py-1 rounded-xl text-[11px] font-extrabold flex items-center gap-1.5 shadow-sm transition cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-xl text-[11px] font-extrabold flex items-center gap-1.5 shadow-2xs transition cursor-pointer ${
                     isAwaitingNextShiftConfirm
-                      ? "bg-sky-500/20 border border-sky-400/40 text-sky-300 hover:bg-sky-500/30"
+                      ? "bg-blue-50 border border-blue-300 text-brand-ink hover:bg-blue-100"
                       : currentShiftHandover?.status === "DRAFT"
-                      ? "bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 hover:bg-emerald-500/30"
-                      : "bg-slate-700 hover:bg-slate-600 text-slate-100 border border-slate-600"
+                      ? "bg-blue-50 border border-blue-300 text-brand-ink hover:bg-blue-100"
+                      : "bg-white hover:bg-blue-50 text-slate-800 border border-slate-200 hover:border-blue-300"
                   }`}
                 >
-                  <Boxes className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <Boxes className="w-3.5 h-3.5 text-brand-ink shrink-0" />
                   <span className="truncate max-w-[200px]">
                     Kiểm hàng: {checkButtonSummaryText}
                   </span>
                   {isAwaitingNextShiftConfirm ? (
-                    <span className="px-1.5 py-0.5 rounded bg-sky-500 text-slate-950 text-[10px] font-black">
+                    <span className="px-1.5 py-0.5 rounded bg-blue-600 text-white text-[10px] font-black">
                       Chờ Ca 2 (
                       {attendance?.pendingCheckOutTime
                         ? new Date(attendance.pendingCheckOutTime).toLocaleTimeString("vi-VN", {
@@ -698,8 +706,8 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
         {/* Đã Check-out hoàn tất trong ngày: Chỉ hiện icon hoàn tất + Đồng hồ tổng giờ */}
         {isCompleted && (
           <div className="flex items-center gap-2 px-2 py-0.5 text-xs">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span className="font-mono font-black text-sm sm:text-base text-emerald-300 tracking-wider">
+            <CheckCircle2 className="w-4 h-4 text-brand-ink shrink-0" />
+            <span className="font-mono font-black text-sm sm:text-base text-brand-ink tracking-wider">
               {elapsedText}
             </span>
           </div>
@@ -707,7 +715,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
 
         {loading && (
           <div className="flex items-center gap-1.5 px-2 py-1 text-xs text-slate-400 font-mono">
-            <Clock className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+            <Clock className="w-3.5 h-3.5 animate-spin text-blue-400" />
             <span>--:--:--</span>
           </div>
         )}
@@ -741,12 +749,12 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
         <div
           className={`absolute top-full mt-1.5 z-50 whitespace-nowrap px-3 py-1.5 rounded-xl text-xs font-bold shadow-lg flex items-center gap-1.5 border ${
             feedback.type === "ok"
-              ? "bg-emerald-950/95 text-emerald-300 border-emerald-700"
+              ? "bg-blue-950/95 text-blue-300 border-blue-700"
               : "bg-rose-950/95 text-rose-300 border-rose-700"
           }`}
         >
           {feedback.type === "ok" ? (
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <CheckCircle2 className="w-3.5 h-3.5 text-blue-400 shrink-0" />
           ) : (
             <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
           )}
@@ -759,7 +767,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
         <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 text-slate-900">
           <div className="bg-white rounded-3xl max-w-xl w-full max-h-[92vh] shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-fade-in">
             {/* Header */}
-            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
+            <div className="bg-blue-600 text-white px-6 py-4 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-amber-500/20 text-amber-400 rounded-xl">
                   <ClipboardCheck className="w-5 h-5" />
@@ -772,7 +780,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
                       : "Kiểm Tra & Nhận Bàn Giao Từ Ca 1"}
                   </h3>
                   <p className="text-xs text-slate-300 mt-0.5">
-                    Người bàn giao: <b className="text-emerald-400">{pendingHandoverToConfirm.fromStaffName}</b> • Nhóm kiểm:{" "}
+                    Người bàn giao: <b className="text-blue-400">{pendingHandoverToConfirm.fromStaffName}</b> • Nhóm kiểm:{" "}
                     <b className="text-amber-300">{activeCheckCategories.join(" + ")}</b>
                   </p>
                 </div>
@@ -781,7 +789,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
                 type="button"
                 onClick={handleDismissIncomingHandover}
                 title="Đóng tạm để kiểm hàng sau"
-                className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-blue-700 transition cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -804,7 +812,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
                   </div>
                 </div>
               ) : (
-                <div className="p-3 bg-sky-50 border border-sky-200 text-sky-900 rounded-2xl">
+                <div className="p-3 bg-blue-50 border border-blue-200 text-blue-900 rounded-2xl">
                   Vui lòng kiểm tra <b>tiền mặt trong quầy</b> và <b>tổng số lượng ({activeCheckCategories.join(" + ")})</b> do{" "}
                   <b>{pendingHandoverToConfirm.fromStaffName}</b> bàn giao rồi bấm <b>Xác nhận nhận ca</b> (khi bạn xác nhận, ca trước sẽ hoàn tất Check-out theo đúng giờ họ đã bấm gửi).
                 </div>
@@ -840,7 +848,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
                       Đang lệch {incomingDiffCount} nhóm
                     </span>
                   ) : (
-                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[11px]">
+                    <span className="px-2.5 py-0.5 rounded-full bg-blue-100 text-brand-ink font-bold text-[11px]">
                       Khớp tồn Tầng 1
                     </span>
                   )}
@@ -876,7 +884,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
                         >
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="px-2.5 py-0.5 rounded-lg bg-emerald-600 text-white font-extrabold text-xs">
+                              <span className="px-2.5 py-0.5 rounded-lg bg-blue-600 text-white font-extrabold text-xs">
                                 {item.categoryName}
                               </span>
                               <span className="font-bold text-slate-700">
@@ -890,7 +898,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
                                 {item.unit || "Cái"}
                               </span>
                               {typeof prevReported === "number" && (
-                                <span className="text-emerald-800 font-semibold">
+                                <span className="text-brand-ink font-semibold">
                                   • Ca trước đếm:{" "}
                                   <b className="font-mono">{prevReported}</b>
                                 </span>
@@ -921,7 +929,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
                                 setIncomingActualTotals((prev) => ({ ...prev, [key]: val }));
                               }}
                               className={`w-14 text-center font-mono font-black text-sm outline-none ${
-                                isDiff ? "text-amber-700" : "text-emerald-700"
+                                isDiff ? "text-amber-700" : "text-brand-ink"
                               }`}
                             />
                             <button
@@ -954,7 +962,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
                   value={confirmNoteInput}
                   onChange={(e) => setConfirmNoteInput(e.target.value)}
                   placeholder="VD: Đã đếm đủ tổng số lượng và tiền mặt..."
-                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>
@@ -982,7 +990,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
                   type="button"
                   disabled={confirmingHandover}
                   onClick={() => handleConfirmIncomingHandover(true)}
-                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-md transition disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold shadow-md transition disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   <span>
@@ -1039,7 +1047,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
               value={lateCheckoutReasonInput}
               onChange={(e) => setLateCheckoutReasonInput(e.target.value)}
               placeholder="VD: Ở lại tư vấn chốt đơn cho khách đến trễ / kiểm hàng cuối ca..."
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 outline-none"
             />
             <div className="flex justify-end gap-2 pt-1">
               <button
@@ -1053,7 +1061,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
                 type="button"
                 disabled={!lateCheckoutReasonInput.trim() || actionLoading}
                 onClick={() => handlePauseCheckOut(false, "", lateCheckoutReasonInput.trim())}
-                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold cursor-pointer"
               >
                 {actionLoading ? "Đang gửi..." : "Gửi lý do & Check-out"}
               </button>

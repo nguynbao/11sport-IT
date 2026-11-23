@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { StaffModel, IStaff } from '../models/Staff';
 import { CategoryModel, ICategory } from '../models/Category';
+import { BrandModel, IBrand } from '../models/Brand';
 import { ProductModel, IProduct } from '../models/Product';
 import { StockMovementModel, IStockMovement } from '../models/StockMovement';
 import { ImportReceiptModel, IImportReceipt } from '../models/ImportReceipt';
@@ -20,6 +21,7 @@ import { Repository, memoryStore } from './repository';
 
 export const staffRepo = new Repository<IStaff>(StaffModel, 'staffs');
 export const categoryRepo = new Repository<ICategory>(CategoryModel, 'categories');
+export const brandRepo = new Repository<IBrand>(BrandModel, 'brands');
 export const productRepo = new Repository<IProduct>(ProductModel, 'products');
 export const stockMovementRepo = new Repository<IStockMovement>(StockMovementModel, 'stock_movements');
 export const importReceiptRepo = new Repository<IImportReceipt>(ImportReceiptModel, 'import_receipts');

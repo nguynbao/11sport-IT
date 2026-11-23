@@ -14,13 +14,22 @@ export interface IImportReceiptItem {
   stt: number;
   productId?: string;
   productCode: string;
+  /** v5.0: mã cũ trước chuẩn hoá */
+  legacyCode?: string;
+  legacyVariantCode?: string;
   /** Mã con riêng theo thuộc tính (Màu, Size): [Mã gốc][MÀU][SIZE] (VD: GASIA221401DO38) */
   variantCode?: string;
   productName: string;
   brand?: string;
+  /** v5.0: thông tin quy chuẩn mã mới trên dòng nhập kho */
+  brandId?: string;
+  versionName?: string;
+  versionCode?: string;
   color?: string;
   /** Danh sách 1 hoặc nhiều mã màu Hex hiển thị trực quan & làm viền box (VD: ["#FFFFFF", "#18181B"]) */
   colorHexes?: string[];
+  /** v5.0: ColorCode trong mã con (sản phẩm mã mới) */
+  colorCode?: string;
   size?: string;
   categoryId: string;
   unit: string;
@@ -71,11 +80,17 @@ const ImportReceiptItemSchema = new Schema<IImportReceiptItem>(
     stt: { type: Number, required: true },
     productId: { type: String, default: '' },
     productCode: { type: String, required: true },
+    legacyCode: { type: String },
+    legacyVariantCode: { type: String },
     variantCode: { type: String, default: '' },
     productName: { type: String, required: true },
     brand: { type: String, default: '' },
+    brandId: { type: String, default: '' },
+    versionName: { type: String, default: '' },
+    versionCode: { type: String, default: '' },
     color: { type: String, default: '' },
     colorHexes: { type: [String], default: [] },
+    colorCode: { type: String, default: '' },
     size: { type: String, default: '' },
     categoryId: { type: String, default: '' },
     unit: { type: String, default: 'Cái' },
@@ -127,5 +142,8 @@ const ImportReceiptSchema = new Schema<IImportReceipt>(
   },
   { timestamps: true }
 );
+
+ImportReceiptSchema.index({ createdAt: -1 });
+ImportReceiptSchema.index({ status: 1, createdAt: -1 });
 
 export const ImportReceiptModel = mongoose.model<IImportReceipt>('ImportReceipt', ImportReceiptSchema);

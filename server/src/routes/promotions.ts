@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { categoryRepo, productRepo, promotionRepo } from '../config/db';
+import { resolveVariantPricing } from '../utils/productCode';
 import { ApiError } from '../utils/errors';
 import {
   IPromotionConditionCategory,
@@ -525,7 +526,13 @@ promotionsRouter.post('/promotions/evaluate', async (req, res, next) => {
       if (!ri?.productId || qty <= 0) continue;
       const prod = prodById.get(String(ri.productId));
       if (prod) {
-        cartItems.push({ product: prod, quantity: qty });
+        // v5.0 (R8): nếu client gửi màu/size thì tính theo giá hiệu lực của biến thể
+        const pricing =
+          ri.color || ri.size ? resolveVariantPricing(prod, ri.color, ri.size) : null;
+        cartItems.push({
+          product: pricing ? { ...prod, sellingPrice: pricing.sellingPrice } : prod,
+          quantity: qty,
+        });
       }
     }
 

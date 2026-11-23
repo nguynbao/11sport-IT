@@ -12,9 +12,15 @@ import {
   getStoredUser,
   useDebounce,
   filterAndRankBySearch,
-  generateVariantProductCode,
+  Brand,
+  resolveVariantCode,
+  fetchBrandsApi,
+  lookupProductByCodeApi,
+  addProductVariantsApi,
+  describeApiError,
 } from "@/lib/api";
 import BarcodeLabelModal, { BarcodeLabelItem } from "./BarcodeLabelModal";
+import ProductCodeCreatorModal, { ProductCodeCreatorResult } from "./ProductCodeCreatorModal";
 import {
   ColorInputWithPicker,
   ColorSwatchBadge,
@@ -81,7 +87,29 @@ export default function InventoryTab() {
 
   // ===== MÁY QUÉT LABEL — QUÉT KIỂM HÀNG & ĐỐI CHIẾU TỒN KHO =====
   const [allCatalogProducts, setAllCatalogProducts] = useState<Product[]>([]);
+  // v5.0: lọc theo Thương hiệu + popup tạo sản phẩm chuẩn mã
+  const [brandFilter, setBrandFilter] = useState("");
+  const [brandOptions, setBrandOptions] = useState<Brand[]>([]);
+  const [showCodeCreator, setShowCodeCreator] = useState(false);
+
+  // v5.0: tra sản phẩm theo mã (mới + cũ) để lấy MÃ CON DO SERVER SINH thay vì tự sinh ở client
+  const catalogByCode = useMemo(() => {
+    const m = new Map<string, Product>();
+    const add = (code: string | undefined, p: Product) => {
+      const k = String(code || "").trim().toUpperCase();
+      if (k && !m.has(k)) m.set(k, p);
+    };
+    [...products, ...allCatalogProducts].forEach((p) => {
+      add(p.code, p);
+      add(p.legacyCode, p);
+      (p.legacyCodes || []).forEach((c) => add(c, p));
+    });
+    return m;
+  }, [products, allCatalogProducts]);
+  const variantCodeFor = (baseCode?: string, color?: string, size?: string): string =>
+    resolveVariantCode(catalogByCode.get(String(baseCode || "").trim().toUpperCase()), baseCode, color, size);
   const [scannerEnabled, setScannerEnabled] = useState(true);
+  const [showScannerPanel, setShowScannerPanel] = useState(false);
   const [scannerInput, setScannerInput] = useState("");
   const [scannedCheckCounts, setScannedCheckCounts] = useState<Record<string, number>>({});
   const [scannedVariantCounts, setScannedVariantCounts] = useState<
@@ -104,6 +132,18 @@ export default function InventoryTab() {
     currentUser?.role === "CEO" ||
     currentUser?.role === "ADMIN";
   const isAdmin = currentUser?.role === "CEO" || currentUser?.role === "ADMIN";
+  // v5.0: tạo sản phẩm chuẩn mã (POST /products luồng brandId) — CEO/ADMIN/ACCOUNTANT
+  const canCreateProduct = isAdmin || currentUser?.role === "ACCOUNTANT";
+
+  const handleCodeCreatorDone = async (result: ProductCodeCreatorResult) => {
+    setPriceStatusMsg(
+      result.mode === "CREATED"
+        ? `Đã tạo sản phẩm "${result.product.name}" mã ${result.product.code}. Nhập tồn qua phiếu nhập kho.`
+        : `Đã thêm ${result.variants.length} biến thể vào sản phẩm ${result.product.code}.`
+    );
+    setAllCatalogProducts((prev) => [result.product, ...prev.filter((p) => p._id !== result.product._id)]);
+    await loadInventory();
+  };
 
   const debouncedSearch = useDebounce(search, 400);
 
@@ -111,6 +151,9 @@ export default function InventoryTab() {
     try {
       const res = await apiRequest<Category[]>("/categories");
       setCategories(Array.isArray(res.data) ? res.data : []);
+      fetchBrandsApi()
+        .then(setBrandOptions)
+        .catch(() => undefined);
     } catch {
       // ignore
     }
@@ -210,9 +253,9 @@ export default function InventoryTab() {
         changedPriceProducts.forEach((p) => delete copy[p._id]);
         return copy;
       });
-      setPriceStatusMsg(`Đã lưu thành công giá bán của ${changedPriceProducts.length} mặt hàng.`);
+      setPriceStatusMsg(`Đã lưu thành công giá niêm yết của ${changedPriceProducts.length} mặt hàng.`);
     } catch (err: any) {
-      alert(err?.message || "Không thể cập nhật giá bán");
+      alert(err?.message || "Không thể cập nhật giá niêm yết");
     } finally {
       setSavingBatch(false);
     }
@@ -246,6 +289,40 @@ export default function InventoryTab() {
 
     setAddingVariantProdId(product._id);
     try {
+      if (product.versionCode) {
+        // v5.0: sản phẩm mã chuẩn mới => thêm biến thể qua POST /products/:id/variants (server sinh mã con)
+        const updated = await addProductVariantsApi(product._id, [
+          {
+            color: cleanColor,
+            size: cleanSize,
+            colorHexes: resolveVariantColorHexes(cleanColor, draft.colorHexes),
+          },
+        ]);
+        if (isAdmin && qty > 0) {
+          // Nhập thẳng tồn cho biến thể vừa thêm (chỉ Admin) — giữ nguyên biến thể khác
+          const nextVariants = (updated.variants || []).map((v) => {
+            const isNew =
+              String(v.color || "").trim().toLowerCase() === cleanColor.toLowerCase() &&
+              String(v.size || "").trim().toUpperCase() === cleanSize;
+            const f1 = Number(v.stockFloor1 || 0) + (isNew && draft.floor === "FLOOR_1" ? qty : 0);
+            const f2 = Number(v.stockFloor2 || 0) + (isNew && draft.floor === "FLOOR_2" ? qty : 0);
+            return { color: v.color, colorHexes: v.colorHexes, size: v.size, stockFloor1: f1, stockFloor2: f2 };
+          });
+          await apiRequest(`/products/${product._id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ variants: nextVariants, allowDirectStock: true }),
+          });
+        }
+        setNewVariantDrafts((prev) => ({
+          ...prev,
+          [product._id]: { color: "", colorHexes: [], size: "", quantity: 0, floor: "FLOOR_1" },
+        }));
+        await loadInventory();
+        setPriceStatusMsg(
+          `Đã thêm phân loại (${[cleanColor, cleanSize ? `Size ${cleanSize}` : ""].filter(Boolean).join(" - ")}) vào mã ${product.code}.`
+        );
+        return;
+      }
       const catId =
         typeof product.categoryId === "object" ? product.categoryId?._id : product.categoryId;
       await apiRequest(`/products`, {
@@ -273,7 +350,7 @@ export default function InventoryTab() {
         `Đã thêm phân loại (${[cleanColor, cleanSize ? `Size ${cleanSize}` : ""].filter(Boolean).join(" - ")}) vào mã ${product.code}.`
       );
     } catch (err: any) {
-      alert(err?.message || "Không thể thêm phân loại Màu/Size");
+      alert(describeApiError(err, "Không thể thêm phân loại Màu/Size"));
     } finally {
       setAddingVariantProdId(null);
     }
@@ -305,7 +382,7 @@ export default function InventoryTab() {
       const namedVariants = variants.filter((v) => v.color || v.size);
 
       if (specificVariant) {
-        const childCode = generateVariantProductCode(
+        const childCode = variantCodeFor(
           p.code,
           specificVariant.color,
           specificVariant.size
@@ -324,7 +401,7 @@ export default function InventoryTab() {
             productName: p.name,
             color: specificVariant.color,
             size: specificVariant.size,
-            sellingPrice: effSellPrice,
+            sellingPrice: Number(specificVariant.sellingPrice || 0) > 0 ? Number(specificVariant.sellingPrice) : effSellPrice,
             unit: p.unit,
             defaultQty: Math.max(1, Number(vQty) || 1),
           },
@@ -333,7 +410,7 @@ export default function InventoryTab() {
 
       if (namedVariants.length > 0) {
         return namedVariants.map((v, idx) => {
-          const childCode = generateVariantProductCode(p.code, v.color, v.size);
+          const childCode = variantCodeFor(p.code, v.color, v.size);
           const vQty =
             effectiveWarehouse === "FLOOR_1"
               ? v.stockFloor1
@@ -347,7 +424,7 @@ export default function InventoryTab() {
             productName: p.name,
             color: v.color,
             size: v.size,
-            sellingPrice: effSellPrice,
+            sellingPrice: Number(v.sellingPrice || 0) > 0 ? Number(v.sellingPrice) : effSellPrice,
             unit: p.unit,
             defaultQty: Math.max(1, Number(vQty) || 1),
           };
@@ -376,6 +453,31 @@ export default function InventoryTab() {
       const nowStr = new Date().toLocaleTimeString("vi-VN");
       const pool = allCatalogProducts.length > 0 ? allCatalogProducts : products;
       let scanRes = findProductAndVariantByScannedBarcode(pool, rawTrimmed);
+
+      // v5.0: tra cứu server theo mã mới / mã con / mã cũ (legacy) / mã rút gọn tem cũ
+      if (!scanRes) {
+        try {
+          const hit = await lookupProductByCodeApi(rawTrimmed);
+          if (hit?.product) {
+            const v = hit.variant;
+            scanRes = {
+              product: hit.product,
+              matchedVariant: v
+                ? {
+                    ...v,
+                    variantCode: v.variantCode || v.barcode || hit.product.code,
+                    stockFloor1: Number(v.stockFloor1 || 0),
+                    stockFloor2: Number(v.stockFloor2 || 0),
+                    stock: Number(v.stock || 0),
+                  }
+                : undefined,
+              isVariantExactMatch: Boolean(v),
+            };
+          }
+        } catch {
+          // ignore -> thử tải lại danh mục
+        }
+      }
 
       // Nếu chưa thấy trong bộ nhớ cục bộ, tự động tải lại danh mục mới nhất từ Server 1 lần
       // (phòng trường hợp máy khác vừa tạo mã con / biến thể mới mà máy này chưa F5)
@@ -424,7 +526,7 @@ export default function InventoryTab() {
       if (matchedVariant && (matchedVariant.color || matchedVariant.size)) {
         const childCode =
           matchedVariant.variantCode ||
-          generateVariantProductCode(product.code, matchedVariant.color, matchedVariant.size);
+          variantCodeFor(product.code, matchedVariant.color, matchedVariant.size);
         setLastScannedVariantCode(childCode);
         const prevVarCount = scannedVariantCounts[product._id]?.[childCode] || 0;
         const nextVarCount = prevVarCount + 1;
@@ -511,25 +613,36 @@ export default function InventoryTab() {
         return f2 > 0 || floor2Codes.has(p.code) || Boolean(scannedCheckCounts[p._id]);
       }
       return true;
+    }).filter((p) => {
+      if (!brandFilter) return true;
+      if (p.brandId) return String(p.brandId) === brandFilter;
+      const b = brandOptions.find((x) => x._id === brandFilter);
+      if (!b) return false;
+      const norm = (t?: string) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+      const keys = new Set([norm(b.name), norm(b.code), ...(b.aliases || []).map(norm)]);
+      return keys.has(norm(p.brand));
     });
 
     if (!search.trim()) return byFloor;
     return filterAndRankBySearch(byFloor, search, (p) => [
       { text: p.code, weight: 1.5 },
       { text: p.barcode, weight: 1.5 },
+      { text: p.legacyCode, weight: 1.2 },
+      { text: p.versionName, weight: 1.2 },
       { text: p.name, weight: 1.3 },
-      { text: p.brand, weight: 1.1 },
+      { text: p.note, weight: 0.9 },
+      { text: p.brandName || p.brand, weight: 1.1 },
       { text: p.categoryName, weight: 0.9 },
       { text: p.categoryCode, weight: 0.9 },
       { text: p.unit, weight: 0.6 },
       ...(Array.isArray(p.variants)
         ? p.variants.map((v) => ({
-          text: `${v.variantCode || generateVariantProductCode(p.code, v.color, v.size)} ${v.color || ""} ${v.size || ""} size ${v.size || ""}`,
+          text: `${v.variantCode || variantCodeFor(p.code, v.color, v.size)} ${v.color || ""} ${v.size || ""} size ${v.size || ""}`,
           weight: 1.4,
         }))
         : []),
     ]);
-  }, [products, isSales, effectiveWarehouse, floor1Codes, floor2Codes, search, onlyShowScanned, scannedCheckCounts]);
+  }, [products, isSales, effectiveWarehouse, floor1Codes, floor2Codes, search, onlyShowScanned, scannedCheckCounts, brandFilter, brandOptions]);
 
   const colCount = (canSeeCostPrice ? 10 : 9) + (effectiveWarehouse === "ALL" ? 2 : 0);
 
@@ -556,15 +669,15 @@ export default function InventoryTab() {
               type="button"
               onClick={() => setActiveWarehouse("FLOOR_1")}
               className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-2 border-2 ${effectiveWarehouse === "FLOOR_1"
-                ? "bg-emerald-600 text-white border-emerald-700 shadow-sm"
-                : "bg-emerald-50/60 text-emerald-900 border-emerald-200 hover:bg-emerald-100"
+                ? "bg-blue-600 text-white border-blue-700 shadow-sm"
+                : "bg-blue-50/60 text-blue-900 border-blue-200 hover:bg-blue-100"
                 }`}
             >
               <span>🏢 KHO TẦNG 1</span>
               <span
                 className={`px-2 py-0.5 rounded-full font-mono text-[11px] ${effectiveWarehouse === "FLOOR_1"
-                  ? "bg-white text-emerald-800"
-                  : "bg-emerald-200 text-emerald-900"
+                  ? "bg-white text-brand-ink"
+                  : "bg-blue-200 text-blue-900"
                   }`}
               >
                 {totalStockFloor1.toLocaleString("vi-VN")}
@@ -581,7 +694,7 @@ export default function InventoryTab() {
               <span>🏬 KHO TẦNG 2</span>
               <span
                 className={`px-2 py-0.5 rounded-full font-mono text-[11px] ${effectiveWarehouse === "FLOOR_2"
-                  ? "bg-white text-blue-800"
+                  ? "bg-white text-brand-ink"
                   : "bg-blue-200 text-blue-900"
                   }`}
               >
@@ -592,7 +705,7 @@ export default function InventoryTab() {
               type="button"
               onClick={() => setActiveWarehouse("ALL")}
               className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-2 border-2 ${effectiveWarehouse === "ALL"
-                ? "bg-slate-900 text-white border-slate-900 shadow-sm"
+                ? "bg-blue-600 text-white border-slate-900 shadow-sm"
                 : "bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200"
                 }`}
             >
@@ -625,7 +738,7 @@ export default function InventoryTab() {
               {displayedProducts.length}
             </p>
           </div>
-          <div className="w-12 h-12 shrink-0 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+          <div className="w-12 h-12 shrink-0 rounded-xl bg-blue-50 text-brand-ink flex items-center justify-center">
             <Package className="w-6 h-6" />
           </div>
         </div>
@@ -639,7 +752,7 @@ export default function InventoryTab() {
                   ? "🏬 Tồn Kho Tầng 2"
                   : "Tổng tồn cả 2 kho"}
             </p>
-            <p className="text-2xl md:text-3xl font-extrabold font-mono text-emerald-600 mt-1">
+            <p className="text-2xl md:text-3xl font-extrabold font-mono text-brand-ink mt-1">
               {effectiveWarehouse === "FLOOR_1"
                 ? totalStockFloor1
                 : effectiveWarehouse === "FLOOR_2"
@@ -647,152 +760,24 @@ export default function InventoryTab() {
                   : totalStock}
             </p>
           </div>
-          <div className="w-12 h-12 shrink-0 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+          <div className="w-12 h-12 shrink-0 rounded-xl bg-blue-50 text-brand-ink flex items-center justify-center">
             <Layers className="w-6 h-6" />
           </div>
         </div>
 
-        <div className="bg-slate-900 text-white rounded-xl p-4 md:p-5 shadow-sm flex flex-col justify-center sm:col-span-2 lg:col-span-1">
-          <p className="text-xs font-bold uppercase text-emerald-400">
+        <div className="bg-blue-50/80 border border-blue-200 text-slate-800 rounded-xl p-4 md:p-5 shadow-sm flex flex-col justify-center sm:col-span-2 lg:col-span-1">
+          <p className="text-xs font-bold uppercase text-brand-ink">
             Quy chuẩn 1 Mã Chung • Đa Màu & Size (v2.8)
           </p>
-          <p className="text-xs text-slate-300 mt-1">
+          <p className="text-xs text-slate-600 mt-1">
             Mỗi dòng sản phẩm dùng <b>1 Mã IN HOA VIẾT LIỀN</b> duy nhất (in lên tem mã vạch). Bấm vào từng dòng để xem hoặc thêm chi tiết <b>Màu sắc • Size • Số lượng</b>.
           </p>
         </div>
       </div>
 
       {/* Bộ lọc & Tìm kiếm */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 md:p-4">
-        {/* THANH MÁY QUÉT LABEL — QUÉT KIỂM HÀNG & ĐỐI CHIẾU TỒN KHO TRÊN KỆ */}
-        <div className="mb-4 rounded-xl border-2 border-emerald-500/80 bg-gradient-to-r from-emerald-50/90 via-white to-teal-50/70 p-3 shadow-sm">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
-                <ScanBarcode className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-extrabold uppercase tracking-wider text-emerald-900">
-                    Máy Quét Label — Quét Kiểm Hàng &amp; Đối Chiếu Tồn Kho
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setScannerEnabled((v) => !v)}
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold transition ${scannerEnabled
-                      ? "bg-emerald-600 text-white shadow-xs"
-                      : "bg-slate-200 text-slate-600"
-                      }`}
-                  >
-                    {scannerEnabled ? "● ĐANG BẬT MÁY QUÉT (TỰ ĐỘNG)" : "○ ĐÃ TẮT MÁY QUÉT"}
-                  </button>
-                </div>
-                <p className="text-[11px] text-slate-600 mt-0.5">
-                </p>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (!scannerInput.trim()) return;
-                  handleBarcodeScanForInventoryCheck(scannerInput);
-                  setScannerInput("");
-                }}
-                className="flex items-center gap-1.5"
-              >
-                <input
-                  type="text"
-                  data-barcode-input="true"
-                  value={scannerInput}
-                  onChange={(e) => setScannerInput(e.target.value)}
-                  placeholder="Quét hoặc gõ mã SP + Enter..."
-                  className="w-48 sm:w-56 px-3 py-1.5 rounded-lg border-2 border-emerald-400 bg-white text-xs font-mono font-extrabold text-slate-900 uppercase focus:border-emerald-600 focus:outline-none"
-                />
-                <button
-                  type="submit"
-                  className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold whitespace-nowrap shadow-xs"
-                >
-                  +1 Kiểm
-                </button>
-              </form>
-
-              {Object.keys(scannedCheckCounts).length > 0 && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setOnlyShowScanned((v) => !v)}
-                    className={`px-2.5 py-1.5 rounded-lg border text-xs font-extrabold transition ${onlyShowScanned
-                      ? "bg-emerald-700 text-white border-emerald-700"
-                      : "bg-white text-emerald-800 border-emerald-300 hover:bg-emerald-50"
-                      }`}
-                  >
-                    {onlyShowScanned
-                      ? `Đang lọc mã đã quét (${Object.keys(scannedCheckCounts).length})`
-                      : `Chỉ hiện mã đã quét (${Object.keys(scannedCheckCounts).length})`}
-                  </button>
-                  {lastScannedProdId && (scannedCheckCounts[lastScannedProdId] || 0) > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setScannedCheckCounts((prev) => {
-                          const cur = prev[lastScannedProdId] || 0;
-                          const copy = { ...prev };
-                          if (cur <= 1) delete copy[lastScannedProdId];
-                          else copy[lastScannedProdId] = cur - 1;
-                          return copy;
-                        });
-                      }}
-                      className="px-2.5 py-1.5 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold flex items-center gap-1"
-                      title="Trừ 1 số lượng kiểm của mã vừa quét"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" /> Hoàn tác -1
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setScannedCheckCounts({});
-                      setScannedVariantCounts({});
-                      setLastScannedProdId(null);
-                      setLastScannedVariantCode(null);
-                      setOnlyShowScanned(false);
-                      setLastScanFeedback(null);
-                    }}
-                    className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-600 text-xs font-bold"
-                  >
-                    Reset bộ đếm
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-
-          {lastScanFeedback && (
-            <div
-              className={`mt-2.5 px-3 py-2 rounded-lg text-xs font-bold flex items-center justify-between gap-2 border ${lastScanFeedback.type === "success"
-                ? "bg-emerald-100/90 border-emerald-300 text-emerald-950"
-                : lastScanFeedback.type === "warning"
-                  ? "bg-amber-100/90 border-amber-300 text-amber-950"
-                  : "bg-red-100/90 border-red-300 text-red-900"
-                }`}
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                {lastScanFeedback.type === "error" ? (
-                  <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
-                ) : (
-                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
-                )}
-                <span className="truncate">{lastScanFeedback.message}</span>
-              </div>
-              <span className="text-[10px] font-mono opacity-75 shrink-0">
-                {lastScanFeedback.time}
-              </span>
-            </div>
-          )}
-        </div>
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 md:p-4 space-y-3">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-3 w-full md:w-auto">
             <div className="relative w-full sm:w-72">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
@@ -800,8 +785,8 @@ export default function InventoryTab() {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Tìm mã SP, tên hàng, màu sắc, size..."
-                className="w-full min-h-[40px] pl-9 pr-3 py-2 rounded-lg border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                placeholder="Tìm mã SP, tên, màu, size, ghi chú..."
+                className="w-full min-h-[40px] pl-9 pr-3 py-2 rounded-lg border border-slate-300 text-sm focus:border-blue-600 focus:outline-none"
               />
             </div>
 
@@ -810,19 +795,53 @@ export default function InventoryTab() {
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                className="flex-1 sm:flex-none min-w-0 min-h-[40px] px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white focus:border-emerald-600 focus:outline-none"
+                className="flex-1 sm:flex-none min-w-0 min-h-[40px] px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white focus:border-blue-600 focus:outline-none"
               >
                 <option value="">Tất cả Category</option>
                 {categories.map((c) => (
                   <option key={c._id} value={c._id}>
-                    {c.name} ({c.code})
+                    {c.skuCode ? `[${c.skuCode}] ` : ""}
+                    {c.name}
                   </option>
                 ))}
+              </select>
+              <select
+                aria-label="Lọc theo thương hiệu"
+                value={brandFilter}
+                onChange={(e) => setBrandFilter(e.target.value)}
+                className="flex-1 sm:flex-none min-w-0 min-h-[40px] px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white focus:border-blue-600 focus:outline-none"
+              >
+                <option value="">Tất cả Thương hiệu</option>
+                {brandOptions
+                  .filter((b) => !selectedCategory || b.isSystem || (b.categoryIds || []).map(String).includes(selectedCategory))
+                  .map((b) => (
+                    <option key={b._id} value={b._id}>
+                      [{b.code}] {b.name}
+                    </option>
+                  ))}
               </select>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 self-stretch sm:self-start md:self-auto">
+            <button
+              type="button"
+              onClick={() => setShowScannerPanel((v) => !v)}
+              className={`min-h-[40px] px-3.5 py-2 rounded-lg border text-xs font-extrabold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                showScannerPanel || Object.keys(scannedCheckCounts).length > 0
+                  ? "bg-blue-50 border-blue-400 text-blue-900"
+                  : "bg-white border-slate-300 text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              <ScanBarcode className="w-4 h-4 text-brand-ink" />
+              <span>
+                Máy quét kiểm kho
+                {Object.keys(scannedCheckCounts).length > 0
+                  ? ` (${Object.keys(scannedCheckCounts).length})`
+                  : ""}
+              </span>
+            </button>
+
             {displayedProducts.length > 0 && (
               <button
                 type="button"
@@ -854,10 +873,11 @@ export default function InventoryTab() {
                   type="button"
                   disabled={changedPriceProducts.length === 0 || savingBatch}
                   onClick={handleSaveAllPriceChanges}
-                  className={`min-h-[40px] px-4 py-2 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1.5 transition shadow-sm ${changedPriceProducts.length > 0
-                    ? "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
-                    : "bg-slate-200 text-slate-400 cursor-not-allowed"
-                    }`}
+                  className={`min-h-[40px] px-4 py-2 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1.5 transition shadow-sm ${
+                    changedPriceProducts.length > 0
+                      ? "bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
+                      : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                  }`}
                 >
                   <Save className="w-4 h-4" />
                   {savingBatch
@@ -878,9 +898,141 @@ export default function InventoryTab() {
           </div>
         </div>
 
+        {/* THANH MÁY QUÉT LABEL — QUÉT KIỂM HÀNG & ĐỐI CHIẾU TỒN KHO TRÊN KỆ */}
+        {(showScannerPanel || Object.keys(scannedCheckCounts).length > 0 || lastScanFeedback) && (
+          <div className="rounded-xl border border-blue-300 bg-blue-50/50 p-3 shadow-2xs">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0">
+                  <ScanBarcode className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-extrabold uppercase tracking-wider text-blue-950">
+                      Máy Quét Label — Quét Kiểm Hàng &amp; Đối Chiếu Tồn Kho
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setScannerEnabled((v) => !v)}
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold transition ${
+                        scannerEnabled
+                          ? "bg-blue-600 text-white shadow-xs"
+                          : "bg-slate-200 text-slate-600"
+                      }`}
+                    >
+                      {scannerEnabled ? "● ĐANG BẬT MÁY QUÉT (TỰ ĐỘNG)" : "○ ĐÃ TẮT MÁY QUÉT"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!scannerInput.trim()) return;
+                    handleBarcodeScanForInventoryCheck(scannerInput);
+                    setScannerInput("");
+                  }}
+                  className="flex items-center gap-1.5"
+                >
+                  <input
+                    type="text"
+                    data-barcode-input="true"
+                    value={scannerInput}
+                    onChange={(e) => setScannerInput(e.target.value)}
+                    placeholder="Quét hoặc gõ mã SP + Enter..."
+                    className="w-48 sm:w-56 px-3 py-1.5 rounded-lg border border-blue-400 bg-white text-xs font-mono font-extrabold text-slate-900 uppercase focus:border-blue-600 focus:outline-none"
+                  />
+                  <button
+                    type="submit"
+                    className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold whitespace-nowrap shadow-xs"
+                  >
+                    +1 Kiểm
+                  </button>
+                </form>
+
+                {Object.keys(scannedCheckCounts).length > 0 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setOnlyShowScanned((v) => !v)}
+                      className={`px-2.5 py-1.5 rounded-lg border text-xs font-extrabold transition ${
+                        onlyShowScanned
+                          ? "bg-blue-700 text-white border-blue-700"
+                          : "bg-white text-brand-ink border-blue-300 hover:bg-blue-50"
+                      }`}
+                    >
+                      {onlyShowScanned
+                        ? `Đang lọc mã đã quét (${Object.keys(scannedCheckCounts).length})`
+                        : `Chỉ hiện mã đã quét (${Object.keys(scannedCheckCounts).length})`}
+                    </button>
+                    {lastScannedProdId && (scannedCheckCounts[lastScannedProdId] || 0) > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setScannedCheckCounts((prev) => {
+                            const cur = prev[lastScannedProdId] || 0;
+                            const copy = { ...prev };
+                            if (cur <= 1) delete copy[lastScannedProdId];
+                            else copy[lastScannedProdId] = cur - 1;
+                            return copy;
+                          });
+                        }}
+                        className="px-2.5 py-1.5 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold flex items-center gap-1"
+                        title="Trừ 1 số lượng kiểm của mã vừa quét"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" /> Hoàn tác -1
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setScannedCheckCounts({});
+                        setScannedVariantCounts({});
+                        setLastScannedProdId(null);
+                        setLastScannedVariantCode(null);
+                        setOnlyShowScanned(false);
+                        setLastScanFeedback(null);
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-600 text-xs font-bold"
+                    >
+                      Reset bộ đếm
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {lastScanFeedback && (
+              <div
+                className={`mt-2.5 px-3 py-2 rounded-lg text-xs font-bold flex items-center justify-between gap-2 border ${
+                  lastScanFeedback.type === "success"
+                    ? "bg-blue-100/90 border-blue-300 text-blue-950"
+                    : lastScanFeedback.type === "warning"
+                      ? "bg-amber-100/90 border-amber-300 text-amber-950"
+                      : "bg-red-100/90 border-red-300 text-red-900"
+                }`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  {lastScanFeedback.type === "error" ? (
+                    <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+                  ) : (
+                    <CheckCircle2 className="w-4 h-4 shrink-0 text-brand-ink" />
+                  )}
+                  <span className="truncate">{lastScanFeedback.message}</span>
+                </div>
+                <span className="text-[10px] font-mono opacity-75 shrink-0">
+                  {lastScanFeedback.time}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
         {priceStatusMsg && (
-          <div className="mb-3 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+          <div className="mb-3 p-3 rounded-xl bg-blue-50 border border-blue-200 text-brand-ink text-xs font-bold flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-brand-ink" />
             <span>{priceStatusMsg}</span>
           </div>
         )}
@@ -888,7 +1040,7 @@ export default function InventoryTab() {
         {/* Bảng tồn kho */}
         <div className="overflow-x-auto border border-slate-200 rounded-xl max-w-full">
           <table className="w-full min-w-[920px] text-sm text-left">
-            <thead className="bg-slate-900 text-white text-xs uppercase">
+            <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 text-xs uppercase">
               <tr>
                 <th className="py-3 px-3 w-10">STT</th>
                 <th className="py-3 px-3">Mã SP (chung)</th>
@@ -897,7 +1049,7 @@ export default function InventoryTab() {
                 <th className="py-3 px-3">Danh mục</th>
                 <th className="py-3 px-2 text-center">ĐVT</th>
                 {(effectiveWarehouse === "FLOOR_1" || effectiveWarehouse === "ALL") && (
-                  <th className="py-3 px-3 text-right text-emerald-300">🏢 Tầng 1</th>
+                  <th className="py-3 px-3 text-right text-blue-300">🏢 Tầng 1</th>
                 )}
                 {(effectiveWarehouse === "FLOOR_2" || effectiveWarehouse === "ALL") && (
                   <th className="py-3 px-3 text-right text-blue-300">🏬 Tầng 2</th>
@@ -906,9 +1058,9 @@ export default function InventoryTab() {
                   <th className="py-3 px-3 text-right">Tổng 2 Kho</th>
                 )}
                 {canSeeCostPrice && (
-                  <th className="py-3 px-3 text-right">Giá gốc</th>
+                  <th className="py-3 px-3 text-right">Giá vốn</th>
                 )}
-                <th className="py-3 px-3 text-right">Giá bán niêm yết</th>
+                <th className="py-3 px-3 text-right">Giá niêm yết</th>
                 <th className="py-3 px-3 text-center">Tem Label</th>
               </tr>
             </thead>
@@ -954,9 +1106,9 @@ export default function InventoryTab() {
                     <React.Fragment key={p._id}>
                       <tr
                         className={`hover:bg-slate-50 transition-colors ${lastScannedProdId === p._id
-                          ? "bg-emerald-100/80 ring-2 ring-inset ring-emerald-500"
+                          ? "bg-blue-100/80 ring-2 ring-inset ring-blue-500"
                           : scannedQty > 0
-                            ? "bg-emerald-50/40"
+                            ? "bg-blue-50/40"
                             : ""
                           }`}
                       >
@@ -965,13 +1117,25 @@ export default function InventoryTab() {
                         </td>
                         <td className="py-3 px-3">
                           <div className="flex flex-col items-start gap-1">
-                            <span className="font-mono text-xs font-extrabold px-2.5 py-1 rounded bg-blue-50 text-blue-800 border border-blue-200 whitespace-nowrap">
+                            <span className="font-mono text-xs font-extrabold px-2.5 py-1 rounded bg-blue-50 text-brand-ink border border-blue-200 whitespace-nowrap">
                               {p.code}
                             </span>
+                            {(p.brandName || p.brand || p.versionName) && (
+                              <span className="text-[10px] font-semibold text-slate-500">
+                                {p.brandCode ? `[${p.brandCode}] ` : ""}
+                                {p.brandName || p.brand || ""}
+                                {p.versionName ? ` · ${p.versionName}` : ""}
+                              </span>
+                            )}
+                            {p.legacyCode && p.legacyCode !== p.code && (
+                              <span className="text-[10px] text-slate-400" title="Mã cũ trước chuẩn hoá — vẫn quét được">
+                                Mã cũ: {p.legacyCode}
+                              </span>
+                            )}
                             {scannedQty > 0 && (
                               <span
                                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-extrabold font-mono border ${scannedQty === sysStockForCompare
-                                  ? "bg-emerald-600 text-white border-emerald-700"
+                                  ? "bg-blue-600 text-white border-blue-700"
                                   : scannedQty > sysStockForCompare
                                     ? "bg-amber-500 text-white border-amber-600"
                                     : "bg-teal-100 text-teal-900 border-teal-300"
@@ -988,6 +1152,11 @@ export default function InventoryTab() {
                             <span className="inline-block mt-0.5 text-[11px] font-bold text-slate-500">
                               Hãng: {p.brand}
                             </span>
+                          )}
+                          {p.note && (
+                            <div className="mt-1 text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded px-2 py-0.5">
+                              📝 {p.note}
+                            </div>
                           )}
                         </td>
                         <td className="py-3 px-3">
@@ -1034,7 +1203,7 @@ export default function InventoryTab() {
                                     return (
                                       <div
                                         key={colorLabel}
-                                        style={getColorBoxBorderStyle(groupHexes, "#f8fafc", 2)}
+                                        style={getColorBoxBorderStyle(groupHexes, "var(--box-bg, #f8fafc)", 2)}
                                         className="flex flex-wrap items-center gap-1 bg-slate-50/90 border border-slate-200/80 rounded-md px-2 py-1"
                                       >
                                         <span className="text-[11px] font-extrabold text-slate-800 mr-1 flex items-center gap-1.5">
@@ -1054,16 +1223,16 @@ export default function InventoryTab() {
                                                 : v.stock;
                                           const childCode =
                                             v.variantCode ||
-                                            generateVariantProductCode(p.code, v.color, v.size);
+                                            variantCodeFor(p.code, v.color, v.size);
                                           const vScanned = scannedVariantCounts[p._id]?.[childCode] || 0;
                                           return (
                                             <span
                                               key={`${v.variantKey || vIdx}`}
                                               title={`Mã con: ${childCode}`}
                                               className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold border ${lastScannedVariantCode === childCode
-                                                ? "bg-emerald-600 text-white border-emerald-700 ring-2 ring-emerald-300"
+                                                ? "bg-blue-600 text-white border-blue-700 ring-2 ring-blue-300"
                                                 : vQty > 0
-                                                  ? "bg-white text-emerald-800 border-emerald-200"
+                                                  ? "bg-white text-brand-ink border-blue-200"
                                                   : "bg-slate-100 text-slate-400 border-slate-200"
                                                 }`}
                                             >
@@ -1083,7 +1252,7 @@ export default function InventoryTab() {
                                           <button
                                             type="button"
                                             onClick={() => toggleExpandProduct(p._id)}
-                                            className="text-[10px] font-extrabold text-indigo-700 hover:underline px-1"
+                                            className="text-[10px] font-extrabold text-brand-ink hover:underline px-1"
                                           >
                                             +{hiddenVarsCount} size...
                                           </button>
@@ -1095,7 +1264,7 @@ export default function InventoryTab() {
                                     <button
                                       type="button"
                                       onClick={() => toggleExpandProduct(p._id)}
-                                      className="text-[10px] font-extrabold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded transition"
+                                      className="text-[10px] font-extrabold text-brand-ink bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded transition"
                                     >
                                       +{hiddenGroupsCount} màu khác ({variants.length} mã con)...
                                     </button>
@@ -1130,10 +1299,10 @@ export default function InventoryTab() {
                         <td className="py-3 px-3 text-xs text-slate-600">{catName}</td>
                         <td className="py-3 px-2 text-center text-xs">{p.unit}</td>
                         {(effectiveWarehouse === "FLOOR_1" || effectiveWarehouse === "ALL") && (
-                          <td className="py-3 px-3 text-right font-mono font-extrabold bg-emerald-50/30">
+                          <td className="py-3 px-3 text-right font-mono font-extrabold bg-blue-50/30">
                             <span
                               className={`px-2.5 py-1 rounded-full text-xs ${f1 > 0
-                                ? "bg-emerald-100 text-emerald-800"
+                                ? "bg-blue-100 text-brand-ink"
                                 : "bg-red-50 text-red-600"
                                 }`}
                             >
@@ -1145,7 +1314,7 @@ export default function InventoryTab() {
                           <td className="py-3 px-3 text-right font-mono font-extrabold bg-blue-50/30">
                             <span
                               className={`px-2.5 py-1 rounded-full text-xs ${f2 > 0
-                                ? "bg-blue-100 text-blue-800"
+                                ? "bg-blue-100 text-brand-ink"
                                 : "bg-slate-100 text-slate-500"
                                 }`}
                             >
@@ -1199,10 +1368,10 @@ export default function InventoryTab() {
                                       handleSaveAllPriceChanges();
                                     }
                                   }}
-                                  placeholder="Nhập giá bán..."
-                                  className={`w-full pl-2 pr-9 py-1.5 rounded-lg border text-right text-xs font-mono font-bold focus:border-emerald-600 focus:outline-none ${priceEdits[p._id] !== undefined &&
+                                  placeholder="Nhập giá niêm yết..."
+                                  className={`w-full pl-2 pr-9 py-1.5 rounded-lg border text-right text-xs font-mono font-bold focus:border-blue-600 focus:outline-none ${priceEdits[p._id] !== undefined &&
                                     priceEdits[p._id] !== Number(p.sellingPrice || 0)
-                                    ? "border-emerald-500 bg-emerald-50/70 text-emerald-950 ring-1 ring-emerald-400"
+                                    ? "border-blue-500 bg-blue-50/70 text-blue-950 ring-1 ring-blue-400"
                                     : (priceEdits[p._id] ?? p.sellingPrice) > 0
                                       ? "border-slate-300 bg-white text-slate-900"
                                       : "border-amber-300 bg-amber-50 text-amber-900"
@@ -1227,7 +1396,7 @@ export default function InventoryTab() {
                           <button
                             type="button"
                             onClick={() => setLabelModalItems(expandProductToPrintLabelItems(p))}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold transition"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-brand-ink border border-blue-200 text-xs font-bold transition"
                             title="In tem mã vạch theo từng Mã con (Màu + Size)"
                           >
                             <Printer className="w-3.5 h-3.5" />
@@ -1244,11 +1413,11 @@ export default function InventoryTab() {
                               <div className="flex flex-wrap items-center justify-between gap-2">
                                 <div className="text-xs font-extrabold text-slate-800">
                                   Bảng phân loại Size & Màu sắc của mã{" "}
-                                  <span className="font-mono text-blue-700">{p.code}</span> ({p.name})
+                                  <span className="font-mono text-brand-ink">{p.code}</span> ({p.name})
                                 </div>
                                 <span className="text-[11px] text-slate-500">
-                                  Mỗi thuộc tính (Màu + Size) có <b className="font-mono text-indigo-700">Mã con riêng</b> để in tem &amp; quét kiểm kho • Đơn giá bán:{" "}
-                                  <b className="font-mono text-emerald-700">
+                                  Mỗi thuộc tính (Màu + Size) có <b className="font-mono text-brand-ink">Mã con riêng</b> để in tem &amp; quét kiểm kho • Giá niêm yết:{" "}
+                                  <b className="font-mono text-brand-ink">
                                     {formatVND(Number(priceEdits[p._id] ?? p.sellingPrice ?? 0))}
                                   </b>
                                 </span>
@@ -1262,12 +1431,12 @@ export default function InventoryTab() {
                                       <th className="py-2 px-3 text-left">Mã con</th>
                                       <th className="py-2 px-3 text-left">Màu sắc</th>
                                       <th className="py-2 px-3 text-left">Size</th>
-                                      <th className="py-2 px-3 text-right">Giá bán</th>
-                                      <th className="py-2 px-3 text-right text-emerald-700">
+                                      <th className="py-2 px-3 text-right">Giá niêm yết</th>
+                                      <th className="py-2 px-3 text-right text-brand-ink">
                                         🏢 Tồn Kho Tầng 1
                                       </th>
                                       {!isSales && (
-                                        <th className="py-2 px-3 text-right text-blue-700">
+                                        <th className="py-2 px-3 text-right text-brand-ink">
                                           🏬 Tồn Kho Tầng 2
                                         </th>
                                       )}
@@ -1290,7 +1459,7 @@ export default function InventoryTab() {
                                       </tr>
                                     ) : (
                                       variants.map((v, vIdx) => {
-                                        const childCode = generateVariantProductCode(
+                                        const childCode = variantCodeFor(
                                           p.code,
                                           v.color,
                                           v.size
@@ -1302,17 +1471,17 @@ export default function InventoryTab() {
                                             key={v.variantKey || vIdx}
                                             className={
                                               lastScannedVariantCode === childCode
-                                                ? "bg-emerald-50"
+                                                ? "bg-blue-50"
                                                 : ""
                                             }
                                           >
                                             <td className="py-2 px-3 text-slate-400">{vIdx + 1}</td>
                                             <td className="py-2 px-3">
-                                              <span className="font-mono font-extrabold text-indigo-800 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">
+                                              <span className="font-mono font-extrabold text-brand-ink bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">
                                                 {childCode}
                                               </span>
                                               {vScanned > 0 && (
-                                                <span className="ml-1.5 px-1.5 py-0.5 rounded bg-emerald-600 text-white font-mono text-[10px] font-bold">
+                                                <span className="ml-1.5 px-1.5 py-0.5 rounded bg-blue-600 text-white font-mono text-[10px] font-bold">
                                                   Đã quét: {vScanned}
                                                 </span>
                                               )}
@@ -1321,7 +1490,7 @@ export default function InventoryTab() {
                                               <span
                                                 style={getColorBoxBorderStyle(
                                                   resolveVariantColorHexes(v.color, v.colorHexes),
-                                                  "#f8fafc",
+                                                  "var(--box-bg, #f8fafc)",
                                                   2
                                                 )}
                                                 className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-slate-200"
@@ -1334,17 +1503,24 @@ export default function InventoryTab() {
                                                 <span>{v.color || "Mặc định"}</span>
                                               </span>
                                             </td>
-                                            <td className="py-2 px-3 font-mono font-bold text-indigo-700">
+                                            <td className="py-2 px-3 font-mono font-bold text-brand-ink">
                                               {v.size?.trim() || ""}
                                             </td>
                                             <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
-                                              {formatVND(Number(priceEdits[p._id] ?? p.sellingPrice ?? 0))}
+                                              {formatVND(
+                                                Number(v.sellingPrice || 0) > 0
+                                                  ? Number(v.sellingPrice)
+                                                  : Number(priceEdits[p._id] ?? p.sellingPrice ?? 0)
+                                              )}
+                                              {Number(v.sellingPrice || 0) > 0 && (
+                                                <div className="text-[9px] font-sans font-bold text-amber-600">Giá riêng</div>
+                                              )}
                                             </td>
-                                            <td className="py-2 px-3 text-right font-mono font-bold text-emerald-700">
+                                            <td className="py-2 px-3 text-right font-mono font-bold text-brand-ink">
                                               {v.stockFloor1}
                                             </td>
                                             {!isSales && (
-                                              <td className="py-2 px-3 text-right font-mono font-bold text-blue-700">
+                                              <td className="py-2 px-3 text-right font-mono font-bold text-brand-ink">
                                                 {v.stockFloor2}
                                               </td>
                                             )}
@@ -1361,7 +1537,7 @@ export default function InventoryTab() {
                                                     expandProductToPrintLabelItems(p, v)
                                                   )
                                                 }
-                                                className="inline-flex items-center gap-1 px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[11px] font-bold"
+                                                className="inline-flex items-center gap-1 px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-brand-ink border border-indigo-200 text-[11px] font-bold"
                                               >
                                                 <Printer className="w-3 h-3" /> In mã {childCode}
                                               </button>
@@ -1461,7 +1637,7 @@ export default function InventoryTab() {
                                     type="button"
                                     disabled={addingVariantProdId === p._id}
                                     onClick={() => handleAddVariantToProduct(p)}
-                                    className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1"
+                                    className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1"
                                   >
                                     <Plus className="w-3.5 h-3.5" />
                                     <span>
@@ -1486,6 +1662,14 @@ export default function InventoryTab() {
       </div>
 
       {/* Modal In Tem Mã Vạch (Label Printer) */}
+      <ProductCodeCreatorModal
+        open={showCodeCreator}
+        onClose={() => setShowCodeCreator(false)}
+        categories={categories}
+        defaultCategoryId={selectedCategory || undefined}
+        canSeeCost={canSeeCostPrice || currentUser?.role === "ACCOUNTANT"}
+        onDone={handleCodeCreatorDone}
+      />
       <BarcodeLabelModal
         open={Boolean(labelModalItems)}
         onClose={() => setLabelModalItems(null)}

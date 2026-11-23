@@ -75,7 +75,7 @@ export default function StaffModule({
   currentUser?: StaffUser | null;
 }) {
   const isCeo = currentUser?.role === "CEO";
-  const isAdminView = mode === "ADMIN_LOCK_ONLY" && !isCeo;
+  const isAdminView = (mode === "ADMIN_LOCK_ONLY" || currentUser?.role === "ADMIN") && !isCeo;
   const [staffList, setStaffList] = useState<StaffUser[]>([]);
 
   // --- Form Tạo Tài Khoản Nhân Viên Mới ---
@@ -792,7 +792,7 @@ export default function StaffModule({
         <div
           className={`p-3.5 rounded-xl border text-xs font-bold flex items-center gap-2 ${
             statusMsg.type === "success"
-              ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+              ? "bg-teal-50 border-teal-200 text-brand-ink"
               : "bg-red-50 border-red-200 text-red-700"
           }`}
         >
@@ -814,7 +814,7 @@ export default function StaffModule({
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-            <UserPlus className="w-4 h-4 text-emerald-600" />
+            <UserPlus className="w-4 h-4 text-brand-ink" />
             {isAdminView
               ? "Tạo Tài Khoản Mới & Cấp Quyền (Admin)"
               : "Thêm Tài khoản Nhân viên Mới & Hồ sơ Nhân sự (HR)"}
@@ -833,7 +833,7 @@ export default function StaffModule({
               </button>
 
               <label
-                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition cursor-pointer ${
+                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-sm transition cursor-pointer ${
                   importingExcel ? "opacity-70 pointer-events-none" : ""
                 }`}
                 title="Chọn file Excel (.xlsx) hoặc CSV (.csv) để tự động điền các ô thông tin hoặc tạo hàng loạt"
@@ -925,7 +925,7 @@ export default function StaffModule({
             <div>
               <button
                 type="submit"
-                className="w-full py-2.5 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition"
+                className="w-full py-2.5 px-4 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md transition"
               >
                 + Tạo Tài Khoản
               </button>
@@ -993,13 +993,13 @@ export default function StaffModule({
             {/* Khung 26 trường chuẩn theo đúng mẫu Import Nhân sự của HR */}
             <div className="p-3.5 rounded-xl bg-white border border-slate-200 space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-800">
+                <div className="text-[11px] font-extrabold uppercase tracking-wider text-brand-ink">
                   2. Thông tin Hồ sơ Nhân sự theo Mẫu Chuẩn (BẮT ĐẦU → STK)
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowExtendedCreate((prev) => !prev)}
-                  className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 hover:text-emerald-800 cursor-pointer"
+                  className="inline-flex items-center gap-1 text-xs font-bold text-brand-ink hover:text-brand-ink cursor-pointer"
                 >
                   {showExtendedCreate ? (
                     <ChevronUp className="w-4 h-4" />
@@ -1252,7 +1252,7 @@ export default function StaffModule({
                   </div>
 
                   {/* Nhóm SỐ HĐ (HDTT / HĐTV / HDXDTH), BHXH (NGÀY ĐÓNG / MỨC ĐÓNG / NGÀY NGHỈ), Lương, Số ngày nghỉ, STK */}
-                  <div className="p-3.5 rounded-xl bg-emerald-50/40 border border-emerald-200/70 space-y-3">
+                  <div className="p-3.5 rounded-xl bg-teal-50/40 border border-teal-200/70 space-y-3">
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3">
                       <div className="md:col-span-2">
                         <label className="block text-xs font-bold text-slate-600 mb-1">
@@ -1433,7 +1433,7 @@ export default function StaffModule({
             <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
               <div className="flex flex-wrap items-center gap-2">
                 <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 font-bold text-xs transition">
-                  <Upload className="w-3.5 h-3.5 text-emerald-600" />
+                  <Upload className="w-3.5 h-3.5 text-brand-ink" />
                   <span>
                     {contractFileName
                       ? "Đổi file hợp đồng đính kèm"
@@ -1459,8 +1459,8 @@ export default function StaffModule({
                 </label>
 
                 {contractFileName && (
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold">
-                    <FileText className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-teal-50 border border-teal-200 text-brand-ink text-xs font-semibold">
+                    <FileText className="w-3.5 h-3.5 shrink-0 text-brand-ink" />
                     <span className="max-w-[200px] truncate">{contractFileName}</span>
                     <button
                       type="button"
@@ -1479,7 +1479,7 @@ export default function StaffModule({
 
               <button
                 type="submit"
-                className="py-2.5 px-6 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition cursor-pointer"
+                className="py-2.5 px-6 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md transition cursor-pointer"
               >
                 + Tạo Nhân Viên Mới
               </button>
@@ -1492,7 +1492,7 @@ export default function StaffModule({
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
-            <Users className="w-5 h-5 text-emerald-600" />
+            <Users className="w-5 h-5 text-brand-ink" />
             Danh sách Nhân viên ({filteredStaffList.length}/{staffList.length})
           </h3>
           <ExportExcelButton
@@ -1510,14 +1510,14 @@ export default function StaffModule({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Tìm tên, mã NV, username, SĐT, CCCD, vị trí, STK..."
-              className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs outline-none focus:ring-2 focus:ring-emerald-500"
+              className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs outline-none focus:ring-2 focus:ring-teal-500"
             />
           </div>
 
           <select
             value={filterDept}
             onChange={(e) => setFilterDept(e.target.value as "ALL" | "OFFICE" | "SALES")}
-            className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500"
+            className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-teal-500"
           >
             <option value="ALL">Tất cả Khối</option>
             <option value="OFFICE">Khối Văn phòng</option>
@@ -1527,7 +1527,7 @@ export default function StaffModule({
           <select
             value={filterRole}
             onChange={(e) => setFilterRole(e.target.value as "ALL" | UserRole)}
-            className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500"
+            className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-teal-500"
           >
             <option value="ALL">Tất cả Vai trò</option>
             <option value="SALES">SALES (Bán hàng)</option>
@@ -1541,7 +1541,7 @@ export default function StaffModule({
           <select
             value={filterContract}
             onChange={(e) => setFilterContract(e.target.value as "ALL" | ContractType)}
-            className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500"
+            className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-teal-500"
           >
             <option value="ALL">Tất cả Hợp đồng</option>
             <option value="FULLTIME">Chính thức</option>
@@ -1552,7 +1552,7 @@ export default function StaffModule({
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value as "ALL" | "ACTIVE" | "LOCKED")}
-            className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500"
+            className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-teal-500"
           >
             <option value="ALL">Tất cả Trạng thái</option>
             <option value="ACTIVE">Đang hoạt động</option>
@@ -1560,7 +1560,7 @@ export default function StaffModule({
           </select>
 
           <div className="inline-flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-1">
-            <ArrowUpDown className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <ArrowUpDown className="w-3.5 h-3.5 text-brand-ink shrink-0" />
             <span className="text-[11px] font-bold text-slate-500">Sắp xếp:</span>
             <select
               value={sortBy}
@@ -1594,7 +1594,7 @@ export default function StaffModule({
             >
               {sortOrder === "asc" ? (
                 <>
-                  <ArrowUp className="w-3 h-3 text-emerald-600" />
+                  <ArrowUp className="w-3 h-3 text-brand-ink" />
                   <span className="text-[10px]">Tăng</span>
                 </>
               ) : (
@@ -1620,17 +1620,17 @@ export default function StaffModule({
 
         <div className="overflow-x-auto border border-slate-200 rounded-xl">
           <table className="w-full text-xs text-left">
-            <thead className="bg-slate-900 text-white uppercase">
+            <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 uppercase">
               <tr>
                 <th
                   onClick={() => handleColumnSort("code")}
-                  className="py-3 px-3.5 cursor-pointer hover:bg-slate-800 select-none whitespace-nowrap"
+                  className="py-3 px-3.5 cursor-pointer hover:bg-teal-700 select-none whitespace-nowrap"
                 >
                   <span className="inline-flex items-center gap-1">
                     Mã NV
                     {sortBy === "code" &&
                       (sortOrder === "asc" ? (
-                        <ArrowUp className="w-3 h-3 text-emerald-400" />
+                        <ArrowUp className="w-3 h-3 text-teal-400" />
                       ) : (
                         <ArrowDown className="w-3 h-3 text-amber-400" />
                       ))}
@@ -1638,13 +1638,13 @@ export default function StaffModule({
                 </th>
                 <th
                   onClick={() => handleColumnSort("fullName")}
-                  className="py-3 px-3.5 cursor-pointer hover:bg-slate-800 select-none"
+                  className="py-3 px-3.5 cursor-pointer hover:bg-teal-700 select-none"
                 >
                   <span className="inline-flex items-center gap-1">
                     Họ và tên &amp; Liên hệ
                     {sortBy === "fullName" &&
                       (sortOrder === "asc" ? (
-                        <ArrowUp className="w-3 h-3 text-emerald-400" />
+                        <ArrowUp className="w-3 h-3 text-teal-400" />
                       ) : (
                         <ArrowDown className="w-3 h-3 text-amber-400" />
                       ))}
@@ -1702,7 +1702,7 @@ export default function StaffModule({
                           </div>
                         )}
                         {st.companyEmail && (
-                          <div className="text-[11px] text-emerald-700 font-mono">
+                          <div className="text-[11px] text-brand-ink font-mono">
                             <span className="text-slate-400">Cty:</span> {st.companyEmail}
                           </div>
                         )}
@@ -1728,7 +1728,7 @@ export default function StaffModule({
                         <span
                           className={`px-2 py-0.5 rounded text-[11px] font-bold ${
                             st.department === "OFFICE"
-                              ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                              ? "bg-indigo-50 text-brand-ink border border-indigo-200"
                               : "bg-amber-50 text-amber-700 border border-amber-200"
                           }`}
                         >
@@ -1746,7 +1746,7 @@ export default function StaffModule({
                             CEO (Giám đốc)
                           </span>
                         ) : !isAdminView && !isCeo && isTargetHighPriv ? (
-                          <span className="px-2.5 py-1 rounded bg-emerald-50 border border-emerald-200 font-mono font-bold text-xs text-emerald-800">
+                          <span className="px-2.5 py-1 rounded bg-teal-50 border border-teal-200 font-mono font-bold text-xs text-brand-ink">
                             {isTargetCeo ? "CEO (Giám đốc)" : "ADMIN (Quản lý)"}
                           </span>
                         ) : (
@@ -1775,9 +1775,9 @@ export default function StaffModule({
                           <span
                             className={`px-2 py-0.5 rounded-md text-[11px] ${
                               st.contractType === "FULLTIME"
-                                ? "bg-emerald-50 text-emerald-700"
+                                ? "bg-teal-50 text-brand-ink"
                                 : st.contractType === "INTERN"
-                                  ? "bg-sky-50 text-sky-700"
+                                  ? "bg-teal-50 text-brand-ink"
                                   : "bg-amber-50 text-amber-700"
                             }`}
                           >
@@ -1796,7 +1796,7 @@ export default function StaffModule({
                         )}
                         <div className="mt-1.5">
                           {st.contractFileUrl ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-teal-50 text-brand-ink border border-teal-200 text-[11px] font-bold">
                               Đã có file HĐ
                             </span>
                           ) : (
@@ -1810,7 +1810,7 @@ export default function StaffModule({
                         <span
                           className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
                             st.status === "ACTIVE"
-                              ? "bg-emerald-100 text-emerald-800"
+                              ? "bg-teal-100 text-brand-ink"
                               : "bg-red-100 text-red-700"
                           }`}
                         >
@@ -1819,98 +1819,75 @@ export default function StaffModule({
                       </td>
                       <td className="py-3 px-3.5 text-right whitespace-nowrap">
                         <div className="inline-flex items-center gap-2">
-                          {isCeo ? (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => handleOpenProfileModal(st)}
-                                className="py-1.5 px-3 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs transition cursor-pointer"
-                              >
-                                Sửa hồ sơ
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleOpenResetPassword(st)}
-                                className="px-3 py-1.5 rounded-lg font-bold inline-flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 cursor-pointer"
-                              >
-                                <KeyRound className="w-3.5 h-3.5" /> Đổi mật khẩu
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleUpdateStaff(st, {
-                                    status: st.status === "ACTIVE" ? "LOCKED" : "ACTIVE",
-                                  })
-                                }
-                                className={`px-3 py-1.5 rounded-lg font-bold inline-flex items-center gap-1 cursor-pointer ${
-                                  st.status === "ACTIVE"
-                                    ? "bg-red-50 hover:bg-red-100 text-red-600"
-                                    : "bg-emerald-50 hover:bg-emerald-100 text-emerald-700"
-                                }`}
-                              >
-                                {st.status === "ACTIVE" ? (
-                                  <>
-                                    <Lock className="w-3.5 h-3.5" /> Khóa TK
-                                  </>
-                                ) : (
-                                  <>
-                                    <Unlock className="w-3.5 h-3.5" /> Mở khóa
-                                  </>
-                                )}
-                              </button>
-                            </>
-                          ) : !isAdminView ? (
-                            !isTargetHighPriv ? (
+                          {(() => {
+                            const canEditProfile = isCeo || !isAdminView;
+                            const canResetPwd = isCeo
+                              ? true
+                              : isAdminView
+                                ? !isTargetCeo
+                                : !isTargetHighPriv;
+                            const canToggleLock = isCeo
+                              ? true
+                              : isAdminView
+                                ? !isTargetCeo
+                                : !isTargetHighPriv;
+
+                            if (!canEditProfile && !canResetPwd && !canToggleLock) {
+                              return (
+                                <span className="text-[11px] text-slate-400 italic">
+                                  {isTargetCeo ? "Tài khoản Giám đốc" : "Tài khoản Quản lý"}
+                                </span>
+                              );
+                            }
+
+                            return (
                               <>
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenProfileModal(st)}
-                                  className="py-1.5 px-3 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs transition cursor-pointer"
-                                >
-                                  Sửa hồ sơ
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenResetPassword(st)}
-                                  className="px-3 py-1.5 rounded-lg font-bold inline-flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 cursor-pointer"
-                                >
-                                  <KeyRound className="w-3.5 h-3.5" /> Đổi mật khẩu
-                                </button>
+                                {canEditProfile && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenProfileModal(st)}
+                                    className="py-1.5 px-3 rounded-lg bg-teal-50 hover:bg-teal-100 text-brand-ink border border-teal-200 font-bold text-xs transition cursor-pointer"
+                                  >
+                                    Sửa hồ sơ
+                                  </button>
+                                )}
+                                {canResetPwd && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenResetPassword(st)}
+                                    className="px-3 py-1.5 rounded-lg font-bold inline-flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 text-brand-ink border border-indigo-200 cursor-pointer"
+                                  >
+                                    <KeyRound className="w-3.5 h-3.5" /> Đổi mật khẩu
+                                  </button>
+                                )}
+                                {canToggleLock && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleUpdateStaff(st, {
+                                        status: st.status === "ACTIVE" ? "LOCKED" : "ACTIVE",
+                                      })
+                                    }
+                                    className={`px-3 py-1.5 rounded-lg font-bold inline-flex items-center gap-1 cursor-pointer ${
+                                      st.status === "ACTIVE"
+                                        ? "bg-red-50 hover:bg-red-100 text-red-600"
+                                        : "bg-teal-50 hover:bg-teal-100 text-brand-ink"
+                                    }`}
+                                  >
+                                    {st.status === "ACTIVE" ? (
+                                      <>
+                                        <Lock className="w-3.5 h-3.5" /> Khóa TK
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Unlock className="w-3.5 h-3.5" /> Mở khóa
+                                      </>
+                                    )}
+                                  </button>
+                                )}
                               </>
-                            ) : (
-                              <span className="text-[11px] text-slate-400 italic">
-                                {isTargetCeo ? "Tài khoản Giám đốc" : "Tài khoản Quản lý"}
-                              </span>
-                            )
-                          ) : isTargetCeo ? (
-                            <span className="text-[11px] text-slate-400 italic">
-                              Tài khoản Giám đốc
-                            </span>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleUpdateStaff(st, {
-                                  status: st.status === "ACTIVE" ? "LOCKED" : "ACTIVE",
-                                })
-                              }
-                              className={`px-3 py-1.5 rounded-lg font-bold inline-flex items-center gap-1 cursor-pointer ${
-                                st.status === "ACTIVE"
-                                  ? "bg-red-50 hover:bg-red-100 text-red-600"
-                                  : "bg-emerald-50 hover:bg-emerald-100 text-emerald-700"
-                              }`}
-                            >
-                              {st.status === "ACTIVE" ? (
-                                <>
-                                  <Lock className="w-3.5 h-3.5" /> Khóa TK
-                                </>
-                              ) : (
-                                <>
-                                  <Unlock className="w-3.5 h-3.5" /> Mở khóa
-                                </>
-                              )}
-                            </button>
-                          )}
+                            );
+                          })()}
                         </div>
                       </td>
                     </tr>
@@ -1926,9 +1903,9 @@ export default function StaffModule({
       {importModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/65 p-4">
           <div className="w-full max-w-6xl max-h-[90vh] flex flex-col bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
+            <div className="bg-teal-600 text-white px-6 py-4 flex items-center justify-between shrink-0">
               <div>
-                <div className="text-xs uppercase font-bold text-emerald-400 tracking-wider flex items-center gap-1.5">
+                <div className="text-xs uppercase font-bold text-teal-400 tracking-wider flex items-center gap-1.5">
                   <FileSpreadsheet className="w-4 h-4" />
                   <span>Import Nhanh Hồ Sơ Nhân Sự Từ Excel</span>
                 </div>
@@ -1939,7 +1916,7 @@ export default function StaffModule({
               <button
                 type="button"
                 onClick={() => setImportModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-teal-700 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1948,7 +1925,7 @@ export default function StaffModule({
             <div className="p-5 space-y-4 overflow-y-auto text-xs">
               <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-3">
                 <div className="text-slate-600">
-                  Bấm <strong className="text-emerald-700">&ldquo;Điền vào form&rdquo;</strong> ở 1 dòng để đưa thông tin ra ngoài kiểm tra kỹ trước khi tạo, hoặc tích chọn nhiều dòng để{" "}
+                  Bấm <strong className="text-brand-ink">&ldquo;Điền vào form&rdquo;</strong> ở 1 dòng để đưa thông tin ra ngoài kiểm tra kỹ trước khi tạo, hoặc tích chọn nhiều dòng để{" "}
                   <strong className="text-slate-900">Tạo hàng loạt</strong>.
                 </div>
                 <div className="flex items-center gap-2">
@@ -1981,11 +1958,11 @@ export default function StaffModule({
                               prev.map((r) => ({ ...r, selected: !allModalSelected }))
                             )
                           }
-                          className="text-slate-700 hover:text-emerald-700 cursor-pointer"
+                          className="text-slate-700 hover:text-brand-ink cursor-pointer"
                           title="Chọn / Bỏ chọn tất cả"
                         >
                           {allModalSelected ? (
-                            <CheckSquare className="w-4 h-4 text-emerald-600" />
+                            <CheckSquare className="w-4 h-4 text-brand-ink" />
                           ) : (
                             <Square className="w-4 h-4" />
                           )}
@@ -2043,7 +2020,7 @@ export default function StaffModule({
                                 )
                               )
                             }
-                            className="w-4 h-4 accent-emerald-600 cursor-pointer"
+                            className="w-4 h-4 accent-teal-600 cursor-pointer"
                           />
                         </td>
                         <td className="py-2.5 px-3">
@@ -2078,7 +2055,7 @@ export default function StaffModule({
                         <td className="py-2.5 px-3">{r.school || "—"}</td>
                         <td className="py-2.5 px-3">{r.major || "—"}</td>
                         <td className="py-2.5 px-3 font-semibold text-slate-800">{r.positionTitle || r.role}</td>
-                        <td className="py-2.5 px-3 font-bold text-emerald-700">{contractTypeLabel(r.contractType)}</td>
+                        <td className="py-2.5 px-3 font-bold text-brand-ink">{contractTypeLabel(r.contractType)}</td>
                         <td className="py-2.5 px-2.5 font-mono">{r.internContractNumber || "—"}</td>
                         <td className="py-2.5 px-2.5 font-mono">{r.probationContractNumber || "—"}</td>
                         <td className="py-2.5 px-2.5 font-mono">{r.officialContractNumber || "—"}</td>
@@ -2109,7 +2086,7 @@ export default function StaffModule({
                                 text: `Đã điền hồ sơ "${r.fullName}" vào form. Kiểm tra lại và bấm "+ Tạo Nhân Viên Mới"!`,
                               });
                             }}
-                            className="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs cursor-pointer"
+                            className="px-2.5 py-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-brand-ink border border-teal-200 font-bold text-xs cursor-pointer"
                           >
                             Điền vào form
                           </button>
@@ -2123,7 +2100,7 @@ export default function StaffModule({
 
             <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3 shrink-0">
               <span className="text-xs font-bold text-slate-600">
-                Đã chọn: <strong className="text-emerald-700">{selectedModalCount}</strong> / {importRows.length} nhân sự
+                Đã chọn: <strong className="text-brand-ink">{selectedModalCount}</strong> / {importRows.length} nhân sự
               </span>
               <div className="flex items-center gap-2">
                 <button
@@ -2137,7 +2114,7 @@ export default function StaffModule({
                   type="button"
                   disabled={bulkCreating || selectedModalCount === 0}
                   onClick={handleBulkCreateFromModal}
-                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-xs font-bold shadow inline-flex items-center gap-1.5 cursor-pointer"
+                  className="px-5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white text-xs font-bold shadow inline-flex items-center gap-1.5 cursor-pointer"
                 >
                   {bulkCreating && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   <span>
@@ -2156,9 +2133,9 @@ export default function StaffModule({
       {pwdTargetStaff && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
           <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+            <div className="bg-teal-600 text-white px-5 py-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <KeyRound className="w-4 h-4 text-emerald-400" />
+                <KeyRound className="w-4 h-4 text-teal-400" />
                 <h4 className="font-extrabold text-sm">
                   Đổi mật khẩu tài khoản: {pwdTargetStaff.username}
                 </h4>
@@ -2166,7 +2143,7 @@ export default function StaffModule({
               <button
                 type="button"
                 onClick={() => setPwdTargetStaff(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-teal-700"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2179,7 +2156,7 @@ export default function StaffModule({
                 </div>
                 <div>
                   Username: <span className="font-mono font-bold">{pwdTargetStaff.username}</span> · Vai trò:{" "}
-                  <span className="font-mono font-bold text-emerald-700">{pwdTargetStaff.role}</span>
+                  <span className="font-mono font-bold text-brand-ink">{pwdTargetStaff.role}</span>
                 </div>
               </div>
 
@@ -2194,7 +2171,7 @@ export default function StaffModule({
                   value={newStaffPassword}
                   onChange={(e) => setNewStaffPassword(e.target.value)}
                   placeholder="Nhập mật khẩu mới..."
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-teal-600 focus:outline-none"
                 />
               </div>
 
@@ -2209,7 +2186,7 @@ export default function StaffModule({
                   value={confirmStaffPassword}
                   onChange={(e) => setConfirmStaffPassword(e.target.value)}
                   placeholder="Nhập lại mật khẩu mới..."
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-teal-600 focus:outline-none"
                 />
               </div>
 
@@ -2224,7 +2201,7 @@ export default function StaffModule({
                 <button
                   type="submit"
                   disabled={pwdSaving}
-                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-xs font-bold shadow"
+                  className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white text-xs font-bold shadow"
                 >
                   {pwdSaving ? "Đang lưu..." : "Lưu mật khẩu mới"}
                 </button>
@@ -2238,9 +2215,9 @@ export default function StaffModule({
       {selectedStaffProfile && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/65 p-4">
           <div className="w-full max-w-4xl max-h-[92vh] flex flex-col bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
+            <div className="bg-teal-600 text-white px-6 py-4 flex items-center justify-between shrink-0">
               <div>
-                <span className="text-xs uppercase font-bold text-emerald-400 tracking-wider">
+                <span className="text-xs uppercase font-bold text-teal-400 tracking-wider">
                   Chỉnh Sửa Hồ Sơ Nhân Sự ({selectedStaffProfile.code})
                 </span>
                 <h3 className="font-extrabold text-base text-white mt-0.5">
@@ -2250,7 +2227,7 @@ export default function StaffModule({
               <button
                 type="button"
                 onClick={() => setSelectedStaffProfile(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-teal-700 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -2582,8 +2559,8 @@ export default function StaffModule({
               </div>
 
               {/* Khối 3: Lương, BHXH, Số ngày nghỉ & File hợp đồng */}
-              <div className="p-4 rounded-2xl bg-emerald-50/40 border border-emerald-200/80 space-y-3">
-                <div className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-800">
+              <div className="p-4 rounded-2xl bg-teal-50/40 border border-teal-200/80 space-y-3">
+                <div className="text-[11px] font-extrabold uppercase tracking-wider text-brand-ink">
                   3. Lương, BHXH, Số ngày nghỉ &amp; File Hợp đồng đính kèm
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
@@ -2682,7 +2659,7 @@ export default function StaffModule({
                   </div>
 
                   <div className="sm:col-span-2 flex flex-wrap items-end gap-2">
-                    <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition">
+                    <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-xs transition">
                       <Upload className="w-3.5 h-3.5" />
                       <span>
                         {editContractFileUrl
@@ -2724,7 +2701,7 @@ export default function StaffModule({
                           }
                           className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-bold text-xs transition cursor-pointer"
                         >
-                          <Eye className="w-3.5 h-3.5 text-emerald-600" />
+                          <Eye className="w-3.5 h-3.5 text-brand-ink" />
                           <span className="max-w-[160px] truncate">
                             {editContractFileName || "Xem file hợp đồng"}
                           </span>
@@ -2757,7 +2734,7 @@ export default function StaffModule({
                 <button
                   type="submit"
                   disabled={profileSaving}
-                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white rounded-xl text-xs font-bold transition shadow-md flex items-center gap-1.5 cursor-pointer"
+                  className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white rounded-xl text-xs font-bold transition shadow-md flex items-center gap-1.5 cursor-pointer"
                 >
                   <Save className="w-4 h-4" />
                   {profileSaving ? "Đang lưu..." : "Lưu thông tin nhân sự"}

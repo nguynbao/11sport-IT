@@ -152,7 +152,7 @@ async function main() {
     });
     console.log(`[Seed Dev] Created Order 4: ${order4.data.orderCode}`);
 
-    // 2. Tạo 1 phiếu Đổi/Trả mẫu trên Order 2
+    // 2. Tạo 1 phiếu Đổi mẫu trên Order 2
     const retRes = await apiCall(baseUrl, '/returns', 'POST', {
       orderId: order2.data._id,
       returnItems: [

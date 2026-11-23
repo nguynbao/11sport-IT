@@ -22,7 +22,6 @@ import {
 } from "lucide-react";
 import {
   apiRequest,
-  generateProductCode,
   ImportItem,
   Product,
   filterAndRankBySearch,
@@ -130,7 +129,7 @@ function mapApiItems(list: any[]): ImportItem[] {
     return {
       stt: idx + 1,
       productName: pName,
-      productCode: it.productCode || generateProductCode(pName),
+      productCode: it.productCode || "", // v5.0: mã do server sinh
       unit: it.unit || "Cái",
       expectedQuantity: qty,
       actualQuantity: qty,
@@ -160,12 +159,12 @@ export function mergeOcrItemsList(
   for (const raw of incoming) {
     const pName = (raw.productName || "").trim();
     if (!pName) continue;
-    const pCode = raw.productCode || generateProductCode(pName);
+    const pCode = raw.productCode || "";
     const qty = Math.max(1, Number(raw.expectedQuantity) || 1);
 
     if (mergeDuplicates && pCode) {
       const foundIdx = base.findIndex(
-        (b) => (b.productCode || generateProductCode(b.productName)) === pCode
+        (b) => (b.productCode || "") === pCode
       );
       if (foundIdx >= 0) {
         const target = base[foundIdx];
@@ -269,7 +268,7 @@ export default function CameraScannerModal({
       next[rowIdx] = {
         ...cur,
         productName: prod.name,
-        productCode: prod.code || generateProductCode(prod.name),
+        productCode: prod.code || "",
         unit: prod.unit || cur.unit || "Cái",
         costPrice: Number(cur.costPrice) > 0 ? Number(cur.costPrice) : Number(prod.costPrice || 0),
         sellingPrice:
@@ -692,7 +691,7 @@ export default function CameraScannerModal({
     setOcrItems((prev) => {
       const next = [...prev];
       const item = { ...next[index], [field]: value };
-      if (field === "productName") item.productCode = generateProductCode(String(value));
+      if (field === "productName") item.productCode = ""; // v5.0: không tự sinh mã ở client
       if (field === "expectedQuantity") item.actualQuantity = Number(value) || 0;
       next[index] = item;
       return next;
@@ -731,9 +730,9 @@ export default function CameraScannerModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-2 sm:p-4 overflow-y-auto">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[96vh] sm:max-h-[92vh]">
         {/* Header */}
-        <div className="bg-slate-900 text-white px-3 sm:px-6 py-3 sm:py-3.5 flex items-center justify-between gap-2">
+        <div className="bg-blue-600 text-white px-3 sm:px-6 py-3 sm:py-3.5 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
-            <ScanLine className="w-5 h-5 text-emerald-400 shrink-0" />
+            <ScanLine className="w-5 h-5 text-blue-400 shrink-0" />
             <h3 className="font-bold text-base sm:text-lg truncate">
               {title ||
                 (mode === "OCR_TABLE"
@@ -741,7 +740,7 @@ export default function CameraScannerModal({
                   : "Quét Tag kiểm hàng thực tế")}
             </h3>
             {mode === "OCR_TABLE" && scannedPages.length > 0 && (
-              <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-extrabold whitespace-nowrap">
+              <span className="px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 text-xs font-extrabold whitespace-nowrap">
                 {scannedPages.length} ảnh · {validOcrCount} dòng
               </span>
             )}
@@ -765,7 +764,7 @@ export default function CameraScannerModal({
             onDragLeave={() => setDragOver(false)}
             onDrop={handleDrop}
             className={`relative w-full bg-black rounded-xl overflow-hidden aspect-[4/3] sm:aspect-video max-h-[50vh] ${
-              dragOver ? "ring-4 ring-emerald-500" : ""
+              dragOver ? "ring-4 ring-blue-500" : ""
             }`}
           >
             {/* video luôn nằm trong DOM để ref không null */}
@@ -798,19 +797,19 @@ export default function CameraScannerModal({
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center text-slate-300 gap-2 p-6">
                 {startingCamera ? (
                   <>
-                    <Loader2 className="w-10 h-10 animate-spin text-emerald-400" />
+                    <Loader2 className="w-10 h-10 animate-spin text-blue-400" />
                     <p className="text-sm">Đang mở Camera...</p>
                   </>
                 ) : (
                   <>
-                    <Camera className="w-12 h-12 text-emerald-400" />
+                    <Camera className="w-12 h-12 text-blue-400" />
                     <p className="text-sm">
                       Camera đang tắt. Bấm “Mở Camera” để chụp thêm hoặc tải nhiều ảnh lên cùng lúc.
                     </p>
                     <button
                       type="button"
                       onClick={() => startCamera()}
-                      className="mt-1 min-h-[44px] px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold"
+                      className="mt-1 min-h-[44px] px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold"
                     >
                       Mở Camera
                     </button>
@@ -821,8 +820,8 @@ export default function CameraScannerModal({
 
             {/* Banner thông báo khi đang mở Camera ở chế độ CHỤP THÊM */}
             {cameraActive && !previewKind && mode === "OCR_TABLE" && scannedPages.length > 0 && (
-              <div className="absolute top-3 inset-x-3 flex items-center justify-between gap-2 bg-emerald-950/85 border border-emerald-400/60 text-white px-3 py-1.5 rounded-lg text-xs">
-                <span className="font-bold text-emerald-300">
+              <div className="absolute top-3 inset-x-3 flex items-center justify-between gap-2 bg-blue-950/85 border border-blue-400/60 text-white px-3 py-1.5 rounded-lg text-xs">
+                <span className="font-bold text-blue-300">
                   {scanTarget === "replaceLast"
                     ? `🔄 Đang chụp lại Ảnh #${scannedPages.length}`
                     : `➕ Đang chụp thêm Ảnh #${scannedPages.length + 1} (sẽ cộng vào ${validOcrCount} dòng đã có)`}
@@ -839,13 +838,13 @@ export default function CameraScannerModal({
 
             {/* Khung căn chỉnh khi đang ngắm */}
             {cameraActive && !previewKind && (
-              <div className="pointer-events-none absolute inset-6 sm:inset-10 border-2 border-dashed border-emerald-400/70 rounded-lg" />
+              <div className="pointer-events-none absolute inset-6 sm:inset-10 border-2 border-dashed border-blue-400/70 rounded-lg" />
             )}
 
             {/* Overlay đang quét */}
             {scanning && (
               <div className="absolute inset-0 bg-slate-900/75 flex flex-col items-center justify-center text-white gap-2 p-4 text-center">
-                <Loader2 className="w-10 h-10 animate-spin text-emerald-400" />
+                <Loader2 className="w-10 h-10 animate-spin text-blue-400" />
                 <p className="text-sm font-semibold">
                   {scanningProgressText || "Đang quét & nhận diện chữ..."}
                 </p>
@@ -871,7 +870,7 @@ export default function CameraScannerModal({
                   onClick={handleCapture}
                   title="Chụp & Quét"
                   aria-label="Chụp ảnh"
-                  className="w-[72px] h-[72px] rounded-full bg-white border-[5px] border-emerald-500 shadow-xl active:scale-90 transition flex items-center justify-center"
+                  className="w-[72px] h-[72px] rounded-full bg-white border-[5px] border-blue-500 shadow-xl active:scale-90 transition flex items-center justify-center"
                 >
                   <Camera className="w-7 h-7 text-slate-900" />
                 </button>
@@ -894,7 +893,7 @@ export default function CameraScannerModal({
                     <button
                       type="button"
                       onClick={handleStartCaptureMore}
-                      className="min-h-[42px] px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs sm:text-sm font-extrabold flex items-center gap-1.5 shadow-lg"
+                      className="min-h-[42px] px-4 py-2 rounded-xl bg-blue-500 hover:bg-blue-400 text-slate-950 text-xs sm:text-sm font-extrabold flex items-center gap-1.5 shadow-lg"
                     >
                       <Camera className="w-4 h-4" />
                       📷 Chụp thêm ảnh (+cộng vào phiếu)
@@ -946,7 +945,7 @@ export default function CameraScannerModal({
                     type="button"
                     disabled={scanning}
                     onClick={handleStartCaptureMore}
-                    className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1"
+                    className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold flex items-center gap-1"
                   >
                     <Camera className="w-3.5 h-3.5" /> + Chụp thêm
                   </button>
@@ -973,7 +972,7 @@ export default function CameraScannerModal({
                       onClick={() => handleSelectScannedPage(p)}
                       className={`shrink-0 flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-left text-xs transition ${
                         isSelected
-                          ? "border-emerald-600 bg-emerald-50 text-emerald-950 font-bold"
+                          ? "border-blue-600 bg-blue-50 text-blue-950 font-bold"
                           : "border-slate-200 bg-white hover:bg-slate-100 text-slate-700"
                       }`}
                     >
@@ -991,7 +990,7 @@ export default function CameraScannerModal({
                         <div className="truncate max-w-[130px]">
                           #{idx + 1} {p.name}
                         </div>
-                        <div className="text-[10px] text-emerald-700 font-semibold">
+                        <div className="text-[10px] text-brand-ink font-semibold">
                           +{p.items.length} dòng
                         </div>
                       </div>
@@ -1023,7 +1022,7 @@ export default function CameraScannerModal({
                 setScanTarget("append");
                 nativeCameraInputRef.current?.click();
               }}
-              className="min-h-[44px] px-2 sm:px-3 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white text-xs font-semibold flex items-center justify-center gap-1.5 text-center"
+              className="min-h-[44px] px-2 sm:px-3 py-2.5 rounded-lg bg-slate-800 hover:bg-blue-600 disabled:opacity-50 text-white text-xs font-semibold flex items-center justify-center gap-1.5 text-center"
             >
               <Camera className="w-4 h-4 shrink-0" /> Chụp bằng app Camera
             </button>
@@ -1045,7 +1044,7 @@ export default function CameraScannerModal({
                 setScanTarget("append");
                 textInputRef.current?.click();
               }}
-              className="min-h-[44px] px-2 sm:px-3 py-2.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white text-xs font-semibold flex items-center justify-center gap-1.5 text-center"
+              className="min-h-[44px] px-2 sm:px-3 py-2.5 rounded-lg bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white text-xs font-semibold flex items-center justify-center gap-1.5 text-center"
             >
               <FileSpreadsheet className="w-4 h-4 shrink-0" /> Tải TXT / CSV
             </button>
@@ -1098,7 +1097,7 @@ export default function CameraScannerModal({
             </div>
           )}
           {scanInfo && (
-            <div className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 flex items-center justify-between gap-2 flex-wrap">
+            <div className="text-xs text-brand-ink bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 shrink-0" />
                 <span>{scanInfo}</span>
@@ -1107,7 +1106,7 @@ export default function CameraScannerModal({
                 <button
                   type="button"
                   onClick={handleStartCaptureMore}
-                  className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1 shrink-0"
+                  className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold flex items-center gap-1 shrink-0"
                 >
                   <Camera className="w-3.5 h-3.5" /> Chụp thêm ảnh
                 </button>
@@ -1144,13 +1143,13 @@ export default function CameraScannerModal({
                     value={pasteText}
                     onChange={(e) => setPasteText(e.target.value)}
                     placeholder="Áo Polo V1 (Áo Polo V1 Đỏ size L) | Cái | 20 | Lô 1"
-                    className="w-full sm:flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs focus:border-emerald-600 focus:outline-none"
+                    className="w-full sm:flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs focus:border-blue-600 focus:outline-none"
                   />
                   <button
                     type="button"
                     disabled={scanning || !pasteText.trim()}
                     onClick={() => handleParsePastedText(pasteText)}
-                    className="min-h-[40px] px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-semibold self-stretch sm:self-end"
+                    className="min-h-[40px] px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-semibold self-stretch sm:self-end"
                   >
                     Cộng vào bảng
                   </button>
@@ -1167,7 +1166,7 @@ export default function CameraScannerModal({
                       type="checkbox"
                       checked={mergeDuplicates}
                       onChange={(e) => setMergeDuplicates(e.target.checked)}
-                      className="rounded accent-emerald-600"
+                      className="rounded accent-blue-600"
                     />
                     Tự động cộng dồn số lượng khi chụp thêm ảnh có mã hàng trùng
                   </label>
@@ -1198,7 +1197,7 @@ export default function CameraScannerModal({
                 }`}
               >
                 <table className="w-full min-w-[640px] text-xs text-left">
-                  <thead className="bg-slate-900 text-white uppercase">
+                  <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 uppercase">
                     <tr>
                       <th className="py-2.5 px-3 w-12 text-center">STT</th>
                       <th className="hidden py-2.5 px-3 min-w-[200px]">Mã hàng (tự sinh)</th>
@@ -1219,7 +1218,7 @@ export default function CameraScannerModal({
                             value={row.productCode}
                             readOnly
                             placeholder="Tự sinh từ ()..."
-                            className="w-full bg-emerald-50 text-emerald-900 font-mono text-[11px] font-semibold px-2 py-1.5 rounded border border-emerald-200"
+                            className="w-full bg-blue-50 text-blue-900 font-mono text-[11px] font-semibold px-2 py-1.5 rounded border border-blue-200"
                           />
                         </td>
                         <td className="py-2 px-3 align-top">
@@ -1265,17 +1264,17 @@ export default function CameraScannerModal({
                                 }
                               }}
                               placeholder="Gõ tên hoặc mã hàng để tìm gợi ý SP trong kho..."
-                              className="w-full px-2 py-1.5 rounded border border-slate-300 focus:border-emerald-600 focus:outline-none whitespace-pre-wrap break-words leading-snug resize-y"
+                              className="w-full px-2 py-1.5 rounded border border-slate-300 focus:border-blue-600 focus:outline-none whitespace-pre-wrap break-words leading-snug resize-y"
                             />
                             {activeOcrSuggestIdx === idx &&
                               (() => {
                                 const suggestions = getOcrRowSuggestions(row.productName);
                                 if (suggestions.length === 0) return null;
                                 return (
-                                  <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-white rounded-xl border-2 border-emerald-500 shadow-2xl overflow-hidden min-w-[300px]">
-                                    <div className="px-3 py-1 bg-slate-900 text-white text-[10px] font-bold flex items-center justify-between">
+                                  <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-white rounded-xl border-2 border-blue-500 shadow-2xl overflow-hidden min-w-[300px]">
+                                    <div className="px-3 py-1 bg-blue-600 text-white text-[10px] font-bold flex items-center justify-between">
                                       <span>📦 Gợi ý SP trong kho ({suggestions.length})</span>
-                                      <span className="text-emerald-300 font-normal">Bấm chọn</span>
+                                      <span className="text-blue-300 font-normal">Bấm chọn</span>
                                     </div>
                                     <div className="max-h-52 overflow-y-auto divide-y divide-slate-100">
                                       {suggestions.map((p, sIdx) => (
@@ -1289,7 +1288,7 @@ export default function CameraScannerModal({
                                           onMouseEnter={() => setOcrSuggestHighlightIdx(sIdx)}
                                           className={`w-full text-left px-3 py-1.5 transition ${
                                             sIdx === ocrSuggestHighlightIdx
-                                              ? "bg-emerald-50"
+                                              ? "bg-blue-50"
                                               : "hover:bg-slate-50"
                                           }`}
                                         >
@@ -1298,7 +1297,7 @@ export default function CameraScannerModal({
                                           </div>
                                           <div className="flex items-center justify-between text-[10px] text-slate-500 mt-0.5">
                                             <span className="font-mono font-bold">{p.code}</span>
-                                            <span className="text-emerald-700 font-bold">
+                                            <span className="text-brand-ink font-bold">
                                               Tồn: {p.stock} {p.unit || "Cái"} · Bán:{" "}
                                               {formatVND(Number(p.sellingPrice || 0))}
                                             </span>
@@ -1365,7 +1364,7 @@ export default function CameraScannerModal({
                   value={tagQuery}
                   onChange={(e) => setTagQuery(e.target.value)}
                   placeholder="Chụp tag hoặc nhập mã/tên hàng..."
-                  className="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 font-mono text-sm focus:border-emerald-600 focus:outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 font-mono text-sm focus:border-blue-600 focus:outline-none"
                 />
               </div>
               <div>
@@ -1377,7 +1376,7 @@ export default function CameraScannerModal({
                   min={0}
                   value={tagActualQty}
                   onChange={(e) => setTagActualQty(Math.max(0, Number(e.target.value)))}
-                  className="w-full sm:w-48 px-3.5 py-2.5 rounded-lg border border-slate-300 font-mono text-sm font-bold focus:border-emerald-600 focus:outline-none"
+                  className="w-full sm:w-48 px-3.5 py-2.5 rounded-lg border border-slate-300 font-mono text-sm font-bold focus:border-blue-600 focus:outline-none"
                 />
               </div>
             </div>
@@ -1399,9 +1398,9 @@ export default function CameraScannerModal({
                 type="button"
                 disabled={scanning}
                 onClick={handleStartCaptureMore}
-                className="min-h-[44px] px-4 py-2.5 rounded-lg border border-emerald-600 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-bold text-sm flex items-center justify-center gap-1.5"
+                className="min-h-[44px] px-4 py-2.5 rounded-lg border border-blue-600 bg-blue-50 hover:bg-blue-100 text-blue-900 font-bold text-sm flex items-center justify-center gap-1.5"
               >
-                <Camera className="w-4 h-4 text-emerald-700" />
+                <Camera className="w-4 h-4 text-brand-ink" />
                 Chụp thêm ảnh (+)
               </button>
             )}
@@ -1438,7 +1437,7 @@ export default function CameraScannerModal({
                   );
                   onClose();
                 }}
-                className="min-h-[44px] px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-sm flex items-center justify-center gap-2 shadow"
+                className="min-h-[44px] px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-sm flex items-center justify-center gap-2 shadow"
               >
                 <Check className="w-4 h-4" />
                 {existingItemCount > 0
@@ -1455,7 +1454,7 @@ export default function CameraScannerModal({
                 onConfirmTagScan?.(tagQuery.trim(), tagActualQty);
                 onClose();
               }}
-              className="min-h-[44px] px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-sm flex items-center justify-center gap-2 shadow"
+              className="min-h-[44px] px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-sm flex items-center justify-center gap-2 shadow"
             >
               <Check className="w-4 h-4" />
               Xác nhận đối chiếu Tag

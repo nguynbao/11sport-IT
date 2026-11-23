@@ -263,6 +263,38 @@ function parseVariantSuffix(rawSuffix: string): { color: string; size: string } 
   return { color: clean, size: "" };
 }
 
+/** Sản phẩm có thể quét: hỗ trợ mã mới (server sinh) + mã cũ (legacyCode/legacyVariantCode) — v5.0 */
+export interface ScannableProduct {
+  code?: string;
+  barcode?: string;
+  versionCode?: string;
+  legacyCode?: string;
+  legacyCodes?: string[];
+  stockFloor1?: number;
+  stockFloor2?: number;
+  stock?: number;
+  variants?: Array<{
+    variantKey?: string;
+    color: string;
+    size: string;
+    variantCode?: string;
+    barcode?: string;
+    legacyVariantCode?: string;
+    legacyVariantCodes?: string[];
+    stockFloor1: number;
+    stockFloor2: number;
+    stock: number;
+  }>;
+}
+
+function exactCodeMatch(rawScanned: string, codes: (string | undefined)[]): boolean {
+  const candidates = getBarcodeCandidates(rawScanned);
+  return codes.some((c) => {
+    const t = cleanBarcodeCode(c || "");
+    return Boolean(t) && candidates.includes(t);
+  });
+}
+
 export interface ScannedProductVariantMatch<T> {
   product: T;
   matchedVariant?: {
@@ -286,45 +318,57 @@ export interface ScannedProductVariantMatch<T> {
  *              (kể cả khi biến thể vừa in chưa kịp đồng bộ giữa các máy).
  */
 export function findProductAndVariantByScannedBarcode<
-  T extends {
-    code?: string;
-    barcode?: string;
-    stockFloor1?: number;
-    stockFloor2?: number;
-    stock?: number;
-    variants?: Array<{
-      variantKey?: string;
-      color: string;
-      size: string;
-      variantCode?: string;
-      barcode?: string;
-      stockFloor1: number;
-      stockFloor2: number;
-      stock: number;
-    }>;
-  }
+  T extends ScannableProduct
 >(products: T[], rawScanned: string): ScannedProductVariantMatch<T> | undefined {
   if (!rawScanned || !Array.isArray(products) || products.length === 0) {
     return undefined;
   }
 
-  // 1. Ưu tiên khớp Mã con (variantCode) của từng thuộc tính (color, size) — hỗ trợ cả mã rút gọn & mã đầy đủ
+  // 0. v5.0: khớp CHÍNH XÁC mã con do server sinh hoặc mã con cũ (legacyVariantCode/s) trước mọi suy luận
+  for (const p of products) {
+    for (const v of p.variants || []) {
+      const serverCode = v.variantCode || v.barcode || "";
+      if (
+        exactCodeMatch(rawScanned, [
+          v.variantCode,
+          v.barcode,
+          v.legacyVariantCode,
+          ...(v.legacyVariantCodes || []),
+        ])
+      ) {
+        return {
+          product: p,
+          matchedVariant: {
+            ...v,
+            variantCode: serverCode || generateVariantProductCode(p.code, v.color, v.size),
+          },
+          isVariantExactMatch: Boolean(v.color || v.size),
+        };
+      }
+    }
+  }
+
+  // 1. Khớp Mã con (variantCode) của từng thuộc tính (color, size) — hỗ trợ cả mã rút gọn & mã đầy đủ (tem cũ)
   for (const p of products) {
     if (Array.isArray(p.variants) && p.variants.length > 0) {
+      const isNewScheme = Boolean(String(p.versionCode || "").trim());
       for (const v of p.variants) {
-        const compactCode = generateVariantProductCode(p.code, v.color, v.size);
-        const fullCode = cleanBarcodeCode(`${p.code || ""}${v.color || ""}${v.size || ""}`);
-        const vCode = v.variantCode || compactCode;
+        // Sản phẩm mã mới: KHÔNG tự sinh mã ở client — chỉ dùng mã server + mã cũ
+        const compactCode = isNewScheme ? "" : generateVariantProductCode(p.code, v.color, v.size);
+        const fullCode = isNewScheme ? "" : cleanBarcodeCode(`${p.code || ""}${v.color || ""}${v.size || ""}`);
+        const vCode = v.variantCode || v.barcode || compactCode;
+        const legacyCodes = [v.legacyVariantCode, ...(v.legacyVariantCodes || [])].filter(Boolean) as string[];
         if (
           (vCode && isScannedCodeMatch(rawScanned, vCode, v.barcode || vCode)) ||
           (compactCode && isScannedCodeMatch(rawScanned, compactCode)) ||
-          (fullCode && isScannedCodeMatch(rawScanned, fullCode))
+          (fullCode && isScannedCodeMatch(rawScanned, fullCode)) ||
+          legacyCodes.some((lc) => isScannedCodeMatch(rawScanned, lc))
         ) {
           return {
             product: p,
             matchedVariant: {
               ...v,
-              variantCode: compactCode || vCode,
+              variantCode: v.variantCode || v.barcode || compactCode || vCode,
             },
             isVariantExactMatch: Boolean(v.color || v.size),
           };
@@ -333,10 +377,14 @@ export function findProductAndVariantByScannedBarcode<
     }
   }
 
-  // 2. Khớp Mã gốc của sản phẩm
-  const exactRoot = products.find((p) =>
-    isScannedCodeMatch(rawScanned, p.code, p.barcode)
-  );
+  // 2. Khớp Mã gốc của sản phẩm (kể cả mã cũ legacyCode/legacyCodes)
+  const exactRoot =
+    products.find((p) => exactCodeMatch(rawScanned, [p.code, p.barcode, p.legacyCode, ...(p.legacyCodes || [])])) ||
+    products.find(
+      (p) =>
+        isScannedCodeMatch(rawScanned, p.code, p.barcode) ||
+        [p.legacyCode, ...(p.legacyCodes || [])].some((lc) => Boolean(lc) && isScannedCodeMatch(rawScanned, lc))
+    );
   if (exactRoot) {
     const singleVariant =
       Array.isArray(exactRoot.variants) && exactRoot.variants.length === 1
@@ -451,23 +499,7 @@ export function findProductAndVariantByScannedBarcode<
 }
 
 export function findProductByScannedBarcode<
-  T extends {
-    code?: string;
-    barcode?: string;
-    stockFloor1?: number;
-    stockFloor2?: number;
-    stock?: number;
-    variants?: Array<{
-      variantKey?: string;
-      color: string;
-      size: string;
-      variantCode?: string;
-      barcode?: string;
-      stockFloor1: number;
-      stockFloor2: number;
-      stock: number;
-    }>;
-  }
+  T extends ScannableProduct
 >(products: T[], rawScanned: string): T | undefined {
   return findProductAndVariantByScannedBarcode(products, rawScanned)?.product;
 }

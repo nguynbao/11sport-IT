@@ -488,21 +488,21 @@ export default function PromotionModule() {
     switch (promo.effectiveStatus) {
       case "RUNNING_PERMANENT":
         return (
-          <span className="inline-flex items-center gap-1 text-[11px] font-extrabold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+          <span className="inline-flex items-center gap-1 text-[11px] font-extrabold px-2.5 py-1 rounded-full bg-teal-100 text-brand-ink border border-teal-300">
             <InfinityIcon className="w-3.5 h-3.5" />
             Đang chạy (Vĩnh viễn)
           </span>
         );
       case "RUNNING":
         return (
-          <span className="inline-flex items-center gap-1 text-[11px] font-extrabold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+          <span className="inline-flex items-center gap-1 text-[11px] font-extrabold px-2.5 py-1 rounded-full bg-teal-100 text-brand-ink border border-teal-300">
             <CheckCircle2 className="w-3.5 h-3.5" />
             Đang chạy (Còn hạn)
           </span>
         );
       case "UPCOMING":
         return (
-          <span className="inline-flex items-center gap-1 text-[11px] font-extrabold px-2.5 py-1 rounded-full bg-blue-100 text-blue-800 border border-blue-300">
+          <span className="inline-flex items-center gap-1 text-[11px] font-extrabold px-2.5 py-1 rounded-full bg-teal-100 text-brand-ink border border-teal-300">
             <Clock className="w-3.5 h-3.5" />
             Sắp diễn ra
           </span>
@@ -548,7 +548,7 @@ export default function PromotionModule() {
           <button
             type="button"
             onClick={handleOpenCreateModal}
-            className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-extrabold flex items-center gap-2 shadow-md transition"
+            className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs sm:text-sm font-extrabold flex items-center gap-2 shadow-md transition"
           >
             <Plus className="w-4 h-4" />
             + Tạo Chương trình Khuyến mãi
@@ -569,14 +569,14 @@ export default function PromotionModule() {
             </div>
           </div>
 
-          <div className="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200">
-            <div className="text-[11px] font-bold uppercase text-emerald-800">
+          <div className="p-3.5 rounded-xl bg-teal-50/70 border border-teal-200">
+            <div className="text-[11px] font-bold uppercase text-brand-ink">
               Đang chạy hiệu lực
             </div>
-            <div className="text-2xl font-extrabold text-emerald-700 mt-1 font-mono">
+            <div className="text-2xl font-extrabold text-brand-ink mt-1 font-mono">
               {kpiStats.activeNow}
             </div>
-            <div className="text-[11px] text-emerald-700 mt-0.5">
+            <div className="text-[11px] text-brand-ink mt-0.5">
               Tự động kích hoạt tại quầy POS
             </div>
           </div>
@@ -614,7 +614,7 @@ export default function PromotionModule() {
         )}
 
         {successMsg && (
-          <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2">
+          <div className="p-3 rounded-xl bg-teal-50 border border-teal-200 text-brand-ink text-xs font-bold flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 shrink-0" />
             <span>{successMsg}</span>
           </div>
@@ -649,7 +649,7 @@ export default function PromotionModule() {
                 type="button"
                 onClick={() => setStatusFilter(tab.id as any)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${statusFilter === tab.id
-                    ? "bg-slate-900 text-white border-slate-900 shadow-xs"
+                    ? "bg-teal-600 text-white border-slate-900 shadow-xs"
                     : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200"
                   }`}
               >
@@ -665,7 +665,7 @@ export default function PromotionModule() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Tìm tên CTKM, sản phẩm, quà tặng..."
-              className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm focus:border-emerald-600 focus:outline-none"
+              className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm focus:border-teal-600 focus:outline-none"
             />
           </div>
         </div>
@@ -689,7 +689,7 @@ export default function PromotionModule() {
             <button
               type="button"
               onClick={handleOpenCreateModal}
-              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold inline-flex items-center gap-1.5 shadow"
+              className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-extrabold inline-flex items-center gap-1.5 shadow"
             >
               <Plus className="w-4 h-4" />
               Tạo chương trình đầu tiên
@@ -707,19 +707,19 @@ export default function PromotionModule() {
                   {/* Cột trái: Tên, Mã, Thời gian & Điều kiện */}
                   <div className="space-y-2.5 flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-xs font-extrabold px-2 py-0.5 rounded bg-slate-900 text-white">
+                      <span className="font-mono text-xs font-extrabold px-2 py-0.5 rounded bg-teal-600 text-white">
                         {promo.code}
                       </span>
                       {renderEffectiveBadge(promo)}
                       <span className="text-xs text-slate-500 flex items-center gap-1">
                         {promo.isPermanent ? (
                           <>
-                            <InfinityIcon className="w-3.5 h-3.5 text-emerald-600" />
+                            <InfinityIcon className="w-3.5 h-3.5 text-brand-ink" />
                             <span>Thời gian: Chạy vĩnh viễn</span>
                           </>
                         ) : (
                           <>
-                            <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                            <Calendar className="w-3.5 h-3.5 text-brand-ink" />
                             <span>
                               {promo.startDate
                                 ? formatDateTime(promo.startDate)
@@ -748,9 +748,9 @@ export default function PromotionModule() {
                     {/* Điều kiện áp dụng */}
                     <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/90 space-y-1.5 text-xs">
                       <div className="font-bold text-slate-700 flex items-center gap-1.5">
-                        <ShoppingBag className="w-3.5 h-3.5 text-blue-600" />
+                        <ShoppingBag className="w-3.5 h-3.5 text-brand-ink" />
                         <span>Điều kiện khi Sales thêm giỏ hàng:</span>
-                        <span className="text-blue-700 font-extrabold">
+                        <span className="text-brand-ink font-extrabold">
                           {promo.conditionType === "BUY_PRODUCTS" &&
                             `Mua từ ${promo.minQuantity} sản phẩm chỉ định`}
                           {promo.conditionType === "BUY_CATEGORY" &&
@@ -759,7 +759,7 @@ export default function PromotionModule() {
                             `Áp dụng mọi sản phẩm (SL tối thiểu: ${promo.minQuantity})`}
                         </span>
                         {promo.minOrderAmount > 0 && (
-                          <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-mono text-[11px] font-bold">
+                          <span className="px-2 py-0.5 rounded bg-teal-100 text-brand-ink font-mono text-[11px] font-bold">
                             Đơn tối thiểu: {formatVND(promo.minOrderAmount)}
                           </span>
                         )}
@@ -785,7 +785,7 @@ export default function PromotionModule() {
                             {promo.conditionCategories.map((cc) => (
                               <span
                                 key={cc.categoryId}
-                                className="px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 text-[11px] font-bold"
+                                className="px-2.5 py-1 rounded-lg bg-teal-50 border border-teal-200 text-brand-ink text-[11px] font-bold"
                               >
                                 📂 Danh mục: {cc.categoryName}
                               </span>
@@ -827,7 +827,7 @@ export default function PromotionModule() {
                                 </span>
                                 <span
                                   className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${(g.stockFloor1 ?? 0) > 0
-                                      ? "bg-emerald-50 text-emerald-700"
+                                      ? "bg-teal-50 text-brand-ink"
                                       : "bg-red-50 text-red-600 font-bold"
                                     }`}
                                 >
@@ -874,7 +874,7 @@ export default function PromotionModule() {
                       onClick={() => handleToggleStatus(promo)}
                       className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition w-full justify-center ${promo.status === "ACTIVE"
                           ? "bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-300"
-                          : "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700"
+                          : "bg-teal-600 hover:bg-teal-700 text-white border-teal-700"
                         }`}
                     >
                       {promo.status === "ACTIVE" ? (
@@ -921,7 +921,7 @@ export default function PromotionModule() {
         <div className="fixed inset-0 z-50 bg-slate-900/65 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden">
             {/* Header Modal */}
-            <div className="px-5 py-4 bg-slate-900 text-white flex items-center justify-between gap-3">
+            <div className="px-5 py-4 bg-teal-600 text-white flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
                 <Gift className="w-5 h-5 text-amber-400" />
                 <div>
@@ -938,7 +938,7 @@ export default function PromotionModule() {
               <button
                 type="button"
                 onClick={() => setShowModal(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-teal-700"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -959,7 +959,7 @@ export default function PromotionModule() {
               {/* PHẦN 1: THÔNG TIN CƠ BẢN & THỜI GIAN CHƯƠNG TRÌNH */}
               <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-4">
                 <div className="text-xs font-extrabold uppercase text-slate-800 flex items-center gap-1.5">
-                  <Calendar className="w-4 h-4 text-emerald-600" />
+                  <Calendar className="w-4 h-4 text-brand-ink" />
                   1. Thông tin Chương trình & Thời gian hiệu lực
                 </div>
 
@@ -974,7 +974,7 @@ export default function PromotionModule() {
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       placeholder="VD: Mua Vợt Pickleball mặc định tặng kèm 1 Quấn cán..."
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-sm font-semibold focus:border-emerald-600 focus:outline-none"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-sm font-semibold focus:border-teal-600 focus:outline-none"
                     />
                   </div>
 
@@ -987,7 +987,7 @@ export default function PromotionModule() {
                       onChange={(e) =>
                         setStatus(e.target.value as "ACTIVE" | "PAUSED")
                       }
-                      className="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-sm font-bold text-slate-800 focus:border-emerald-600 focus:outline-none"
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-sm font-bold text-slate-800 focus:border-teal-600 focus:outline-none"
                     >
                       <option value="ACTIVE">🟢 Đang bật (ACTIVE)</option>
                       <option value="PAUSED">⏸ Tạm dừng (PAUSED)</option>
@@ -1004,7 +1004,7 @@ export default function PromotionModule() {
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="VD: Áp dụng cho mọi khách mua lẻ tại quầy..."
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-xs sm:text-sm focus:border-emerald-600 focus:outline-none"
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-xs sm:text-sm focus:border-teal-600 focus:outline-none"
                   />
                 </div>
 
@@ -1018,7 +1018,7 @@ export default function PromotionModule() {
                       type="button"
                       onClick={() => setIsPermanent(true)}
                       className={`p-3 rounded-xl border text-left transition flex items-center gap-3 ${isPermanent
-                          ? "bg-emerald-600 text-white border-emerald-700 shadow-xs"
+                          ? "bg-teal-600 text-white border-teal-700 shadow-xs"
                           : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
                         }`}
                     >
@@ -1028,7 +1028,7 @@ export default function PromotionModule() {
                           Chạy vĩnh viễn (Không giới hạn ngày)
                         </div>
                         <div
-                          className={`text-[11px] ${isPermanent ? "text-emerald-100" : "text-slate-500"
+                          className={`text-[11px] ${isPermanent ? "text-teal-100" : "text-slate-500"
                             }`}
                         >
                           Luôn tự động áp dụng khi chương trình đang bật
@@ -1040,7 +1040,7 @@ export default function PromotionModule() {
                       type="button"
                       onClick={() => setIsPermanent(false)}
                       className={`p-3 rounded-xl border text-left transition flex items-center gap-3 ${!isPermanent
-                          ? "bg-blue-600 text-white border-blue-700 shadow-xs"
+                          ? "bg-teal-600 text-white border-teal-700 shadow-xs"
                           : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
                         }`}
                     >
@@ -1050,7 +1050,7 @@ export default function PromotionModule() {
                           Cài đặt thời gian bắt đầu / kết thúc
                         </div>
                         <div
-                          className={`text-[11px] ${!isPermanent ? "text-blue-100" : "text-slate-500"
+                          className={`text-[11px] ${!isPermanent ? "text-teal-100" : "text-slate-500"
                             }`}
                         >
                           Tự động kích hoạt khi đến hạn & tự ngắt khi hết hạn
@@ -1060,23 +1060,23 @@ export default function PromotionModule() {
                   </div>
 
                   {!isPermanent && (
-                    <div className="p-3.5 rounded-xl bg-white border border-blue-200 space-y-3">
+                    <div className="p-3.5 rounded-xl bg-white border border-teal-200 space-y-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-xs font-bold text-blue-900">
+                        <span className="text-xs font-bold text-teal-900">
                           Chọn khoảng thời gian hiệu lực:
                         </span>
                         <div className="flex flex-wrap items-center gap-1.5">
                           <button
                             type="button"
                             onClick={() => applyQuickDuration(7)}
-                            className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-[11px] font-bold border border-blue-200"
+                            className="px-2.5 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 text-brand-ink text-[11px] font-bold border border-teal-200"
                           >
                             + 7 ngày tới
                           </button>
                           <button
                             type="button"
                             onClick={() => applyQuickDuration(30)}
-                            className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-[11px] font-bold border border-blue-200"
+                            className="px-2.5 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 text-brand-ink text-[11px] font-bold border border-teal-200"
                           >
                             + 30 ngày tới
                           </button>
@@ -1114,7 +1114,7 @@ export default function PromotionModule() {
               {/* PHẦN 2: ĐIỀU KIỆN MUA SẢN PHẨM GÌ */}
               <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-4">
                 <div className="text-xs font-extrabold uppercase text-slate-800 flex items-center gap-1.5">
-                  <ShoppingBag className="w-4 h-4 text-blue-600" />
+                  <ShoppingBag className="w-4 h-4 text-brand-ink" />
                   2. Điều kiện áp dụng (Khi khách mua sản phẩm gì?)
                 </div>
 
@@ -1123,7 +1123,7 @@ export default function PromotionModule() {
                     type="button"
                     onClick={() => setConditionType("BUY_PRODUCTS")}
                     className={`p-3 rounded-xl border text-left text-xs font-bold transition ${conditionType === "BUY_PRODUCTS"
-                        ? "bg-slate-900 text-white border-slate-900 shadow-xs"
+                        ? "bg-teal-600 text-white border-slate-900 shadow-xs"
                         : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
                       }`}
                   >
@@ -1142,7 +1142,7 @@ export default function PromotionModule() {
                     type="button"
                     onClick={() => setConditionType("BUY_CATEGORY")}
                     className={`p-3 rounded-xl border text-left text-xs font-bold transition ${conditionType === "BUY_CATEGORY"
-                        ? "bg-slate-900 text-white border-slate-900 shadow-xs"
+                        ? "bg-teal-600 text-white border-slate-900 shadow-xs"
                         : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
                       }`}
                   >
@@ -1161,7 +1161,7 @@ export default function PromotionModule() {
                     type="button"
                     onClick={() => setConditionType("ALL_PRODUCTS")}
                     className={`p-3 rounded-xl border text-left text-xs font-bold transition ${conditionType === "ALL_PRODUCTS"
-                        ? "bg-slate-900 text-white border-slate-900 shadow-xs"
+                        ? "bg-teal-600 text-white border-slate-900 shadow-xs"
                         : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
                       }`}
                   >
@@ -1196,7 +1196,7 @@ export default function PromotionModule() {
                                 Array.from(new Set([...prev, ...ids]))
                               );
                             }}
-                            className="text-[11px] font-bold text-emerald-700 hover:underline"
+                            className="text-[11px] font-bold text-brand-ink hover:underline"
                           >
                             + Chọn tất cả SP đang lọc ({filteredConditionProducts.length})
                           </button>
@@ -1214,13 +1214,13 @@ export default function PromotionModule() {
                     </div>
 
                     {conditionProductIds.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-2 rounded-lg bg-emerald-50/60 border border-emerald-200">
+                      <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-2 rounded-lg bg-teal-50/60 border border-teal-200">
                         {conditionProductIds.map((pid) => {
                           const prod = productById.get(pid);
                           return (
                             <span
                               key={pid}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-emerald-300 text-emerald-900 text-xs font-semibold"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-teal-300 text-teal-900 text-xs font-semibold"
                             >
                               <span>{prod?.name || pid}</span>
                               <button
@@ -1244,7 +1244,7 @@ export default function PromotionModule() {
                           value={condProdSearch}
                           onChange={(e) => setCondProdSearch(e.target.value)}
                           placeholder="Tìm sản phẩm điều kiện (VD: Vợt Joola, Selkirk...)"
-                          className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-300 text-xs focus:border-emerald-600 focus:outline-none"
+                          className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-300 text-xs focus:border-teal-600 focus:outline-none"
                         />
                       </div>
                       <div className="sm:col-span-5">
@@ -1271,14 +1271,14 @@ export default function PromotionModule() {
                             key={p._id}
                             onClick={() => toggleConditionProduct(p._id)}
                             className={`px-3 py-2 flex items-center justify-between gap-2 text-xs cursor-pointer transition ${checked
-                                ? "bg-emerald-50 font-bold text-emerald-900"
+                                ? "bg-teal-50 font-bold text-teal-900"
                                 : "hover:bg-slate-50 text-slate-800"
                               }`}
                           >
                             <div className="flex items-center gap-2 min-w-0">
                               <div
                                 className={`w-4 h-4 rounded flex items-center justify-center border shrink-0 ${checked
-                                    ? "bg-emerald-600 border-emerald-600 text-white"
+                                    ? "bg-teal-600 border-teal-600 text-white"
                                     : "border-slate-300 bg-white"
                                   }`}
                               >
@@ -1316,7 +1316,7 @@ export default function PromotionModule() {
                             type="button"
                             onClick={() => toggleConditionCategory(cat._id)}
                             className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-between transition ${checked
-                                ? "bg-emerald-600 text-white border-emerald-700 shadow-xs"
+                                ? "bg-teal-600 text-white border-teal-700 shadow-xs"
                                 : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
                               }`}
                           >
@@ -1407,7 +1407,7 @@ export default function PromotionModule() {
                                 {prod?.name || g.productId}
                               </div>
                               <div className="text-[11px] text-slate-500 font-mono">
-                                Giá gốc bán lẻ: {formatVND(prod?.sellingPrice || 0)} → Tặng 0 VND · Tồn T1:{" "}
+                                Giá niêm yết: {formatVND(prod?.sellingPrice || 0)} → Tặng 0 VND · Tồn T1:{" "}
                                 {prod ? getFloor1Stock(prod) : 0} {prod?.unit || "Cái"}
                               </div>
                             </div>
@@ -1659,7 +1659,7 @@ export default function PromotionModule() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-xs sm:text-sm font-extrabold shadow-md transition"
+                  className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white text-xs sm:text-sm font-extrabold shadow-md transition"
                 >
                   {submitting
                     ? "Đang lưu..."

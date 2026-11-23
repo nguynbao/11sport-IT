@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import ThemeToggle from "@/components/ThemeToggle";
 import {
   StaffUser,
   Order,
@@ -12,7 +13,7 @@ import {
 } from "@/lib/api";
 import InventoryModule from "@/components/InventoryModule";
 import RevenueDashboardModule from "@/components/RevenueDashboardModule";
-import CategoryModule from "@/components/CategoryModule";
+import CategoryBrandModule from "@/components/CategoryBrandModule";
 import OrdersReturnsModule from "@/components/OrdersReturnsModule";
 import StaffModule from "@/components/StaffModule";
 import StaffActivityModule from "@/components/StaffActivityModule";
@@ -76,77 +77,77 @@ const CMS_MENU_ITEMS: {
   label: string;
   desc: string;
   icon: React.ComponentType<{ className?: string }>;
-  accent?: "amber" | "emerald";
+  accent?: "amber" | "teal";
 }[] = [
     {
       id: "REVENUE",
-      label: "Dashboard Doanh thu & SP Bán chạy",
+      label: "Doanh thu",
       desc: "Thống kê doanh thu, lãi gộp, xu hướng & tổng quan công nợ",
       icon: TrendingUp,
     },
     {
       id: "PUSH_PRODUCTS",
-      label: "Các Sản Phẩm Đang Cần Đẩy Mạnh",
+      label: "SP Cần đẩy mạnh",
       desc: "Quan sát các mặt hàng tồn kho cao, bán chậm, đọng vốn hoặc nằm ở Kho Tầng 2",
       icon: Rocket,
     },
     {
       id: "INVENTORY",
-      label: "Quản lý Kho, Giá bán & Sổ kho",
-      desc: "Tồn kho Tầng 1 & Tầng 2, phiếu nhập/xuất, điều chỉnh giá",
+      label: "Kho & Giá niêm yết",
+      desc: "Tồn kho Tầng 1 & Tầng 2, phiếu nhập/xuất, điều chỉnh giá niêm yết",
       icon: Boxes,
     },
     {
       id: "CATEGORIES",
-      label: "Quản lý Category (Danh mục)",
-      desc: "Phân loại nhóm sản phẩm cầu lông & phụ kiện 11Sport",
+      label: "Danh mục & Sản phẩm",
+      desc: "Quản lý Category, Thương hiệu (Brand) và Danh mục Sản phẩm chuẩn mã",
       icon: FolderKanban,
     },
     {
       id: "ORDERS",
-      label: "Quản lý Đơn hàng & Trả/Đổi",
+      label: "Đơn hàng & Trả/Đổi",
       desc: "Tra cứu hóa đơn POS, bản nháp, lịch sử trả/đổi & in PDF",
       icon: ShoppingBag,
     },
     {
       id: "SERVICES",
-      label: "Quản lý Dịch vụ & Đơn Dịch vụ",
+      label: "Dịch vụ",
       desc: "Tạo loại dịch vụ (giá mặc định) & theo dõi đơn dịch vụ khách gửi / hẹn trả",
       icon: Wrench,
     },
     {
       id: "STAFF",
-      label: "Quản lý Nhân sự & Khóa Tài khoản",
+      label: "Nhân sự",
       desc: "Danh sách nhân viên và khóa / mở khóa tài khoản",
       icon: Users,
     },
     {
       id: "HRM",
-      label: "Chấm công, Xếp ca & Lịch lễ (HRM)",
+      label: "Chấm công & Xếp ca",
       desc: "Duyệt WFH, kéo-thả xếp ca tuần, quản lý ngày lễ & tạo tài khoản NV",
       icon: CalendarCheck,
     },
     {
       id: "SHIFT_HANDOVERS",
-      label: "Quản lý Phiếu Bàn Giao Ca",
+      label: "Bàn giao ca",
       desc: "Theo dõi biên bản chốt két, kiểm hàng Tầng 1 theo ngày (Vợt + ...) & xác nhận Ca 1 - Ca 2",
       icon: ClipboardCheck,
     },
     {
       id: "ACTIVITY",
-      label: "Hoạt động NV (Bán hàng / Kiểm kho)",
+      label: "Hoạt động NV",
       desc: "Nhật ký hiệu suất bán hàng & kiểm đếm kho theo nhân sự",
       icon: Activity,
     },
     {
       id: "PROMOTIONS",
-      label: "Chương trình Khuyến mãi",
+      label: "Khuyến mãi",
       desc: "Cấu hình giảm giá %, giảm tiền & quà tặng kèm tự động",
       icon: Gift,
     },
     {
       id: "DEBTS",
-      label: "Quản lý Công nợ & Thu nợ",
+      label: "Công nợ & Thu nợ",
       desc: "Theo dõi khách mua trước trả sau, cảnh báo quá hạn & tất toán",
       icon: Wallet,
     },
@@ -185,6 +186,7 @@ const ROLE_ALLOWED_MODULES: Record<string, CmsModuleType[]> = {
   ACCOUNTANT: [
     "REVENUE",
     "INVENTORY",
+    "CATEGORIES",
     "ORDERS",
     "SERVICES",
     "SHIFT_HANDOVERS",
@@ -391,8 +393,8 @@ export default function CmsDashboardPage() {
 
   if (checkingAuth) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white">
-        <div className="text-sm font-semibold text-slate-300">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-700">
+        <div className="text-sm font-semibold text-slate-600">
           Đang kiểm tra phiên đăng nhập Quản trị...
         </div>
       </div>
@@ -402,11 +404,11 @@ export default function CmsDashboardPage() {
   // Màn hình Đăng nhập CMS (Chỉ dành cho ADMIN)
   if (!adminUser) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-900 px-4 py-8">
-        <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-800">
-          <div className="bg-slate-950 text-white px-6 py-6 text-center border-b border-slate-800">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-teal-50/70 to-white px-4 py-8">
+        <div className="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200">
+          <div className="bg-white text-slate-900 px-6 py-6 text-center border-b border-slate-100">
             <img
-              src="/logo-11sport-white.svg"
+              src="/logo-11sport.svg"
               alt="11Sport Logo"
               className="h-16 w-auto object-contain mx-auto mb-3"
             />
@@ -435,7 +437,7 @@ export default function CmsDashboardPage() {
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="Nhập username"
                   autoComplete="username"
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-teal-600 focus:outline-none"
                 />
               </div>
             </div>
@@ -452,7 +454,7 @@ export default function CmsDashboardPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Nhập mật khẩu..."
                   autoComplete="current-password"
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-teal-600 focus:outline-none"
                 />
               </div>
             </div>
@@ -460,7 +462,7 @@ export default function CmsDashboardPage() {
             <button
               type="submit"
               disabled={loginLoading}
-              className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition"
+              className="w-full py-3 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition"
             >
               <LogIn className="w-4 h-4" />
               {loginLoading ? "Đang xác thực..." : "Đăng nhập CMS"}
@@ -479,7 +481,7 @@ export default function CmsDashboardPage() {
       const isAccountantServices =
         adminUser?.role === "ACCOUNTANT" && item.id === "SERVICES";
       const label = isAccountantServices
-        ? "Theo dõi Đơn Dịch vụ"
+        ? "Đơn Dịch vụ"
         : item.label;
       const desc = isAccountantServices
         ? "Tra cứu danh sách đơn dịch vụ, doanh thu dịch vụ & số tiền còn phải thu"
@@ -488,7 +490,7 @@ export default function CmsDashboardPage() {
         ...item,
         label,
         desc,
-        displayLabel: `${idx + 1}. ${label}`,
+        displayLabel: label,
       };
     }
   );
@@ -514,20 +516,20 @@ export default function CmsDashboardPage() {
           displayLabel: "Chấm công & Lịch công tháng",
         }
         : visibleMenuItems.find((item) => item.id === effectiveModule) ||
-        visibleMenuItems[0] || { ...CMS_MENU_ITEMS[0], displayLabel: `1. ${CMS_MENU_ITEMS[0].label}` };
+        visibleMenuItems[0] || { ...CMS_MENU_ITEMS[0], displayLabel: CMS_MENU_ITEMS[0].label };
   const CurrentIcon = currentMenu.icon;
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-100">
       {/* Header CMS tích hợp nút mở Drawer Menu */}
-      <header className="sticky top-0 z-30 bg-slate-900 text-white shadow-lg print:hidden border-b border-slate-800">
+      <header className="sticky top-0 z-30 bg-white text-slate-900 shadow-2xs print:hidden border-b border-slate-200">
         <div className="max-w-[98vw] 2xl:max-w-[1880px] mx-auto px-3 sm:px-5 py-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             {/* Nút mở Drawer Menu */}
             <button
               type="button"
               onClick={() => setIsDrawerOpen(true)}
-              className="px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs flex items-center gap-2 shadow-md transition cursor-pointer"
+              className="px-3.5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-xs flex items-center gap-2 shadow-xs transition cursor-pointer"
               title="Mở danh mục quản trị CMS (Drawer Menu)"
             >
               <Menu className="w-4 h-4" />
@@ -535,24 +537,24 @@ export default function CmsDashboardPage() {
             </button>
 
             <img
-              src="/logo-11sport-white.svg"
+              src="/logo-11sport.svg"
               alt="11Sport Logo"
               className="h-9 md:h-10 w-auto object-contain shrink-0 hidden sm:block"
             />
 
-            <div className="border-l border-slate-700 pl-3">
+            <div className="border-l border-slate-200 pl-3">
               <div className="flex items-center gap-2">
-                <span className="font-extrabold text-sm sm:text-base tracking-tight">
+                <span className="font-extrabold text-sm sm:text-base tracking-tight text-slate-900">
                   11SPORT CMS
                 </span>
-                <span className="text-[10px] font-mono bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded">
-                  {adminUser.role}
+                <span className="hidden lg:inline text-[10px] font-mono bg-teal-50 text-brand-ink border border-teal-200 px-2 py-0.5 rounded font-bold">
+                  v2.0
                 </span>
               </div>
               <button
                 type="button"
                 onClick={() => setIsDrawerOpen(true)}
-                className="mt-0.5 inline-flex items-center gap-1.5 text-xs font-bold text-amber-300 hover:text-amber-200 transition"
+                className="mt-0.5 inline-flex items-center gap-1.5 text-xs font-bold text-brand-ink hover:text-brand-ink transition"
               >
                 <CurrentIcon className="w-3.5 h-3.5" />
                 <span>Đang mở: {currentMenu.displayLabel}</span>
@@ -575,14 +577,14 @@ export default function CmsDashboardPage() {
               onClick={() => setIsRightDrawerOpen(true)}
               title="Mở Menu Cá Nhân (Chấm công & Thông tin tài khoản)"
               className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs transition cursor-pointer ${effectiveModule === "PROFILE" || effectiveModule === "MY_ATTENDANCE"
-                  ? "bg-emerald-600/25 border-emerald-500 text-white"
-                  : "bg-slate-800 hover:bg-slate-700 border-slate-700"
+                ? "bg-teal-50 border-teal-300 text-teal-900"
+                : "bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-800"
                 }`}
             >
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span className="text-slate-300 hidden md:inline">Nhân sự:</span>
-              <strong className="text-white">{adminUser.fullName}</strong>
-              <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-emerald-600 text-white font-bold">
+              <ShieldCheck className="w-4 h-4 text-brand-ink" />
+              <span className="text-slate-500 hidden md:inline">Nhân sự:</span>
+              <strong className="text-slate-900">{adminUser.fullName}</strong>
+              <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-teal-600 text-white font-bold">
                 {adminUser.role}
               </span>
             </button>
@@ -592,9 +594,9 @@ export default function CmsDashboardPage() {
               onClick={() => setIsRightDrawerOpen(true)}
               title="Mở Menu Cá Nhân (Chấm công & Thông tin cá nhân)"
               aria-label="Mở Menu Cá Nhân"
-              className="min-h-[38px] px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white border border-slate-700 flex items-center justify-center gap-1.5 transition cursor-pointer"
+              className="min-h-[38px] px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-xs font-bold text-slate-800 border border-slate-200 flex items-center justify-center gap-1.5 transition cursor-pointer"
             >
-              <Menu className="w-4 h-4 text-emerald-400" />
+              <Menu className="w-4 h-4 text-brand-ink" />
               <span className="hidden sm:inline">Menu</span>
             </button>
           </div>
@@ -615,22 +617,22 @@ export default function CmsDashboardPage() {
             onClick={() => setIsRightDrawerOpen(false)}
           />
 
-          {/* Nội dung Drawer trượt từ bên phải */}
-          <aside className="fixed top-0 right-0 bottom-0 w-80 max-w-[85vw] bg-slate-900 text-white shadow-2xl border-l border-slate-800 flex flex-col z-10 animate-in slide-in-from-right duration-200">
+          {/* Nội dung Drawer trượt từ bên phải (Gọn, cân đối) */}
+          <aside className="fixed top-0 right-0 bottom-0 w-72 sm:w-80 max-w-[85vw] drawer-dark bg-white text-slate-900 shadow-2xl border-l border-slate-200 flex flex-col z-10 animate-in slide-in-from-right duration-200">
             {/* Header của Drawer */}
-            <div className="px-4 py-3.5 bg-slate-950 border-b border-slate-800 flex items-center justify-between gap-2">
+            <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2 shrink-0">
               <div className="flex items-center gap-2.5 min-w-0">
                 <img
-                  src="/logo-11sport-white.svg"
+                  src="/logo-11sport.svg"
                   alt="11Sport Logo"
-                  className="h-9 w-auto object-contain shrink-0"
+                  className="h-10 w-auto object-contain shrink-0"
                 />
                 <div className="min-w-0">
-                  <div className="font-extrabold text-sm tracking-tight truncate">
-                    MENU CÁ NHÂN
+                  <div className="font-extrabold text-xs tracking-tight text-slate-900 truncate">
+                    TÀI KHOẢN
                   </div>
-                  <div className="text-[11px] text-slate-400 truncate">
-                    11Sport Quản trị CMS
+                  <div className="text-[11px] text-slate-500 truncate">
+                    Quản trị CMS
                   </div>
                 </div>
               </div>
@@ -639,39 +641,40 @@ export default function CmsDashboardPage() {
                 type="button"
                 onClick={() => setIsRightDrawerOpen(false)}
                 title="Đóng menu"
-                className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition shrink-0"
+                className="p-1.5 rounded-lg bg-slate-200/70 hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition shrink-0"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Thông tin nhân sự đang đăng nhập */}
-            <div className="p-4 border-b border-slate-800 bg-slate-900/60">
-              <div className="bg-slate-800/90 border border-slate-700/80 rounded-xl p-3 flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0 mt-0.5">
-                  <ShieldCheck className="w-5 h-5 text-emerald-400" />
+            {/* Thông tin nhân sự gọn */}
+            <div className="p-3 border-b border-slate-200 bg-slate-50/70 shrink-0">
+              <div className="bg-white border border-slate-200 rounded-xl p-2.5 flex items-center gap-2.5 shadow-2xs">
+                <div className="w-9 h-9 rounded-lg bg-teal-50 border border-teal-200 flex items-center justify-center shrink-0">
+                  <ShieldCheck className="w-4 h-4 text-brand-ink" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-xs text-slate-400">Đang đăng nhập:</div>
-                  <div className="font-bold text-sm text-white truncate">
+                  <div className="font-extrabold text-xs text-slate-900 truncate">
                     {adminUser.fullName}
                   </div>
-                  {adminUser.username && (
-                    <div className="text-[11px] text-slate-400 font-mono truncate">
-                      @{adminUser.username}
-                    </div>
-                  )}
-                  <div className="mt-1.5 inline-block font-mono text-[10px] px-2 py-0.5 rounded bg-emerald-600 text-white font-bold">
-                    {adminUser.role}
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    {adminUser.username && (
+                      <span className="text-[11px] text-slate-500 font-mono truncate">
+                        @{adminUser.username}
+                      </span>
+                    )}
+                    <span className="font-mono text-[10px] px-1.5 py-0.2 rounded bg-teal-600 text-white font-bold shrink-0">
+                      {adminUser.role}
+                    </span>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Danh sách tiện ích cá nhân: Chấm công & Thông tin tài khoản */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-4">
-              <div className="space-y-1.5">
-                <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+            {/* Danh sách tiện ích gọn 1 dòng + Đăng xuất ngay bên dưới */}
+            <div className="flex-1 overflow-y-auto px-2.5 py-3 space-y-3">
+              <div className="space-y-0.5">
+                <div className="px-2.5 pb-1 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
                   Tiện ích nhân sự
                 </div>
 
@@ -679,40 +682,29 @@ export default function CmsDashboardPage() {
                 {userAllowedModules.includes("MY_ATTENDANCE") && (
                   <button
                     type="button"
+                    title="Lịch công tháng, đơn từ & tăng ca"
                     onClick={() => {
                       setActiveModule("MY_ATTENDANCE");
                       setIsRightDrawerOpen(false);
                     }}
-                    className={`w-full text-left px-3 py-3 rounded-xl text-xs font-bold flex items-center justify-between gap-2.5 transition ${effectiveModule === "MY_ATTENDANCE"
-                        ? "bg-emerald-600 text-white shadow-md"
-                        : "text-slate-200 hover:bg-slate-800 hover:text-white"
+                    className={`w-full text-left px-2.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2.5 transition ${effectiveModule === "MY_ATTENDANCE"
+                      ? "bg-teal-600 text-white shadow-xs"
+                      : "text-slate-700 hover:bg-sky-50 hover:text-brand-ink"
                       }`}
                   >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div
-                        className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${effectiveModule === "MY_ATTENDANCE"
-                            ? "bg-white/20 text-white"
-                            : "bg-amber-500/15 text-amber-400"
-                          }`}
-                      >
-                        <CalendarDays className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="truncate">Chấm công</div>
-                        <div
-                          className={`text-[10px] font-normal truncate mt-0.5 ${effectiveModule === "MY_ATTENDANCE"
-                              ? "text-emerald-100"
-                              : "text-slate-400"
-                            }`}
-                        >
-                          Lịch công tháng, đơn từ &amp; tăng ca
-                        </div>
-                      </div>
-                    </div>
+                    <span
+                      className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${effectiveModule === "MY_ATTENDANCE"
+                        ? "bg-white/20 text-white"
+                        : "bg-sky-50 text-brand-ink"
+                        }`}
+                    >
+                      <CalendarDays className="w-4 h-4" />
+                    </span>
+                    <span className="flex-1 truncate">Chấm công cá nhân</span>
                     <ChevronRight
-                      className={`w-4 h-4 shrink-0 ${effectiveModule === "MY_ATTENDANCE"
-                          ? "text-white"
-                          : "text-slate-500"
+                      className={`w-3.5 h-3.5 shrink-0 ${effectiveModule === "MY_ATTENDANCE"
+                        ? "text-white"
+                        : "text-slate-400"
                         }`}
                     />
                   </button>
@@ -721,107 +713,87 @@ export default function CmsDashboardPage() {
                 {/* 2. Thông tin tài khoản cá nhân */}
                 <button
                   type="button"
+                  title="Xem hồ sơ & chỉnh sửa thông tin cá nhân"
                   onClick={() => {
                     setActiveModule("PROFILE");
                     setIsRightDrawerOpen(false);
                   }}
-                  className={`w-full text-left px-3 py-3 rounded-xl text-xs font-bold flex items-center justify-between gap-2.5 transition ${effectiveModule === "PROFILE"
-                      ? "bg-emerald-600 text-white shadow-md"
-                      : "text-slate-200 hover:bg-slate-800 hover:text-white"
+                  className={`w-full text-left px-2.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2.5 transition ${effectiveModule === "PROFILE"
+                    ? "bg-teal-600 text-white shadow-xs"
+                    : "text-slate-700 hover:bg-teal-50 hover:text-brand-ink"
                     }`}
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div
-                      className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${effectiveModule === "PROFILE"
-                          ? "bg-white/20 text-white"
-                          : "bg-emerald-500/15 text-emerald-400"
-                        }`}
-                    >
-                      <User className="w-4 h-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="truncate">Thông tin tài khoản</div>
-                      <div
-                        className={`text-[10px] font-normal truncate mt-0.5 ${effectiveModule === "PROFILE"
-                            ? "text-emerald-100"
-                            : "text-slate-400"
-                          }`}
-                      >
-                        Xem hồ sơ &amp; chỉnh sửa thông tin cá nhân
-                      </div>
-                    </div>
-                  </div>
+                  <span
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${effectiveModule === "PROFILE"
+                      ? "bg-white/20 text-white"
+                      : "bg-teal-50 text-brand-ink"
+                      }`}
+                  >
+                    <User className="w-4 h-4" />
+                  </span>
+                  <span className="flex-1 truncate">Hồ sơ tài khoản</span>
                   <ChevronRight
-                    className={`w-4 h-4 shrink-0 ${effectiveModule === "PROFILE"
-                        ? "text-white"
-                        : "text-slate-500"
+                    className={`w-3.5 h-3.5 shrink-0 ${effectiveModule === "PROFILE"
+                      ? "text-white"
+                      : "text-slate-400"
                       }`}
                   />
                 </button>
 
+                {/* Chế độ sáng/tối */}
+                <ThemeToggle />
+
                 {/* 3. Đổi mật khẩu */}
                 <button
                   type="button"
+                  title="Cập nhật mật khẩu đăng nhập CMS"
                   onClick={() => {
                     setIsRightDrawerOpen(false);
                     handleOpenChangePwd();
                   }}
-                  className="w-full text-left px-3 py-3 rounded-xl text-xs font-bold flex items-center justify-between gap-2.5 text-slate-200 hover:bg-slate-800 hover:text-white transition"
+                  className="w-full text-left px-2.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2.5 text-slate-700 hover:bg-teal-50 hover:text-brand-ink transition"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0">
-                      <KeyRound className="w-4 h-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="truncate">Đổi mật khẩu</div>
-                      <div className="text-[10px] font-normal truncate mt-0.5 text-slate-400">
-                        Cập nhật mật khẩu đăng nhập CMS
-                      </div>
-                    </div>
-                  </div>
-                  <ChevronRight className="w-4 h-4 shrink-0 text-slate-500" />
+                  <span className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                    <KeyRound className="w-4 h-4" />
+                  </span>
+                  <span className="flex-1 truncate">Đổi mật khẩu</span>
+                  <ChevronRight className="w-3.5 h-3.5 shrink-0 text-slate-400" />
                 </button>
 
                 {/* 4. Cấu hình IP Wi-Fi Chấm công (HR, ADMIN, CEO) */}
                 {adminUser && ["HR", "ADMIN", "CEO"].includes(adminUser.role) && (
                   <button
                     type="button"
+                    title="IP 2 cơ sở (Showroom & Văn phòng)"
                     onClick={() => {
                       setIsRightDrawerOpen(false);
                       setShowIpConfigModal(true);
                     }}
-                    className="w-full text-left px-3 py-3 rounded-xl text-xs font-bold flex items-center justify-between gap-2.5 text-slate-200 hover:bg-slate-800 hover:text-white transition"
+                    className="w-full text-left px-2.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2.5 text-slate-700 hover:bg-indigo-50 hover:text-brand-ink transition"
                   >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-8 h-8 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0">
-                        <Wifi className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="truncate">Cấu hình IP Wi-Fi chấm công</div>
-                        <div className="text-[10px] font-normal truncate mt-0.5 text-slate-400">
-                          IP 2 cơ sở (Showroom &amp; Văn phòng)
-                        </div>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 shrink-0 text-slate-500" />
+                    <span className="w-7 h-7 rounded-lg bg-indigo-50 text-brand-ink flex items-center justify-center shrink-0">
+                      <Wifi className="w-4 h-4" />
+                    </span>
+                    <span className="flex-1 truncate">IP Wi-Fi chấm công</span>
+                    <ChevronRight className="w-3.5 h-3.5 shrink-0 text-slate-400" />
                   </button>
                 )}
               </div>
-            </div>
 
-            {/* Footer của Drawer phải: Nút Đăng xuất */}
-            <div className="p-4 border-t border-slate-800 bg-slate-950/80">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsRightDrawerOpen(false);
-                  handleLogout();
-                }}
-                className="w-full py-3 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-xs font-bold text-white flex items-center justify-center gap-2 shadow-lg transition"
-              >
-                <LogOut className="w-4 h-4" />
-                <span>Đăng xuất tài khoản</span>
-              </button>
+              {/* Nút Đăng xuất đặt gọn ngay sau danh sách tiện ích */}
+              <div className="pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsRightDrawerOpen(false);
+                    handleLogout();
+                  }}
+                  className="w-full py-2.5 px-3 rounded-xl bg-red-50 hover:bg-red-600 text-red-600 hover:text-white border border-red-200 hover:border-red-600 text-xs font-extrabold flex items-center justify-center gap-2 transition"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>Đăng xuất</span>
+                </button>
+              </div>
             </div>
           </aside>
         </div>
@@ -832,86 +804,110 @@ export default function CmsDashboardPage() {
         <div className="fixed inset-0 z-50 flex print:hidden">
           {/* Lớp nền mờ */}
           <div
-            className="fixed inset-0 bg-slate-950/65 backdrop-blur-xs transition-opacity"
+            className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs transition-opacity"
             onClick={() => setIsDrawerOpen(false)}
           />
 
-          {/* Nội dung Drawer */}
-          <aside className="relative z-10 w-85 max-w-[88vw] bg-slate-900 text-white h-full shadow-2xl border-r border-slate-800 flex flex-col overflow-y-auto">
-            <div>
-              {/* Đầu Drawer */}
-              <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
-                <div className="flex items-center gap-2.5">
-                  <img
-                    src="/logo-11sport-white.svg"
-                    alt="11Sport Logo"
-                    className="h-9 w-auto object-contain"
-                  />
-                  <div>
-                    <div className="font-extrabold text-sm tracking-tight text-white">
-                      MENU QUẢN TRỊ CMS
-                    </div>
-                    <div className="text-[11px] text-slate-400">
-                      Chọn phân hệ làm việc
-                    </div>
+          {/* Nội dung Drawer (gọn, phân nhóm rõ ràng) */}
+          <aside className="relative z-10 w-72 sm:w-80 max-w-[85vw] drawer-dark bg-white text-slate-900 h-full shadow-2xl border-r border-slate-200 flex flex-col">
+            {/* Đầu Drawer */}
+            <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <img
+                  src="/logo-11sport.svg"
+                  alt="11Sport Logo"
+                  className="h-10 w-auto object-contain shrink-0"
+                />
+                <div className="min-w-0">
+                  <div className="font-extrabold text-xs tracking-tight text-slate-900 truncate">
+                    MENU CMS
+                  </div>
+                  <div className="text-[11px] text-slate-500 truncate">
+                    Chọn phân hệ
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setIsDrawerOpen(false)}
-                  className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition"
-                  title="Đóng menu"
-                >
-                  <X className="w-4 h-4" />
-                </button>
               </div>
-
-              {/* Danh sách Module trong Drawer theo quyền */}
-              <nav className="p-3 space-y-1.5">
-                {visibleMenuItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = effectiveModule === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => {
-                        setActiveModule(item.id);
-                        setIsDrawerOpen(false);
-                      }}
-                      className={`w-full text-left p-3 rounded-xl border transition flex items-start gap-3 ${isActive
-                        ? "bg-emerald-600 text-white border-emerald-500 shadow-lg"
-                        : "bg-slate-800/40 hover:bg-slate-800 text-slate-200 border-slate-800"
-                        }`}
-                    >
-                      <div
-                        className={`p-2 rounded-lg shrink-0 mt-0.5 ${isActive
-                          ? "bg-white/20 text-white"
-                          : "bg-slate-800 text-emerald-400"
-                          }`}
-                      >
-                        <Icon className="w-4 h-4" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-extrabold leading-snug">
-                          {item.displayLabel}
-                        </div>
-                        <div
-                          className={`text-[11px] mt-0.5 line-clamp-2 ${isActive ? "text-white/85" : "text-slate-400"
-                            }`}
-                        >
-                          {item.desc}
-                        </div>
-                      </div>
-                      <ChevronRight
-                        className={`w-4 h-4 shrink-0 self-center ${isActive ? "text-white" : "text-slate-500"
-                          }`}
-                      />
-                    </button>
-                  );
-                })}
-              </nav>
+              <button
+                type="button"
+                onClick={() => setIsDrawerOpen(false)}
+                className="p-1.5 rounded-lg bg-slate-200/70 hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition shrink-0"
+                title="Đóng menu"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
+
+            {/* Danh sách Module phân nhóm gọn gàng */}
+            <nav className="flex-1 overflow-y-auto px-2.5 py-3 space-y-3.5">
+              {(
+                [
+                  {
+                    title: "Báo cáo & Marketing",
+                    ids: ["REVENUE", "PUSH_PRODUCTS", "PROMOTIONS"] as CmsModuleType[],
+                  },
+                  {
+                    title: "Kho & Sản phẩm",
+                    ids: ["INVENTORY", "CATEGORIES"] as CmsModuleType[],
+                  },
+                  {
+                    title: "Bán hàng & Công nợ",
+                    ids: ["ORDERS", "SERVICES", "DEBTS"] as CmsModuleType[],
+                  },
+                  {
+                    title: "Nhân sự & Vận hành",
+                    ids: ["STAFF", "HRM", "SHIFT_HANDOVERS", "ACTIVITY"] as CmsModuleType[],
+                  },
+                ]
+              ).map((group) => {
+                const groupItems = visibleMenuItems.filter((it) =>
+                  group.ids.includes(it.id)
+                );
+                if (groupItems.length === 0) return null;
+                return (
+                  <div key={group.title} className="space-y-0.5">
+                    <div className="px-2.5 pb-1 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                      {group.title}
+                    </div>
+                    {groupItems.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = effectiveModule === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          title={item.desc}
+                          onClick={() => {
+                            setActiveModule(item.id);
+                            setIsDrawerOpen(false);
+                          }}
+                          className={`w-full text-left px-2.5 py-2 rounded-xl transition flex items-center gap-2.5 ${
+                            isActive
+                              ? "bg-teal-600 text-white shadow-xs"
+                              : "text-slate-700 hover:bg-teal-50 hover:text-brand-ink"
+                          }`}
+                        >
+                          <span
+                            className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                              isActive
+                                ? "bg-white/20 text-white"
+                                : "bg-teal-50 text-brand-ink"
+                            }`}
+                          >
+                            <Icon className="w-4 h-4" />
+                          </span>
+                          <span className="flex-1 min-w-0 text-xs font-bold truncate">
+                            {item.displayLabel}
+                          </span>
+                          {isActive && (
+                            <ChevronRight className="w-3.5 h-3.5 shrink-0 text-white" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </nav>
           </aside>
         </div>
       )}
@@ -924,7 +920,7 @@ export default function CmsDashboardPage() {
             onNavigateToInventory={() => setActiveModule("INVENTORY")}
           />
         )}
-        {effectiveModule === "CATEGORIES" && <CategoryModule />}
+        {effectiveModule === "CATEGORIES" && <CategoryBrandModule />}
         {effectiveModule === "ORDERS" && (
           <OrdersReturnsModule onOpenInvoice={(ord) => setInvoiceOrder(ord)} />
         )}
@@ -966,7 +962,7 @@ export default function CmsDashboardPage() {
       {showChangePwdModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/65 p-4 print:hidden">
           <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+            <div className="bg-teal-600 text-white px-5 py-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <KeyRound className="w-4 h-4 text-amber-400" />
                 <h3 className="font-extrabold text-sm">
@@ -976,7 +972,7 @@ export default function CmsDashboardPage() {
               <button
                 type="button"
                 onClick={() => setShowChangePwdModal(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-teal-700"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -986,7 +982,7 @@ export default function CmsDashboardPage() {
               {pwdMessage && (
                 <div
                   className={`p-3 rounded-xl border text-xs font-bold flex items-start gap-2 ${pwdMessage.type === "success"
-                    ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                    ? "bg-teal-50 border-teal-200 text-brand-ink"
                     : "bg-red-50 border-red-200 text-red-700"
                     }`}
                 >
@@ -1010,7 +1006,7 @@ export default function CmsDashboardPage() {
                   onChange={(e) => setCurrentPassword(e.target.value)}
                   placeholder="Nhập mật khẩu đang sử dụng..."
                   autoComplete="current-password"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-teal-600 focus:outline-none"
                 />
               </div>
 
@@ -1026,7 +1022,7 @@ export default function CmsDashboardPage() {
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="Nhập mật khẩu mới..."
                   autoComplete="new-password"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-teal-600 focus:outline-none"
                 />
               </div>
 
@@ -1042,7 +1038,7 @@ export default function CmsDashboardPage() {
                   onChange={(e) => setConfirmNewPassword(e.target.value)}
                   placeholder="Nhập lại mật khẩu mới..."
                   autoComplete="new-password"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-teal-600 focus:outline-none"
                 />
               </div>
 
@@ -1057,7 +1053,7 @@ export default function CmsDashboardPage() {
                 <button
                   type="submit"
                   disabled={pwdLoading}
-                  className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-xs font-bold shadow"
+                  className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white text-xs font-bold shadow"
                 >
                   {pwdLoading ? "Đang cập nhật..." : "Cập nhật Mật khẩu"}
                 </button>

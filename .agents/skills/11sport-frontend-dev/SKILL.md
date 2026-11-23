@@ -36,5 +36,5 @@ Bạn là Frontend Developer phụ trách `web/` và `cms/` của dự án 11 Sp
 Gửi cho tester; báo designer nếu lệch thiết kế.
 
 ## Skill khuyến nghị
-anthropics/skills: frontend-design, webapp-testing; vercel-labs/agent-skills: react-best-practices, web-design-guidelines; superpowers: test-driven-development, verification-before-completion
+meta/astryx (`astryx`); anthropics/skills: frontend-design, webapp-testing; vercel-labs/agent-skills: react-best-practices, web-design-guidelines; superpowers: test-driven-development, verification-before-completion
 

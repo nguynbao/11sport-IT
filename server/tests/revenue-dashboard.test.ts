@@ -412,19 +412,23 @@ describe('GĐ2 & GĐ4: Chuẩn hóa chỉ số Dashboard Doanh thu (D1–D4) & T
     expect(s.cardFeeCollected).toBe(19800);
     expect(s.cardFeeRefunded).toBe(7425);
     expect(s.cardFeeNet).toBe(12375);
+    expect(s.salesCogs).toBe(520000);
+    expect(s.giftCogs).toBe(0);
+    expect(s.giftRetailValue).toBe(0);
     expect(s.estimatedCogs).toBe(520000);
     expect(s.cogsEstimated).toBe(false);
     expect(s.grossProfit).toBe(367500);
     expect(s.grossMarginPercent).toBe(41.4);
-    expect(s.cashAtPurchase).toBe(819800);
+    // Phí quẹt thẻ thu hộ ngân hàng (cardFee) tách riêng, KHÔNG tính vào cashAtPurchase / cashRefunded / cashCollected
+    expect(s.cashAtPurchase).toBe(800000);
     expect(s.debtCollectedInPeriod).toBe(100000);
-    expect(s.cashRefunded).toBe(19925);
-    expect(s.cashCollected).toBe(899875);
+    expect(s.cashRefunded).toBe(12500);
+    expect(s.cashCollected).toBe(887500);
     expect(s.debtReducedByReturnInPeriod).toBe(200000);
     expect(s.outstandingDebtInPeriod).toBe(0);
 
-    // AC-05: Đồng nhất thức cashCollected = netRevenue + cardFeeNet - outstandingDebt
-    expect(s.cashCollected).toBe(s.netRevenue + s.cardFeeNet - s.outstandingDebtInPeriod);
+    // AC-05: Đồng nhất thức cashCollected = netRevenue - outstandingDebt (phí thẻ thu hộ tách riêng)
+    expect(s.cashCollected).toBe(s.netRevenue - s.outstandingDebtInPeriod);
 
     // AC-03: Tổng byCategory[].revenue = netRevenue
     const sumCatRev = dash.byCategory.reduce((acc: number, c: any) => acc + c.revenue, 0);
@@ -966,5 +970,173 @@ describe('GĐ2 & GĐ4: Chuẩn hóa chỉ số Dashboard Doanh thu (D1–D4) & T
     expect(txOrderAfter?.debtAmount).toBe(250000);
     expect(txOrderAfter?.items[0].returnedQuantity).toBe(0);
     expect(txOrderAfter?.debtAdjustments || []).toHaveLength(0);
+  });
+
+  it('Tích hợp Doanh thu Dịch vụ (ServiceOrder): Ghi nhận doanh thu theo ngày tạo đơn (COGS = 0đ), Thực thu (cashCollected) chỉ tính sau khi hoàn thành (RETURNED)', async () => {
+    await clearDatabase();
+    await seedDatabaseIfNeeded();
+
+    // 1. Tạo 2 đơn dịch vụ:
+    // - Đơn DV 1: Căng vợt 200.000đ, khách đã trả trước lúc gửi 200.000đ nhưng đang xử lý (RECEIVED, chưa RETURNED)
+    const dv1Res = await request(app)
+      .post('/api/v1/service-orders')
+      .set('x-user-id', 'sales1')
+      .send({
+        customerName: 'Khách Dịch Vụ 1',
+        customerPhone: '0905111222',
+        receivedAt: '2026-11-18',
+        dueAt: '2026-11-19',
+        paymentMethod: 'CASH',
+        paidAmount: 200000,
+        items: [
+          {
+            serviceCode: 'DV_CANG_VOT',
+            serviceName: 'Căng vợt cầu lông',
+            unit: 'Cây',
+            defaultPrice: 200000,
+            unitPrice: 200000,
+            quantity: 1,
+          },
+        ],
+      });
+    expect(dv1Res.status).toBe(201);
+    const dv1 = dv1Res.body.data;
+
+    // - Đơn DV 2: Hàn vợt 300.000đ, giảm 50.000đ -> còn 250.000đ, khách chọn trả lúc nhận đồ (paidAmount = 0)
+    const dv2Res = await request(app)
+      .post('/api/v1/service-orders')
+      .set('x-user-id', 'sales1')
+      .send({
+        customerName: 'Khách Dịch Vụ 2',
+        customerPhone: '0905333444',
+        receivedAt: '2026-11-18',
+        dueAt: '2026-11-19',
+        paymentMethod: 'BANKING',
+        paidAmount: 0,
+        billDiscountType: 'AMOUNT',
+        billDiscountValue: 50000,
+        items: [
+          {
+            serviceCode: 'DV_HAN_VOT',
+            serviceName: 'Hàn vợt carbon',
+            unit: 'Cây',
+            defaultPrice: 300000,
+            unitPrice: 300000,
+            quantity: 1,
+          },
+        ],
+      });
+    expect(dv2Res.status).toBe(201);
+    const dv2 = dv2Res.body.data;
+    expect(dv2.totalAmount).toBe(250000);
+
+    // 2. Khi cả 2 đơn dịch vụ đều chưa hoàn thành (chưa RETURNED):
+    // - Doanh thu thuần (netRevenue) và Lãi gộp (grossProfit) ĐÃ GHI NHẬN ngay = 200.000 + 250.000 = 450.000đ (Giá vốn = 0đ)
+    // - Thực thu (cashCollected / serviceCashCollected) = 0đ (chưa hoàn thành đơn nào), servicePendingCollection = 450.000đ
+    const dashBeforeComplete = (await getDash()).body.data;
+    expect(dashBeforeComplete.summary.serviceOrdersCount).toBe(2);
+    expect(dashBeforeComplete.summary.activeServiceOrdersCount).toBe(2);
+    expect(dashBeforeComplete.summary.completedServiceOrdersCount).toBe(0);
+    expect(dashBeforeComplete.summary.serviceRevenue).toBe(450000);
+    expect(dashBeforeComplete.summary.netRevenue).toBe(450000);
+    expect(dashBeforeComplete.summary.estimatedCogs).toBe(0);
+    expect(dashBeforeComplete.summary.grossProfit).toBe(450000);
+    expect(dashBeforeComplete.summary.serviceCashCollected).toBe(0);
+    expect(dashBeforeComplete.summary.cashCollected).toBe(0);
+    expect(dashBeforeComplete.summary.servicePendingCollection).toBe(450000);
+
+    // 3. Hoàn thành Đơn DV 1 (RETURNED) và Đơn DV 2 (READY -> Sales xác nhận thu tiền & trả đồ RETURNED):
+    const completeDv1 = await request(app)
+      .patch(`/api/v1/service-orders/${dv1._id}/status`)
+      .set('x-user-id', 'admin')
+      .send({ status: 'RETURNED' });
+    expect(completeDv1.status).toBe(200);
+
+    await request(app)
+      .patch(`/api/v1/service-orders/${dv2._id}/status`)
+      .set('x-user-id', 'admin')
+      .send({ status: 'READY' });
+
+    const completeDv2 = await request(app)
+      .patch(`/api/v1/service-orders/${dv2._id}/status`)
+      .set('x-user-id', 'sales1')
+      .send({
+        status: 'RETURNED',
+        collectAmount: 250000,
+        paymentMethod: 'BANKING',
+      });
+    expect(completeDv2.status).toBe(200);
+
+    // 4. Kiểm tra lại Dashboard sau khi cả 2 đơn dịch vụ đã hoàn thành (RETURNED):
+    // - Thực thu (serviceCashCollected & cashCollected) ghi nhận đủ 450.000đ, servicePendingCollection về 0đ
+    const dashAfterComplete = (await getDash()).body.data;
+    expect(dashAfterComplete.summary.completedServiceOrdersCount).toBe(2);
+    expect(dashAfterComplete.summary.activeServiceOrdersCount).toBe(0);
+    expect(dashAfterComplete.summary.serviceRevenue).toBe(450000);
+    expect(dashAfterComplete.summary.netRevenue).toBe(450000);
+    expect(dashAfterComplete.summary.grossProfit).toBe(450000);
+    expect(dashAfterComplete.summary.serviceCashCollected).toBe(450000);
+    expect(dashAfterComplete.summary.cashCollected).toBe(450000);
+    expect(dashAfterComplete.summary.servicePendingCollection).toBe(0);
+    expect(dashAfterComplete.serviceStats.byServiceType.length).toBe(2);
+
+    // 5. Tạo thêm 1 đơn bán hàng có kèm Quà tặng 0đ (isGift = true) & quẹt thẻ (cardFee 1.8%):
+    // - Tách rõ Giá vốn hàng bán (salesCogs) và Chi phí giá vốn quà tặng (giftCogs) + Trị giá niêm yết quà tặng (giftRetailValue)
+    // - Phí thẻ thu hộ ngân hàng không tính vào netRevenue và không tính vào cashCollected
+    const catRes = await request(app)
+      .post('/api/v1/categories')
+      .set('x-user-id', 'admin')
+      .send({ code: 'GIFT_TEST', name: 'Danh mục Test Quà tặng' });
+    const catId = catRes.body.data._id;
+
+    const mainProdId = (
+      await request(app).post('/api/v1/products').set('x-user-id', 'admin').send({
+        name: 'Vợt Cầu Lông Chính (VCL01)',
+        categoryId: catId,
+        unit: 'Cây',
+        quantity: 10,
+        targetWarehouse: 'FLOOR_1',
+        costPrice: 600000,
+        sellingPrice: 1000000,
+      })
+    ).body.data._id;
+
+    const giftProdId = (
+      await request(app).post('/api/v1/products').set('x-user-id', 'admin').send({
+        name: 'Quấn Cán Tặng Kèm (QC01)',
+        categoryId: catId,
+        unit: 'Cái',
+        quantity: 20,
+        targetWarehouse: 'FLOOR_1',
+        costPrice: 15000,
+        sellingPrice: 30000,
+      })
+    ).body.data._id;
+
+    const ordGiftRes = await request(app)
+      .post('/api/v1/orders')
+      .set('x-user-id', 'sales1')
+      .send({
+        customerName: 'Khách Mua Kèm Quà Tặng',
+        customerPhone: '0905777888',
+        paymentMethod: 'CARD',
+        hasCardFee: true,
+        cardFeePercent: 1.8,
+        items: [
+          { productId: mainProdId, quantity: 1 },
+          { productId: giftProdId, quantity: 2, isGift: true },
+        ],
+      });
+    expect(ordGiftRes.status).toBe(201);
+
+    const dashWithGift = (await getDash()).body.data;
+    expect(dashWithGift.summary.salesCogs).toBe(600000);
+    expect(dashWithGift.summary.giftCogs).toBe(30000); // 2 * 15.000đ
+    expect(dashWithGift.summary.giftRetailValue).toBe(60000); // 2 * 30.000đ
+    expect(dashWithGift.summary.estimatedCogs).toBe(630000); // 600.000 + 30.000
+    expect(dashWithGift.summary.netRevenue).toBe(1450000); // 1.000.000 SP + 450.000 DV (không gồm 18.000 phí thẻ)
+    expect(dashWithGift.summary.cashCollected).toBe(1450000); // Khớp tuyệt đối với netRevenue khi không nợ (không cộng 18.000 phí thẻ)
+    expect(dashWithGift.summary.cardFeeCollected).toBe(18000);
+    expect(dashWithGift.summary.grossProfit).toBe(1450000 - 630000);
   });
 });

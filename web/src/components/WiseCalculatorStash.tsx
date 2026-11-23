@@ -209,18 +209,18 @@ export default function WiseCalculatorStash() {
     <div className="fixed bottom-5 left-0 z-50 flex flex-col items-start print:hidden select-none">
       {/* Cửa sổ nhỏ Máy tính Đổi tiền đơn giản */}
       {isOpen && (
-        <div className="mb-2.5 ml-2 sm:ml-4 w-[320px] sm:w-[340px] max-w-[calc(100vw-16px)] bg-slate-900 text-white rounded-2xl shadow-2xl border border-slate-700 overflow-hidden">
+        <div className="mb-2.5 ml-2 sm:ml-4 w-[320px] sm:w-[340px] max-w-[calc(100vw-16px)] bg-white text-slate-900 rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
           {/* Header gọn */}
-          <div className="bg-slate-950 px-3.5 py-2.5 border-b border-slate-800 flex items-center justify-between">
+          <div className="bg-blue-600 text-white px-3.5 py-2.5 border-b border-blue-700 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full bg-emerald-500 text-slate-950 flex items-center justify-center font-bold">
+              <div className="w-7 h-7 rounded-full bg-white text-brand-ink flex items-center justify-center font-bold shadow-xs">
                 <Calculator className="w-4 h-4 stroke-[2.5]" />
               </div>
               <div>
                 <div className="font-extrabold text-xs text-white leading-tight">
                   Máy tính Đổi tiền (Wise API)
                 </div>
-                <div className="text-[10px] text-emerald-400 font-mono">
+                <div className="text-[10px] text-blue-100 font-mono">
                   {loading ? "Đang cập nhật tỷ giá Wise..." : rateDisplay}
                 </div>
               </div>
@@ -232,11 +232,11 @@ export default function WiseCalculatorStash() {
                 onClick={() => fetchWiseRate(sourceCurrency, targetCurrency)}
                 disabled={loading}
                 title="Cập nhật tỷ giá trực tiếp từ Wise"
-                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+                className="p-1.5 rounded-lg bg-blue-700/70 hover:bg-blue-700 text-white transition"
               >
                 <RefreshCw
                   className={`w-3.5 h-3.5 ${
-                    loading ? "animate-spin text-emerald-400" : ""
+                    loading ? "animate-spin text-white" : ""
                   }`}
                 />
               </button>
@@ -244,7 +244,7 @@ export default function WiseCalculatorStash() {
                 type="button"
                 onClick={() => setIsOpen(false)}
                 title="Đóng"
-                className="p-1.5 rounded-lg bg-slate-800 hover:bg-red-500/20 hover:text-red-300 text-slate-300 transition"
+                className="p-1.5 rounded-lg bg-blue-700/70 hover:bg-red-500 text-white transition"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -253,15 +253,15 @@ export default function WiseCalculatorStash() {
 
           <div className="p-3 space-y-2.5">
             {errorMsg && (
-              <div className="text-[11px] text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg px-2.5 py-1.5">
+              <div className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded-lg px-2.5 py-1.5">
                 {errorMsg}
               </div>
             )}
 
             {/* Ô 1: Tiền nhập vào (tự động format dấu phẩy, số nằm trọn 1 hàng riêng không bị che) */}
-            <div className="bg-slate-950 rounded-xl p-3 border border-slate-800 focus-within:border-emerald-500 transition space-y-1.5">
+            <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 focus-within:border-blue-500 transition space-y-1.5">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
                   Số tiền đổi
                 </span>
 
@@ -269,7 +269,7 @@ export default function WiseCalculatorStash() {
                   value={sourceCurrency}
                   onChange={(e) => setSourceCurrency(e.target.value)}
                   aria-label="Tiền gốc"
-                  className="bg-slate-800 hover:bg-slate-700 text-white font-extrabold text-xs px-2.5 py-1.5 rounded-lg border border-slate-700 focus:outline-none cursor-pointer"
+                  className="bg-white hover:bg-slate-100 text-slate-900 font-extrabold text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 focus:outline-none cursor-pointer"
                 >
                   {CURRENCIES.map((c) => (
                     <option key={c.code} value={c.code}>
@@ -285,11 +285,11 @@ export default function WiseCalculatorStash() {
                 value={formatExpressionDisplay(rawExpression)}
                 onChange={handleInputChange}
                 placeholder="0"
-                className="w-full bg-transparent text-2xl font-black text-white focus:outline-none font-mono tracking-tight"
+                className="w-full bg-transparent text-2xl font-black text-slate-900 focus:outline-none font-mono tracking-tight"
               />
 
               {hasOperator && (
-                <div className="text-xs font-mono text-emerald-400 font-bold pt-0.5 border-t border-slate-900">
+                <div className="text-xs font-mono text-brand-ink font-bold pt-0.5 border-t border-slate-200">
                   = {formatNumber(numericInput, sourceCurrency === "VND" ? 0 : 2)}{" "}
                   {sourceCurrency}
                 </div>
@@ -301,7 +301,7 @@ export default function WiseCalculatorStash() {
               <button
                 type="button"
                 onClick={handleSwap}
-                className="px-3 py-1 rounded-full bg-slate-800 hover:bg-emerald-600 text-slate-200 hover:text-white border border-slate-700 text-[11px] font-bold flex items-center gap-1 transition shadow"
+                className="px-3 py-1 rounded-full bg-white hover:bg-blue-50 text-brand-ink border border-blue-200 text-[11px] font-bold flex items-center gap-1 transition shadow-xs"
               >
                 <ArrowUpDown className="w-3 h-3" />
                 <span>
@@ -311,9 +311,9 @@ export default function WiseCalculatorStash() {
             </div>
 
             {/* Ô 2: Kết quả quy đổi (Tách dòng riêng toàn chiều ngang để không bao giờ bị cắt mất số) */}
-            <div className="bg-emerald-950/60 rounded-xl p-3 border border-emerald-500/40 space-y-1.5">
+            <div className="bg-blue-50/80 rounded-xl p-3 border border-blue-200 space-y-1.5">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-[11px] font-bold uppercase tracking-wide text-emerald-300">
+                <span className="text-[11px] font-bold uppercase tracking-wide text-brand-ink">
                   Thành tiền quy đổi
                 </span>
 
@@ -321,7 +321,7 @@ export default function WiseCalculatorStash() {
                   value={targetCurrency}
                   onChange={(e) => setTargetCurrency(e.target.value)}
                   aria-label="Tiền quy đổi"
-                  className="bg-slate-800 hover:bg-slate-700 text-white font-extrabold text-xs px-2.5 py-1.5 rounded-lg border border-slate-700 focus:outline-none cursor-pointer"
+                  className="bg-white hover:bg-slate-100 text-slate-900 font-extrabold text-xs px-2.5 py-1.5 rounded-lg border border-blue-200 focus:outline-none cursor-pointer"
                 >
                   {CURRENCIES.map((c) => (
                     <option key={c.code} value={c.code}>
@@ -331,7 +331,7 @@ export default function WiseCalculatorStash() {
                 </select>
               </div>
 
-              <div className="w-full text-2xl sm:text-3xl font-black font-mono text-emerald-400 break-all leading-tight">
+              <div className="w-full text-2xl sm:text-3xl font-black font-mono text-brand-ink break-all leading-tight">
                 {rate !== null
                   ? `${formatNumber(convertedValue, targetDecimals)} ${targetCurrency}`
                   : "..."}
@@ -339,31 +339,31 @@ export default function WiseCalculatorStash() {
             </div>
 
             {/* Bàn phím máy tính (+, -, *, :) */}
-            <div className="grid grid-cols-4 gap-1.5 bg-slate-950 p-2 rounded-xl border border-slate-800">
+            <div className="grid grid-cols-4 gap-1.5 bg-slate-100 p-2 rounded-xl border border-slate-200">
               {[
                 {
                   label: "C",
                   value: "C",
                   style:
-                    "bg-red-500/20 text-red-300 hover:bg-red-500/30 border-red-500/30",
+                    "bg-red-50 text-red-600 hover:bg-red-100 border-red-200",
                 },
                 {
                   label: "⌫",
                   value: "BACK",
                   style:
-                    "bg-slate-800 text-slate-200 hover:bg-slate-700 border-slate-700",
+                    "bg-white text-slate-700 hover:bg-slate-50 border-slate-200",
                 },
                 {
                   label: "000",
                   value: "000",
                   style:
-                    "bg-slate-800 text-emerald-300 hover:bg-slate-700 border-slate-700",
+                    "bg-white text-brand-ink hover:bg-blue-50 border-slate-200",
                 },
                 {
                   label: ":",
                   value: ":",
                   style:
-                    "bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border-amber-500/30",
+                    "bg-amber-50 text-amber-700 hover:bg-amber-100 border-amber-200",
                 },
                 { label: "7", value: "7" },
                 { label: "8", value: "8" },
@@ -372,7 +372,7 @@ export default function WiseCalculatorStash() {
                   label: "*",
                   value: "*",
                   style:
-                    "bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border-amber-500/30",
+                    "bg-amber-50 text-amber-700 hover:bg-amber-100 border-amber-200",
                 },
                 { label: "4", value: "4" },
                 { label: "5", value: "5" },
@@ -381,7 +381,7 @@ export default function WiseCalculatorStash() {
                   label: "-",
                   value: "-",
                   style:
-                    "bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border-amber-500/30",
+                    "bg-amber-50 text-amber-700 hover:bg-amber-100 border-amber-200",
                 },
                 { label: "1", value: "1" },
                 { label: "2", value: "2" },
@@ -390,7 +390,7 @@ export default function WiseCalculatorStash() {
                   label: "+",
                   value: "+",
                   style:
-                    "bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border-amber-500/30",
+                    "bg-amber-50 text-amber-700 hover:bg-amber-100 border-amber-200",
                 },
                 { label: "0", value: "0" },
                 { label: "00", value: "00" },
@@ -399,7 +399,7 @@ export default function WiseCalculatorStash() {
                   label: "=",
                   value: "=",
                   style:
-                    "bg-emerald-600 text-white hover:bg-emerald-500 border-emerald-500",
+                    "bg-blue-600 text-white hover:bg-blue-700 border-blue-600",
                 },
               ].map((btn) => (
                 <button
@@ -408,7 +408,7 @@ export default function WiseCalculatorStash() {
                   onClick={() => handleKeyPress(btn.value)}
                   className={`h-10 rounded-lg font-mono font-extrabold text-sm border flex items-center justify-center transition active:scale-95 ${
                     btn.style ||
-                    "bg-slate-900 hover:bg-slate-800 text-white border-slate-800"
+                    "bg-white hover:bg-blue-50 text-slate-900 border-slate-200"
                   }`}
                 >
                   {btn.value === "BACK" ? (
@@ -430,9 +430,9 @@ export default function WiseCalculatorStash() {
           onClick={() => setIsOpen((v) => !v)}
           title="Máy tính đổi tiền nhanh"
           aria-label="Mở máy tính đổi tiền nhanh"
-          className={`group relative flex items-center gap-2 bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-700 hover:from-emerald-400 hover:to-teal-600 text-white shadow-2xl border-2 border-white/90 transition-all duration-300 ${
+          className={`group relative flex items-center gap-2 bg-gradient-to-br from-blue-500 via-blue-600 to-teal-700 hover:from-blue-400 hover:to-teal-600 text-white shadow-2xl border-2 border-white/90 transition-all duration-300 ${
             isOpen
-              ? "ml-3 sm:ml-4 w-13 h-13 p-3.5 rounded-full justify-center ring-4 ring-emerald-500/30"
+              ? "ml-3 sm:ml-4 w-13 h-13 p-3.5 rounded-full justify-center ring-4 ring-blue-500/30"
               : isStashedEdge
               ? "w-13 h-13 py-3.5 pl-2.5 pr-3.5 rounded-r-full rounded-l-none justify-end -translate-x-1 hover:translate-x-0"
               : "ml-3 w-13 h-13 p-3.5 rounded-full justify-center hover:scale-105"
@@ -446,7 +446,7 @@ export default function WiseCalculatorStash() {
             type="button"
             onClick={() => setIsStashedEdge((v) => !v)}
             title={isStashedEdge ? "Kéo nút ra" : "Né gọn vào mép (Stash)"}
-            className="h-8 w-5 rounded-r-lg bg-slate-900/90 hover:bg-slate-800 text-emerald-400 border border-l-0 border-emerald-500/40 flex items-center justify-center shadow-md transition"
+            className="h-8 w-5 rounded-r-lg bg-slate-900/90 hover:bg-blue-700 text-blue-400 border border-l-0 border-blue-500/40 flex items-center justify-center shadow-md transition"
           >
             {isStashedEdge ? (
               <ChevronRight className="w-3.5 h-3.5" />

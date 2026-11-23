@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { staffRepo } from '../config/db';
 import { hashPassword, verifyPassword, signToken } from '../utils/auth';
+import { invalidateStaffAuthCache } from '../middleware/auth';
 import { ApiError } from '../utils/errors';
 import { filterAndRankBySearch } from '../utils/search';
 import { parseStaffImportFile } from '../utils/staffImportParser';
@@ -152,6 +153,7 @@ authStaffRouter.post('/auth/change-password', async (req, res, next) => {
       passwordHash: hashPassword(cleanNewPassword),
       mustChangePassword: false,
     });
+    invalidateStaffAuthCache(String(staff._id));
 
     res.json({
       data: {
@@ -697,32 +699,37 @@ authStaffRouter.patch('/staff/:id', async (req, res, next) => {
       if (insurance !== undefined) updateData.insurance = parseSalaryField(insurance, 'Bảo hiểm');
     }
 
-    if (staff.role === 'CEO' || role === 'CEO') {
-      if (!req.user || req.isFallbackUser || req.user.role !== 'CEO') {
-        throw new ApiError(
-          403,
-          'FORBIDDEN',
-          staff.role === 'CEO'
-            ? 'Chỉ Giám đốc (CEO) đã xác thực mới được phép chỉnh sửa tài khoản CEO'
-            : 'Chỉ Giám đốc (CEO) đã xác thực mới được phép cấp quyền CEO'
-        );
+    // Phân quyền thay đổi Vai trò (role):
+    // - CEO được quyền cao nhất (thay đổi/cấp mọi role).
+    // - ADMIN và HR không được sửa role của CEO hoặc nâng quyền lên CEO.
+    // - HR không được sửa role của ADMIN hoặc nâng quyền lên ADMIN (nhưng HR được phép cập nhật thông tin hồ sơ của ADMIN và CEO).
+    if (role !== undefined && role !== staff.role) {
+      if (role === 'CEO' || staff.role === 'CEO') {
+        if (!req.user || req.isFallbackUser || req.user.role !== 'CEO') {
+          throw new ApiError(
+            403,
+            'FORBIDDEN',
+            staff.role === 'CEO'
+              ? 'Chỉ Giám đốc (CEO) đã xác thực mới được phép thay đổi vai trò của tài khoản CEO'
+              : 'Chỉ Giám đốc (CEO) đã xác thực mới được phép cấp quyền CEO'
+          );
+        }
       }
-    }
-
-    if (req.user && !['ADMIN', 'CEO'].includes(req.user.role)) {
-      if (staff.role === 'ADMIN') {
-        throw new ApiError(
-          403,
-          'FORBIDDEN',
-          'HR không được phép chỉnh sửa tài khoản Quản trị viên (ADMIN)'
-        );
-      }
-      if (role === 'ADMIN') {
-        throw new ApiError(
-          403,
-          'FORBIDDEN',
-          'HR không được phép cấp quyền Quản trị viên (ADMIN) cho nhân sự'
-        );
+      if (req.user && !['ADMIN', 'CEO'].includes(req.user.role)) {
+        if (staff.role === 'ADMIN') {
+          throw new ApiError(
+            403,
+            'FORBIDDEN',
+            'HR không được phép thay đổi vai trò của Quản trị viên (ADMIN)'
+          );
+        }
+        if (role === 'ADMIN') {
+          throw new ApiError(
+            403,
+            'FORBIDDEN',
+            'HR không được phép cấp quyền Quản trị viên (ADMIN) cho nhân sự'
+          );
+        }
       }
     }
 
@@ -881,8 +888,33 @@ authStaffRouter.patch('/staff/:id', async (req, res, next) => {
       if (contractFileName !== undefined) updateData.contractFileName = String(contractFileName).trim();
     }
     if (status !== undefined) {
-      if (req.user && !['ADMIN', 'CEO'].includes(req.user.role)) {
-        throw new ApiError(403, 'FORBIDDEN', 'Chỉ Giám đốc (CEO) hoặc Quản trị viên (ADMIN) mới được phép khóa hoặc mở khóa tài khoản');
+      if (req.user && !['CEO', 'ADMIN', 'HR'].includes(req.user.role)) {
+        throw new ApiError(
+          403,
+          'FORBIDDEN',
+          'Chỉ Giám đốc (CEO), Quản trị viên (ADMIN) hoặc Nhân sự (HR) mới được phép khóa hoặc mở khóa tài khoản'
+        );
+      }
+      if (req.user?.role === 'HR' && ['ADMIN', 'CEO'].includes(staff.role)) {
+        throw new ApiError(
+          403,
+          'FORBIDDEN',
+          'HR không được phép khóa hoặc mở khóa tài khoản Quản trị viên (ADMIN) và Giám đốc (CEO)'
+        );
+      }
+      if (req.user?.role === 'ADMIN' && staff.role === 'CEO') {
+        throw new ApiError(
+          403,
+          'FORBIDDEN',
+          'Quản trị viên (ADMIN) không được phép khóa hoặc mở khóa tài khoản Giám đốc (CEO)'
+        );
+      }
+      if (staff.role === 'CEO' && (!req.user || req.isFallbackUser || req.user.role !== 'CEO')) {
+        throw new ApiError(
+          403,
+          'FORBIDDEN',
+          'Chỉ Giám đốc (CEO) đã xác thực mới được phép khóa hoặc mở khóa tài khoản Giám đốc (CEO)'
+        );
       }
       if (!['ACTIVE', 'LOCKED'].includes(status)) {
         throw new ApiError(400, 'INVALID_STATUS', 'Trạng thái không hợp lệ');
@@ -890,11 +922,44 @@ authStaffRouter.patch('/staff/:id', async (req, res, next) => {
       updateData.status = status;
     }
     if (password) {
+      if (
+        req.user &&
+        String(req.user.userId) !== String(id) &&
+        !['CEO', 'ADMIN', 'HR'].includes(req.user.role)
+      ) {
+        throw new ApiError(
+          403,
+          'FORBIDDEN',
+          'Bạn không có quyền thay đổi mật khẩu của tài khoản khác'
+        );
+      }
+      if (req.user?.role === 'HR' && ['ADMIN', 'CEO'].includes(staff.role)) {
+        throw new ApiError(
+          403,
+          'FORBIDDEN',
+          'HR không được phép thay đổi mật khẩu của Quản trị viên (ADMIN) và Giám đốc (CEO)'
+        );
+      }
+      if (req.user?.role === 'ADMIN' && staff.role === 'CEO') {
+        throw new ApiError(
+          403,
+          'FORBIDDEN',
+          'Quản trị viên (ADMIN) không được phép thay đổi mật khẩu của Giám đốc (CEO)'
+        );
+      }
+      if (staff.role === 'CEO' && (!req.user || req.isFallbackUser || req.user.role !== 'CEO')) {
+        throw new ApiError(
+          403,
+          'FORBIDDEN',
+          'Chỉ Giám đốc (CEO) đã xác thực mới được phép thay đổi mật khẩu của Giám đốc (CEO)'
+        );
+      }
       updateData.passwordHash = hashPassword(String(password));
       updateData.mustChangePassword = false;
     }
 
     const updated = await staffRepo.updateById(id, updateData);
+    invalidateStaffAuthCache(String(id));
     const { passwordHash, ...safeStaff } = updated!;
     res.json({
       data: safeStaff,

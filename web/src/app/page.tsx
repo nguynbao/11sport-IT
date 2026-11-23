@@ -13,6 +13,7 @@ import {
   fetchMyShiftScheduleApi,
 } from "@/lib/api";
 import PosTab from "@/components/PosTab";
+import PosServiceSection from "@/components/PosServiceSection";
 import InventoryTab from "@/components/InventoryTab";
 import CustomerTab from "@/components/CustomerTab";
 import ReturnExchangeTab from "@/components/ReturnExchangeTab";
@@ -47,40 +48,48 @@ import {
   Rocket,
   CalendarCheck,
   FileText,
+  Wrench,
 } from "lucide-react";
 
 const TABS_CONFIG: TabConfig[] = [
   {
     id: "POS",
-    label: "1. Bán hàng",
+    label: "Bán hàng",
     icon: ShoppingCart,
     allowedRoles: ["SALES", "ADMIN", "CEO"],
     roleHint: "NV Bán hàng / Quản lý / Giám đốc",
   },
   {
+    id: "SERVICES",
+    label: "Làm dịch vụ",
+    icon: Wrench,
+    allowedRoles: ["SALES", "ADMIN", "CEO"],
+    roleHint: "NV Bán hàng / Quản lý / Giám đốc",
+  },
+  {
     id: "INVENTORY",
-    label: "2. Kho hàng",
+    label: "Kho hàng",
     icon: Package,
     allowedRoles: ["SALES", "ADMIN", "CEO"],
     roleHint: "NV Bán hàng / Quản lý / Giám đốc",
   },
   {
     id: "CUSTOMER",
-    label: "3. Tra cứu Khách & Xuất PDF",
+    label: "Khách hàng & PDF",
     icon: Users,
     allowedRoles: ["SALES", "ADMIN", "CEO"],
     roleHint: "NV Bán hàng / Quản lý / Giám đốc",
   },
   {
     id: "RETURN",
-    label: "4. Trả / Đổi hàng",
+    label: "Đổi hàng",
     icon: RotateCcw,
     allowedRoles: ["SALES", "ADMIN", "CEO"],
     roleHint: "NV Bán hàng / Quản lý / Giám đốc",
   },
   {
     id: "INVOICE_HISTORY",
-    label: "5. Lịch sử hoá đơn",
+    label: "Lịch sử hoá đơn",
     icon: FileText,
     allowedRoles: ["SALES", "ADMIN", "CEO"],
     roleHint: "NV Bán hàng / Quản lý / Giám đốc",
@@ -116,7 +125,8 @@ export default function WebPosHomePage() {
   const [currentUser, setCurrentUser] = useState<StaffUser | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [invoiceOrder, setInvoiceOrder] = useState<Order | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [leftDrawerOpen, setLeftDrawerOpen] = useState(false);
+  const [rightDrawerOpen, setRightDrawerOpen] = useState(false);
   const [showAttendanceModal, setShowAttendanceModal] = useState(false);
   const [hasUnseenShiftSchedule, setHasUnseenShiftSchedule] = useState(false);
 
@@ -226,7 +236,8 @@ export default function WebPosHomePage() {
   };
 
   const handleLogout = () => {
-    setDrawerOpen(false);
+    setLeftDrawerOpen(false);
+    setRightDrawerOpen(false);
     setActiveDrawerPage("NONE");
     clearStoredAuth();
     setCurrentUser(null);
@@ -300,8 +311,8 @@ export default function WebPosHomePage() {
 
   if (checkingAuth) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white">
-        <div className="text-sm font-semibold text-slate-300">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-700">
+        <div className="text-sm font-semibold text-slate-600">
           Đang kiểm tra phiên đăng nhập...
         </div>
       </div>
@@ -311,11 +322,11 @@ export default function WebPosHomePage() {
   // Màn hình Đăng nhập khi chưa có phiên đăng nhập
   if (!currentUser) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-900 px-4 py-8">
-        <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-800">
-          <div className="bg-slate-950 text-white px-6 py-6 text-center border-b border-slate-800">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50/70 to-white px-4 py-8">
+        <div className="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200">
+          <div className="bg-white text-slate-900 px-6 py-6 text-center border-b border-slate-100">
             <img
-              src="/logo-11sport-white.svg"
+              src="/logo-11sport.svg"
               alt="11Sport Logo"
               className="h-16 w-auto object-contain mx-auto mb-3"
             />
@@ -344,7 +355,7 @@ export default function WebPosHomePage() {
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="Nhập username"
                   autoComplete="username"
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-blue-600 focus:outline-none"
                 />
               </div>
             </div>
@@ -361,7 +372,7 @@ export default function WebPosHomePage() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Nhập mật khẩu..."
                   autoComplete="current-password"
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-blue-600 focus:outline-none"
                 />
               </div>
             </div>
@@ -369,7 +380,7 @@ export default function WebPosHomePage() {
             <button
               type="submit"
               disabled={loginLoading}
-              className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition"
+              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition"
             >
               <LogIn className="w-4 h-4" />
               {loginLoading ? "Đang xác thực..." : "Đăng nhập vào Hệ thống"}
@@ -391,25 +402,38 @@ export default function WebPosHomePage() {
   return (
     <div className="min-h-screen flex flex-col bg-slate-100">
       {/* Header thương hiệu 11Sport & Thông tin người dùng */}
-      <header className="sticky top-0 z-30 bg-slate-900 text-white shadow-lg print:hidden">
-        <div className="w-full mx-auto px-2 sm:px-3 lg:px-4 py-2.5 md:py-3 flex items-center justify-between gap-2 md:gap-3">
+      <header className="sticky top-0 z-30 bg-white text-slate-900 border-b border-slate-200 shadow-2xs print:hidden">
+        <div className="w-full mx-auto px-2 sm:px-3 lg:px-4 py-2 md:py-2.5 flex items-center justify-between gap-2 md:gap-3">
           <div className="flex items-center gap-2 md:gap-3 min-w-0">
+            {/* Nút mở Drawer Menu bên trái cho 5 Tab chức năng */}
+            <button
+              type="button"
+              onClick={() => setLeftDrawerOpen(true)}
+              title="Mở menu điều hướng 5 tab"
+              aria-label="Mở menu điều hướng 5 tab"
+              className="relative min-h-[40px] px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-xs font-extrabold text-white shadow-xs flex items-center justify-center gap-2 transition shrink-0 cursor-pointer"
+            >
+              <Menu className="w-4 h-4 text-white" />
+              <span className="hidden sm:inline">
+                {activeDrawerPage === "PROFILE"
+                  ? "Tài khoản"
+                  : activeDrawerPage === "ATTENDANCE"
+                    ? "Chấm công"
+                    : currentTabConfig?.label || "Menu"}
+              </span>
+            </button>
+
             <img
-              src="/logo-11sport-white.svg"
+              src="/logo-11sport.svg"
               alt="11Sport Logo"
-              className="h-9 md:h-11 w-auto object-contain shrink-0"
+              className="h-8 md:h-10 w-auto object-contain shrink-0"
             />
-            <div className="min-w-0">
-              <div className="font-extrabold text-sm md:text-base tracking-tight flex items-center gap-2 truncate">
+            <div className="min-w-0 hidden sm:block">
+              <div className="font-extrabold text-sm md:text-base tracking-tight text-slate-900 flex items-center gap-2 truncate">
                 <span className="truncate">11SPORT POS & KHO VẬN</span>
-                <span className="hidden sm:inline text-[11px] font-mono bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded">
-                  v1.0
+                <span className="hidden lg:inline text-[11px] font-mono bg-blue-50 text-brand-ink border border-blue-200 px-2 py-0.5 rounded font-bold">
+                  v2.0
                 </span>
-              </div>
-              {/* Mobile: tên nhân sự rút gọn dưới tên thương hiệu */}
-              <div className="md:hidden text-[11px] text-slate-400 truncate">
-                {currentUser.fullName} ·{" "}
-                <span className="text-emerald-400 font-bold">{currentUser.role}</span>
               </div>
             </div>
           </div>
@@ -419,23 +443,24 @@ export default function WebPosHomePage() {
             <HeaderAttendanceBar currentUser={currentUser} />
           </div>
 
-          {/* Thông tin tài khoản đang đăng nhập & Đăng xuất */}
+          {/* Thông tin tài khoản đang đăng nhập & Nút mở Tiện ích nhân sự bên phải */}
           <div className="flex items-center gap-1.5 md:gap-2.5 shrink-0">
             <button
               type="button"
-              onClick={() => setActiveDrawerPage("PROFILE")}
-              title="Xem & chỉnh sửa thông tin tài khoản cá nhân"
+              onClick={() => setRightDrawerOpen(true)}
+              title="Mở Tiện ích nhân sự & tài khoản"
               className={`hidden md:flex items-center gap-2 px-3.5 py-2 rounded-xl border transition cursor-pointer ${
-                activeDrawerPage === "PROFILE"
-                  ? "bg-emerald-600/20 border-emerald-500 text-white"
-                  : "bg-slate-800 hover:bg-slate-700 border-slate-700"
+                activeDrawerPage === "PROFILE" ||
+                activeDrawerPage === "ATTENDANCE"
+                  ? "bg-blue-50 border-blue-300 text-blue-900"
+                  : "bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-800"
               }`}
             >
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <ShieldCheck className="w-4 h-4 text-brand-ink" />
               <div className="text-xs">
-                <span className="text-slate-400">Nhân sự: </span>
-                <strong className="text-white">{currentUser.fullName}</strong>{" "}
-                <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-emerald-600 text-white font-bold ml-1">
+                <span className="text-slate-500">Nhân sự: </span>
+                <strong className="text-slate-900">{currentUser.fullName}</strong>{" "}
+                <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-blue-600 text-white font-bold ml-1">
                   {getRoleDisplayName(currentUser.role)}
                 </span>
               </div>
@@ -443,106 +468,25 @@ export default function WebPosHomePage() {
 
             <button
               type="button"
-              onClick={() => setDrawerOpen(true)}
-              title="Mở menu điều hướng"
-              aria-label="Mở menu điều hướng"
-              className="relative min-h-[40px] min-w-[40px] px-2.5 md:px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white border border-slate-700 flex items-center justify-center gap-1.5 transition"
+              onClick={() => setRightDrawerOpen(true)}
+              title="Tiện ích nhân sự"
+              aria-label="Mở tiện ích nhân sự"
+              className="relative min-h-[40px] min-w-[40px] px-2.5 md:px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-xs font-bold text-slate-800 border border-slate-200 flex items-center justify-center gap-1.5 transition cursor-pointer"
             >
-              <Menu className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-emerald-400" />
-              <span className="hidden sm:inline">Menu</span>
+              <User className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-brand-ink" />
+              <span className="hidden sm:inline">Tiện ích</span>
               {hasUnseenShiftSchedule && (
                 <span
                   title="HR đã hoàn thành xếp ca tuần mới"
                   className="absolute -top-1 -right-1 flex h-3 w-3"
                 >
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-red-600 border border-slate-900" />
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-red-600 border border-white" />
                 </span>
               )}
             </button>
           </div>
         </div>
-
-        {/* Thanh Tab chức năng dành riêng cho Marketing: Các Sản Phẩm Đang Cần Đẩy Mạnh & Chấm công */}
-        {currentUser.role === "MARKETING" ? (
-          <div className="bg-slate-800/90 border-t border-slate-800">
-            <div className="w-full mx-auto px-2 sm:px-3 lg:px-4 flex items-center gap-1.5 overflow-x-auto no-scrollbar snap-x py-1.5">
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveDrawerPage("NONE");
-                  setActiveTab("PUSH_PRODUCTS");
-                }}
-                className={`min-h-[40px] shrink-0 snap-start px-3.5 md:px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 whitespace-nowrap transition cursor-pointer ${
-                  activeDrawerPage === "NONE" && activeTab === "PUSH_PRODUCTS"
-                    ? "bg-amber-400 text-slate-950 shadow"
-                    : "text-slate-300 hover:bg-slate-700/60 hover:text-white"
-                }`}
-              >
-                <Rocket className="w-4 h-4" />
-                1. Các Sản Phẩm Đang Cần Đẩy Mạnh
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveDrawerPage("ATTENDANCE")}
-                className={`min-h-[40px] shrink-0 snap-start px-3.5 md:px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 whitespace-nowrap transition cursor-pointer ${
-                  activeDrawerPage === "ATTENDANCE"
-                    ? "bg-emerald-600 text-white shadow"
-                    : "text-slate-300 hover:bg-slate-700/60 hover:text-white"
-                }`}
-              >
-                <CalendarCheck className="w-4 h-4" />
-                2. Chấm công & Lịch công tháng
-              </button>
-            </div>
-          </div>
-        ) : (
-          /* Thanh 5 Tab chức năng phân quyền theo Role (ẩn với tài khoản Khối văn phòng chỉ dùng Chấm công) */
-          !isAttendanceOnlyRole(currentUser.role) && (
-            <div className="bg-slate-800/90 border-t border-slate-800">
-              <div className="w-full mx-auto px-2 sm:px-3 lg:px-4 flex items-center gap-1 md:gap-1.5 overflow-x-auto no-scrollbar snap-x py-1.5">
-                {TABS_CONFIG.map((tab) => {
-                  const Icon = tab.icon;
-                  const isAllowed = tab.allowedRoles.includes(currentUser.role);
-                  const isActive =
-                    activeDrawerPage === "NONE" && activeTab === tab.id;
-
-                  return (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      disabled={!isAllowed}
-                      title={
-                        isAllowed
-                          ? tab.label
-                          : `Chức năng này chỉ dành cho: ${tab.roleHint}`
-                      }
-                      onClick={() => {
-                        if (isAllowed) {
-                          setActiveDrawerPage("NONE");
-                          setActiveTab(tab.id);
-                        }
-                      }}
-                      className={`min-h-[40px] shrink-0 snap-start px-3 md:px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 md:gap-2 whitespace-nowrap transition ${!isAllowed
-                        ? "opacity-40 cursor-not-allowed text-slate-400 bg-slate-900/40"
-                        : isActive
-                          ? "bg-emerald-600 text-white shadow"
-                          : "text-slate-300 hover:bg-slate-700/60 hover:text-white"
-                        }`}
-                    >
-                      {isAllowed ? (
-                        <Icon className="w-4 h-4" />
-                      ) : (
-                        <Lock className="w-3.5 h-3.5 text-amber-400" />
-                      )}
-                      {tab.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )
-        )}
       </header>
 
       {/* Main Content */}
@@ -586,6 +530,7 @@ export default function WebPosHomePage() {
             {activeTab === "POS" && (
               <PosTab onOpenInvoice={(ord) => setInvoiceOrder(ord)} />
             )}
+            {activeTab === "SERVICES" && <PosServiceSection />}
             {activeTab === "INVENTORY" && <InventoryTab />}
             {activeTab === "CUSTOMER" && (
               <CustomerTab onOpenInvoice={(ord) => setInvoiceOrder(ord)} />
@@ -599,20 +544,42 @@ export default function WebPosHomePage() {
         )}
       </main>
 
-      {/* Drawer Menu (thay thế vị trí nút Đăng xuất trên Header) */}
+      {/* Drawer Menu BÊN TRÁI: Chuyên cho 5 Tab chức năng Bán hàng & Kho */}
       <DrawerMenu
-        isOpen={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
+        isOpen={leftDrawerOpen}
+        onClose={() => setLeftDrawerOpen(false)}
+        side="left"
         currentUser={currentUser}
+        tabs={TABS_CONFIG}
+        activeTab={activeTab}
+        onSelectTab={(tabId) => {
+          setActiveDrawerPage("NONE");
+          setActiveTab(tabId);
+        }}
+        activeDrawerPage={activeDrawerPage}
+        hasAttendanceNoti={hasUnseenShiftSchedule}
+        onOpenProfile={() => setActiveDrawerPage("PROFILE")}
+        onOpenAttendance={() => setActiveDrawerPage("ATTENDANCE")}
+        onLogout={handleLogout}
+        getRoleDisplayName={getRoleDisplayName}
+      />
+
+      {/* Drawer Menu BÊN PHẢI: Tiện ích nhân sự (Chấm công, Tài khoản, Đổi mật khẩu, CMS, Đăng xuất) */}
+      <DrawerMenu
+        isOpen={rightDrawerOpen}
+        onClose={() => setRightDrawerOpen(false)}
+        side="right"
+        currentUser={currentUser}
+        activeTab={activeTab}
         activeDrawerPage={activeDrawerPage}
         hasAttendanceNoti={hasUnseenShiftSchedule}
         onOpenProfile={() => setActiveDrawerPage("PROFILE")}
         onOpenAttendance={() => {
-          setDrawerOpen(false);
+          setRightDrawerOpen(false);
           setActiveDrawerPage("ATTENDANCE");
         }}
         onOpenPushProducts={() => {
-          setDrawerOpen(false);
+          setRightDrawerOpen(false);
           setActiveDrawerPage("NONE");
           setActiveTab("PUSH_PRODUCTS");
         }}
@@ -633,7 +600,7 @@ export default function WebPosHomePage() {
       {showChangePwdModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/65 p-4 print:hidden">
           <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+            <div className="bg-blue-600 text-white px-5 py-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <KeyRound className="w-4 h-4 text-amber-400" />
                 <h3 className="font-extrabold text-sm">
@@ -643,7 +610,7 @@ export default function WebPosHomePage() {
               <button
                 type="button"
                 onClick={() => setShowChangePwdModal(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-blue-700"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -654,7 +621,7 @@ export default function WebPosHomePage() {
                 <div
                   className={`p-3 rounded-xl border text-xs font-bold flex items-start gap-2 ${
                     pwdMessage.type === "success"
-                      ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                      ? "bg-blue-50 border-blue-200 text-brand-ink"
                       : "bg-red-50 border-red-200 text-red-700"
                   }`}
                 >
@@ -677,7 +644,7 @@ export default function WebPosHomePage() {
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
                   placeholder="Nhập mật khẩu đang sử dụng..."
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-blue-600 focus:outline-none"
                 />
               </div>
 
@@ -691,7 +658,7 @@ export default function WebPosHomePage() {
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="Tối thiểu 4 ký tự..."
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-blue-600 focus:outline-none"
                 />
               </div>
 
@@ -705,7 +672,7 @@ export default function WebPosHomePage() {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Nhập lại mật khẩu mới..."
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-blue-600 focus:outline-none"
                 />
               </div>
 
@@ -720,7 +687,7 @@ export default function WebPosHomePage() {
                 <button
                   type="submit"
                   disabled={pwdSaving}
-                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-xs font-extrabold"
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-xs font-extrabold"
                 >
                   {pwdSaving ? "Đang lưu..." : "Lưu mật khẩu mới"}
                 </button>
@@ -730,7 +697,7 @@ export default function WebPosHomePage() {
         </div>
       )}
 
-      {/* Modal Xuất / In Hóa Đơn PDF (K80 / A4) */}
+      {/* Modal Xuất / In Hóa Đơn PDF (K80) */}
       <InvoicePdfModal
         order={invoiceOrder}
         onClose={() => setInvoiceOrder(null)}

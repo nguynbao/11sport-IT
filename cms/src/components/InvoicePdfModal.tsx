@@ -34,12 +34,12 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
     order.paymentMethod === "CASH"
       ? "Tiền mặt (CASH)"
       : order.paymentMethod === "BANKING"
-      ? "Chuyển khoản (BANKING)"
-      : order.paymentMethod === "OTHER"
-      ? `Khác (${order.paymentMethodDetail || "Tùy chọn"})`
-      : effectiveCardFeePercent > 0
-      ? `Thẻ (CARD ${effectiveCardFeePercent}%)`
-      : "Thẻ (CARD)";
+        ? "Chuyển khoản (BANKING)"
+        : order.paymentMethod === "OTHER"
+          ? `Khác (${order.paymentMethodDetail || "Tùy chọn"})`
+          : effectiveCardFeePercent > 0
+            ? `Thẻ (CARD ${effectiveCardFeePercent}%)`
+            : "Thẻ (CARD)";
 
   const getItemCalculatedPricing = (item: Order["items"][number]) => {
     const isGift = Boolean(item.isGift) || item.discountType === "GIFT";
@@ -55,13 +55,13 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
           ? rawOrigUnit
           : storedLine === storedUnit * qty &&
             (Number(order.rawSubtotal) || 0) > (Number(order.subtotal) || 0)
-          ? storedUnit + Math.round(discAmt / qty)
-          : rawOrigUnit > 0
-          ? rawOrigUnit
-          : storedUnit
+            ? storedUnit + Math.round(discAmt / qty)
+            : rawOrigUnit > 0
+              ? rawOrigUnit
+              : storedUnit
         : rawOrigUnit > 0
-        ? rawOrigUnit
-        : storedUnit;
+          ? rawOrigUnit
+          : storedUnit;
 
     const origLineTotal = origUnitPrice * qty;
     const netLineTotal = Math.max(0, origLineTotal - discAmt);
@@ -180,14 +180,14 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/75 p-2 sm:p-4 overflow-y-auto">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh]">
         {/* Thanh công cụ Modal */}
-        <div className="bg-slate-900 text-white px-3 py-3 sm:px-6 sm:py-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="bg-white text-slate-900 border-b border-slate-200 px-3 py-3 sm:px-6 sm:py-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div className="flex items-center justify-between gap-2 min-w-0">
             <div className="flex items-center gap-2 min-w-0">
-              <Printer className="w-5 h-5 shrink-0 text-emerald-400" />
-              <h3 className="font-bold text-base sm:text-lg truncate">
-                Xuất / In Hóa Đơn PDF — <span className="font-mono text-emerald-400">{orderCode}</span>
+              <Printer className="w-5 h-5 shrink-0 text-brand-ink" />
+              <h3 className="font-bold text-base sm:text-lg truncate text-slate-900">
+                Xuất / In Hóa Đơn PDF — <span className="font-mono text-brand-ink">{orderCode}</span>
                 {order.status === "DRAFT" && (
-                  <span className="ml-2 px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-400/40 text-xs font-extrabold">
+                  <span className="ml-2 px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 text-xs font-extrabold">
                     BẢN NHÁP
                   </span>
                 )}
@@ -196,7 +196,7 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
             <button
               type="button"
               onClick={onClose}
-              className="md:hidden w-10 h-10 shrink-0 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center"
+              className="md:hidden w-10 h-10 shrink-0 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 flex items-center justify-center"
               title="Đóng"
             >
               <X className="w-5 h-5" />
@@ -205,15 +205,14 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
 
           <div className="flex flex-col sm:flex-row sm:items-center gap-2">
             {/* Chuyển đổi khổ K80 và A4 */}
-            <div className="bg-slate-800 p-1 rounded-lg grid grid-cols-2 sm:flex sm:items-center gap-1">
+            <div className="bg-slate-100 border border-slate-200 p-1 rounded-lg grid grid-cols-2 sm:flex sm:items-center gap-1">
               <button
                 type="button"
                 onClick={() => setPaperSize("K80")}
-                className={`min-h-[40px] px-3 py-1.5 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition ${
-                  paperSize === "K80"
-                    ? "bg-emerald-600 text-white shadow"
-                    : "text-slate-300 hover:text-white"
-                }`}
+                className={`min-h-[40px] px-3 py-1.5 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition ${paperSize === "K80"
+                    ? "bg-teal-600 text-white shadow-xs"
+                    : "text-slate-600 hover:text-slate-900"
+                  }`}
               >
                 <Receipt className="w-4 h-4" />
                 Khổ Bill K80 (80mm)
@@ -221,11 +220,10 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
               <button
                 type="button"
                 onClick={() => setPaperSize("A4")}
-                className={`min-h-[40px] px-3 py-1.5 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition ${
-                  paperSize === "A4"
-                    ? "bg-emerald-600 text-white shadow"
-                    : "text-slate-300 hover:text-white"
-                }`}
+                className={`min-h-[40px] px-3 py-1.5 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition ${paperSize === "A4"
+                    ? "bg-teal-600 text-white shadow-xs"
+                    : "text-slate-600 hover:text-slate-900"
+                  }`}
               >
                 <FileText className="w-4 h-4" />
                 Khổ Chuẩn A4
@@ -235,7 +233,7 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
             <button
               type="button"
               onClick={handlePrint}
-              className="min-h-[44px] px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm flex items-center justify-center gap-1.5 shadow"
+              className="min-h-[44px] px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-semibold text-sm flex items-center justify-center gap-1.5 shadow-xs"
             >
               <Download className="w-4 h-4" />
               In / Lưu PDF ({paperSize})
@@ -244,7 +242,7 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
             <button
               type="button"
               onClick={onClose}
-              className="hidden md:flex w-10 h-10 items-center justify-center rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white"
+              className="hidden md:flex w-10 h-10 items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900"
               title="Đóng"
             >
               <X className="w-5 h-5" />
@@ -257,20 +255,18 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
           <div
             ref={printAreaRef}
             id="printable-invoice"
-            className={`mx-auto bg-white text-black shadow-md border border-slate-300 overflow-hidden ${
-              paperSize === "K80"
+            className={`mx-auto bg-white text-black shadow-md border border-slate-300 overflow-hidden ${paperSize === "K80"
                 ? "w-full max-w-[360px] p-3.5 sm:p-4 text-[11px]"
                 : "w-full min-w-[560px] max-w-[794px] p-6 sm:p-8 text-xs"
-            }`}
+              }`}
           >
             {/* Header cửa hàng 11Sport với Logo */}
             <div className="text-center border-b-2 border-dashed border-black pb-3 mb-3 text-black">
               <img
-                src="/logo-11sport.svg"
+                data-keep-logo src="/logo-11sport.svg"
                 alt="11SPORT"
-                className={`mx-auto object-contain mb-1.5 ${
-                  paperSize === "K80" ? "h-16 w-auto" : "h-20 w-auto"
-                }`}
+                className={`mx-auto object-contain mb-1.5 ${paperSize === "K80" ? "h-16 w-auto" : "h-20 w-auto"
+                  }`}
               />
               <div className="font-semibold text-black text-[11px] leading-snug">
                 Địa chỉ: 24 Tố Hữu, P.Hòa Cường, TP. Đà Nẵng
@@ -460,35 +456,35 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
 
               {((Number(order.debtAmount) || 0) > 0 ||
                 (Number(order.initialDebtAmount) || 0) > 0) && (
-                <div className="pt-1.5 border-t border-dashed border-black space-y-1 text-[11px]">
-                  <div className="flex justify-between items-center whitespace-nowrap gap-2">
-                    <span className="font-semibold">Đã thanh toán:</span>
-                    <span className="font-mono font-bold">
-                      {formatVND(
-                        Math.max(
-                          0,
-                          Number(order.paidAmount) ||
-                            calcTotalAmount - (Number(order.debtAmount) || 0)
-                        )
-                      )}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center whitespace-nowrap gap-2 font-extrabold">
-                    <span>CÒN NỢ (TRẢ SAU):</span>
-                    <span className="font-mono font-black">
-                      {formatVND(Math.max(0, Number(order.debtAmount) || 0))}
-                    </span>
-                  </div>
-                  {order.debtDueDate && (Number(order.debtAmount) || 0) > 0 && (
+                  <div className="pt-1.5 border-t border-dashed border-black space-y-1 text-[11px]">
                     <div className="flex justify-between items-center whitespace-nowrap gap-2">
-                      <span className="font-semibold">Hạn hẹn trả:</span>
+                      <span className="font-semibold">Đã thanh toán:</span>
                       <span className="font-mono font-bold">
-                        {new Date(order.debtDueDate).toLocaleDateString("vi-VN")}
+                        {formatVND(
+                          Math.max(
+                            0,
+                            Number(order.paidAmount) ||
+                            calcTotalAmount - (Number(order.debtAmount) || 0)
+                          )
+                        )}
                       </span>
                     </div>
-                  )}
-                </div>
-              )}
+                    <div className="flex justify-between items-center whitespace-nowrap gap-2 font-extrabold">
+                      <span>CÒN NỢ (TRẢ SAU):</span>
+                      <span className="font-mono font-black">
+                        {formatVND(Math.max(0, Number(order.debtAmount) || 0))}
+                      </span>
+                    </div>
+                    {order.debtDueDate && (Number(order.debtAmount) || 0) > 0 && (
+                      <div className="flex justify-between items-center whitespace-nowrap gap-2">
+                        <span className="font-semibold">Hạn hẹn trả:</span>
+                        <span className="font-mono font-bold">
+                          {new Date(order.debtDueDate).toLocaleDateString("vi-VN")}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
             </div>
 
             {/* Ghi chú thuế & lời cảm ơn */}
@@ -497,7 +493,7 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
                 Ghi chú: {order.note || "Giá đã bao gồm thuế"}
               </div>
               <div className="text-[10px] font-semibold leading-snug">
-                Cảm ơn Quý khách đã mua sắm tại 11Sport! Vui lòng giữ hóa đơn khi cần đổi/trả hàng.
+                Cảm ơn Quý khách đã mua sắm tại 11Sport! Vui lòng giữ hóa đơn khi cần đổi hàng.
               </div>
             </div>
           </div>

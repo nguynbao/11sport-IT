@@ -7,6 +7,8 @@ export type ReturnType = 'RETURN' | 'EXCHANGE';
 export interface IReturnItem {
   productId: string;
   productCode: string;
+  /** v5.0: mã cũ trước chuẩn hoá */
+  legacyCode?: string;
   productName: string;
   color?: string;
   size?: string;
@@ -22,6 +24,8 @@ export interface IReturnItem {
 export interface IExchangeItem {
   productId: string;
   productCode: string;
+  /** v5.0: mã cũ trước chuẩn hoá */
+  legacyCode?: string;
   productName: string;
   color?: string;
   size?: string;
@@ -68,6 +72,7 @@ const ReturnItemSchema = new Schema<IReturnItem>(
   {
     productId: { type: String, required: true },
     productCode: { type: String, required: true },
+    legacyCode: { type: String },
     productName: { type: String, required: true },
     color: { type: String, default: '' },
     size: { type: String, default: '' },
@@ -86,6 +91,7 @@ const ExchangeItemSchema = new Schema<IExchangeItem>(
   {
     productId: { type: String, required: true },
     productCode: { type: String, required: true },
+    legacyCode: { type: String },
     productName: { type: String, required: true },
     color: { type: String, default: '' },
     size: { type: String, default: '' },
@@ -130,5 +136,8 @@ const ReturnExchangeSchema = new Schema<IReturnExchange>(
   },
   { timestamps: true }
 );
+
+ReturnExchangeSchema.index({ createdAt: -1 });
+ReturnExchangeSchema.index({ orderId: 1, createdAt: -1 });
 
 export const ReturnExchangeModel = mongoose.model<IReturnExchange>('ReturnExchange', ReturnExchangeSchema);

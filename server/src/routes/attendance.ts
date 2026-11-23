@@ -24,29 +24,45 @@ import {
 export const attendanceRouter = Router();
 
 // ---------------------------------------------------------------------------
-// DNS cache – tự động resolve DDNS domain thay cho IP cứng
+// DNS & Public WAN IP cache – tự động resolve DDNS (cả IPv4 + IPv6) & cache WAN IP
 // ---------------------------------------------------------------------------
-const _dnsCache: Record<string, { ip: string; expiresAt: number }> = {};
+const _dnsCache: Record<string, { ips: string[]; expiresAt: number }> = {};
 const DNS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 phút
+let _wanIpCache: { ip: string; expiresAt: number } | null = null;
+const WAN_IP_CACHE_TTL_MS = 5 * 60 * 1000; // 5 phút
 
-async function resolveDomain(domain: string): Promise<string | null> {
+async function resolveDomainAllIps(domain: string): Promise<string[]> {
   const now = Date.now();
   const cached = _dnsCache[domain];
   if (cached && cached.expiresAt > now) {
-    return cached.ip;
+    return cached.ips;
   }
+  const found: string[] = [];
   try {
-    const result = await dnsPromises.lookup(domain);
-    if (result?.address) {
-      _dnsCache[domain] = { ip: result.address, expiresAt: now + DNS_CACHE_TTL_MS };
-      return result.address;
+    const [v4, v6] = await Promise.all([
+      dnsPromises.resolve4(domain).catch(() => [] as string[]),
+      dnsPromises.resolve6(domain).catch(() => [] as string[]),
+    ]);
+    for (const ip of [...v4, ...v6]) {
+      const clean = String(ip || '').trim();
+      if (clean && !found.includes(clean)) found.push(clean);
+    }
+    if (found.length === 0) {
+      const looked = await dnsPromises.lookup(domain, { all: true }).catch(() => [] as any[]);
+      for (const item of looked) {
+        const clean = String(item?.address || '').trim();
+        if (clean && !found.includes(clean)) found.push(clean);
+      }
+    }
+    if (found.length > 0) {
+      _dnsCache[domain] = { ips: found, expiresAt: now + DNS_CACHE_TTL_MS };
+      return found;
     }
   } catch (err) {
     console.error(`[DDNS] Lỗi resolve domain "${domain}":`, err);
-    // Dùng lại cache cũ nếu DNS tạm thời bị lỗi
-    if (cached) return cached.ip;
   }
-  return null;
+  if (cached) return cached.ips;
+  return [];
 }
 
 function isTestEnv(): boolean {
@@ -119,6 +135,11 @@ function extractClientIp(req: Request, bodyIp?: string): string {
  * thực tế của kết nối mạng hiện tại để kiểm tra chính xác khi đổi Wi-Fi / phát 4G.
  */
 async function fetchCurrentPublicWanIp(): Promise<string | null> {
+  const now = Date.now();
+  if (_wanIpCache && _wanIpCache.expiresAt > now) {
+    return _wanIpCache.ip;
+  }
+
   const endpoints = [
     'https://api.ipify.org',
     'https://checkip.amazonaws.com',
@@ -135,13 +156,14 @@ async function fetchCurrentPublicWanIp(): Promise<string | null> {
       if (!res.ok) continue;
       const ip = (await res.text()).trim();
       if (ip && ip.length <= 64 && !isLoopbackOrPrivateIp(ip)) {
+        _wanIpCache = { ip, expiresAt: now + WAN_IP_CACHE_TTL_MS };
         return ip;
       }
     } catch {
       // thử endpoint tiếp theo
     }
   }
-  return null;
+  return _wanIpCache?.ip || null;
 }
 
 async function resolveEffectiveClientIp(req: Request, bodyIp?: string): Promise<string> {
@@ -172,9 +194,11 @@ async function resolveDomains(domainCsv: string): Promise<string[]> {
     .filter(Boolean);
   const resolvedIps: string[] = [];
   for (const domain of domains) {
-    const ip = await resolveDomain(domain);
-    if (ip && !resolvedIps.includes(ip)) {
-      resolvedIps.push(ip);
+    const ips = await resolveDomainAllIps(domain);
+    for (const ip of ips) {
+      if (ip && !resolvedIps.includes(ip)) {
+        resolvedIps.push(ip);
+      }
     }
   }
   return resolvedIps;
@@ -282,11 +306,13 @@ async function getEffectiveAttendanceConfig() {
     : envConfig.allowedIps;
 
   const office1Domain =
-    typeof dbDoc.office1Domain === 'string'
-      ? dbDoc.office1Domain
-      : (readAttendanceEnv().ATTENDANCE_OFFICE_1_DOMAIN ||
-        readAttendanceEnv().ATTENDANCE_DDNS_DOMAIN ||
-        (isTestEnv() ? '' : '11sport2.myddns.me'));
+    typeof dbDoc.office1Domain === 'string' && dbDoc.office1Domain.trim()
+      ? dbDoc.office1Domain.trim()
+      : allowedIps.length === 0
+        ? (readAttendanceEnv().ATTENDANCE_OFFICE_1_DOMAIN ||
+          readAttendanceEnv().ATTENDANCE_DDNS_DOMAIN ||
+          (isTestEnv() ? '' : '11sport2.myddns.me'))
+        : '';
   if (office1Domain && !isTestEnv()) {
     const resolvedList = await resolveDomains(office1Domain);
     if (resolvedList.length > 0) {
@@ -299,10 +325,12 @@ async function getEffectiveAttendanceConfig() {
     : envConfig.allowedIps2;
 
   const office2Domain =
-    typeof dbDoc.office2Domain === 'string'
-      ? dbDoc.office2Domain
-      : (readAttendanceEnv().ATTENDANCE_OFFICE_2_DOMAIN ||
-        (isTestEnv() ? '' : '11sport.myddns.me'));
+    typeof dbDoc.office2Domain === 'string' && dbDoc.office2Domain.trim()
+      ? dbDoc.office2Domain.trim()
+      : allowedIps2.length === 0
+        ? (readAttendanceEnv().ATTENDANCE_OFFICE_2_DOMAIN ||
+          (isTestEnv() ? '' : '11sport.myddns.me'))
+        : '';
   if (office2Domain && !isTestEnv()) {
     const resolvedList2 = await resolveDomains(office2Domain);
     if (resolvedList2.length > 0) {
@@ -349,17 +377,19 @@ async function getEffectiveAttendanceConfig() {
 
 function isIpAllowed(clientIp: string, allowedIps: string[]): boolean {
   if (!allowedIps || allowedIps.length === 0) return false;
-  const normalized = clientIp.trim();
+  const normalized = clientIp.trim().toLowerCase();
   if (!normalized) return false;
   if (!isTestEnv() && isLoopbackOrPrivateIp(normalized)) {
     return false;
   }
   return allowedIps.some((rule) => {
-    const cleanRule = String(rule || '').trim();
+    const cleanRule = String(rule || '').trim().toLowerCase();
     if (!cleanRule) return false;
     if (cleanRule === normalized) return true;
-    // Cho phép khớp theo prefix dải IP Public nếu có (VD: "113.22.236.")
-    if (cleanRule.endsWith('.') && normalized.startsWith(cleanRule)) return true;
+    // Cho phép khớp theo prefix dải IPv4/IPv6 nếu có (VD: "113.22.236." hoặc "2402:800:")
+    if ((cleanRule.endsWith('.') || cleanRule.endsWith(':')) && normalized.startsWith(cleanRule)) {
+      return true;
+    }
     if (cleanRule.endsWith('*') && normalized.startsWith(cleanRule.slice(0, -1))) return true;
     return false;
   });

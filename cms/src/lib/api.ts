@@ -192,6 +192,22 @@ export interface Category {
   name: string;
   status: "ACTIVE" | "INACTIVE";
   productCount?: number;
+  /** Mã ngắn 1–3 ký tự A-Z0-9 dùng làm CateCode trong mã sản phẩm (v5.0) */
+  skuCode?: string;
+}
+
+/** Thương hiệu (v5.0 — /brands) */
+export interface Brand {
+  _id: string;
+  code: string;
+  name: string;
+  status: "ACTIVE" | "INACTIVE";
+  aliases?: string[];
+  categoryIds?: string[];
+  isSystem?: boolean;
+  productCount?: number;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export type WarehouseFloor = "FLOOR_1" | "FLOOR_2";
@@ -205,6 +221,16 @@ export interface ProductVariant {
   /** Mã con riêng theo thuộc tính (Màu, Size): [Mã gốc][MÀU][SIZE] (VD: GASIA221401DO38) */
   variantCode?: string;
   barcode?: string;
+  /** Mã màu ngắn 2–3 ký tự trong mã con (v5.0) */
+  colorCode?: string;
+  /** Giá bán riêng của biến thể (0/trống → dùng giá gốc) */
+  sellingPrice?: number;
+  /** Giá vốn riêng của biến thể (role SALES không nhận) */
+  costPrice?: number;
+  /** Giá bán hiệu lực do server tính sẵn */
+  effectiveSellingPrice?: number;
+  legacyVariantCode?: string;
+  legacyVariantCodes?: string[];
   stockFloor1: number;
   stockFloor2: number;
   stock: number;
@@ -227,6 +253,14 @@ export interface Product {
   code: string;
   name: string;
   brand?: string;
+  brandId?: string;
+  brandCode?: string;
+  brandName?: string;
+  versionName?: string;
+  versionCode?: string;
+  /** Mã cũ trước chuẩn hoá — chỉ dùng tra cứu/quét tem cũ */
+  legacyCode?: string;
+  legacyCodes?: string[];
   modelName?: string;
   color?: string;
   colorHexes?: string[];
@@ -254,6 +288,8 @@ export interface Product {
   parentSetStockFloor2?: number;
   maxUnpackableFloor1?: number;
   linkedRetailProducts?: LinkedRetailProductSummary[];
+  /** Ghi chú sản phẩm */
+  note?: string;
 }
 
 export interface StockMovement {
@@ -593,6 +629,14 @@ export interface RevenueDashboardSummary {
   cardFeeNet?: number;
   cardFeeTotal: number;
   orderRevenue: number;
+  productOrderRevenue?: number;
+  productNetRevenue?: number;
+  serviceGrossRevenue?: number;
+  serviceDiscountTotal?: number;
+  serviceRevenue?: number;
+  serviceCardFeeCollected?: number;
+  serviceCashCollected?: number;
+  servicePendingCollection?: number;
   returnGoodsTotal?: number;
   exchangeGoodsTotal?: number;
   returnTotal: number;
@@ -601,6 +645,9 @@ export interface RevenueDashboardSummary {
   netReturnRefund?: number;
   returnFromPriorPeriods?: number;
   netRevenue: number;
+  systemGrossRevenue?: number;
+  actualRevenue?: number;
+  deductionsTotal?: number;
   cashAtPurchase?: number;
   cashRefunded?: number;
   cashCollected?: number | null;
@@ -611,18 +658,54 @@ export interface RevenueDashboardSummary {
   initialDebtInPeriod?: number;
   debtCollectedInPeriod?: number;
   debtOrdersInPeriod?: number;
+  salesCogs?: number;
+  giftCogs?: number;
+  giftRetailValue?: number;
   estimatedCogs: number;
   cogs?: number;
   cogsEstimated?: boolean;
   grossProfit: number;
   grossMarginPercent: number;
   totalOrders: number;
+  productOrdersCount?: number;
+  serviceOrdersCount?: number;
+  activeServiceOrdersCount?: number;
+  completedServiceOrdersCount?: number;
+  cancelledServiceOrdersCount?: number;
   paidOrders: number;
   returnedOrders: number;
   avgOrderValue: number;
   totalUnitsSold: number;
+  totalServiceUnits?: number;
   totalGiftUnits: number;
   totalUnitsReturned: number;
+}
+
+export interface RevenueByServiceType {
+  serviceCode: string;
+  serviceName: string;
+  unit: string;
+  orderCount: number;
+  quantity: number;
+  revenue: number;
+  sharePercent: number;
+}
+
+export interface ServiceStatsData {
+  summary: {
+    totalServiceOrders: number;
+    activeServiceOrders: number;
+    completedServiceOrders: number;
+    cancelledServiceOrders: number;
+    totalServiceUnits: number;
+    serviceGrossRevenue: number;
+    serviceDiscountTotal: number;
+    serviceRevenue: number;
+    serviceCardFeeCollected: number;
+    serviceCashCollected: number;
+    servicePendingCollection: number;
+  };
+  byServiceType: RevenueByServiceType[];
 }
 
 export interface RevenueByPaymentMethod {
@@ -650,6 +733,7 @@ export interface DailyRevenueTrend {
   unitsSold: number;
   grossRevenue: number;
   discountTotal: number;
+  giftRetailValue?: number;
   orderRevenue: number;
   returnImpact: number;
   netRevenue: number;
@@ -694,6 +778,7 @@ export interface HourlyRevenueTrend {
   unitsSold: number;
   grossRevenue: number;
   discountTotal: number;
+  giftRetailValue?: number;
   orderRevenue: number;
   returnImpact: number;
   netRevenue: number;
@@ -788,6 +873,7 @@ export interface DebtManagementData {
 
 export interface RevenueDashboardData {
   summary: RevenueDashboardSummary;
+  serviceStats?: ServiceStatsData;
   byPaymentMethod: RevenueByPaymentMethod[];
   byCategory: RevenueByCategory[];
   dailyTrend: DailyRevenueTrend[];
@@ -1396,6 +1482,12 @@ export async function apiRequest<T = any>(
 
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
+    if (res.status === 401 && !endpoint.startsWith("/auth/login") && typeof window !== "undefined") {
+      if (getStoredToken()) {
+        clearStoredAuth();
+        window.location.reload();
+      }
+    }
     const errMessage = json?.message || `Lỗi hệ thống (${res.status})`;
     const error: any = new Error(errMessage);
     error.code = json?.code || "API_ERROR";
@@ -1586,11 +1678,9 @@ export function toCompactBarcode128(rawCode: string, maxDots = 200): string {
 
   const m = clean.match(/^([A-Z])([A-Z]+?)(\d{6})([A-Z0-9]*)$/);
   if (!m) {
-    let trimmed = clean;
-    while (trimmed.length > 8 && estimateCode128Dots(trimmed) > maxDots) {
-      trimmed = trimmed.slice(0, -1);
-    }
-    return trimmed;
+    // v5.0: mã theo quy chuẩn mới (CATE+BRAND+VERSION+MÀU+SIZE) do server sinh — KHÔNG cắt bớt,
+    // in/quét đúng nguyên mã (máy in tự co giãn module vạch).
+    return clean;
   }
 
   const [, cat, brand, sixDigits, suffix] = m;
@@ -2363,3 +2453,211 @@ export async function cancelLeaveRequestApi(id: string): Promise<void> {
   await apiRequest(`/leave-requests/${id}`, { method: "DELETE" });
 }
 
+
+/* ---------------- v5.0: Mã sản phẩm CATE + BRAND + VERSION + MÀU + SIZE ---------------- */
+
+export interface PreviewCodeVariant {
+  color: string;
+  colorCode?: string;
+  size: string;
+  sizeCode?: string;
+  variantCode?: string;
+}
+
+export interface PreviewCodeResult {
+  categoryCode: string;
+  brandCode: string;
+  versionCode: string;
+  suggestedVersionCode: string;
+  code: string;
+  variants: PreviewCodeVariant[];
+  duplicate: { _id: string; code: string; name: string; versionName?: string } | null;
+  conflicts: { type: string; code: string; productId: string; productCode: string }[];
+}
+
+export interface ProductLookupResult {
+  product: Product;
+  variant: ProductVariant | null;
+  matchedBy: "CODE" | "VARIANT_CODE" | "LEGACY_CODE" | "LEGACY_VARIANT_CODE" | "COMPACT_BARCODE";
+  sellingPrice: number;
+}
+
+/** Thông điệp tiếng Việt cho các mã lỗi mới v5.0 (fallback message server). */
+const PRODUCT_CODE_ERROR_MESSAGES: Record<string, string> = {
+  PRODUCT_DUPLICATE: "Sản phẩm cùng Danh mục + Thương hiệu + Version đã tồn tại.",
+  CODE_CONFLICT: "Mã sinh ra trùng với mã của sản phẩm khác — hãy sửa Version code hoặc mã màu.",
+  BRAND_HAS_PRODUCTS: "Thương hiệu đang có sản phẩm, không thể xoá — chỉ được ngừng sử dụng.",
+  BRAND_NOT_IN_CATEGORY: "Thương hiệu không thuộc danh mục đã chọn.",
+  BRAND_NOT_FOUND: "Không tìm thấy thương hiệu.",
+  BRAND_INACTIVE: "Thương hiệu đã ngừng sử dụng.",
+  BRAND_CODE_IMMUTABLE: "Thương hiệu đã có sản phẩm, không được đổi mã.",
+  BRAND_SYSTEM_LOCKED: "Không được sửa mã/trạng thái/danh mục hoặc xoá thương hiệu hệ thống NN.",
+  BRAND_CATEGORY_IN_USE: "Không thể bỏ danh mục đang có sản phẩm của thương hiệu này.",
+  INVALID_BRAND_CODE: "Mã thương hiệu phải gồm 2–4 ký tự A-Z, 0-9.",
+  DUPLICATE_BRAND_CODE: "Mã thương hiệu đã tồn tại.",
+  DUPLICATE_BRAND_NAME: "Tên thương hiệu đã tồn tại.",
+  INVALID_VERSION_CODE: "Version code phải gồm 1–6 ký tự A-Z, 0-9 và không trùng định dạng mã cũ.",
+  INVALID_COLOR_CODE: "Mã màu phải gồm 2–3 ký tự A-Z, 0-9.",
+  COLOR_CODE_DUPLICATE: "Hai màu khác nhau không được dùng cùng mã màu (1 màu ↔ 1 mã).",
+  DUPLICATE_VARIANT: "Biến thể (Màu + Size) đã tồn tại trong sản phẩm.",
+  VARIANT_NOT_FOUND: "Không tìm thấy biến thể.",
+  INVALID_SKU_CODE: "Mã Cate phải gồm 1–3 ký tự A-Z, 0-9.",
+  DUPLICATE_SKU_CODE: "Mã Cate đã được danh mục khác sử dụng.",
+  CATEGORY_SKU_CODE_IMMUTABLE: "Danh mục đã có sản phẩm, không được đổi mã Cate.",
+  PRODUCT_CODE_IMMUTABLE: "Không được đổi Thương hiệu/Version code/Danh mục của sản phẩm đã sinh mã.",
+};
+
+export function describeApiError(err: any, fallback = "Đã có lỗi xảy ra."): string {
+  const code = String(err?.code || "");
+  const serverMsg = String(err?.message || "").trim();
+  if (serverMsg && !/^Lỗi hệ thống \(/.test(serverMsg)) return serverMsg;
+  return PRODUCT_CODE_ERROR_MESSAGES[code] || serverMsg || fallback;
+}
+
+export async function fetchBrandsApi(params: { categoryId?: string; status?: "ACTIVE" | "INACTIVE"; search?: string } = {}): Promise<Brand[]> {
+  const qs = new URLSearchParams();
+  if (params.categoryId) qs.set("categoryId", params.categoryId);
+  if (params.status) qs.set("status", params.status);
+  if (params.search) qs.set("search", params.search);
+  const q = qs.toString();
+  const res = await apiRequest<Brand[]>(`/brands${q ? `?${q}` : ""}`);
+  return Array.isArray(res.data) ? res.data : [];
+}
+
+export async function previewProductCodeApi(body: {
+  categoryId: string;
+  brandId: string;
+  versionName: string;
+  versionCode?: string;
+  variants?: { color: string; colorCode?: string; size: string }[];
+}): Promise<PreviewCodeResult> {
+  const res = await apiRequest<PreviewCodeResult>("/products/preview-code", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return res.data;
+}
+
+export async function addProductVariantsApi(
+  productId: string,
+  variants: { color: string; colorCode?: string; size: string; sellingPrice?: number; costPrice?: number; colorHexes?: string[] }[]
+): Promise<Product> {
+  const res = await apiRequest<Product>(`/products/${productId}/variants`, {
+    method: "POST",
+    body: JSON.stringify({ variants }),
+  });
+  return res.data;
+}
+
+export async function lookupProductByCodeApi(code: string): Promise<ProductLookupResult | null> {
+  const c = String(code || "").trim();
+  if (!c) return null;
+  try {
+    const res = await apiRequest<ProductLookupResult>(`/products/lookup?code=${encodeURIComponent(c)}`);
+    return res.data || null;
+  } catch (err: any) {
+    if (err?.code === "PRODUCT_NOT_FOUND") return null;
+    throw err;
+  }
+}
+
+/** Giá bán hiệu lực của biến thể (R8): giá riêng > 0, ngược lại giá gốc. */
+export function variantEffectiveSellingPrice(product: Pick<Product, "sellingPrice">, variant?: Partial<ProductVariant> | null): number {
+  if (variant) {
+    const eff = Number(variant.effectiveSellingPrice || 0);
+    if (eff > 0) return eff;
+    const own = Number(variant.sellingPrice || 0);
+    if (own > 0) return own;
+  }
+  return Number(product.sellingPrice || 0);
+}
+
+/** Giá vốn hiệu lực của biến thể: giá riêng > 0, ngược lại giá gốc. */
+export function variantEffectiveCostPrice(product: Pick<Product, "costPrice">, variant?: Partial<ProductVariant> | null): number {
+  const own = Number(variant?.costPrice || 0);
+  if (own > 0) return own;
+  return Number(product.costPrice || 0);
+}
+
+/** Tất cả mã (mới + cũ) của 1 biến thể/sản phẩm để khớp khi quét tem. */
+export function collectProductCodes(product: Partial<Product>, variant?: Partial<ProductVariant> | null): string[] {
+  const out = new Set<string>();
+  const push = (v?: string) => {
+    const s = String(v || "").trim().toUpperCase();
+    if (s) out.add(s);
+  };
+  if (variant) {
+    push(variant.variantCode);
+    push(variant.barcode);
+    push(variant.legacyVariantCode);
+    (variant.legacyVariantCodes || []).forEach(push);
+  } else {
+    push(product.code);
+    push(product.barcode);
+    push(product.legacyCode);
+    (product.legacyCodes || []).forEach(push);
+  }
+  return Array.from(out);
+}
+
+/** Gợi ý mã màu 2–3 ký tự từ tên màu (chỉ là gợi ý; server preview-code là nguồn chuẩn). */
+export function suggestColorCodeFE(color: string): string {
+  const base = String(color || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toUpperCase()
+    .replace(/[^A-Z0-9 ]/g, " ")
+    .trim();
+  if (!base) return "";
+  const words = base.split(/\s+/).filter(Boolean);
+  let code = words.length >= 2 ? words.map((w) => w[0]).join("") : words[0];
+  if (code.length < 2) code = (words.join("") + "X").slice(0, 2);
+  return code.slice(0, 3);
+}
+
+/** Sản phẩm theo quy chuẩn mã mới v5.0 (có versionCode do server sinh). */
+export function isNewSchemeProductFE(p?: Partial<Product> | null): boolean {
+  return Boolean(p && String(p.versionCode || "").trim());
+}
+
+function sameColorKey(a?: string, b?: string): boolean {
+  return toCompactUpperFE(String(a || "")) === toCompactUpperFE(String(b || ""));
+}
+
+/** Tìm biến thể theo Màu + Size trong sản phẩm. */
+export function findVariantByColorSize(
+  product: Partial<Product> | null | undefined,
+  color?: string,
+  size?: string
+): ProductVariant | undefined {
+  const list = Array.isArray(product?.variants) ? product!.variants! : [];
+  return list.find(
+    (v) => sameColorKey(v.color, color) && toCompactUpperFE(String(v.size || "")) === toCompactUpperFE(String(size || ""))
+  );
+}
+
+/**
+ * Mã con (SKU/barcode) của 1 biến thể — ƯU TIÊN mã do server sinh (variantCode/barcode).
+ * Chỉ khi biến thể chưa tồn tại trên server mới hiển thị mã dự kiến:
+ *  - sản phẩm mã mới: Mã gốc + colorCode (lấy từ biến thể cùng màu, hoặc gợi ý) + SizeCode;
+ *  - sản phẩm mã cũ: công thức cũ (chỉ để tương thích tem cũ).
+ */
+export function resolveVariantCode(
+  product: Partial<Product> | null | undefined,
+  baseCode?: string,
+  color?: string,
+  size?: string
+): string {
+  const root = String(baseCode || product?.code || "").trim().toUpperCase();
+  const hit = findVariantByColorSize(product, color, size);
+  if (hit && (hit.variantCode || hit.barcode)) return String(hit.variantCode || hit.barcode);
+  if (!color && !size) return root;
+  if (isNewSchemeProductFE(product)) {
+    const sibling = (product?.variants || []).find((v) => sameColorKey(v.color, color) && v.colorCode);
+    const cc = color ? sibling?.colorCode || suggestColorCodeFE(color) : "";
+    return `${root}${cc}${toCompactUpperFE(String(size || ""))}`;
+  }
+  return generateVariantProductCode(root, color, size);
+}

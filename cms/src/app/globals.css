@@ -2,13 +2,247 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  background-color: #f8fafc;
-  color: #0f172a;
+@layer base {
+  body {
+    background-color: #f5f5f5;
+    color: #212121;
+    font-weight: 500;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-weight: 800;
+    letter-spacing: -0.01em;
+  }
+
+  th {
+    font-weight: 800;
+  }
+
+  input,
+  select,
+  textarea {
+    font-weight: 600;
+  }
+
+  button {
+    font-weight: 700;
+  }
+}
+
+@keyframes chartGrowY {
+  from {
+    transform: scaleY(0);
+    opacity: 0.4;
+  }
+  to {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+@keyframes chartGrowX {
+  from {
+    transform: scaleX(0);
+    opacity: 0.4;
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
+@keyframes chartRevealX {
+  from {
+    clip-path: inset(0 100% 0 0);
+    opacity: 0.4;
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+}
+
+.animate-chart-grow-y {
+  transform-origin: bottom;
+  animation: chartGrowY 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-chart-grow-x {
+  transform-origin: left;
+  animation: chartGrowX 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-chart-reveal-x {
+  animation: chartRevealX 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @media print {
   body {
     background: #ffffff !important;
   }
+}
+
+/* Bộ màu 11 SPORT: chữ tối trên nền vàng để đủ tương phản */
+.bg-teal-600.text-white,
+.bg-teal-700.text-white,
+.bg-blue-600.text-white,
+.bg-blue-700.text-white,
+.bg-indigo-600.text-white,
+.bg-indigo-700.text-white,
+.bg-sky-600.text-white,
+.bg-sky-700.text-white,
+.bg-cyan-600.text-white,
+.bg-cyan-700.text-white {
+  color: #212121;
+}
+.hover\:bg-teal-700:hover,
+.hover\:bg-blue-700:hover,
+.hover\:bg-indigo-700:hover,
+.hover\:bg-sky-700:hover,
+.hover\:bg-cyan-700:hover {
+  color: #212121;
+}
+
+/* Focus ring: vien-focus #212121 */
+:focus-visible { outline: 2px solid #212121; outline-offset: 1px; }
+.drawer-dark :focus-visible { outline-color: #E8B020; }
+input[type="checkbox"], input[type="radio"] { border-color: #8C8C8C; accent-color: #212121; }
+input:not([type="checkbox"]):not([type="radio"]), select, textarea { border-color: #8C8C8C; }
+button:disabled, input:disabled { color: #9A9A9B; }
+/* Nút vàng: hover #D49E12, bấm #BF8C0A */
+.bg-teal-600:active, .bg-blue-600:active, .bg-indigo-600:active, .bg-sky-600:active, .bg-cyan-600:active { background-color: #BF8C0A; }
+
+/* ===== Drawer tối #212121 ===== */
+.drawer-dark { background-color: #212121 !important; color: #fff; border-color: #3A3A3A !important; }
+.drawer-dark * { border-color: #3A3A3A; }
+.drawer-dark .bg-white, .drawer-dark [class*="bg-slate-50"], .drawer-dark [class*="bg-slate-100"],
+.drawer-dark [class*="bg-slate-200"] { background-color: #2D2D2D; }
+.drawer-dark .text-slate-900, .drawer-dark .text-slate-800, .drawer-dark .text-slate-700,
+.drawer-dark .text-slate-600 { color: #fff; }
+.drawer-dark .text-slate-500, .drawer-dark .text-slate-400, .drawer-dark .text-slate-300 { color: #C1C1C1; }
+.drawer-dark .text-brand-ink, .drawer-dark [class*="text-teal-"], .drawer-dark [class*="text-blue-"],
+.drawer-dark [class*="text-indigo-"], .drawer-dark [class*="text-sky-"], .drawer-dark [class*="text-cyan-"] { color: #E8B020; }
+.drawer-dark [class*="bg-teal-50"], .drawer-dark [class*="bg-blue-50"], .drawer-dark [class*="bg-indigo-50"],
+.drawer-dark [class*="bg-sky-50"], .drawer-dark [class*="bg-cyan-50"], .drawer-dark [class*="bg-amber-50"] { background-color: #2D2D2D; }
+.drawer-dark [class*="text-amber-"] { color: #E8B020; }
+.drawer-dark [class*="hover:bg-"]:hover { background-color: #2D2D2D; color: #fff; }
+.drawer-dark [class*="hover:text-"]:hover { color: #fff; }
+/* Mục đang chọn: nền #3A3A3A + vạch vàng 3px bên trái */
+.drawer-dark .bg-teal-600, .drawer-dark .bg-blue-600, .drawer-dark .bg-indigo-600,
+.drawer-dark .bg-sky-600, .drawer-dark .bg-cyan-600 { background-color: #3A3A3A; color: #fff; box-shadow: inset 3px 0 0 #E8B020; }
+.drawer-dark .bg-teal-600 *, .drawer-dark .bg-blue-600 * { color: #fff; }
+.drawer-dark .bg-teal-600 .bg-white\/20, .drawer-dark .bg-blue-600 .bg-white\/20 { background-color: rgba(232,176,32,.2); color: #E8B020; }
+.drawer-dark .border-t-blue-600 { border-top-color: #E8B020 !important; }
+
+/* ===== Hiệu ứng drawer ===== */
+@keyframes drawerItemIn {
+  from { opacity: 0; transform: translateX(-12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes drawerBarIn {
+  from { box-shadow: inset 0 0 0 #E8B020; }
+  to { box-shadow: inset 3px 0 0 #E8B020; }
+}
+@keyframes drawerSheen {
+  from { transform: translateX(-120%); }
+  to { transform: translateX(120%); }
+}
+.drawer-dark button { position: relative; overflow: hidden; transition: background-color .2s ease, transform .2s ease, box-shadow .2s ease, color .2s ease; }
+.drawer-dark nav button, .drawer-dark .overflow-y-auto button { animation: drawerItemIn .35s cubic-bezier(.22,1,.36,1) both; }
+.drawer-dark .overflow-y-auto button:nth-of-type(1) { animation-delay: .04s; }
+.drawer-dark .overflow-y-auto button:nth-of-type(2) { animation-delay: .08s; }
+.drawer-dark .overflow-y-auto button:nth-of-type(3) { animation-delay: .12s; }
+.drawer-dark .overflow-y-auto button:nth-of-type(4) { animation-delay: .16s; }
+.drawer-dark .overflow-y-auto button:nth-of-type(5) { animation-delay: .20s; }
+.drawer-dark .overflow-y-auto button:nth-of-type(6) { animation-delay: .24s; }
+.drawer-dark .overflow-y-auto button:nth-of-type(n+7) { animation-delay: .28s; }
+.drawer-dark .overflow-y-auto button:hover:not(:disabled) { transform: translateX(4px); box-shadow: inset 3px 0 0 rgba(232,176,32,.6); }
+.drawer-dark .overflow-y-auto button:active:not(:disabled) { transform: translateX(2px) scale(.98); }
+.drawer-dark .overflow-y-auto button svg { transition: transform .25s ease; }
+.drawer-dark .overflow-y-auto button:hover:not(:disabled) svg { transform: scale(1.15); }
+.drawer-dark .overflow-y-auto button:hover:not(:disabled) svg:last-child { transform: translateX(3px); }
+.drawer-dark .bg-teal-600, .drawer-dark .bg-blue-600 { animation: drawerItemIn .35s cubic-bezier(.22,1,.36,1) both, drawerBarIn .5s ease .2s both; }
+.drawer-dark .bg-teal-600:hover, .drawer-dark .bg-blue-600:hover { box-shadow: inset 3px 0 0 #E8B020; }
+.drawer-dark .overflow-y-auto button::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(232,176,32,.12) 50%, transparent 70%); transform: translateX(-120%); pointer-events: none; }
+.drawer-dark .overflow-y-auto button:hover:not(:disabled)::after { animation: drawerSheen .6s ease; }
+@media (prefers-reduced-motion: reduce) {
+  .drawer-dark *, .drawer-dark *::after { animation: none !important; transition: none !important; }
+}
+
+/* Font Inter; số tiền/số liệu dùng chữ số đều cột (tabular) */
+.font-mono, table, input[type="number"] { font-variant-numeric: tabular-nums; }
+
+/* ===== Chế độ tối (html.dark) ===== */
+html.dark { color-scheme: dark; --box-bg: #404040; }
+html.dark body { background-color: #2B2B2B; color: #F5F5F5; }
+html.dark .bg-white { background-color: #363636; }
+html.dark [class*="bg-slate-50"], html.dark .bg-brand-slate { background-color: #303030; }
+html.dark [class*="bg-slate-100"], html.dark [class*="bg-slate-200"] { background-color: #404040; }
+html.dark .text-slate-900, html.dark .text-slate-800, html.dark .text-slate-700 { color: #F5F5F5; }
+html.dark .text-slate-600 { color: #E0E0E0; }
+html.dark .text-slate-500, html.dark .text-slate-400 { color: #C1C1C1; }
+html.dark .border-slate-100, html.dark .border-slate-200, html.dark .border-slate-300,
+html.dark [class*="border-slate-200/"], html.dark .divide-slate-100 > * + *, html.dark .divide-slate-200 > * + * { border-color: #505050; }
+html.dark .text-brand-ink, html.dark [class*="text-teal-"], html.dark [class*="text-blue-"],
+html.dark [class*="text-indigo-"], html.dark [class*="text-sky-"], html.dark [class*="text-cyan-"] { color: #E8B020; }
+html.dark [class*="bg-teal-50"], html.dark [class*="bg-blue-50"], html.dark [class*="bg-indigo-50"],
+html.dark [class*="bg-sky-50"], html.dark [class*="bg-cyan-50"], html.dark [class*="bg-teal-100"],
+html.dark [class*="bg-blue-100"], html.dark [class*="bg-indigo-100"] { background-color: #4A4126; }
+html.dark [class*="border-teal-"], html.dark [class*="border-blue-"], html.dark [class*="border-indigo-"] { border-color: #7A6318; }
+html.dark [class*="bg-amber-50"], html.dark [class*="bg-orange-50"] { background-color: #33261A; }
+html.dark [class*="bg-emerald-50"], html.dark [class*="bg-green-50"] { background-color: #1A2E21; }
+html.dark [class*="bg-red-50"], html.dark [class*="bg-rose-50"] { background-color: #3A1F1F; }
+html.dark [class*="hover:bg-slate-50"]:hover, html.dark [class*="hover:bg-slate-100"]:hover { background-color: #404040; }
+html.dark [class*="hover:bg-teal-50"]:hover, html.dark [class*="hover:bg-blue-50"]:hover,
+html.dark [class*="hover:bg-indigo-50"]:hover, html.dark [class*="hover:bg-sky-50"]:hover { background-color: #524519; }
+html.dark input:not([type="checkbox"]):not([type="radio"]), html.dark select, html.dark textarea {
+  background-color: #404040; color: #F5F5F5; border-color: #7A7A7A; }
+html.dark input::placeholder, html.dark textarea::placeholder { color: #9A9A9B; }
+html.dark :focus-visible { outline-color: #E8B020; }
+html.dark thead, html.dark th { background-color: #404040; }
+html.dark .shadow-sm, html.dark .shadow-md, html.dark .shadow-xl, html.dark .shadow-2xl { --tw-shadow-color: rgba(0,0,0,.5); }
+@media print { html.dark body { background: #fff !important; color: #000 !important; } }
+
+/* Chữ trên nền vàng luôn tối (chế độ tối) */
+html.dark .bg-teal-400,
+html.dark .bg-teal-400 [class*="text-"],
+html.dark .bg-teal-500,
+html.dark .bg-teal-500 [class*="text-"],
+html.dark .bg-teal-600,
+html.dark .bg-teal-600 [class*="text-"],
+html.dark .bg-blue-400,
+html.dark .bg-blue-400 [class*="text-"],
+html.dark .bg-blue-500,
+html.dark .bg-blue-500 [class*="text-"],
+html.dark .bg-blue-600,
+html.dark .bg-blue-600 [class*="text-"],
+html.dark .bg-indigo-400,
+html.dark .bg-indigo-400 [class*="text-"],
+html.dark .bg-indigo-500,
+html.dark .bg-indigo-500 [class*="text-"],
+html.dark .bg-indigo-600,
+html.dark .bg-indigo-600 [class*="text-"],
+html.dark .bg-sky-400,
+html.dark .bg-sky-400 [class*="text-"],
+html.dark .bg-sky-500,
+html.dark .bg-sky-500 [class*="text-"],
+html.dark .bg-sky-600,
+html.dark .bg-sky-600 [class*="text-"],
+html.dark .bg-cyan-400,
+html.dark .bg-cyan-400 [class*="text-"],
+html.dark .bg-cyan-500,
+html.dark .bg-cyan-500 [class*="text-"],
+html.dark .bg-cyan-600,
+html.dark .bg-cyan-600 [class*="text-"] { color: #212121 !important; }
+
+/* Logo bản tối: chế độ tối + drawer (luôn nền tối). Hoá đơn in giữ logo gốc. */
+html.dark img[src="/logo-11sport.svg"]:not([data-keep-logo]),
+.drawer-dark img[src="/logo-11sport.svg"] {
+  content: url("/logo-11sport-dark.png");
+}
+@media print {
+  html.dark img[src="/logo-11sport.svg"] { content: url("/logo-11sport.svg"); }
 }

@@ -35,7 +35,7 @@ export const LEAVE_TYPE_META: Record<
   PAID_LEAVE: {
     label: "Nghỉ phép có lương",
     desc: "Tích lũy 1–2 ngày phép thử việc + 1 ngày phép/tháng chính thức, được để dành cộng dồn (vẫn tính +1 công)",
-    cls: "bg-teal-100 text-teal-800 border-teal-200",
+    cls: "bg-teal-100 text-brand-ink border-teal-200",
     icon: <Palmtree className="w-3.5 h-3.5" />,
   },
   OFF: {
@@ -47,13 +47,13 @@ export const LEAVE_TYPE_META: Record<
   CHANGE_OFF: {
     label: "Xin chuyển ngày off",
     desc: "Đổi ngày nghỉ đã đăng ký / đã được duyệt sang một ngày khác khi có việc đột xuất (chờ HR duyệt)",
-    cls: "bg-indigo-100 text-indigo-800 border-indigo-200",
+    cls: "bg-indigo-100 text-brand-ink border-indigo-200",
     icon: <ArrowLeftRight className="w-3.5 h-3.5" />,
   },
   WFH: {
     label: "Làm việc từ xa (WFH)",
     desc: "Không kiểm tra IP mạng khi chấm công ngày được duyệt",
-    cls: "bg-sky-100 text-sky-800 border-sky-200",
+    cls: "bg-teal-100 text-brand-ink border-teal-200",
     icon: <Home className="w-3.5 h-3.5" />,
   },
   LATE: {
@@ -79,7 +79,7 @@ export interface AvailableOffDayOption {
 
 const STATUS_META: Record<LeaveRequestStatus, { label: string; cls: string }> = {
   PENDING: { label: "Chờ HR duyệt", cls: "bg-amber-100 text-amber-800" },
-  APPROVED: { label: "Đã duyệt", cls: "bg-emerald-100 text-emerald-800" },
+  APPROVED: { label: "Đã duyệt", cls: "bg-teal-100 text-brand-ink" },
   REJECTED: { label: "Từ chối", cls: "bg-rose-100 text-rose-800" },
 };
 
@@ -279,14 +279,14 @@ export function CreateLeaveModal({
             <div className="px-3 py-2 rounded-lg bg-teal-50 border border-teal-200 text-[11px] text-teal-900 space-y-0.5">
               <div>
                 Quỹ phép có lương tích lũy khả dụng:{" "}
-                <b className="text-teal-700">{paidLeaveRemaining}/{paidLeaveEntitled} ngày</b>{" "}
+                <b className="text-brand-ink">{paidLeaveRemaining}/{paidLeaveEntitled} ngày</b>{" "}
                 {paidLeaveFromProbation > 0 && (
-                  <span className="text-teal-700">
+                  <span className="text-brand-ink">
                     (đã gồm +{paidLeaveFromProbation} ngày phép thử việc)
                   </span>
                 )}
               </div>
-              <div className="text-[10px] text-teal-700">
+              <div className="text-[10px] text-brand-ink">
                 Ngày phép chưa dùng được để dành cộng dồn sang các tháng sau. Dùng từ 2 ngày phép trở đi (tối đa 1 tuần = 7 ngày) cần tạo đơn trước tối thiểu 3 tuần (21 ngày).
               </div>
             </div>
@@ -319,7 +319,7 @@ export function CreateLeaveModal({
                       disabled
                         ? "border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed"
                         : type === t
-                          ? "border-emerald-500 bg-emerald-50"
+                          ? "border-teal-500 bg-teal-50"
                           : "border-slate-200 hover:bg-slate-50"
                     }`}
                   >
@@ -333,7 +333,7 @@ export function CreateLeaveModal({
                           <span
                             className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
                               canUsePaidLeave
-                                ? "bg-teal-100 text-teal-800"
+                                ? "bg-teal-100 text-brand-ink"
                                 : "bg-slate-200 text-slate-600"
                             }`}
                           >
@@ -352,7 +352,7 @@ export function CreateLeaveModal({
           {type === "CHANGE_OFF" ? (
             <div className="space-y-2.5 rounded-xl bg-indigo-50/70 border border-indigo-200 p-3">
               <div className="text-[11px] font-bold text-indigo-900 flex items-center gap-1.5">
-                <ArrowLeftRight className="w-3.5 h-3.5 text-indigo-600" />
+                <ArrowLeftRight className="w-3.5 h-3.5 text-brand-ink" />
                 Thông tin chuyển đổi ngày nghỉ (Chờ HR duyệt)
               </div>
 
@@ -414,7 +414,7 @@ export function CreateLeaveModal({
                 />
               </div>
 
-              <div className="text-[10px] text-indigo-800 bg-white/80 rounded-lg px-2.5 py-1.5 border border-indigo-100">
+              <div className="text-[10px] text-brand-ink bg-white/80 rounded-lg px-2.5 py-1.5 border border-indigo-100">
                 Khi HR duyệt đơn: ngày <b>{fmtDate(fromDate)}</b> sẽ trở lại ngày đi làm bình thường và ngày{" "}
                 <b>{fmtDate(targetDate)}</b> được chuyển thành ngày nghỉ.
               </div>
@@ -430,7 +430,7 @@ export function CreateLeaveModal({
                   <button
                     type="button"
                     onClick={addNextConsecutiveDate}
-                    className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 inline-flex items-center gap-1"
+                    className="text-[11px] font-bold text-brand-ink hover:text-brand-ink inline-flex items-center gap-1"
                   >
                     <Plus className="w-3 h-3" />
                     Thêm ngày liên tiếp (tối đa {maxDaysPerSubmit} ngày)
@@ -498,7 +498,7 @@ export function CreateLeaveModal({
             <button
               type="submit"
               disabled={sending}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg disabled:opacity-50 inline-flex items-center gap-1.5"
+              className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-lg disabled:opacity-50 inline-flex items-center gap-1.5"
             >
               <Send className="w-3.5 h-3.5" />
               {sending ? "Đang gửi..." : "Gửi đơn"}
@@ -573,7 +573,7 @@ export function MyLeaveRequestsPanel({
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col lg:max-h-[calc(100vh-140px)]">
       <div className="px-3 py-2.5 border-b border-slate-100 flex items-center justify-between gap-2">
         <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5 min-w-0">
-          <FileText className="w-4 h-4 text-emerald-600 shrink-0" />
+          <FileText className="w-4 h-4 text-brand-ink shrink-0" />
           <span className="truncate">Đơn từ của tôi</span>
           {counts.PENDING > 0 && (
             <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold shrink-0">
@@ -584,7 +584,7 @@ export function MyLeaveRequestsPanel({
         <button
           type="button"
           onClick={onCreate}
-          className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold inline-flex items-center gap-1 shrink-0"
+          className="px-2.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-[11px] font-bold inline-flex items-center gap-1 shrink-0"
         >
           <Send className="w-3 h-3" />
           Tạo đơn
@@ -661,7 +661,7 @@ export function MyLeaveRequestsPanel({
                   {open && (
                     <div className="px-3 pb-2.5 pt-1 bg-slate-50 space-y-1.5 text-[11px]">
                       {l.type === "CHANGE_OFF" && l.fromDate && (
-                        <div className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded px-2 py-1">
+                        <div className="text-[10px] font-semibold text-brand-ink bg-indigo-50 border border-indigo-200 rounded px-2 py-1">
                           Chuyển ngày nghỉ ({l.sourceOffType === "PAID_LEAVE" ? "Phép có lương" : "OFF không lương"}):{" "}
                           <b>{fmtDate(l.fromDate)}</b> → <b>{fmtDate(l.date)}</b>
                         </div>
@@ -683,7 +683,7 @@ export function MyLeaveRequestsPanel({
                             <button
                               type="button"
                               onClick={() => onRequestChangeOff(l)}
-                              className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 text-[10px] font-bold"
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-indigo-200 bg-indigo-50 text-brand-ink hover:bg-indigo-100 text-[10px] font-bold"
                             >
                               <ArrowLeftRight className="w-3 h-3" />
                               Đổi ngày off

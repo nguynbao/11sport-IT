@@ -154,16 +154,16 @@ export default function ContractFilePreviewModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-3 sm:p-4 backdrop-blur-xs">
       <div className="w-full max-w-5xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
-        <div className="bg-slate-900 text-white px-5 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-3 shrink-0">
+        <div className="bg-white text-slate-900 border-b border-slate-200 px-5 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400 shrink-0">
+            <div className="p-2 rounded-xl bg-teal-50 text-brand-ink border border-teal-200 shrink-0">
               <FileText className="w-5 h-5" />
             </div>
             <div className="min-w-0">
-              <h4 className="font-extrabold text-sm sm:text-base truncate">
+              <h4 className="font-extrabold text-sm sm:text-base truncate text-slate-900">
                 Hợp đồng lao động: {staffName}
               </h4>
-              <p className="text-[11px] text-slate-400 font-mono truncate">
+              <p className="text-[11px] text-slate-500 font-mono truncate">
                 {fileName || "Hop-dong-lao-dong"}
                 {readOnlyLabel ? ` • (${readOnlyLabel})` : ""}
               </p>
@@ -176,7 +176,7 @@ export default function ContractFilePreviewModal({
                 href={blobUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold inline-flex items-center gap-1.5 border border-slate-700 transition"
+                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold inline-flex items-center gap-1.5 border border-slate-200 transition"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
                 <span>Mở tab mới</span>
@@ -185,7 +185,7 @@ export default function ContractFilePreviewModal({
             <a
               href={fileUrl}
               download={fileName || "hop-dong-lao-dong"}
-              className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow transition"
+              className="px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-xs transition"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Tải xuống</span>
@@ -193,7 +193,7 @@ export default function ContractFilePreviewModal({
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              className="p-1.5 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition"
               title="Đóng"
             >
               <X className="w-5 h-5" />
@@ -205,7 +205,7 @@ export default function ContractFilePreviewModal({
         <div className="flex-1 bg-slate-100 p-3 sm:p-5 overflow-auto flex flex-col items-center justify-start min-h-[480px]">
           {loading && (
             <div className="my-auto flex flex-col items-center gap-2 text-slate-500 text-xs font-bold">
-              <Loader2 className="w-7 h-7 animate-spin text-emerald-600" />
+              <Loader2 className="w-7 h-7 animate-spin text-brand-ink" />
               <span>Đang tải bản xem trước hợp đồng...</span>
             </div>
           )}
@@ -246,7 +246,7 @@ export default function ContractFilePreviewModal({
               {errorText ? (
                 <AlertCircle className="w-10 h-10 text-amber-500 mx-auto" />
               ) : (
-                <FileText className="w-10 h-10 text-emerald-600 mx-auto" />
+                <FileText className="w-10 h-10 text-brand-ink mx-auto" />
               )}
               <div className="text-sm font-bold text-slate-800">{fileName}</div>
               <p className="text-xs text-slate-500">
@@ -256,7 +256,7 @@ export default function ContractFilePreviewModal({
               <a
                 href={fileUrl}
                 download={fileName || "hop-dong-lao-dong"}
-                className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow"
+                className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow"
               >
                 <Download className="w-4 h-4" />
                 <span>Tải file hợp đồng về máy</span>

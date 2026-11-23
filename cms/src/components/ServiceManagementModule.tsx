@@ -42,8 +42,8 @@ const STATUS_INFO: Record<
   { label: string; badgeCls: string }
 > = {
   RECEIVED: {
-    label: "Đã nhận đồ",
-    badgeCls: "bg-sky-50 text-sky-700 border-sky-200",
+    label: "Đã tiếp nhận",
+    badgeCls: "bg-teal-50 text-brand-ink border-teal-200",
   },
   IN_PROGRESS: {
     label: "Đang xử lý",
@@ -51,7 +51,7 @@ const STATUS_INFO: Record<
   },
   READY: {
     label: "Đã xong (Chờ lấy)",
-    badgeCls: "bg-emerald-50 text-emerald-700 border-emerald-300",
+    badgeCls: "bg-teal-50 text-brand-ink border-teal-300",
   },
   RETURNED: {
     label: "Đã trả khách",
@@ -548,12 +548,12 @@ export default function ServiceManagementModule({
       )}
 
       {successMsg && (
-        <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold flex items-center justify-between gap-2">
+        <div className="p-3.5 rounded-xl bg-teal-50 border border-teal-200 text-brand-ink text-xs font-semibold flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 shrink-0" />
             <span>{successMsg}</span>
           </div>
-          <button onClick={() => setSuccessMsg("")} className="text-emerald-500">
+          <button onClick={() => setSuccessMsg("")} className="text-brand-ink">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -572,15 +572,15 @@ export default function ServiceManagementModule({
                 {ordersMeta.totalOrders}
               </div>
             </div>
-            <div className="bg-sky-50 p-3.5 rounded-xl border border-sky-200">
-              <div className="text-xs font-bold text-sky-700">Đã nhận / Đang xử lý</div>
-              <div className="text-xl font-extrabold text-sky-900 mt-1">
+            <div className="bg-teal-50 p-3.5 rounded-xl border border-teal-200">
+              <div className="text-xs font-bold text-brand-ink">Tiếp nhận / Đang xử lý</div>
+              <div className="text-xl font-extrabold text-teal-900 mt-1">
                 {ordersMeta.receivedCount + ordersMeta.inProgressCount}
               </div>
             </div>
-            <div className="bg-emerald-50 p-3.5 rounded-xl border border-emerald-200">
-              <div className="text-xs font-bold text-emerald-700">Đã xong (Chờ lấy)</div>
-              <div className="text-xl font-extrabold text-emerald-900 mt-1">
+            <div className="bg-teal-50 p-3.5 rounded-xl border border-teal-200">
+              <div className="text-xs font-bold text-brand-ink">Đã xong (Chờ lấy)</div>
+              <div className="text-xl font-extrabold text-teal-900 mt-1">
                 {ordersMeta.readyCount}
               </div>
             </div>
@@ -593,7 +593,7 @@ export default function ServiceManagementModule({
               </div>
             </div>
             <div className="bg-indigo-50 p-3.5 rounded-xl border border-indigo-200">
-              <div className="text-xs font-bold text-indigo-700">Tổng doanh thu DV</div>
+              <div className="text-xs font-bold text-brand-ink">Tổng doanh thu DV</div>
               <div className="text-base font-mono font-extrabold text-indigo-900 mt-1">
                 {formatVND(ordersMeta.totalRevenue)}
               </div>
@@ -635,7 +635,7 @@ export default function ServiceManagementModule({
                   className="w-full px-2.5 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg"
                 >
                   <option value="ALL">Tất cả trạng thái</option>
-                  <option value="RECEIVED">Đã nhận đồ</option>
+                  <option value="RECEIVED">Đã tiếp nhận</option>
                   <option value="IN_PROGRESS">Đang xử lý</option>
                   <option value="READY">Đã xong (Chờ lấy)</option>
                   <option value="RETURNED">Đã trả khách</option>
@@ -771,7 +771,7 @@ export default function ServiceManagementModule({
                           }`}
                         >
                           <td className="py-3 px-3 align-top">
-                            <span className="font-mono font-extrabold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                            <span className="font-mono font-extrabold text-brand-ink bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
                               {ord.orderCode}
                             </span>
                             {ord.createdByName && (
@@ -805,7 +805,7 @@ export default function ServiceManagementModule({
                                     )
                                   </span>
                                   {it.itemNote && (
-                                    <div className="text-[11px] text-indigo-700 pl-2">
+                                    <div className="text-[11px] text-brand-ink pl-2">
                                       ↳ {it.itemNote}
                                     </div>
                                   )}
@@ -831,7 +831,7 @@ export default function ServiceManagementModule({
                               Hẹn trả: <strong>{formatDateDisplay(ord.dueAt)}</strong>
                             </div>
                             {ord.returnedAt && (
-                              <div className="text-[11px] text-emerald-700 mt-0.5">
+                              <div className="text-[11px] text-brand-ink mt-0.5">
                                 Đã trả: {formatDateDisplay(ord.returnedAt)}
                               </div>
                             )}
@@ -863,14 +863,14 @@ export default function ServiceManagementModule({
                                   </div>
                                 )}
                                 {(Number(ord.cardFee) || 0) > 0 && (
-                                  <div className="text-indigo-700">
+                                  <div className="text-brand-ink">
                                     Phí thẻ ({ord.cardFeePercent || 1.8}%): +
                                     {formatVND(ord.cardFee)}
                                   </div>
                                 )}
                               </div>
                             )}
-                            <div className="text-[11px] text-emerald-700 font-mono">
+                            <div className="text-[11px] text-brand-ink font-mono">
                               Đã thu: {formatVND(ord.paidAmount)}
                             </div>
                             {ord.remainingAmount > 0 ? (
@@ -878,7 +878,7 @@ export default function ServiceManagementModule({
                                 Còn thu: {formatVND(ord.remainingAmount)}
                               </div>
                             ) : (
-                              <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-bold">
+                              <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-teal-50 text-brand-ink text-[10px] font-bold">
                                 Đã thanh toán đủ
                               </span>
                             )}
@@ -896,7 +896,7 @@ export default function ServiceManagementModule({
                                 }
                                 className={`px-2.5 py-1 rounded-lg text-xs font-extrabold border ${stInfo.badgeCls}`}
                               >
-                                <option value="RECEIVED">Đã nhận đồ</option>
+                                <option value="RECEIVED">Đã tiếp nhận</option>
                                 <option value="IN_PROGRESS">Đang xử lý</option>
                                 <option value="READY">Đã xong (Chờ lấy)</option>
                                 <option value="RETURNED">Đã trả khách</option>
@@ -933,7 +933,7 @@ export default function ServiceManagementModule({
                                   <button
                                     type="button"
                                     onClick={() => handleStatusChange(ord, "READY")}
-                                    className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1"
+                                    className="px-2.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold flex items-center gap-1"
                                     title="Bước 2: Xác nhận đã làm xong, chờ khách lấy"
                                   >
                                     <CheckCircle2 className="w-3.5 h-3.5" /> Đã xong
@@ -945,7 +945,7 @@ export default function ServiceManagementModule({
                                   <button
                                     type="button"
                                     onClick={() => handleOpenCollectModal(ord, true)}
-                                    className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1"
+                                    className="px-2.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold flex items-center gap-1"
                                     title="Bước 3: Thu tiền & Trả đồ cho khách"
                                   >
                                     <Wallet className="w-3.5 h-3.5" /> Thu tiền &amp; Trả đồ
@@ -968,7 +968,7 @@ export default function ServiceManagementModule({
                                   <button
                                     type="button"
                                     onClick={() => handleOpenCollectModal(ord, false)}
-                                    className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1"
+                                    className="px-2.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold flex items-center gap-1"
                                     title="Thu nốt tiền dịch vụ"
                                   >
                                     <Wallet className="w-3.5 h-3.5" /> Thu tiền
@@ -1053,7 +1053,7 @@ export default function ServiceManagementModule({
                       onChange={(e) =>
                         setTypeDefaultPrice(parseNumberDots(e.target.value))
                       }
-                      className="w-full px-3 py-2 text-sm font-mono font-extrabold text-indigo-700 bg-white border border-slate-300 rounded-lg"
+                      className="w-full px-3 py-2 text-sm font-mono font-extrabold text-brand-ink bg-white border border-slate-300 rounded-lg"
                     />
                   </div>
                   <div>
@@ -1167,7 +1167,7 @@ export default function ServiceManagementModule({
                               </div>
                             )}
                           </td>
-                          <td className="py-3 px-3 text-right font-mono font-extrabold text-indigo-700">
+                          <td className="py-3 px-3 text-right font-mono font-extrabold text-brand-ink">
                             {formatVND(st.defaultPrice)}
                           </td>
                           <td className="py-3 px-3 text-center text-slate-600">
@@ -1180,7 +1180,7 @@ export default function ServiceManagementModule({
                             <span
                               className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
                                 st.status === "ACTIVE"
-                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                  ? "bg-teal-50 text-brand-ink border border-teal-200"
                                   : "bg-slate-100 text-slate-500 border border-slate-200"
                               }`}
                             >
@@ -1270,7 +1270,7 @@ export default function ServiceManagementModule({
                     {formatVND(collectOrder.totalAmount)}
                   </strong>{" "}
                   • Đã thu:{" "}
-                  <strong className="font-mono text-emerald-700">
+                  <strong className="font-mono text-brand-ink">
                     {formatVND(collectOrder.paidAmount)}
                   </strong>
                 </div>
@@ -1319,7 +1319,7 @@ export default function ServiceManagementModule({
                       }}
                       className={`py-2 px-2 rounded-lg text-xs font-bold border ${
                         collectMethod === pm.id
-                          ? "bg-emerald-600 text-white border-emerald-600"
+                          ? "bg-teal-600 text-white border-teal-600"
                           : "bg-white text-slate-700 border-slate-300"
                       }`}
                     >
@@ -1521,7 +1521,7 @@ export default function ServiceManagementModule({
                     }
                     className="w-full px-2.5 py-2 border border-slate-300 rounded-lg font-bold"
                   >
-                    <option value="RECEIVED">Đã nhận đồ</option>
+                    <option value="RECEIVED">Đã tiếp nhận</option>
                     <option value="IN_PROGRESS">Đang xử lý</option>
                     <option value="READY">Đã xong (Chờ lấy)</option>
                     <option value="RETURNED">Đã trả khách</option>
@@ -1634,7 +1634,7 @@ export default function ServiceManagementModule({
                       Tổng mới:{" "}
                       <strong className="font-mono">{formatVND(newTotal)}</strong>{" "}
                       • Đã thu:{" "}
-                      <strong className="font-mono text-emerald-700">
+                      <strong className="font-mono text-brand-ink">
                         {formatVND(paid)}
                       </strong>
                     </div>

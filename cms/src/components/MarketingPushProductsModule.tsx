@@ -183,8 +183,8 @@ function buildFallbackPushProducts(
     let pushScore = 0;
 
     if (sellingPrice <= 0) {
-      pushReasons.push("Chưa đặt giá bán (0 VND)");
-      suggestedAction = "Cập nhật giá bán lẻ trong Quản lý Kho để POS có thể bán";
+      pushReasons.push("Chưa đặt giá niêm yết (0 VND)");
+      suggestedAction = "Cập nhật giá niêm yết trong Quản lý Kho để POS có thể bán";
       pushScore += 100;
     }
     if (stockFloor1 === 0 && stockFloor2 > 0) {
@@ -407,17 +407,17 @@ export default function MarketingPushProductsModule() {
   return (
     <div className="space-y-6">
       {/* HEADER & BỘ LỌC KỲ QUAN SÁT */}
-      <div className="bg-slate-900 text-white rounded-2xl p-5 shadow-md space-y-4">
+      <div className="bg-white text-slate-900 rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <div className="text-[11px] font-bold uppercase text-amber-400 flex items-center gap-1.5">
+            <div className="text-[11px] font-bold uppercase text-brand-ink flex items-center gap-1.5">
               <Rocket className="w-3.5 h-3.5" />
               Phân hệ Marketing & Chiến dịch Đẩy hàng — 11Sport
             </div>
-            <h2 className="text-lg font-extrabold mt-0.5">
+            <h2 className="text-lg font-extrabold mt-0.5 text-slate-900">
               Các Sản Phẩm Đang Cần Đẩy Mạnh ({filteredPushProducts.length} mặt hàng)
             </h2>
-            <p className="text-xs text-slate-300 mt-0.5">
+            <p className="text-xs text-slate-600 mt-0.5">
               Quan sát trực tiếp các mặt hàng tồn kho cao nhưng bán chậm/chưa phát sinh đơn, đọng vốn lớn, hoặc đang nằm ở Kho Tầng 2 cần lên chiến dịch nội dung & khuyến mãi.
             </p>
           </div>
@@ -427,9 +427,9 @@ export default function MarketingPushProductsModule() {
               type="button"
               onClick={loadPushProducts}
               disabled={loading}
-              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 border border-slate-700 flex items-center gap-1.5 cursor-pointer"
+              className="px-3 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-700 border border-slate-200 flex items-center gap-1.5 cursor-pointer"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-amber-400" : ""}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-brand-ink" : "text-brand-ink"}`} />
               Làm mới dữ liệu
             </button>
             {filteredPushProducts.length > 0 && (
@@ -442,9 +442,9 @@ export default function MarketingPushProductsModule() {
         </div>
 
         {/* Bộ lọc kỳ quan sát & Category */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 pt-2 border-t border-slate-800 items-end">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 pt-3 border-t border-slate-200 items-end">
           <div className="lg:col-span-6">
-            <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1.5">
+            <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1.5">
               Chọn nhanh kỳ quan sát lượng bán
             </label>
             <div className="flex flex-wrap gap-1.5">
@@ -464,8 +464,8 @@ export default function MarketingPushProductsModule() {
                   onClick={() => handleSelectQuickRange(btn.id)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
                     quickRange === btn.id
-                      ? "bg-amber-400 text-slate-950 shadow"
-                      : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                      ? "bg-teal-600 text-white shadow-xs"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                   }`}
                 >
                   {btn.label}
@@ -476,7 +476,7 @@ export default function MarketingPushProductsModule() {
 
           <div className="lg:col-span-3 grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+              <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
                 Từ ngày
               </label>
               <input
@@ -486,11 +486,11 @@ export default function MarketingPushProductsModule() {
                   setQuickRange("ALL");
                   setFromDate(e.target.value);
                 }}
-                className="w-full px-2.5 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs"
+                className="w-full px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-300 text-slate-900 text-xs focus:border-teal-500 focus:outline-none"
               />
             </div>
             <div>
-              <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+              <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
                 Đến ngày
               </label>
               <input
@@ -500,19 +500,19 @@ export default function MarketingPushProductsModule() {
                   setQuickRange("ALL");
                   setToDate(e.target.value);
                 }}
-                className="w-full px-2.5 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs"
+                className="w-full px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-300 text-slate-900 text-xs focus:border-teal-500 focus:outline-none"
               />
             </div>
           </div>
 
           <div className="lg:col-span-3">
-            <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+            <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
               Lọc theo Category
             </label>
             <select
               value={categoryId}
               onChange={(e) => setCategoryId(e.target.value)}
-              className="w-full px-2.5 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs font-semibold"
+              className="w-full px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-300 text-slate-900 text-xs font-semibold focus:border-teal-500 focus:outline-none"
             >
               <option value="">Tất cả Category</option>
               {categories.map((c) => (
@@ -524,9 +524,9 @@ export default function MarketingPushProductsModule() {
           </div>
         </div>
 
-        <div className="pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-300">
+        <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-300 font-bold">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-teal-50 border border-teal-200 text-brand-ink font-bold">
               <Calendar className="w-3.5 h-3.5" />
               Kỳ đang quan sát:{" "}
               {fromDate || toDate
@@ -660,7 +660,7 @@ export default function MarketingPushProductsModule() {
               Các Sản Phẩm Đang Cần Đẩy Mạnh ({filteredPushProducts.length} mặt hàng)
             </h3>
             <p className="text-xs text-slate-500">
-              Hệ thống tự động phát hiện các mặt hàng tồn kho cao nhưng bán chậm/chưa phát sinh đơn, đọng vốn lớn, đang nằm ở Kho Tầng 2 mà Tầng 1 = 0, hoặc chưa đặt giá bán.
+              Hệ thống tự động phát hiện các mặt hàng tồn kho cao nhưng bán chậm/chưa phát sinh đơn, đọng vốn lớn, đang nằm ở Kho Tầng 2 mà Tầng 1 = 0, hoặc chưa đặt giá niêm yết.
             </p>
           </div>
 
@@ -685,7 +685,7 @@ export default function MarketingPushProductsModule() {
               <option value="ZERO_SALES">Chưa bán được chiếc nào ({counts.zeroSales})</option>
               <option value="HIGH_CAPITAL">Đọng vốn cao ≥ 2tr ({counts.highCapital})</option>
               <option value="FLOOR2_ONLY">Tầng 1 = 0, nằm ở Tầng 2 ({counts.floor2Only})</option>
-              <option value="NO_PRICE">Chưa đặt giá bán ({counts.noPrice})</option>
+              <option value="NO_PRICE">Chưa đặt giá niêm yết ({counts.noPrice})</option>
             </select>
 
             <select
@@ -703,14 +703,14 @@ export default function MarketingPushProductsModule() {
 
         <div className="overflow-x-auto border border-slate-200 rounded-xl">
           <table className="w-full text-xs text-left">
-            <thead className="bg-slate-900 text-white uppercase">
+            <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 uppercase">
               <tr>
                 <th className="py-3 px-3 text-center w-14">STT</th>
                 <th className="py-3 px-3">Mã & Tên sản phẩm</th>
                 <th className="py-3 px-3">Category</th>
                 <th className="py-3 px-3 text-right">Tồn kho hiện tại</th>
                 <th className="py-3 px-3 text-right">Đã bán trong kỳ</th>
-                <th className="py-3 px-3 text-right">Giá gốc / Giá bán</th>
+                <th className="py-3 px-3 text-right">Giá vốn / Giá niêm yết</th>
                 <th className="py-3 px-3 text-right bg-amber-950 text-amber-300">
                   Vốn đang đọng
                 </th>
@@ -757,7 +757,7 @@ export default function MarketingPushProductsModule() {
                         {p.stock} {p.unit}
                       </div>
                       <div className="text-[11px] text-slate-500">
-                        🏢 T1: <b className="text-emerald-700">{p.stockFloor1}</b> · 🏬 T2:{" "}
+                        🏢 T1: <b className="text-brand-ink">{p.stockFloor1}</b> · 🏬 T2:{" "}
                         <b className="text-purple-700">{p.stockFloor2}</b>
                       </div>
                     </td>
@@ -766,7 +766,7 @@ export default function MarketingPushProductsModule() {
                     </td>
                     <td className="py-3 px-3 text-right font-mono whitespace-nowrap">
                       <div className="text-slate-600">Gốc: {formatVND(p.costPrice)}</div>
-                      <div className="font-bold text-emerald-700">
+                      <div className="font-bold text-brand-ink">
                         Bán: {formatVND(p.sellingPrice)}
                       </div>
                     </td>

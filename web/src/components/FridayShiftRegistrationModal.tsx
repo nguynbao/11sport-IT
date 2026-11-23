@@ -369,7 +369,7 @@ export default function FridayShiftRegistrationModal({ onClose, onSuccess }: Pro
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 text-slate-900">
       <div className="bg-white text-slate-900 rounded-3xl max-w-xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
+        <div className="bg-blue-600 text-white px-6 py-4 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="p-2 bg-amber-500/20 text-amber-400 rounded-xl">
               <Calendar className="w-5 h-5" />
@@ -397,8 +397,8 @@ export default function FridayShiftRegistrationModal({ onClose, onSuccess }: Pro
           )}
 
           {isConfirmedByHr && (
-            <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold rounded-xl flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <div className="p-3 bg-blue-50 border border-blue-200 text-brand-ink font-bold rounded-xl flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-brand-ink shrink-0" />
               <span>
                 Lịch ca tuần sau đã được HR xác nhận chính thức. Nếu cần đổi ca hoặc đổi ngày nghỉ, vui lòng liên hệ trực tiếp HR.
               </span>
@@ -416,7 +416,7 @@ export default function FridayShiftRegistrationModal({ onClose, onSuccess }: Pro
               <span
                 className={`px-2.5 py-1 rounded-lg font-extrabold text-[11px] shrink-0 ${
                   isRuleValid
-                    ? "bg-emerald-100 text-emerald-800"
+                    ? "bg-blue-100 text-brand-ink"
                     : "bg-slate-200 text-slate-700"
                 }`}
               >
@@ -452,7 +452,7 @@ export default function FridayShiftRegistrationModal({ onClose, onSuccess }: Pro
                       <div className="text-[11px] font-mono text-slate-400">{item.date}</div>
                     </div>
                     {!item.isOff && item.shift1 && item.shift2 && (
-                      <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-extrabold">
+                      <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-brand-ink text-[10px] font-extrabold">
                         2 ca
                       </span>
                     )}
@@ -517,7 +517,7 @@ export default function FridayShiftRegistrationModal({ onClose, onSuccess }: Pro
                       className={`px-2.5 py-1.5 rounded-xl font-bold transition text-xs cursor-pointer ${
                         item.isOff && item.leaveType === "PAID_LEAVE"
                           ? "bg-teal-600 text-white shadow-xs"
-                          : "bg-slate-100 hover:bg-teal-50 text-slate-600 hover:text-teal-700"
+                          : "bg-slate-100 hover:bg-teal-50 text-slate-600 hover:text-brand-ink"
                       } disabled:opacity-50`}
                     >
                       Nghỉ phép
@@ -540,7 +540,7 @@ export default function FridayShiftRegistrationModal({ onClose, onSuccess }: Pro
               <button
                 type="submit"
                 disabled={submitting || !isRuleValid}
-                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-md transition flex items-center gap-2 disabled:opacity-50"
+                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md transition flex items-center gap-2 disabled:opacity-50"
               >
                 <Send className="w-3.5 h-3.5" />
                 {submitting ? "Đang gửi đăng ký..." : "Gửi Đăng Ký Cho HR"}

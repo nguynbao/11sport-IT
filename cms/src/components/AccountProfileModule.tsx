@@ -325,7 +325,7 @@ export default function AccountProfileModule({
       {/* Hero Banner */}
       <div className="bg-gradient-to-r from-slate-900 via-slate-900 to-slate-800 text-white rounded-2xl p-5 md:p-6 shadow-md border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-start sm:items-center gap-4">
-          <div className="w-14 h-14 md:w-16 md:h-16 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-black text-2xl shrink-0 shadow-inner">
+          <div className="w-14 h-14 md:w-16 md:h-16 rounded-2xl bg-teal-500/20 border border-teal-500/40 flex items-center justify-center text-teal-400 font-black text-2xl shrink-0 shadow-inner">
             {(fullName || currentUser.username || "U").charAt(0).toUpperCase()}
           </div>
           <div className="space-y-1.5">
@@ -333,7 +333,7 @@ export default function AccountProfileModule({
               <h2 className="text-lg md:text-xl font-extrabold tracking-tight text-white">
                 {fullName || currentUser.fullName}
               </h2>
-              <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-lg bg-emerald-600 text-white font-bold">
+              <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-lg bg-teal-600 text-white font-bold">
                 {getRoleDisplayName(currentUser.role)}
               </span>
               {positionTitle && (
@@ -341,8 +341,8 @@ export default function AccountProfileModule({
                   {positionTitle}
                 </span>
               )}
-              <span className="inline-flex items-center gap-1 bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 px-2.5 py-0.5 rounded-lg text-[11px] font-bold">
-                <BadgeCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="inline-flex items-center gap-1 bg-teal-500/15 border border-teal-500/30 text-teal-300 px-2.5 py-0.5 rounded-lg text-[11px] font-bold">
+                <BadgeCheck className="w-3.5 h-3.5 text-teal-400" />
                 Đang hoạt động
               </span>
             </div>
@@ -394,7 +394,7 @@ export default function AccountProfileModule({
           >
             <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center shrink-0">
+                <div className="w-9 h-9 rounded-xl bg-teal-50 border border-teal-200 text-brand-ink flex items-center justify-center shrink-0">
                   <User className="w-4 h-4" />
                 </div>
                 <div>
@@ -411,12 +411,12 @@ export default function AccountProfileModule({
             {profileMsg && (
               <div
                 className={`p-3 rounded-xl text-xs font-medium flex items-start gap-2 border ${profileMsg.type === "success"
-                  ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                  ? "bg-teal-50 border-teal-200 text-brand-ink"
                   : "bg-red-50 border-red-200 text-red-700"
                   }`}
               >
                 {profileMsg.type === "success" ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <CheckCircle2 className="w-4 h-4 text-brand-ink shrink-0 mt-0.5" />
                 ) : (
                   <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
                 )}
@@ -436,7 +436,7 @@ export default function AccountProfileModule({
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder="Nhập họ và tên..."
-                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-teal-600 focus:outline-none"
                   />
                 </div>
               </div>
@@ -452,7 +452,7 @@ export default function AccountProfileModule({
                     value={formatPhone(phone)}
                     onChange={(e) => setPhone(cleanPhoneDigits(e.target.value))}
                     placeholder="VD: 0901 234 567"
-                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-mono focus:border-emerald-600 focus:outline-none"
+                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-mono focus:border-teal-600 focus:outline-none"
                   />
                 </div>
               </div>
@@ -465,7 +465,7 @@ export default function AccountProfileModule({
                   type="date"
                   value={dateOfBirth}
                   onChange={(e) => setDateOfBirth(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-mono focus:border-emerald-600 focus:outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-mono focus:border-teal-600 focus:outline-none"
                 />
               </div>
 
@@ -477,7 +477,7 @@ export default function AccountProfileModule({
                   <select
                     value={gender}
                     onChange={(e) => setGender(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-sm focus:border-emerald-600 focus:outline-none"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-sm focus:border-teal-600 focus:outline-none"
                   >
                     <option value="">-- Chọn --</option>
                     <option value="Nam">Nam</option>
@@ -495,7 +495,7 @@ export default function AccountProfileModule({
                     value={nationality}
                     onChange={(e) => setNationality(e.target.value)}
                     placeholder="Việt Nam"
-                    className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-teal-600 focus:outline-none"
                   />
                 </div>
               </div>
@@ -511,7 +511,7 @@ export default function AccountProfileModule({
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="VD: ca_nhan@gmail.com"
-                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-teal-600 focus:outline-none"
                   />
                 </div>
               </div>
@@ -527,7 +527,7 @@ export default function AccountProfileModule({
                     value={companyEmail}
                     onChange={(e) => setCompanyEmail(e.target.value)}
                     placeholder="VD: nhanvien@11sport.vn"
-                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-teal-600 focus:outline-none"
                   />
                 </div>
               </div>
@@ -543,7 +543,7 @@ export default function AccountProfileModule({
                     value={citizenId}
                     onChange={(e) => setCitizenId(e.target.value)}
                     placeholder="Số CCCD 12 số..."
-                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-mono focus:border-emerald-600 focus:outline-none"
+                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-mono focus:border-teal-600 focus:outline-none"
                   />
                 </div>
               </div>
@@ -557,7 +557,7 @@ export default function AccountProfileModule({
                     type="date"
                     value={citizenIssueDate}
                     onChange={(e) => setCitizenIssueDate(e.target.value)}
-                    className="w-full px-2.5 py-2.5 rounded-xl border border-slate-300 text-xs font-mono focus:border-emerald-600 focus:outline-none"
+                    className="w-full px-2.5 py-2.5 rounded-xl border border-slate-300 text-xs font-mono focus:border-teal-600 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -569,7 +569,7 @@ export default function AccountProfileModule({
                     value={citizenIssuePlace}
                     onChange={(e) => setCitizenIssuePlace(e.target.value)}
                     placeholder="Cục CS QLHC..."
-                    className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-xs focus:border-emerald-600 focus:outline-none"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-xs focus:border-teal-600 focus:outline-none"
                   />
                 </div>
               </div>
@@ -585,7 +585,7 @@ export default function AccountProfileModule({
                     value={permanentAddress}
                     onChange={(e) => setPermanentAddress(e.target.value)}
                     placeholder="Số nhà, đường, phường/xã, quận/huyện, tỉnh/thành..."
-                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-teal-600 focus:outline-none"
                   />
                 </div>
               </div>
@@ -601,7 +601,7 @@ export default function AccountProfileModule({
                     value={currentAddress}
                     onChange={(e) => setCurrentAddress(e.target.value)}
                     placeholder="Chỗ ở hiện tại..."
-                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-teal-600 focus:outline-none"
                   />
                 </div>
               </div>
@@ -617,7 +617,7 @@ export default function AccountProfileModule({
                     value={school}
                     onChange={(e) => setSchool(e.target.value)}
                     placeholder="VD: ĐH Kinh tế Đà Nẵng"
-                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-teal-600 focus:outline-none"
                   />
                 </div>
               </div>
@@ -631,7 +631,7 @@ export default function AccountProfileModule({
                   value={major}
                   onChange={(e) => setMajor(e.target.value)}
                   placeholder="VD: Quản trị kinh doanh"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-emerald-600 focus:outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:border-teal-600 focus:outline-none"
                 />
               </div>
 
@@ -646,7 +646,7 @@ export default function AccountProfileModule({
                     value={bankAccount}
                     onChange={(e) => setBankAccount(e.target.value)}
                     placeholder="VD: 1903686868 - Techcombank"
-                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-mono focus:border-emerald-600 focus:outline-none"
+                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-mono focus:border-teal-600 focus:outline-none"
                   />
                 </div>
               </div>
@@ -656,7 +656,7 @@ export default function AccountProfileModule({
               <button
                 type="submit"
                 disabled={savingProfile}
-                className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm transition cursor-pointer"
+                className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm transition cursor-pointer"
               >
                 <Save className="w-4 h-4" />
                 <span>
@@ -722,9 +722,9 @@ export default function AccountProfileModule({
                 <div className="mt-1">
                   <span
                     className={`inline-block px-2 py-0.5 rounded-md text-xs font-bold ${contractType === "FULLTIME"
-                      ? "bg-emerald-100 text-emerald-800"
+                      ? "bg-teal-100 text-brand-ink"
                       : contractType === "INTERN"
-                        ? "bg-sky-100 text-sky-800"
+                        ? "bg-teal-100 text-brand-ink"
                         : "bg-amber-100 text-amber-800"
                       }`}
                   >
@@ -785,7 +785,7 @@ export default function AccountProfileModule({
             {/* Chế độ Lương, Trợ cấp, Thưởng & BHXH */}
             <div className="space-y-2">
               <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 uppercase">
-                <Wallet className="w-3.5 h-3.5 text-emerald-600" />
+                <Wallet className="w-3.5 h-3.5 text-brand-ink" />
                 <span>Chế độ Lương, Trợ cấp, Thưởng &amp; BHXH</span>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -855,9 +855,9 @@ export default function AccountProfileModule({
                 File hợp đồng lao động (Chỉ xem)
               </label>
               {contractFileUrl ? (
-                <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 rounded-xl border border-emerald-200 bg-emerald-50/70">
+                <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 rounded-xl border border-teal-200 bg-teal-50/70">
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <FileText className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <FileText className="w-4 h-4 text-brand-ink shrink-0" />
                     <span className="text-xs font-bold text-slate-800 truncate">
                       {contractFileName || "Hop-dong-lao-dong"}
                     </span>
@@ -865,7 +865,7 @@ export default function AccountProfileModule({
                   <button
                     type="button"
                     onClick={() => setShowContractPreview(true)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold transition shadow-xs cursor-pointer"
                   >
                     <Eye className="w-3.5 h-3.5" />
                     <span>Xem hợp đồng</span>
@@ -882,12 +882,12 @@ export default function AccountProfileModule({
           {/* Card 3: Quyền lợi hợp đồng & Lưu ý nhân sự */}
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3">
             <div className="flex items-center gap-2 text-xs font-extrabold text-slate-800 uppercase">
-              <Info className="w-4 h-4 text-emerald-600 shrink-0" />
+              <Info className="w-4 h-4 text-brand-ink shrink-0" />
               <span>Quyền lợi &amp; Quy định Hồ sơ Nhân sự</span>
             </div>
             <ul className="space-y-2 text-xs text-slate-600 leading-relaxed">
               <li className="flex items-start gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
+                <span className="w-1.5 h-1.5 rounded-full bg-teal-500 mt-1.5 shrink-0" />
                 <span>
                   <strong>Chế độ phép có lương:</strong>{" "}
                   {contractType === "FULLTIME"
@@ -896,14 +896,14 @@ export default function AccountProfileModule({
                 </span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
+                <span className="w-1.5 h-1.5 rounded-full bg-teal-500 mt-1.5 shrink-0" />
                 <span>
                   <strong>Thông tin cá nhân &amp; Ngân hàng:</strong> Nhân viên chủ động cập nhật
                   Họ tên, Ngày sinh, Giới tính, SĐT, Email, CCCD (Ngày cấp / Nơi cấp), Địa chỉ thường trú &amp; hiện tại, Trường học, Chuyên ngành và STK ngân hàng.
                 </span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
+                <span className="w-1.5 h-1.5 rounded-full bg-teal-500 mt-1.5 shrink-0" />
                 <span>
                   <strong>Chế độ Lương, BHXH &amp; Hợp đồng:</strong> Vị trí, Số HĐ, BHXH, Lương cơ bản, Trợ
                   cấp, Thưởng và File hợp đồng do bộ phận <strong>Nhân sự (HR)</strong> cập nhật.

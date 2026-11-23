@@ -48,12 +48,12 @@ const CELL_STYLE: Record<
   TimesheetCellCode,
   { symbol: string; label: string; className: string; excel: string }
 > = {
-  ON_TIME: { symbol: "✓", label: "Đúng giờ", className: "bg-emerald-500 text-white", excel: "X" },
+  ON_TIME: { symbol: "✓", label: "Đúng giờ", className: "bg-teal-500 text-white", excel: "X" },
   WFH: { symbol: "W", label: "Làm từ xa (WFH)", className: "bg-cyan-600 text-white", excel: "W" },
   WORKING: {
     symbol: "●",
     label: "Đang làm",
-    className: "bg-sky-500 text-white animate-pulse",
+    className: "bg-teal-500 text-white animate-pulse",
     excel: "●",
   },
   LATE: { symbol: "T", label: "Đi trễ", className: "bg-amber-400 text-amber-950", excel: "T" },
@@ -75,7 +75,7 @@ const CELL_STYLE: Record<
   PAID_LEAVE: {
     symbol: "PL",
     label: "Nghỉ phép có lương (+1 công)",
-    className: "bg-blue-600 text-white",
+    className: "bg-teal-600 text-white",
     excel: "PL",
   },
   HOLIDAY: {
@@ -427,8 +427,8 @@ export default function AttendanceTimesheetModule() {
   return (
     <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200 space-y-4">
       {toast && (
-        <div className="fixed bottom-6 right-6 z-[60] bg-slate-900 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3">
-          <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+        <div className="fixed bottom-6 right-6 z-[60] bg-teal-600 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3">
+          <CheckCircle2 className="w-5 h-5 text-teal-400" />
           <span className="text-sm font-medium">{toast}</span>
         </div>
       )}
@@ -436,14 +436,14 @@ export default function AttendanceTimesheetModule() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 pb-3.5 border-b border-slate-100">
         <div className="flex items-center gap-2.5">
-          <Clock className="w-5 h-5 text-emerald-600" />
+          <Clock className="w-5 h-5 text-brand-ink" />
           <h2 className="text-base sm:text-lg font-bold text-slate-900">Bảng Chấm Công Toàn Công Ty</h2>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setShowManual(true)}
-            className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+            className="px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-semibold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
             Chấm công bù
@@ -453,7 +453,7 @@ export default function AttendanceTimesheetModule() {
               <select
                 value={exportScope}
                 onChange={(e) => setExportScope(e.target.value)}
-                className="appearance-none pl-3 pr-8 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                className="appearance-none pl-3 pr-8 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-500 cursor-pointer"
                 title="Chọn chế độ xuất Excel Bảng chấm công"
               >
                 <option value="ALL">Xuất Tổng + Từng người (Đầy đủ)</option>
@@ -550,13 +550,13 @@ export default function AttendanceTimesheetModule() {
           )}
           {monthInfo && (
             <div
-              className="px-2.5 py-1.5 rounded-lg bg-emerald-50/80 border border-emerald-200 text-[11px] font-semibold text-emerald-900 flex flex-wrap items-center gap-1.5"
+              className="px-2.5 py-1.5 rounded-lg bg-teal-50/80 border border-teal-200 text-[11px] font-semibold text-teal-900 flex flex-wrap items-center gap-1.5"
               title="1 tuần làm việc 6 ngày (nghỉ 1 ngày/tuần). Tổng số công chuẩn thay đổi theo số ngày của tháng (28, 29, 30, 31 ngày) và số Chủ nhật (4 hoặc 5 CN) trong tháng."
             >
               <span>
                 Chuẩn tháng: <b>{monthInfo.standardDays} công</b>
               </span>
-              <span className="text-emerald-700 font-normal">
+              <span className="text-brand-ink font-normal">
                 ({monthInfo.daysInMonth} ngày
                 {month === 2 ? (monthInfo.isLeapYear ? " • Năm nhuận" : " • Không nhuận") : ""} −{" "}
                 {monthInfo.sundaysCount} CN)
@@ -609,7 +609,7 @@ export default function AttendanceTimesheetModule() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Tìm tên / mã NV..."
-              className="pl-8 pr-3 py-1.5 border border-slate-200 rounded-lg text-xs w-44 focus:ring-2 focus:ring-emerald-500 outline-none"
+              className="pl-8 pr-3 py-1.5 border border-slate-200 rounded-lg text-xs w-44 focus:ring-2 focus:ring-teal-500 outline-none"
             />
           </div>
 
@@ -679,15 +679,15 @@ export default function AttendanceTimesheetModule() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-1 gap-1.5 text-[11px] text-slate-700">
                   {/* Đúng giờ */}
                   <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-slate-200/80">
-                    <span className="w-4 h-4 shrink-0 rounded bg-emerald-500 text-white text-[9px] font-black inline-flex items-center justify-center">
+                    <span className="w-4 h-4 shrink-0 rounded bg-teal-500 text-white text-[9px] font-black inline-flex items-center justify-center">
                       ✓
                     </span>
                     <span className="font-medium truncate">Đúng giờ</span>
                   </div>
 
                   {/* Đang làm */}
-                  <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-sky-200">
-                    <span className="w-4 h-4 shrink-0 rounded bg-sky-500 text-white animate-pulse text-[9px] font-black inline-flex items-center justify-center">
+                  <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-teal-200">
+                    <span className="w-4 h-4 shrink-0 rounded bg-teal-500 text-white animate-pulse text-[9px] font-black inline-flex items-center justify-center">
                       ●
                     </span>
                     <span className="font-medium truncate">Đang làm</span>
@@ -744,8 +744,8 @@ export default function AttendanceTimesheetModule() {
                   </div>
 
                   {/* Phép có lương (+1 công) */}
-                  <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-blue-200">
-                    <span className="w-4 h-4 shrink-0 rounded bg-blue-600 text-white text-[8px] font-black inline-flex items-center justify-center">
+                  <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-teal-200">
+                    <span className="w-4 h-4 shrink-0 rounded bg-teal-600 text-white text-[8px] font-black inline-flex items-center justify-center">
                       PL
                     </span>
                     <span className="font-medium truncate">Phép có lương (+1 công)</span>
@@ -761,7 +761,7 @@ export default function AttendanceTimesheetModule() {
 
                   {/* Đi làm lễ (lương x4) */}
                   <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-amber-200">
-                    <span className="w-4 h-4 shrink-0 rounded bg-emerald-500 text-white ring-2 ring-yellow-400 text-[9px] font-black inline-flex items-center justify-center">
+                    <span className="w-4 h-4 shrink-0 rounded bg-teal-500 text-white ring-2 ring-yellow-400 text-[9px] font-black inline-flex items-center justify-center">
                       ★
                     </span>
                     <span className="font-medium truncate">Đi làm lễ (lương x4)</span>
@@ -785,7 +785,7 @@ export default function AttendanceTimesheetModule() {
             </span>
             {totals.overtimeMinutes > 0 && (
               <span>
-                Tăng ca duyệt: <b className="text-indigo-700">{formatMinutes(totals.overtimeMinutes)}</b>
+                Tăng ca duyệt: <b className="text-brand-ink">{formatMinutes(totals.overtimeMinutes)}</b>
               </span>
             )}
             <span>
@@ -849,7 +849,7 @@ function KpiCard({
 }) {
   const toneMap = {
     slate: "bg-slate-50 border-slate-200 text-slate-700",
-    blue: "bg-blue-50 border-blue-200 text-blue-700",
+    blue: "bg-teal-50 border-teal-200 text-brand-ink",
     amber: "bg-amber-50 border-amber-200 text-amber-800",
     rose: "bg-rose-50 border-rose-200 text-rose-700",
     red: "bg-red-50 border-red-200 text-red-700",
@@ -894,7 +894,7 @@ function MatrixView({
                   key={d.date}
                   title={d.holiday ? d.holiday.name : undefined}
                   className={`sticky top-0 z-20 border-b border-slate-200 px-0 py-1.5 w-8 min-w-[32px] text-center font-semibold ${d.isToday
-                    ? "bg-blue-600 text-white"
+                    ? "bg-teal-600 text-white"
                     : officialHoliday
                       ? "bg-rose-100 text-rose-700"
                       : isSun
@@ -907,15 +907,15 @@ function MatrixView({
                 </th>
               );
             })}
-            <th className="sticky top-0 right-[60px] z-30 bg-emerald-50 border-b border-l border-slate-200 px-2 py-1.5 text-center font-bold text-emerald-800 min-w-[70px]">
+            <th className="sticky top-0 right-[60px] z-30 bg-teal-50 border-b border-l border-slate-200 px-2 py-1.5 text-center font-bold text-brand-ink min-w-[70px]">
               <div>Công</div>
-              <div className="text-[9px] font-semibold text-emerald-600 leading-none mt-0.5">
+              <div className="text-[9px] font-semibold text-brand-ink leading-none mt-0.5">
                 /{rows[0]?.summary.standardDays ?? (data.monthMeta?.standardDays || 26)} chuẩn
               </div>
             </th>
-            <th className="sticky top-0 right-0 z-30 bg-emerald-50 border-b border-slate-200 px-2 py-1.5 text-center font-bold text-emerald-800 min-w-[60px]">
+            <th className="sticky top-0 right-0 z-30 bg-teal-50 border-b border-slate-200 px-2 py-1.5 text-center font-bold text-brand-ink min-w-[60px]">
               <div>Giờ</div>
-              <div className="text-[9px] font-semibold text-indigo-600 leading-none mt-0.5">&amp; TC</div>
+              <div className="text-[9px] font-semibold text-brand-ink leading-none mt-0.5">&amp; TC</div>
             </th>
           </tr>
         </thead>
@@ -929,7 +929,7 @@ function MatrixView({
                   <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
                     <span className="font-mono">{row.staffCode}</span>
                     <span
-                      className={`px-1.5 rounded font-semibold ${row.department === "OFFICE" ? "bg-indigo-50 text-indigo-600" : "bg-amber-50 text-amber-700"
+                      className={`px-1.5 rounded font-semibold ${row.department === "OFFICE" ? "bg-indigo-50 text-brand-ink" : "bg-amber-50 text-amber-700"
                         }`}
                     >
                       {row.department === "OFFICE" ? "VP" : "BH"}
@@ -982,7 +982,7 @@ function MatrixView({
                   return (
                     <td
                       key={d.date}
-                      className={`border-b border-slate-100 p-[3px] text-center ${d.isToday ? "bg-blue-50/60" : ""}`}
+                      className={`border-b border-slate-100 p-[3px] text-center ${d.isToday ? "bg-teal-50/60" : ""}`}
                     >
                       <button
                         type="button"
@@ -1003,7 +1003,7 @@ function MatrixView({
                           <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-indigo-500 border border-white" />
                         )}
                         {cell.adjusted && (
-                          <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-slate-900" />
+                          <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-teal-600" />
                         )}
                       </button>
                     </td>
@@ -1025,7 +1025,7 @@ function MatrixView({
                         </span>
                       )}
                       {(row.summary.paidLeaveUsed || 0) > 0 && (
-                        <span className="px-1 rounded bg-blue-100 text-blue-700 text-[8px] font-bold leading-tight">
+                        <span className="px-1 rounded bg-teal-100 text-brand-ink text-[8px] font-bold leading-tight">
                           +{row.summary.paidLeaveUsed}PL
                         </span>
                       )}
@@ -1033,16 +1033,16 @@ function MatrixView({
                   )}
                   <div className="h-1 rounded bg-slate-100 mt-1 overflow-hidden">
                     <div
-                      className={`h-full ${pct >= 0.95 ? "bg-emerald-500" : pct >= 0.8 ? "bg-amber-400" : "bg-rose-500"}`}
+                      className={`h-full ${pct >= 0.95 ? "bg-teal-500" : pct >= 0.8 ? "bg-amber-400" : "bg-rose-500"}`}
                       style={{ width: `${Math.min(100, pct * 100)}%` }}
                     />
                   </div>
                 </td>
                 <td className="sticky right-0 z-10 bg-white group-hover:bg-slate-50 border-b border-slate-200 px-2 py-1.5 text-center min-w-[60px]">
-                  <div className="font-bold text-emerald-700 leading-tight">{row.summary.totalHours.toFixed(1)}</div>
+                  <div className="font-bold text-brand-ink leading-tight">{row.summary.totalHours.toFixed(1)}</div>
                   {(row.summary.overtimeMinutes || 0) > 0 && (
                     <div
-                      className="mt-0.5 px-1 rounded bg-indigo-100 text-indigo-700 text-[8px] font-bold leading-tight inline-block"
+                      className="mt-0.5 px-1 rounded bg-indigo-100 text-brand-ink text-[8px] font-bold leading-tight inline-block"
                       title={`Tăng ca đã duyệt: ${row.summary.overtimeMinutes} phút (${row.summary.overtimeDays || 1} ngày)`}
                     >
                       +{formatMinutes(row.summary.overtimeMinutes || 0)} TC
@@ -1104,20 +1104,20 @@ function SummaryView({ rows }: { rows: TimesheetRow[] }) {
                       <span className="text-fuchsia-700 font-semibold"> + Lễ {s.holidayPaidDays}</span>
                     )}
                     {(s.paidLeaveUsed || 0) > 0 && (
-                      <span className="text-blue-700 font-semibold"> + Phép {s.paidLeaveUsed}</span>
+                      <span className="text-brand-ink font-semibold"> + Phép {s.paidLeaveUsed}</span>
                     )}
                   </div>
                   <div className="h-1.5 rounded bg-slate-100 mt-1 overflow-hidden">
                     <div
-                      className={`h-full ${pct >= 0.95 ? "bg-emerald-500" : pct >= 0.8 ? "bg-amber-400" : "bg-rose-500"}`}
+                      className={`h-full ${pct >= 0.95 ? "bg-teal-500" : pct >= 0.8 ? "bg-amber-400" : "bg-rose-500"}`}
                       style={{ width: `${Math.min(100, pct * 100)}%` }}
                     />
                   </div>
                 </td>
-                <td className="px-2 py-2 text-center font-bold text-emerald-700">{s.totalHours.toFixed(1)}h</td>
+                <td className="px-2 py-2 text-center font-bold text-brand-ink">{s.totalHours.toFixed(1)}h</td>
                 <td className="px-2 py-2 text-center">
                   {(s.overtimeMinutes || 0) > 0 ? (
-                    <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold">
+                    <span className="px-2 py-0.5 rounded bg-indigo-100 text-brand-ink font-bold">
                       {s.overtimeDays || 1} ngày • {formatMinutes(s.overtimeMinutes || 0)}
                     </span>
                   ) : (
@@ -1172,7 +1172,7 @@ function SummaryView({ rows }: { rows: TimesheetRow[] }) {
                       <span
                         className={`px-2 py-0.5 rounded font-bold ${
                           (s.paidLeaveUsed || 0) > 0
-                            ? "bg-teal-100 text-teal-800"
+                            ? "bg-teal-100 text-brand-ink"
                             : (s.paidLeaveRemaining ?? (s.paidLeaveEntitled || 0)) > 0
                             ? "bg-amber-100 text-amber-800"
                             : "bg-slate-100 text-slate-600"
@@ -1182,7 +1182,7 @@ function SummaryView({ rows }: { rows: TimesheetRow[] }) {
                         {s.paidLeaveRemaining ?? Math.max(0, (s.paidLeaveEntitled || 0) - (s.paidLeaveUsed || 0))}
                       </span>
                       {(s.paidLeaveFromProbation || 0) > 0 && (
-                        <span className="text-[9px] text-teal-600 font-semibold">
+                        <span className="text-[9px] text-brand-ink font-semibold">
                           (Gồm +{s.paidLeaveFromProbation} ngày TV)
                         </span>
                       )}
@@ -1234,7 +1234,7 @@ function Time24Input({
   const mm = parts ? String(Math.min(59, Math.max(0, Number(parts[2])))).padStart(2, "0") : "";
 
   return (
-    <div className="mt-1.5 grid grid-cols-[1fr_auto_1fr] items-center gap-1.5 bg-slate-50/80 border border-slate-200 rounded-xl p-1 focus-within:ring-2 focus-within:ring-emerald-500 focus-within:border-emerald-500 focus-within:bg-white transition">
+    <div className="mt-1.5 grid grid-cols-[1fr_auto_1fr] items-center gap-1.5 bg-slate-50/80 border border-slate-200 rounded-xl p-1 focus-within:ring-2 focus-within:ring-teal-500 focus-within:border-teal-500 focus-within:bg-white transition">
       <div className="relative">
         <select
           value={hh}
@@ -1458,7 +1458,7 @@ function CellDetailModal({
             </div>
             <div>
               <div className="text-slate-400">Giờ công</div>
-              <div className="font-mono font-bold text-emerald-700">{cell.hours ? `${cell.hours}h` : "—"}</div>
+              <div className="font-mono font-bold text-brand-ink">{cell.hours ? `${cell.hours}h` : "—"}</div>
             </div>
             {(cell.lateMinutes || cell.earlyMinutes) ? (
               <div className="col-span-3 text-[11px] text-slate-600">
@@ -1522,13 +1522,13 @@ function CellDetailModal({
                     type="button"
                     onClick={() => handleSelectShift(sc)}
                     className={`flex flex-col items-center justify-center px-2.5 py-2 min-h-[54px] rounded-xl border cursor-pointer transition ${active
-                      ? "bg-emerald-50 border-emerald-500 text-emerald-900 ring-1 ring-emerald-500/30 shadow-2xs"
+                      ? "bg-teal-50 border-teal-500 text-teal-900 ring-1 ring-teal-500/30 shadow-2xs"
                       : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300"
                       }`}
                   >
                     <span className="text-xs font-bold leading-tight whitespace-nowrap">{title}</span>
                     <span
-                      className={`text-[11px] font-mono mt-0.5 whitespace-nowrap ${active ? "text-emerald-700 font-semibold" : "text-slate-400"
+                      className={`text-[11px] font-mono mt-0.5 whitespace-nowrap ${active ? "text-brand-ink font-semibold" : "text-slate-400"
                         }`}
                     >
                       {timeRange}
@@ -1541,13 +1541,13 @@ function CellDetailModal({
                 type="button"
                 onClick={() => handleSelectShift("SHIFT_1")}
                 className={`flex flex-col items-center justify-center px-3 py-2 min-h-[54px] rounded-xl border cursor-pointer transition ${shiftCode !== "OFF"
-                  ? "bg-emerald-50 border-emerald-500 text-emerald-900 ring-1 ring-emerald-500/30 shadow-2xs"
+                  ? "bg-teal-50 border-teal-500 text-teal-900 ring-1 ring-teal-500/30 shadow-2xs"
                   : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300"
                   }`}
               >
                 <span className="text-xs font-bold leading-tight whitespace-nowrap">Ca Hành chính</span>
                 <span
-                  className={`text-[11px] font-mono mt-0.5 whitespace-nowrap ${shiftCode !== "OFF" ? "text-emerald-700 font-semibold" : "text-slate-400"
+                  className={`text-[11px] font-mono mt-0.5 whitespace-nowrap ${shiftCode !== "OFF" ? "text-brand-ink font-semibold" : "text-slate-400"
                     }`}
                 >
                   08:30 – 17:30
@@ -1623,11 +1623,11 @@ function CellDetailModal({
                     type="button"
                     onClick={() => setCheckInType("STANDARD")}
                     className={`flex items-center justify-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold cursor-pointer transition ${checkInType === "STANDARD"
-                      ? "bg-emerald-50 border-emerald-500 text-emerald-900 ring-1 ring-emerald-500/30"
+                      ? "bg-teal-50 border-teal-500 text-teal-900 ring-1 ring-teal-500/30"
                       : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
                       }`}
                   >
-                    <span className="w-4 h-4 rounded bg-emerald-500 text-white text-[9px] font-black inline-flex items-center justify-center">
+                    <span className="w-4 h-4 rounded bg-teal-500 text-white text-[9px] font-black inline-flex items-center justify-center">
                       ✓
                     </span>
                     <span>Làm trực tiếp</span>
@@ -1793,7 +1793,7 @@ function CellDetailModal({
               rows={2}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+              className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
             />
           </label>
 
@@ -1810,7 +1810,7 @@ function CellDetailModal({
             <button
               type="submit"
               disabled={saving}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg disabled:opacity-50 cursor-pointer"
+              className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-lg disabled:opacity-50 cursor-pointer"
             >
               {saving ? "Đang lưu..." : shiftCode === "OFF" ? "Lưu chấm OFF" : hasRecord ? "Lưu điều chỉnh" : "Chấm công bù"}
             </button>
@@ -1947,7 +1947,7 @@ function ManualAttendanceModal({
                   setStaffId(nextId);
                   syncShiftForStaffAndDate(nextId, date);
                 }}
-                className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white"
+                className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none bg-white"
               >
                 {rows.map((r) => (
                   <option key={r.staffId} value={r.staffId}>
@@ -1970,7 +1970,7 @@ function ManualAttendanceModal({
                     syncShiftForStaffAndDate(staffId, nextDate);
                   }
                 }}
-                className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white"
+                className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none bg-white"
               />
             </label>
           </div>
@@ -1992,13 +1992,13 @@ function ManualAttendanceModal({
                       type="button"
                       onClick={() => applyShiftSelection(sc)}
                       className={`flex flex-col items-center justify-center px-2.5 py-2 min-h-[54px] rounded-xl border cursor-pointer transition ${active
-                        ? "bg-emerald-50 border-emerald-500 text-emerald-900 ring-1 ring-emerald-500/30 shadow-2xs"
+                        ? "bg-teal-50 border-teal-500 text-teal-900 ring-1 ring-teal-500/30 shadow-2xs"
                         : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300"
                         }`}
                     >
                       <span className="text-xs font-bold leading-tight whitespace-nowrap">{title}</span>
                       <span
-                        className={`text-[11px] font-mono mt-0.5 whitespace-nowrap ${active ? "text-emerald-700 font-semibold" : "text-slate-400"
+                        className={`text-[11px] font-mono mt-0.5 whitespace-nowrap ${active ? "text-brand-ink font-semibold" : "text-slate-400"
                           }`}
                       >
                         {timeRange}
@@ -2011,13 +2011,13 @@ function ManualAttendanceModal({
                   type="button"
                   onClick={() => applyShiftSelection("SHIFT_1")}
                   className={`flex flex-col items-center justify-center px-3 py-2 min-h-[54px] rounded-xl border cursor-pointer transition ${shiftCode !== "OFF"
-                    ? "bg-emerald-50 border-emerald-500 text-emerald-900 ring-1 ring-emerald-500/30 shadow-2xs"
+                    ? "bg-teal-50 border-teal-500 text-teal-900 ring-1 ring-teal-500/30 shadow-2xs"
                     : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300"
                     }`}
                 >
                   <span className="text-xs font-bold leading-tight whitespace-nowrap">Ca Hành chính</span>
                   <span
-                    className={`text-[11px] font-mono mt-0.5 whitespace-nowrap ${shiftCode !== "OFF" ? "text-emerald-700 font-semibold" : "text-slate-400"
+                    className={`text-[11px] font-mono mt-0.5 whitespace-nowrap ${shiftCode !== "OFF" ? "text-brand-ink font-semibold" : "text-slate-400"
                       }`}
                   >
                     08:30 – 17:30
@@ -2094,11 +2094,11 @@ function ManualAttendanceModal({
                     type="button"
                     onClick={() => setCheckInType("STANDARD")}
                     className={`flex items-center justify-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold cursor-pointer transition ${checkInType === "STANDARD"
-                      ? "bg-emerald-50 border-emerald-500 text-emerald-900 ring-1 ring-emerald-500/30"
+                      ? "bg-teal-50 border-teal-500 text-teal-900 ring-1 ring-teal-500/30"
                       : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
                       }`}
                   >
-                    <span className="w-4 h-4 rounded bg-emerald-500 text-white text-[9px] font-black inline-flex items-center justify-center">
+                    <span className="w-4 h-4 rounded bg-teal-500 text-white text-[9px] font-black inline-flex items-center justify-center">
                       ✓
                     </span>
                     <span>Làm trực tiếp</span>
@@ -2152,7 +2152,7 @@ function ManualAttendanceModal({
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               placeholder="VD: Mất mạng không chấm công được / Nhân viên báo nghỉ OFF..."
-              className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+              className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
             />
           </label>
           {err && <div className="text-xs text-rose-600 font-semibold">{err}</div>}
@@ -2167,7 +2167,7 @@ function ManualAttendanceModal({
             <button
               type="submit"
               disabled={saving}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg disabled:opacity-50 cursor-pointer"
+              className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-lg disabled:opacity-50 cursor-pointer"
             >
               {saving ? "Đang lưu..." : shiftCode === "OFF" ? "Lưu chấm OFF" : "Chấm công bù"}
             </button>

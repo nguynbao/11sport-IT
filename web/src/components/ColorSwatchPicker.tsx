@@ -118,7 +118,7 @@ export function resolveVariantColorHexes(colorText?: string, explicitHexes?: str
  */
 export function getColorBoxBorderStyle(
   hexes: string[],
-  bgFill = "#f8fafc",
+  bgFill = "var(--box-bg, #f8fafc)",
   borderWidthPx = 2.5
 ): React.CSSProperties {
   const clean = sanitizeHexList(hexes);
@@ -358,7 +358,7 @@ export function ColorInputWithPicker({
         style={boxBorderStyle}
         className={`flex items-center gap-1 rounded border transition ${
           activeHexes.length === 0
-            ? "border-slate-300 focus-within:border-emerald-600 bg-white"
+            ? "border-slate-300 focus-within:border-blue-600 bg-white"
             : ""
         } ${disabled ? "bg-slate-100 opacity-80" : "bg-white"} ${
           compact ? "px-1.5 py-0.5" : "px-1.5 py-1"
@@ -416,7 +416,7 @@ export function ColorInputWithPicker({
           <div className="flex items-center justify-between gap-2 pb-1.5 border-b border-slate-100">
             <div>
               <div className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
-                <Palette className="w-3.5 h-3.5 text-indigo-600" />
+                <Palette className="w-3.5 h-3.5 text-brand-ink" />
                 <span>Chọn 1 hoặc nhiều màu</span>
               </div>
               <div className="text-[10px] text-slate-500">
@@ -434,7 +434,7 @@ export function ColorInputWithPicker({
 
           {/* Xem trước box viền màu trực quan */}
           <div
-            style={getColorBoxBorderStyle(activeHexes, "#f8fafc", 2)}
+            style={getColorBoxBorderStyle(activeHexes, "var(--box-bg, #f8fafc)", 2)}
             className="rounded-lg border border-slate-200 px-2.5 py-1.5 flex items-center justify-between gap-2 bg-slate-50"
           >
             <div className="flex items-center gap-1.5 min-w-0">
@@ -512,7 +512,7 @@ export function ColorInputWithPicker({
                   <button
                     type="button"
                     onClick={() => onChange(buildPaletteColorLabel(activeHexes), activeHexes)}
-                    className="px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-bold"
+                    className="px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-brand-ink text-[10px] font-bold"
                     title="Điền tên màu theo các ô màu đã chọn"
                   >
                     Điền tên

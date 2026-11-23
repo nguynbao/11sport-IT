@@ -6,6 +6,7 @@ import {
   stockMovementRepo,
 } from '../config/db';
 import { ApiError } from '../utils/errors';
+import { requireRoles } from '../middleware/auth';
 import { IReturnItem, IExchangeItem, ReturnCondition } from '../models/ReturnExchange';
 import { DebtStatus, IDebtAdjustmentRecord, PaymentMethod } from '../models/Order';
 import {
@@ -16,11 +17,18 @@ import {
   formatProductWithVariant,
 } from '../utils/warehouseFloor';
 import { executeUnpackSetToRetail } from '../utils/unpackSet';
-import { buildVariantKey } from '../utils/productCode';
+import { buildVariantKey, resolveVariantPricing } from '../utils/productCode';
 import { filterAndRankBySearch } from '../utils/search';
 import { withOrderLock, deepCloneSnapshot } from '../utils/orderLock';
 
 export const returnsRouter = Router();
+returnsRouter.use(
+  '/returns',
+  requireRoles(
+    ['CEO', 'ADMIN', 'SALES', 'ACCOUNTANT'],
+    'Chỉ Bán hàng, Kế toán hoặc Quản lý mới có quyền thực hiện trả/đổi hàng'
+  )
+);
 
 async function generateNextReturnExchangeCode(isExchange: boolean): Promise<string> {
   const all = await returnExchangeRepo.find({});
@@ -411,7 +419,11 @@ async function prepareReturnExchangeCalculation(body: any) {
           cachedAllProducts = await productRepo.find({});
         }
         for (const p of cachedAllProducts) {
-          if (String(p.barcode || '').trim().toUpperCase() === upperLookup) {
+          if (
+            String(p.barcode || '').trim().toUpperCase() === upperLookup ||
+            String((p as any).legacyCode || '').trim().toUpperCase() === upperLookup ||
+            ((p as any).legacyCodes || []).some((c: any) => String(c || '').toUpperCase() === upperLookup)
+          ) {
             product = p;
             break;
           }
@@ -419,7 +431,9 @@ async function prepareReturnExchangeCalculation(body: any) {
           const childVar = pFloors.variants.find(
             (v) =>
               String(v.variantCode || '').trim().toUpperCase() === upperLookup ||
-              String(v.barcode || '').trim().toUpperCase() === upperLookup
+              String(v.barcode || '').trim().toUpperCase() === upperLookup ||
+              String(v.legacyVariantCode || '').trim().toUpperCase() === upperLookup ||
+              (v.legacyVariantCodes || []).some((c: any) => String(c || '').toUpperCase() === upperLookup)
           );
           if (childVar) {
             product = p;
@@ -433,7 +447,10 @@ async function prepareReturnExchangeCalculation(body: any) {
         throw new ApiError(404, 'EXCHANGE_PRODUCT_NOT_FOUND', `Không tìm thấy sản phẩm đổi mới: ${eItem.productId}`);
       }
 
-      if (!product.sellingPrice || product.sellingPrice <= 0) {
+      if (
+        (!product.sellingPrice || product.sellingPrice <= 0) &&
+        !(product.variants || []).some((v: any) => Number(v?.sellingPrice) > 0)
+      ) {
         throw new ApiError(
           400,
           'EXCHANGE_PRODUCT_PRICE_ZERO',
@@ -514,7 +531,16 @@ async function prepareReturnExchangeCalculation(body: any) {
         size: eSize,
       });
 
-      const origExUnitPrice = Math.round(Number(product.sellingPrice) || 0);
+      // v5.0 (R8): giá hiệu lực của biến thể đổi mới
+      const exPricing = resolveVariantPricing(product, eColor, eSize);
+      if (exPricing.sellingPrice <= 0) {
+        throw new ApiError(
+          400,
+          'EXCHANGE_PRODUCT_PRICE_ZERO',
+          `Sản phẩm đổi mới "${displayExName}" chưa có giá bán hợp lệ`
+        );
+      }
+      const origExUnitPrice = exPricing.sellingPrice;
       const rawExDiscType = String(eItem.discountType || 'NONE').toUpperCase();
       let exDiscType: 'NONE' | 'PERCENT' | 'AMOUNT' =
         rawExDiscType === 'PERCENT' || rawExDiscType === 'AMOUNT' ? rawExDiscType : 'NONE';
@@ -562,7 +588,7 @@ async function prepareReturnExchangeCalculation(body: any) {
         discountValue: exDiscVal > 0 ? exDiscVal : 0,
         discountAmount: exDiscAmount,
         unitPrice: effectiveExUnitPrice,
-        unitCost: Math.max(0, Math.round(Number(product.costPrice) || 0)),
+        unitCost: exPricing.costPrice,
         quantity: qty,
         lineTotal: effectiveExUnitPrice * qty,
       });
@@ -827,7 +853,14 @@ returnsRouter.post('/returns/calculate', async (req, res, next) => {
 // POST /api/v1/returns
 returnsRouter.post('/returns', async (req, res, next) => {
   try {
-    const { orderId, orderCode } = req.body || {};
+    const { orderId, orderCode, type, exchangeItems } = req.body || {};
+    if (String(type || '').toUpperCase() === 'RETURN' || !Array.isArray(exchangeItems) || exchangeItems.length === 0) {
+      throw new ApiError(
+        400,
+        'RETURN_DISABLED',
+        'Tính năng trả hàng hoàn tiền đã ngừng hỗ trợ. Vui lòng chọn Đổi sang sản phẩm mới.'
+      );
+    }
     const lookupKey = String(orderId || orderCode || '').trim();
     if (!lookupKey) {
       throw new ApiError(

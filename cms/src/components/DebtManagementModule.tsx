@@ -196,29 +196,29 @@ export default function DebtManagementModule({ onOpenInvoice }: DebtManagementMo
   return (
     <div className="space-y-6">
       {/* Header Banner */}
-      <div className="bg-slate-900 text-white rounded-2xl p-5 shadow-md flex flex-wrap items-center justify-between gap-4">
+      <div className="bg-white text-slate-900 rounded-2xl border border-slate-200 p-5 shadow-sm flex flex-wrap items-center justify-between gap-4">
         <div>
-          <div className="text-[11px] font-bold uppercase text-emerald-400 flex items-center gap-1.5">
+          <div className="text-[11px] font-bold uppercase text-brand-ink flex items-center gap-1.5">
             <Wallet className="w-3.5 h-3.5" />
             Quản lý Công nợ Khách hàng (Mua trước trả sau) — 11Sport CMS
           </div>
-          <h2 className="text-lg font-extrabold mt-0.5">
+          <h2 className="text-lg font-extrabold mt-0.5 text-slate-900">
             Theo dõi Dư nợ Khách hàng, Cảnh báo Quá hạn & Xác nhận Thu Nợ / Tất Toán
           </h2>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <p className="text-xs text-slate-500 mt-0.5">
             Quản lý tập trung toàn bộ đơn bán công nợ tại quầy POS, lịch sử khách trả góp từng đợt và tất toán dư nợ.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex rounded-xl bg-slate-800 p-1 border border-slate-700 text-xs font-extrabold">
+          <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200 text-xs font-extrabold">
             <button
               type="button"
               onClick={() => setDebtTab("ORDERS")}
               className={`px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition ${
                 debtTab === "ORDERS"
-                  ? "bg-emerald-500 text-slate-950 shadow-sm"
-                  : "text-slate-300 hover:text-white"
+                  ? "bg-teal-600 text-white shadow-sm"
+                  : "text-slate-600 hover:text-slate-900"
               }`}
             >
               <FileText className="w-3.5 h-3.5" />
@@ -229,8 +229,8 @@ export default function DebtManagementModule({ onOpenInvoice }: DebtManagementMo
               onClick={() => setDebtTab("CUSTOMERS")}
               className={`px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition ${
                 debtTab === "CUSTOMERS"
-                  ? "bg-emerald-500 text-slate-950 shadow-sm"
-                  : "text-slate-300 hover:text-white"
+                  ? "bg-teal-600 text-white shadow-sm"
+                  : "text-slate-600 hover:text-slate-900"
               }`}
             >
               <Users className="w-3.5 h-3.5" />
@@ -242,17 +242,17 @@ export default function DebtManagementModule({ onOpenInvoice }: DebtManagementMo
             type="button"
             onClick={loadDebtData}
             disabled={loading}
-            className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 border border-slate-700 flex items-center gap-1.5"
+            className="px-3.5 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-700 border border-slate-200 flex items-center gap-1.5"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-emerald-400" : ""}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-brand-ink" : "text-brand-ink"}`} />
             Làm mới
           </button>
         </div>
       </div>
 
       {debtPaySuccessMsg && (
-        <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-xs font-bold text-emerald-800 flex items-center gap-2 shadow-sm">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+        <div className="rounded-xl bg-teal-50 border border-teal-200 px-4 py-3 text-xs font-bold text-brand-ink flex items-center gap-2 shadow-sm">
+          <CheckCircle2 className="w-4 h-4 text-brand-ink shrink-0" />
           <span>{debtPaySuccessMsg}</span>
         </div>
       )}
@@ -262,7 +262,7 @@ export default function DebtManagementModule({ onOpenInvoice }: DebtManagementMo
         <div className="rounded-2xl bg-white border border-slate-200 p-4 shadow-sm">
           <div className="flex items-center justify-between text-xs font-extrabold uppercase text-slate-500">
             <span>1. Tổng dư nợ cần thu</span>
-            <span className="p-2 rounded-xl bg-emerald-100 text-emerald-700">
+            <span className="p-2 rounded-xl bg-teal-100 text-brand-ink">
               <Wallet className="w-4 h-4" />
             </span>
           </div>
@@ -299,13 +299,13 @@ export default function DebtManagementModule({ onOpenInvoice }: DebtManagementMo
         </div>
 
         <div className="rounded-2xl bg-white border border-slate-200 p-4 shadow-sm">
-          <div className="flex items-center justify-between text-xs font-extrabold uppercase text-blue-800">
+          <div className="flex items-center justify-between text-xs font-extrabold uppercase text-brand-ink">
             <span>3. Tổng công nợ đã phát sinh</span>
-            <span className="p-2 rounded-xl bg-blue-100 text-blue-700">
+            <span className="p-2 rounded-xl bg-teal-100 text-brand-ink">
               <Clock className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl font-black font-mono text-blue-900 mt-2">
+          <div className="text-2xl font-black font-mono text-teal-900 mt-2">
             {formatVND(dm?.summary?.totalInitialDebt || s?.initialDebtInPeriod || 0)}
           </div>
           <div className="text-[11px] text-slate-600 mt-2 pt-2 border-t border-slate-100">
@@ -314,13 +314,13 @@ export default function DebtManagementModule({ onOpenInvoice }: DebtManagementMo
         </div>
 
         <div className="rounded-2xl bg-white border border-slate-200 p-4 shadow-sm">
-          <div className="flex items-center justify-between text-xs font-extrabold uppercase text-emerald-800">
+          <div className="flex items-center justify-between text-xs font-extrabold uppercase text-brand-ink">
             <span>4. Đã thu nợ & Giảm nợ trả hàng</span>
-            <span className="p-2 rounded-xl bg-emerald-100 text-emerald-700">
+            <span className="p-2 rounded-xl bg-teal-100 text-brand-ink">
               <CheckCircle2 className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl font-black font-mono text-emerald-700 mt-2">
+          <div className="text-2xl font-black font-mono text-brand-ink mt-2">
             {formatVND(dm?.summary?.totalCollectedDebt || 0)}
           </div>
           <div className="text-[11px] text-slate-600 mt-2 pt-2 border-t border-slate-100 space-y-0.5">
@@ -359,7 +359,7 @@ export default function DebtManagementModule({ onOpenInvoice }: DebtManagementMo
                   debtFilter === f.id
                     ? f.id === "OVERDUE"
                       ? "bg-red-600 text-white shadow-sm"
-                      : "bg-slate-900 text-white shadow-sm"
+                      : "bg-teal-600 text-white shadow-sm"
                     : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                 }`}
               >
@@ -383,7 +383,7 @@ export default function DebtManagementModule({ onOpenInvoice }: DebtManagementMo
         {debtTab === "ORDERS" ? (
           <div className="overflow-x-auto border border-slate-200 rounded-xl">
             <table className="w-full text-xs">
-              <thead className="bg-slate-900 text-white font-bold uppercase text-[11px]">
+              <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 font-bold uppercase text-[11px]">
                 <tr>
                   <th className="text-left px-3 py-3">Mã đơn / Ngày mua</th>
                   <th className="text-left px-3 py-3">Khách hàng</th>
@@ -423,7 +423,7 @@ export default function DebtManagementModule({ onOpenInvoice }: DebtManagementMo
                       </td>
                       <td className="px-3 py-3">
                         <div className="font-bold text-slate-900">{o.customerName}</div>
-                        <div className="font-mono text-[11px] text-blue-700 font-semibold">
+                        <div className="font-mono text-[11px] text-brand-ink font-semibold">
                           {formatPhone(o.customerPhone)}
                         </div>
                         {o.note && (
@@ -438,7 +438,7 @@ export default function DebtManagementModule({ onOpenInvoice }: DebtManagementMo
                           Nợ gốc: {formatVND(o.initialDebtAmount)}
                         </div>
                       </td>
-                      <td className="px-3 py-3 text-right font-mono font-bold text-emerald-700">
+                      <td className="px-3 py-3 text-right font-mono font-bold text-brand-ink">
                         {formatVND(o.paidAmount)}
                         {(o.reducedByReturnAmount || 0) > 0 && (
                           <div className="text-[10px] text-purple-700 font-semibold">
@@ -469,9 +469,9 @@ export default function DebtManagementModule({ onOpenInvoice }: DebtManagementMo
                         <span
                           className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
                             o.debtAmount <= 0 || o.debtStatus === "SETTLED"
-                              ? "bg-emerald-100 text-emerald-800"
+                              ? "bg-teal-100 text-brand-ink"
                               : o.debtStatus === "PARTIAL"
-                              ? "bg-blue-100 text-blue-800"
+                              ? "bg-teal-100 text-brand-ink"
                               : "bg-amber-100 text-amber-800"
                           }`}
                         >
@@ -486,7 +486,7 @@ export default function DebtManagementModule({ onOpenInvoice }: DebtManagementMo
                           <div className="mt-1.5 space-y-0.5 text-[10px] text-slate-600 text-left bg-slate-50 rounded p-1.5 border border-slate-200 max-w-[240px] mx-auto">
                             {o.debtPayments?.map((dp, i) => (
                               <div key={`dp-${i}`} className="flex justify-between gap-1">
-                                <span className="font-mono font-bold text-emerald-700">
+                                <span className="font-mono font-bold text-brand-ink">
                                   +{formatVND(dp.amount)} ({dp.method})
                                 </span>
                                 <span className="text-slate-400">
@@ -519,12 +519,12 @@ export default function DebtManagementModule({ onOpenInvoice }: DebtManagementMo
                             <button
                               type="button"
                               onClick={() => openDebtPayModal(o)}
-                              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs shadow-sm transition"
+                              className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-extrabold text-xs shadow-sm transition"
                             >
                               Thu nợ / Tất toán
                             </button>
                           ) : (
-                            <span className="text-[11px] font-bold text-emerald-600 flex items-center gap-1 mr-1">
+                            <span className="text-[11px] font-bold text-brand-ink flex items-center gap-1 mr-1">
                               <CheckCircle2 className="w-3.5 h-3.5" /> Hoàn tất
                             </span>
                           )}
@@ -551,7 +551,7 @@ export default function DebtManagementModule({ onOpenInvoice }: DebtManagementMo
           /* TAB 2: GOM NHÓM THEO KHÁCH HÀNG (SĐT) */
           <div className="overflow-x-auto border border-slate-200 rounded-xl">
             <table className="w-full text-xs">
-              <thead className="bg-slate-900 text-white font-bold uppercase text-[11px]">
+              <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 font-bold uppercase text-[11px]">
                 <tr>
                   <th className="text-left px-3 py-3">Khách hàng / SĐT</th>
                   <th className="text-center px-3 py-3">Số đơn nợ</th>
@@ -582,7 +582,7 @@ export default function DebtManagementModule({ onOpenInvoice }: DebtManagementMo
                         >
                           <td className="px-3 py-3">
                             <div className="font-extrabold text-slate-900">{c.customerName}</div>
-                            <div className="font-mono text-xs text-blue-700 font-bold">
+                            <div className="font-mono text-xs text-brand-ink font-bold">
                               {formatPhone(c.phone)}
                             </div>
                           </td>
@@ -597,7 +597,7 @@ export default function DebtManagementModule({ onOpenInvoice }: DebtManagementMo
                           <td className="px-3 py-3 text-right font-mono font-bold text-slate-800">
                             {formatVND(c.totalOrderAmount)}
                           </td>
-                          <td className="px-3 py-3 text-right font-mono font-bold text-emerald-700">
+                          <td className="px-3 py-3 text-right font-mono font-bold text-brand-ink">
                             {formatVND(c.totalPaidAmount)}
                           </td>
                           <td className="px-3 py-3 text-right font-mono font-black text-amber-700 text-sm">
@@ -625,7 +625,7 @@ export default function DebtManagementModule({ onOpenInvoice }: DebtManagementMo
                               onClick={() =>
                                 setExpandedCustomerPhone(isExpanded ? null : c.phone)
                               }
-                              className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition"
+                              className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs transition"
                             >
                               {isExpanded ? "Ẩn đơn" : `Xem ${custOrders.length} đơn & Thu nợ`}
                             </button>
@@ -666,7 +666,7 @@ export default function DebtManagementModule({ onOpenInvoice }: DebtManagementMo
                                             {formatVND(co.totalAmount)}
                                           </strong>
                                         </span>
-                                        <span className="text-emerald-700">
+                                        <span className="text-brand-ink">
                                           Đã trả:{" "}
                                           <strong className="font-mono">
                                             {formatVND(co.paidAmount)}
@@ -740,7 +740,7 @@ export default function DebtManagementModule({ onOpenInvoice }: DebtManagementMo
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-600">Đã thanh toán trước đó:</span>
-                <span className="font-mono font-bold text-emerald-700">
+                <span className="font-mono font-bold text-brand-ink">
                   {formatVND(debtPayModalOrder.paidAmount)}
                 </span>
               </div>
@@ -813,7 +813,7 @@ export default function DebtManagementModule({ onOpenInvoice }: DebtManagementMo
                       onClick={() => setDebtPayMethod(m.id)}
                       className={`py-2 rounded-xl text-xs font-bold border transition ${
                         debtPayMethod === m.id
-                          ? "bg-slate-900 text-white border-slate-900"
+                          ? "bg-teal-600 text-white border-slate-900"
                           : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
                       }`}
                     >
@@ -856,7 +856,7 @@ export default function DebtManagementModule({ onOpenInvoice }: DebtManagementMo
                 type="button"
                 onClick={handleConfirmDebtPayment}
                 disabled={debtPaySaving}
-                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold shadow-sm disabled:opacity-50"
+                className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-extrabold shadow-sm disabled:opacity-50"
               >
                 {debtPaySaving ? "Đang lưu..." : "Xác nhận Thu Nợ"}
               </button>

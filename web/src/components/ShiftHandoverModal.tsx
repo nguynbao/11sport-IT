@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   StaffUser,
   DailyHandoverCheckData,
@@ -23,6 +23,10 @@ import {
   Clock,
   FileText,
   AlertTriangle,
+  Search,
+  Filter,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
 interface Props {
@@ -74,6 +78,10 @@ export default function ShiftHandoverModal({
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [savedNotice, setSavedNotice] = useState("");
+  const [selectedUnitFilter, setSelectedUnitFilter] = useState<string>("ALL");
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>("ALL");
+  const [productSearch, setProductSearch] = useState<string>("");
+  const [showProductFilterSection, setShowProductFilterSection] = useState<boolean>(true);
 
   // Tính toán giờ kết thúc ca & trạng thái được phép xác nhận Check-out
   const now = new Date();
@@ -264,13 +272,85 @@ export default function ShiftHandoverModal({
     return (actualTotals[key] ?? 0) !== s.expectedTotalQty;
   }).length;
 
+  const allCheckProducts = useMemo(
+    () => (Array.isArray(dailyCheck?.products) ? dailyCheck.products : []),
+    [dailyCheck]
+  );
+
+  // Thống kê tổng số mã & tổng tồn Tầng 1 theo từng ĐVT (đơn vị tính)
+  const unitStats = useMemo(() => {
+    const map = new Map<string, { unit: string; productCount: number; totalQty: number }>();
+    for (const p of allCheckProducts) {
+      if (
+        selectedCategoryFilter !== "ALL" &&
+        String(p.categoryName || "").trim() !== selectedCategoryFilter
+      ) {
+        continue;
+      }
+      const u = String(p.unit || "Cái").trim() || "Cái";
+      const cur = map.get(u) || { unit: u, productCount: 0, totalQty: 0 };
+      cur.productCount += 1;
+      cur.totalQty += Number(p.stockQtyFloor1) || 0;
+      map.set(u, cur);
+    }
+    return Array.from(map.values()).sort((a, b) => b.totalQty - a.totalQty);
+  }, [allCheckProducts, selectedCategoryFilter]);
+
+  // Phân rã ĐVT cho từng nhóm danh mục (hữu ích khi 1 nhóm có nhiều ĐVT khác nhau)
+  const unitBreakdownByCategory = useMemo(() => {
+    const res = new Map<string, Array<{ unit: string; totalQty: number }>>();
+    for (const p of allCheckProducts) {
+      const cat = String(p.categoryName || "").trim();
+      const u = String(p.unit || "Cái").trim() || "Cái";
+      if (!cat) continue;
+      const list = res.get(cat) || [];
+      const found = list.find((x) => x.unit === u);
+      const qty = Number(p.stockQtyFloor1) || 0;
+      if (found) {
+        found.totalQty += qty;
+      } else {
+        list.push({ unit: u, totalQty: qty });
+      }
+      res.set(cat, list);
+    }
+    return res;
+  }, [allCheckProducts]);
+
+  const filteredCheckProducts = useMemo(() => {
+    const q = productSearch.trim().toLowerCase();
+    return allCheckProducts.filter((p) => {
+      if (
+        selectedCategoryFilter !== "ALL" &&
+        String(p.categoryName || "").trim() !== selectedCategoryFilter
+      ) {
+        return false;
+      }
+      if (selectedUnitFilter !== "ALL") {
+        const u = String(p.unit || "Cái").trim() || "Cái";
+        if (u !== selectedUnitFilter) return false;
+      }
+      if (q) {
+        const matchName = String(p.name || "").toLowerCase().includes(q);
+        const matchCode = String(p.code || "").toLowerCase().includes(q);
+        if (!matchName && !matchCode) return false;
+      }
+      return true;
+    });
+  }, [allCheckProducts, selectedCategoryFilter, selectedUnitFilter, productSearch]);
+
+  const filteredTotalQty = useMemo(
+    () =>
+      filteredCheckProducts.reduce((sum, p) => sum + (Number(p.stockQtyFloor1) || 0), 0),
+    [filteredCheckProducts]
+  );
+
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 text-slate-900">
-      <div className="bg-white text-slate-900 rounded-3xl max-w-xl w-full max-h-[92vh] shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-fade-in">
+      <div className="bg-white text-slate-900 rounded-3xl max-w-2xl w-full max-h-[92vh] shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-fade-in">
         {/* Header */}
-        <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
+        <div className="bg-blue-600 text-white px-6 py-4 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-emerald-500/20 text-emerald-400 rounded-xl">
+            <div className="p-2 bg-blue-500/20 text-blue-400 rounded-xl">
               <Boxes className="w-5 h-5" />
             </div>
             <div>
@@ -281,7 +361,7 @@ export default function ShiftHandoverModal({
                 <span
                   className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
                     isReachedCheckoutTime
-                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                      ? "bg-blue-500/20 text-blue-300 border border-blue-500/40"
                       : "bg-amber-500/20 text-amber-300 border border-amber-500/40"
                   }`}
                 >
@@ -298,7 +378,7 @@ export default function ShiftHandoverModal({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+            className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-blue-700 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -314,24 +394,24 @@ export default function ShiftHandoverModal({
           )}
 
           {savedNotice && (
-            <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-xl flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <div className="p-3.5 bg-blue-50 border border-blue-200 text-brand-ink text-xs font-bold rounded-xl flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-brand-ink shrink-0" />
               <span>{savedNotice}</span>
             </div>
           )}
 
           {/* Mục 1: Tổng số lượng mặt hàng kiểm trong ngày (Tất cả bao gồm size, màu - không cần ghi chi tiết từng mã) */}
           <div className="space-y-3">
-            <div className="p-3.5 bg-emerald-50/80 border border-emerald-200 rounded-2xl flex items-center justify-between gap-2">
+            <div className="p-3.5 bg-blue-50/80 border border-blue-200 rounded-2xl flex items-center justify-between gap-2">
               <div>
-                <div className="text-xs font-extrabold text-emerald-950">
+                <div className="text-xs font-extrabold text-blue-950">
                   1. Tổng Số Lượng Mặt Hàng Kiểm Hôm Nay ({dailyCheck?.date || "Hôm nay"})
                 </div>
-                <p className="text-[11px] text-emerald-800 mt-0.5">
+                <p className="text-[11px] text-brand-ink mt-0.5">
                   Chỉ cần nhập <b>tổng số lượng</b> của từng nhóm (đã gộp tất cả mã, size, màu tại Tầng 1):
                 </p>
               </div>
-              <span className="px-3 py-1 rounded-xl bg-emerald-600 text-white text-xs font-extrabold shrink-0">
+              <span className="px-3 py-1 rounded-xl bg-blue-600 text-white text-xs font-extrabold shrink-0">
                 {checkedCategories.join(" + ") || "Vợt"}
               </span>
             </div>
@@ -364,8 +444,8 @@ export default function ShiftHandoverModal({
                             <span
                               className={`px-2.5 py-0.5 rounded-lg text-xs font-extrabold ${
                                 item.isPrimaryCategory
-                                  ? "bg-emerald-600 text-white"
-                                  : "bg-sky-600 text-white"
+                                  ? "bg-blue-600 text-white"
+                                  : "bg-blue-600 text-white"
                               }`}
                             >
                               {item.categoryName}
@@ -375,7 +455,7 @@ export default function ShiftHandoverModal({
                             </span>
                           </div>
 
-                          <div className="mt-1.5 flex items-center gap-3 text-xs">
+                          <div className="mt-1.5 flex items-center gap-3 text-xs flex-wrap">
                             <span className="text-slate-600">
                               Tồn Tầng 1 để đối chiếu:{" "}
                               <b className="font-mono text-sm text-slate-900">
@@ -390,11 +470,33 @@ export default function ShiftHandoverModal({
                                   : `Thiếu ${diff} ${item.unit || "Cái"}`}
                               </span>
                             ) : (
-                              <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold text-[11px]">
+                              <span className="px-2 py-0.5 rounded-md bg-blue-100 text-brand-ink font-bold text-[11px]">
                                 Khớp tồn Tầng 1
                               </span>
                             )}
                           </div>
+
+                          {/* Phân rã nhanh theo từng ĐVT nếu nhóm có nhiều ĐVT */}
+                          {(unitBreakdownByCategory.get(item.categoryName)?.length || 0) > 1 && (
+                            <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+                              <span className="text-slate-500 font-semibold">Theo ĐVT:</span>
+                              {unitBreakdownByCategory.get(item.categoryName)?.map((ub) => (
+                                <button
+                                  key={ub.unit}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedCategoryFilter(item.categoryName);
+                                    setSelectedUnitFilter(ub.unit);
+                                    setShowProductFilterSection(true);
+                                  }}
+                                  className="px-2 py-0.5 rounded-md bg-white border border-slate-200 hover:border-blue-400 text-slate-700 font-mono font-bold transition cursor-pointer"
+                                  title={`Lọc danh sách theo ĐVT ${ub.unit}`}
+                                >
+                                  {ub.totalQty} {ub.unit}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
 
                         {/* Ô nhập tổng số lượng thực đếm */}
@@ -416,7 +518,7 @@ export default function ShiftHandoverModal({
                               value={actual}
                               onChange={(e) => handleDirectTotalChange(key, e.target.value)}
                               className={`w-16 text-center font-mono text-sm font-black bg-transparent outline-none ${
-                                isDiff ? "text-amber-700" : "text-emerald-700"
+                                isDiff ? "text-amber-700" : "text-brand-ink"
                               }`}
                             />
                             <button
@@ -432,6 +534,164 @@ export default function ShiftHandoverModal({
                     </div>
                   );
                 })}
+              </div>
+            )}
+
+            {/* Lọc sản phẩm kiểm Tầng 1 theo ĐVT (Đơn vị tính) */}
+            {!loading && allCheckProducts.length > 0 && (
+              <div className="border border-slate-200 rounded-2xl bg-white overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setShowProductFilterSection((v) => !v)}
+                  className="w-full px-4 py-2.5 bg-slate-50 hover:bg-slate-100/80 flex items-center justify-between gap-2 text-xs font-extrabold text-slate-800 transition cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <Filter className="w-3.5 h-3.5 text-brand-ink" />
+                    <span>Lọc Sản Phẩm Kiểm Tầng 1 Theo ĐVT ({allCheckProducts.length} mã)</span>
+                  </span>
+                  <span className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500">
+                    {selectedUnitFilter !== "ALL" && (
+                      <span className="px-2 py-0.5 rounded-md bg-blue-100 text-brand-ink">
+                        ĐVT: {selectedUnitFilter}
+                      </span>
+                    )}
+                    {showProductFilterSection ? (
+                      <ChevronUp className="w-4 h-4" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4" />
+                    )}
+                  </span>
+                </button>
+
+                {showProductFilterSection && (
+                  <div className="p-3.5 space-y-3 border-t border-slate-200">
+                    {/* Nút lọc nhanh theo ĐVT */}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedUnitFilter("ALL")}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                          selectedUnitFilter === "ALL"
+                            ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
+                            : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                        }`}
+                      >
+                        Tất cả ĐVT ({allCheckProducts.filter((p) => selectedCategoryFilter === "ALL" || String(p.categoryName || "").trim() === selectedCategoryFilter).length} mã)
+                      </button>
+                      {unitStats.map((u) => {
+                        const active = selectedUnitFilter === u.unit;
+                        return (
+                          <button
+                            key={u.unit}
+                            type="button"
+                            onClick={() => setSelectedUnitFilter(u.unit)}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                              active
+                                ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
+                                : "bg-white text-slate-700 border-slate-200 hover:border-blue-400"
+                            }`}
+                          >
+                            {u.unit} · <span className="font-mono">{u.totalQty}</span> ({u.productCount} mã)
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Tìm kiếm nhanh + lọc nhóm */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="relative flex-1 min-w-[180px]">
+                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                        <input
+                          type="text"
+                          value={productSearch}
+                          onChange={(e) => setProductSearch(e.target.value)}
+                          placeholder="Tìm theo mã hoặc tên sản phẩm..."
+                          className="w-full pl-8 pr-7 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
+                        />
+                        {productSearch && (
+                          <button
+                            type="button"
+                            onClick={() => setProductSearch("")}
+                            className="absolute right-2 top-2 text-slate-400 hover:text-slate-600"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      {checkedCategories.length > 1 && (
+                        <select
+                          value={selectedCategoryFilter}
+                          onChange={(e) => {
+                            setSelectedCategoryFilter(e.target.value);
+                            setSelectedUnitFilter("ALL");
+                          }}
+                          className="px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg bg-white text-slate-700 focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="ALL">Tất cả nhóm</option>
+                          {checkedCategories.map((cat) => (
+                            <option key={cat} value={cat}>
+                              {cat}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+
+                      <div className="text-[11px] font-bold text-slate-600 ml-auto">
+                        Tổng lọc:{" "}
+                        <span className="font-mono text-brand-ink">
+                          {filteredTotalQty}{" "}
+                          {selectedUnitFilter !== "ALL" ? selectedUnitFilter : "SP"}
+                        </span>{" "}
+                        ({filteredCheckProducts.length} mã)
+                      </div>
+                    </div>
+
+                    {/* Danh sách chi tiết sản phẩm */}
+                    <div className="border border-slate-200 rounded-xl overflow-hidden max-h-56 overflow-y-auto">
+                      {filteredCheckProducts.length === 0 ? (
+                        <div className="py-5 text-center text-xs text-slate-400">
+                          Không có sản phẩm nào khớp bộ lọc ĐVT / từ khóa hiện tại.
+                        </div>
+                      ) : (
+                        <table className="w-full text-[11px] text-left">
+                          <thead className="bg-slate-100 text-slate-600 uppercase text-[10px] sticky top-0">
+                            <tr>
+                              <th className="py-2 px-2.5">Mã SP</th>
+                              <th className="py-2 px-2.5">Tên sản phẩm</th>
+                              <th className="py-2 px-2.5">Nhóm</th>
+                              <th className="py-2 px-2.5 text-center">ĐVT</th>
+                              <th className="py-2 px-2.5 text-right">Tồn T1</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {filteredCheckProducts.map((p) => (
+                              <tr key={p._id} className="hover:bg-slate-50/80">
+                                <td className="py-1.5 px-2.5 font-mono font-bold text-slate-700 whitespace-nowrap">
+                                  {p.code}
+                                </td>
+                                <td className="py-1.5 px-2.5 font-semibold text-slate-900">
+                                  {p.name}
+                                </td>
+                                <td className="py-1.5 px-2.5 text-slate-600 whitespace-nowrap">
+                                  {p.categoryName}
+                                </td>
+                                <td className="py-1.5 px-2.5 text-center whitespace-nowrap">
+                                  <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-bold">
+                                    {p.unit || "Cái"}
+                                  </span>
+                                </td>
+                                <td className="py-1.5 px-2.5 text-right font-mono font-extrabold text-brand-ink whitespace-nowrap">
+                                  {p.stockQtyFloor1}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -471,7 +731,7 @@ export default function ShiftHandoverModal({
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder="Ghi lý do nếu lệch số lượng hoặc ghi chú dặn ca sau (không bắt buộc)..."
-              className="w-full px-3.5 py-2 bg-white text-slate-900 placeholder:text-slate-400 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+              className="w-full px-3.5 py-2 bg-white text-slate-900 placeholder:text-slate-400 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 outline-none"
             />
           </div>
 
@@ -499,7 +759,7 @@ export default function ShiftHandoverModal({
 
           {/* Thông báo quy tắc tính giờ */}
           <div className="p-3 rounded-xl bg-slate-100 text-[11px] text-slate-600 flex items-start gap-2">
-            <Clock className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+            <Clock className="w-4 h-4 text-brand-ink shrink-0 mt-0.5" />
             <div>
               {isReachedCheckoutTime ? (
                 <>
@@ -541,7 +801,7 @@ export default function ShiftHandoverModal({
                 <button
                   type="submit"
                   disabled={submitting || loading}
-                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold rounded-xl shadow-lg transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold rounded-xl shadow-lg transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
                 >
                   <Send className="w-3.5 h-3.5" />
                   <span>

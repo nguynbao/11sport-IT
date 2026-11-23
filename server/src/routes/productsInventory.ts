@@ -7,7 +7,20 @@ import {
   extractVariantFromText,
   buildVariantKey,
   isStandardSixDigitProductCode,
+  isNewSchemeProduct,
+  isCompactBarcodeMatchVariant,
+  normalizeToCompactUpperCode,
+  resolveVariantPricing,
 } from '../utils/productCode';
+import {
+  resolveCategoryAndBrand,
+  resolveVersionCode,
+  buildSchemeRootCode,
+  prepareSchemeVariants,
+  findCodeConflicts,
+  findDuplicateProduct,
+  syncProductReferencesAfterRecode,
+} from '../utils/productScheme';
 import { ApiError } from '../utils/errors';
 import {
   normalizeFloor,
@@ -111,6 +124,141 @@ productsInventoryRouter.post('/products/generate-code', async (req, res, next) =
   }
 });
 
+/** Ẩn giá vốn (gốc + biến thể) với role SALES, bổ sung giá hiệu lực của biến thể */
+function presentVariants(product: any, variants: any[], hideCost: boolean) {
+  const baseSelling = Math.max(0, Math.round(Number(product?.sellingPrice) || 0));
+  return variants.map((v: any) => {
+    const { costPrice, ...rest } = v || {};
+    const vSelling = Math.round(Number(v?.sellingPrice) || 0);
+    return {
+      ...rest,
+      ...(hideCost ? {} : costPrice !== undefined ? { costPrice } : {}),
+      effectiveSellingPrice: vSelling > 0 ? vSelling : baseSelling,
+    };
+  });
+}
+
+// POST /api/v1/products/preview-code (v5.0) — xem trước mã theo Category + Brand + Version (không ghi DB)
+productsInventoryRouter.post('/products/preview-code', async (req, res, next) => {
+  try {
+    const { categoryId, brandId, versionName, versionCode, variants, excludeProductId } = req.body || {};
+    const { category, brand, categoryCode } = await resolveCategoryAndBrand(categoryId, brandId);
+    const version = resolveVersionCode(versionName, versionCode);
+    const code = buildSchemeRootCode(categoryCode, brand.code, version.versionCode);
+    const preparedVariants = prepareSchemeVariants(code, Array.isArray(variants) ? variants : []);
+    const duplicate = await findDuplicateProduct(
+      String(category._id),
+      String(brand._id),
+      version.versionCode,
+      excludeProductId ? String(excludeProductId) : undefined
+    );
+    const conflicts = await findCodeConflicts(
+      [code, ...preparedVariants.map((v) => v.variantCode)],
+      duplicate ? String(duplicate._id) : excludeProductId ? String(excludeProductId) : undefined
+    );
+    res.json({
+      data: {
+        categoryCode,
+        brandCode: brand.code,
+        brandName: brand.name,
+        versionName: version.versionName,
+        versionCode: version.versionCode,
+        suggestedVersionCode: version.suggested,
+        code,
+        variants: preparedVariants.map((v) => ({
+          color: v.color,
+          colorCode: v.colorCode,
+          size: v.size,
+          sizeCode: v.sizeCode,
+          variantCode: v.variantCode,
+        })),
+        duplicate: duplicate
+          ? { _id: duplicate._id, code: duplicate.code, name: duplicate.name, versionName: (duplicate as any).versionName || '' }
+          : null,
+        conflicts,
+      },
+      meta: {},
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/v1/products/lookup?code= (v5.0) — tra cứu theo mã quét (mã mới, mã con, mã cũ)
+productsInventoryRouter.get('/products/lookup', async (req, res, next) => {
+  try {
+    const raw = String(req.query.code || '').trim();
+    const code = normalizeToCompactUpperCode(raw);
+    if (!code) {
+      throw new ApiError(400, 'VALIDATION_ERROR', 'Thiếu mã cần tra cứu', { code: 'Bắt buộc' });
+    }
+    const all = await productRepo.find({});
+    const norm = (v: any) => normalizeToCompactUpperCode(String(v || ''));
+    type Hit = { product: any; variant: any | null; matchedBy: string };
+    let hit: Hit | null = null;
+    const passes: ((p: any, floors: any) => Hit | null)[] = [
+      (p) => (norm(p.code) === code || norm(p.barcode) === code ? { product: p, variant: null, matchedBy: 'CODE' } : null),
+      (p, f) => {
+        const v = f.variants.find((x: any) => norm(x.variantCode) === code || norm(x.barcode) === code);
+        return v ? { product: p, variant: v, matchedBy: 'VARIANT_CODE' } : null;
+      },
+      (p) =>
+        norm(p.legacyCode) === code || (p.legacyCodes || []).some((c: any) => norm(c) === code)
+          ? { product: p, variant: null, matchedBy: 'LEGACY_CODE' }
+          : null,
+      (p, f) => {
+        const v = f.variants.find(
+          (x: any) =>
+            norm(x.legacyVariantCode) === code || (x.legacyVariantCodes || []).some((c: any) => norm(c) === code)
+        );
+        return v ? { product: p, variant: v, matchedBy: 'LEGACY_VARIANT_CODE' } : null;
+      },
+      (p, f) => {
+        const v = f.variants.find(
+          (x: any) =>
+            isCompactBarcodeMatchVariant(code, x.variantCode) ||
+            (x.legacyVariantCode && isCompactBarcodeMatchVariant(code, x.legacyVariantCode))
+        );
+        return v ? { product: p, variant: v, matchedBy: 'COMPACT_BARCODE' } : null;
+      },
+    ];
+    const withFloors = all.map((p) => ({ p, f: getFloorStocks(p) }));
+    for (const pass of passes) {
+      for (const { p, f } of withFloors) {
+        hit = pass(p, f);
+        if (hit) break;
+      }
+      if (hit) break;
+    }
+    if (!hit) {
+      throw new ApiError(404, 'PRODUCT_NOT_FOUND', `Không tìm thấy sản phẩm với mã "${raw}"`);
+    }
+    const hideCost = req.user?.role === 'SALES';
+    const floors = getFloorStocks(hit.product);
+    const { costPrice, ...rest } = hit.product;
+    const pricing = resolveVariantPricing(hit.product, hit.variant?.color, hit.variant?.size);
+    const [variantOut] = hit.variant ? presentVariants(hit.product, [hit.variant], hideCost) : [null];
+    res.json({
+      data: {
+        product: {
+          ...rest,
+          ...(hideCost ? {} : { costPrice: Number(costPrice) || 0 }),
+          variants: presentVariants(hit.product, floors.variants, hideCost),
+          stockFloor1: floors.stockFloor1,
+          stockFloor2: floors.stockFloor2,
+          stock: floors.stock,
+        },
+        variant: variantOut,
+        matchedBy: hit.matchedBy,
+        sellingPrice: pricing.sellingPrice,
+      },
+      meta: {},
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/v1/products
 productsInventoryRouter.get('/products', async (req, res, next) => {
   try {
@@ -140,7 +288,9 @@ productsInventoryRouter.get('/products', async (req, res, next) => {
             (v.color && String(v.color).trim()) || (v.size && String(v.size).trim())
           );
           const vCode = hasAttr
-            ? generateVariantProductCode(p.code, v.color, v.size)
+            ? isNewSchemeProduct(p)
+              ? v.variantCode || p.code
+              : generateVariantProductCode(p.code, v.color, v.size)
             : v.variantCode || p.code;
           return {
             ...v,
@@ -154,9 +304,10 @@ productsInventoryRouter.get('/products', async (req, res, next) => {
         return {
           ...rest,
           barcode: p.barcode || p.code,
-          brand: p.brand || '',
+          brand: p.brandName || p.brand || '',
           modelName: p.modelName || '',
-          variants: visibleVariants,
+          note: (p as any).note || '',
+          variants: presentVariants(p, visibleVariants, hideCost),
           categoryId: cat?._id ? String(cat._id) : p.categoryId,
           stockFloor1: floors.stockFloor1,
           stockFloor2: isSalesRole ? 0 : floors.stockFloor2,
@@ -184,13 +335,19 @@ productsInventoryRouter.get('/products', async (req, res, next) => {
           { text: (p as any).barcode, weight: 1.5 },
           { text: p.name, weight: 1.3 },
           { text: p.brand, weight: 1.1 },
+          { text: (p as any).versionName, weight: 1.2 },
+          { text: (p as any).legacyCode, weight: 1.4 },
+          ...(((p as any).legacyCodes || []) as string[]).map((c) => ({ text: c, weight: 1.4 })),
           { text: p.categoryName, weight: 0.9 },
           { text: p.categoryCode, weight: 0.9 },
           { text: p.unit, weight: 0.6 },
+          { text: (p as any).note, weight: 0.8 },
           ...(Array.isArray(p.variants)
             ? p.variants.flatMap((v: any) => [
                 { text: v.variantCode, weight: 1.6 },
                 { text: v.barcode, weight: 1.5 },
+                { text: v.legacyVariantCode, weight: 1.4 },
+                ...(((v as any).legacyVariantCodes || []) as string[]).map((c) => ({ text: c, weight: 1.4 })),
                 { text: v.color, weight: 0.8 },
                 { text: v.size, weight: 0.8 },
               ])
@@ -234,8 +391,20 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
       upsertIfExists,
       parentSetProductId,
       packSize,
+      brandId,
+      note,
     } = req.body || {};
     const targetFloor = normalizeFloor(targetWarehouse);
+
+    // v5.0 — Luồng mới: chọn Category -> Brand -> nhập Version, sinh mã theo R1, KHÔNG tự khớp mã cũ (R9)
+    if (brandId) {
+      const result = await createNewSchemeProduct(req);
+      if (result && (result as any).__upserted) {
+        return res.status(200).json({ data: (result as any).data, meta: (result as any).meta });
+      }
+      return res.status(201).json({ data: result, meta: {} });
+    }
+
     if (!name || !String(name).trim()) {
       throw new ApiError(400, 'VALIDATION_ERROR', 'Tên sản phẩm là bắt buộc', {
         name: 'Bắt buộc',
@@ -276,7 +445,11 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
     const cleanExplicitCode = explicitCode
       ? generateProductCode(String(explicitCode), { keepVariantInCode: true })
       : '';
+    const existingByExplicitCode = cleanExplicitCode
+      ? await productRepo.findOne({ code: cleanExplicitCode })
+      : null;
     let code =
+      (existingByExplicitCode ? existingByExplicitCode.code : '') ||
       (cleanExplicitCode && isStandardSixDigitProductCode(cleanExplicitCode)
         ? cleanExplicitCode
         : '') ||
@@ -315,6 +488,7 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
         ? rawInputVariants.map((rv: any) => {
             const vColor = String(rv.color || '').trim();
             const vSize = String(rv.size || '').trim().toUpperCase();
+            const vColorCode = rv.colorCode ? String(rv.colorCode).trim().toUpperCase() : undefined;
             const vQty = Math.max(0, Math.round(Number(rv.quantity ?? rv.stock ?? 0)));
             const vF1 =
               rv.stockFloor1 !== undefined
@@ -331,6 +505,7 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
             const childCode = generateVariantProductCode(code, vColor, vSize);
             return {
               color: vColor,
+              ...(vColorCode ? { colorCode: vColorCode } : {}),
               colorHexes: sanitizeColorHexes(rv.colorHexes),
               size: vSize,
               variantCode: childCode,
@@ -360,9 +535,10 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
       );
     }
 
-    let existing = await productRepo.findOne({ code });
+    let existing = existingByExplicitCode || (await productRepo.findOne({ code }));
     if (
       existing &&
+      !isNewSchemeProduct(existing) &&
       String(existing.unit || 'Cái').trim().toLowerCase() !== normalizedUnit.toLowerCase()
     ) {
       code = generateProductCode(cleanProductName, {
@@ -375,16 +551,17 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
       existing = await productRepo.findOne({ code });
     }
 
-    const hasVariantPayload = Boolean(finalColor || finalSize || inputVariantsList);
 
     if (existing) {
-      if ((upsertIfExists || hasVariantPayload) && isPriceManager(req.user?.role)) {
+      // R9: chỉ cộng dồn vào sản phẩm đã có khi client chủ động gửi upsertIfExists = true
+      if (upsertIfExists === true && isPriceManager(req.user?.role)) {
         let workingProd: any = { ...existing };
         const beforeStock = getFloorStocks(existing).stock;
+        const targetNewScheme = isNewSchemeProduct(existing);
 
         if (inputVariantsList) {
           const mergedVariants = [...getFloorStocks(existing).variants, ...inputVariantsList];
-          const sum = summarizeVariants(mergedVariants, existing.code);
+          const sum = summarizeVariants(mergedVariants, existing.code, { newScheme: targetNewScheme });
           workingProd = {
             ...workingProd,
             variants: sum.variants,
@@ -399,7 +576,8 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
             qty,
             finalColor,
             finalSize,
-            sanitizeColorHexes(rawColorHexes)
+            sanitizeColorHexes(rawColorHexes),
+            req.body?.colorCode
           );
           workingProd = {
             ...workingProd,
@@ -421,6 +599,7 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
         if (price > 0) patchFields.sellingPrice = price;
         if (brand) patchFields.brand = String(brand).trim();
         if (modelName) patchFields.modelName = String(modelName).trim();
+        if (note !== undefined && String(note).trim()) patchFields.note = String(note).trim();
 
         const updated = await productRepo.updateById(existing._id, patchFields);
         const addedQty = workingProd.stock - beforeStock;
@@ -458,10 +637,10 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
       }
 
       throw new ApiError(
-        400,
-        'DUPLICATE_PRODUCT_CODE',
-        `Mã sản phẩm "${code}" đã tồn tại trên hệ thống`,
-        { code: 'Đã tồn tại' }
+        409,
+        'PRODUCT_DUPLICATE',
+        `Sản phẩm "${existing.name}" (mã ${code}) đã tồn tại. Chọn "thêm biến thể vào sản phẩm này" hoặc đổi thông tin sản phẩm.`,
+        { code: 'Đã tồn tại', existingProductId: String(existing._id), existingProductCode: existing.code }
       );
     }
 
@@ -517,6 +696,7 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
       stock: initialSummary.stock,
       parentSetProductId: cleanParentSetId,
       packSize: cleanPackSize,
+      note: note !== undefined ? String(note).trim() : '',
       status: 'ACTIVE',
     });
 
@@ -556,6 +736,747 @@ productsInventoryRouter.post('/products', async (req, res, next) => {
   }
 });
 
+function parseMoneyField(raw: any, field: string, code: string, label: string): number | undefined {
+  if (raw === undefined || raw === null || raw === '') return undefined;
+  const v = Math.round(Number(raw));
+  if (isNaN(v) || v < 0) {
+    throw new ApiError(400, code, `${label} phải là số nguyên không âm`, { [field]: 'Không hợp lệ' });
+  }
+  return v;
+}
+
+/** Kiểm tra quyền đặt giá (gốc + biến thể) giống luồng cũ */
+function assertPricePermission(role: string | undefined, selling: number[], cost: number[]) {
+  if (selling.some((p) => p > 0) && !isPriceManager(role)) {
+    throw new ApiError(403, 'SELLING_PRICE_FORBIDDEN', 'Chỉ Quản lý/Admin mới được đặt giá bán');
+  }
+  if (cost.some((c) => c > 0) && !isPriceManager(role)) {
+    throw new ApiError(403, 'COST_PRICE_FORBIDDEN', 'Chỉ Quản lý/Admin mới được đặt giá gốc');
+  }
+}
+
+/** v5.0: tạo sản phẩm theo quy chuẩn mã mới (R1–R4, R8–R10) */
+async function createNewSchemeProduct(req: any) {
+  const body = req.body || {};
+  const targetFloor = normalizeFloor(body.targetWarehouse);
+  const { category, brand, categoryCode } = await resolveCategoryAndBrand(body.categoryId, body.brandId);
+  if (brand.status === 'INACTIVE') {
+    throw new ApiError(400, 'BRAND_INACTIVE', `Thương hiệu "${brand.name}" đã ngừng sử dụng`, { brandId: 'Ngừng sử dụng' });
+  }
+  const version = resolveVersionCode(body.versionName, body.versionCode);
+  const code = buildSchemeRootCode(categoryCode, brand.code, version.versionCode);
+
+  const duplicate = await findDuplicateProduct(String(category._id), String(brand._id), version.versionCode);
+  if (duplicate) {
+    if (body.upsertIfExists === true && isPriceManager(req.user?.role)) {
+      const beforeStock = getFloorStocks(duplicate).stock;
+      const upsertedColor = body.color !== undefined ? String(body.color).trim() : '';
+      const upsertedSize = body.size !== undefined ? String(body.size).trim().toUpperCase() : '';
+      const upsertedQty = Math.max(0, Math.round(Number(body.quantity) || 0));
+      let nextFloors: { stockFloor1: number; stockFloor2: number; stock: number; variants: any[] };
+      if (Array.isArray(body.variants) && body.variants.length > 0) {
+        const mapped = body.variants.map((rv: any) => {
+          const vFloor = normalizeFloor(rv?.targetWarehouse ?? body.targetWarehouse);
+          const vQty = Math.max(0, Math.round(Number(rv?.quantity ?? rv?.stock ?? 0)));
+          const vF1 = rv?.stockFloor1 !== undefined ? Math.max(0, Math.round(Number(rv.stockFloor1) || 0)) : vFloor === 'FLOOR_1' ? vQty : 0;
+          const vF2 = rv?.stockFloor2 !== undefined ? Math.max(0, Math.round(Number(rv.stockFloor2) || 0)) : vFloor === 'FLOOR_2' ? vQty : 0;
+          return {
+            color: String(rv?.color || '').trim(),
+            colorCode: rv?.colorCode ? String(rv.colorCode).trim().toUpperCase() : undefined,
+            colorHexes: sanitizeColorHexes(rv?.colorHexes),
+            size: String(rv?.size || '').trim().toUpperCase(),
+            sellingPrice: parseMoneyField(rv?.sellingPrice, 'variants.sellingPrice', 'INVALID_PRICE', 'Giá bán biến thể'),
+            costPrice: parseMoneyField(rv?.costPrice, 'variants.costPrice', 'INVALID_COST_PRICE', 'Giá gốc biến thể'),
+            stockFloor1: vF1,
+            stockFloor2: vF2,
+            stock: vF1 + vF2,
+          };
+        });
+        nextFloors = summarizeVariants([...getFloorStocks(duplicate).variants, ...mapped], duplicate.code, {
+          newScheme: true,
+        });
+      } else {
+        nextFloors = applyFloorDelta(
+          duplicate,
+          targetFloor,
+          upsertedQty,
+          upsertedColor,
+          upsertedSize,
+          sanitizeColorHexes(body.colorHexes),
+          body.colorCode
+        );
+      }
+      const patchFields: Record<string, any> = {
+        variants: nextFloors.variants,
+        stockFloor1: nextFloors.stockFloor1,
+        stockFloor2: nextFloors.stockFloor2,
+        stock: nextFloors.stock,
+      };
+      const upPrice = parseMoneyField(body.sellingPrice, 'sellingPrice', 'INVALID_PRICE', 'Giá bán') ?? 0;
+      const upCost = parseMoneyField(body.costPrice, 'costPrice', 'INVALID_COST_PRICE', 'Giá gốc') ?? 0;
+      if (upCost > 0) patchFields.costPrice = upCost;
+      if (upPrice > 0) patchFields.sellingPrice = upPrice;
+      if (body.note !== undefined && String(body.note).trim()) patchFields.note = String(body.note).trim();
+      const updated = await productRepo.updateById(String(duplicate._id), patchFields);
+      const addedQty = nextFloors.stock - beforeStock;
+      if (addedQty > 0) {
+        const actorId = req.user?.userId || 'ADMIN';
+        const actorName = req.user?.fullName || 'Quản lý kho (CMS)';
+        const actorRole = inferActorRole(req.user?.role, actorId, actorName);
+        await stockMovementRepo.create({
+          type: 'IMPORT',
+          productId: duplicate._id,
+          productCode: duplicate.code,
+          productName: formatProductWithVariant(duplicate.name, upsertedColor, upsertedSize),
+          color: upsertedColor,
+          size: upsertedSize,
+          categoryId: duplicate.categoryId,
+          unit: duplicate.unit,
+          quantityChange: addedQty,
+          balanceBefore: beforeStock,
+          balanceAfter: nextFloors.stock,
+          warehouseLocation: targetFloor,
+          referenceType: 'IMPORT_RECEIPT',
+          referenceId: duplicate._id,
+          referenceCode: 'CMS-NHAP-THANG',
+          performedBy: actorId,
+          performedByName: actorName,
+          performedByRole: actorRole,
+          note: `${actorRole === 'ADMIN' ? 'Admin' : 'Thủ kho'} nhập thêm ${addedQty} ${duplicate.unit} vào mã ${duplicate.code} (${floorLabel(targetFloor)}) trên CMS`,
+        } as any);
+      }
+      return {
+        __upserted: true,
+        data: updated,
+        meta: { upserted: true, addedQuantity: addedQty, targetWarehouse: targetFloor },
+      };
+    }
+    throw new ApiError(
+      409,
+      'PRODUCT_DUPLICATE',
+      `Đã có sản phẩm "${duplicate.name}" (mã ${duplicate.code}) cùng Danh mục + Thương hiệu + Version. Chọn "thêm biến thể vào sản phẩm này".`,
+      { existingProductId: String(duplicate._id), existingProductCode: duplicate.code }
+    );
+  }
+
+  const price = parseMoneyField(body.sellingPrice, 'sellingPrice', 'INVALID_PRICE', 'Giá bán') ?? 0;
+  const cost = parseMoneyField(body.costPrice, 'costPrice', 'INVALID_COST_PRICE', 'Giá gốc') ?? 0;
+
+  const rawVariants: any[] =
+    Array.isArray(body.variants) && body.variants.length > 0
+      ? body.variants
+      : body.color !== undefined || body.size !== undefined
+      ? [{ color: body.color, colorCode: body.colorCode, size: body.size, colorHexes: body.colorHexes, quantity: body.quantity }]
+      : [];
+  const prepared = prepareSchemeVariants(code, rawVariants);
+
+  const variantRecords = prepared.map((v) => {
+    const qty = Math.max(0, Math.round(Number(v.quantity ?? v.stock ?? 0)) || 0);
+    const f1 =
+      v.stockFloor1 !== undefined ? Math.max(0, Math.round(Number(v.stockFloor1) || 0)) : targetFloor === 'FLOOR_1' ? qty : 0;
+    const f2 =
+      v.stockFloor2 !== undefined ? Math.max(0, Math.round(Number(v.stockFloor2) || 0)) : targetFloor === 'FLOOR_2' ? qty : 0;
+    const vSelling = parseMoneyField(v.sellingPrice, 'variants.sellingPrice', 'INVALID_PRICE', 'Giá bán biến thể');
+    const vCost = parseMoneyField(v.costPrice, 'variants.costPrice', 'INVALID_COST_PRICE', 'Giá gốc biến thể');
+    return {
+      variantKey: v.variantKey,
+      color: v.color,
+      colorCode: v.colorCode || undefined,
+      colorHexes: sanitizeColorHexes(v.colorHexes),
+      size: v.size,
+      variantCode: v.variantCode,
+      barcode: v.variantCode,
+      ...(vSelling !== undefined ? { sellingPrice: vSelling } : {}),
+      ...(vCost !== undefined ? { costPrice: vCost } : {}),
+      stockFloor1: f1,
+      stockFloor2: f2,
+      stock: f1 + f2,
+    };
+  });
+
+  assertPricePermission(
+    req.user?.role,
+    [price, ...variantRecords.map((v: any) => v.sellingPrice || 0)],
+    [cost, ...variantRecords.map((v: any) => v.costPrice || 0)]
+  );
+
+  const conflicts = await findCodeConflicts([code, ...variantRecords.map((v) => v.variantCode)]);
+  if (conflicts.length > 0) {
+    throw new ApiError(
+      409,
+      'CODE_CONFLICT',
+      `Mã ${conflicts[0].code} đã được dùng bởi sản phẩm ${conflicts[0].productCode}. Vui lòng sửa mã Version/mã màu.`,
+      { code: conflicts[0].code, conflictProductId: conflicts[0].productId, versionCode: 'Đổi mã Version' }
+    );
+  }
+
+  const summary =
+    variantRecords.length > 0
+      ? summarizeVariants(variantRecords, code, { newScheme: true })
+      : (() => {
+          const qty = Math.max(0, Math.round(Number(body.quantity) || 0));
+          return {
+            variants: [],
+            stockFloor1: targetFloor === 'FLOOR_1' ? qty : 0,
+            stockFloor2: targetFloor === 'FLOOR_2' ? qty : 0,
+            stock: qty,
+          };
+        })();
+  if (summary.stock > 0 && !isPriceManager(req.user?.role)) {
+    throw new ApiError(403, 'DIRECT_STOCK_FORBIDDEN', 'Chỉ Quản lý/Admin mới được nhập thẳng số lượng sản phẩm vào kho');
+  }
+
+  const cleanParentSetId = body.parentSetProductId ? String(body.parentSetProductId).trim() : '';
+  const name = String(body.name || '').trim() || `${brand.isSystem ? '' : brand.name + ' '}${version.versionName}`.trim();
+  const unit = body.unit ? String(body.unit).trim() : 'Cái';
+
+  let created: any;
+  try {
+    created = await productRepo.create({
+      code,
+      barcode: code,
+      name,
+      brand: brand.isSystem ? '' : brand.name,
+      brandId: String(brand._id),
+      brandCode: brand.code,
+      brandName: brand.isSystem ? '' : brand.name,
+      versionName: version.versionName,
+      versionCode: version.versionCode,
+      modelName: '',
+      categoryId: String(category._id),
+      categoryCode: category.code,
+      categoryName: category.name,
+      unit,
+      sellingPrice: price,
+      costPrice: cost,
+      variants: summary.variants,
+      stockFloor1: summary.stockFloor1,
+      stockFloor2: summary.stockFloor2,
+      stock: summary.stock,
+      parentSetProductId: cleanParentSetId,
+      packSize: cleanParentSetId ? Math.max(0, Math.round(Number(body.packSize) || 0)) : 0,
+      note: body.note !== undefined ? String(body.note).trim() : '',
+      status: 'ACTIVE',
+    } as any);
+  } catch (e: any) {
+    if (e?.code === 11000) {
+      throw new ApiError(409, 'PRODUCT_DUPLICATE', 'Sản phẩm cùng Danh mục + Thương hiệu + Version đã tồn tại', {
+        versionCode: 'Trùng',
+      });
+    }
+    throw e;
+  }
+
+  if (summary.stock > 0) {
+    const actorId = req.user?.userId || 'ADMIN';
+    const actorName = req.user?.fullName || 'Quản lý kho (CMS)';
+    const actorRole = inferActorRole(req.user?.role, actorId, actorName);
+    const movementTargets =
+      summary.variants.length > 0 ? summary.variants.filter((v: any) => v.stock > 0) : [{ color: '', size: '', stock: summary.stock }];
+    let running = 0;
+    for (const v of movementTargets as any[]) {
+      await stockMovementRepo.create({
+        type: 'IMPORT',
+        productId: created._id,
+        productCode: created.code,
+        productName: formatProductWithVariant(created.name, v.color, v.size),
+        color: v.color,
+        size: v.size,
+        categoryId: created.categoryId,
+        unit: created.unit,
+        quantityChange: v.stock,
+        balanceBefore: running,
+        balanceAfter: running + v.stock,
+        warehouseLocation: targetFloor,
+        referenceType: 'IMPORT_RECEIPT',
+        referenceId: created._id,
+        referenceCode: 'CMS-NHAP-THANG',
+        performedBy: actorId,
+        performedByName: actorName,
+        performedByRole: actorRole,
+        note: `${actorRole === 'ADMIN' ? 'Admin' : 'Thủ kho'} nhập thẳng sản phẩm mới ${created.code} trên CMS (${v.stock} ${created.unit})`,
+      } as any);
+      running += v.stock;
+    }
+  }
+  return created;
+}
+
+// POST /api/v1/products/:id/variants (v5.0) — thêm biến thể vào sản phẩm có sẵn (hỗ trợ kèm tồn kho cho CEO/ADMIN)
+productsInventoryRouter.post('/products/:id/variants', async (req, res, next) => {
+  try {
+    if (!isPriceManager(req.user?.role)) {
+      throw new ApiError(403, 'FORBIDDEN', 'Chỉ Quản lý/Admin/Kế toán kho mới được thêm biến thể');
+    }
+    const product = await productRepo.findById(req.params.id);
+    if (!product) throw new ApiError(404, 'PRODUCT_NOT_FOUND', 'Không tìm thấy sản phẩm');
+    const raw: any[] = Array.isArray(req.body?.variants) ? req.body.variants : [];
+    if (raw.length === 0) {
+      throw new ApiError(400, 'VALIDATION_ERROR', 'Danh sách biến thể trống', { variants: 'Bắt buộc' });
+    }
+    const defaultFloor = normalizeFloor(req.body?.targetWarehouse);
+    const parseVariantStock = (v: any) => {
+      const vFloor = normalizeFloor(v?.targetWarehouse ?? defaultFloor);
+      const rawQ = v?.quantity !== undefined ? Math.round(Number(v.quantity)) : 0;
+      const rawF1 = v?.stockFloor1 !== undefined ? Math.round(Number(v.stockFloor1)) : undefined;
+      const rawF2 = v?.stockFloor2 !== undefined ? Math.round(Number(v.stockFloor2)) : undefined;
+      if (
+        (v?.quantity !== undefined && (isNaN(rawQ) || rawQ < 0)) ||
+        (rawF1 !== undefined && (isNaN(rawF1) || rawF1 < 0)) ||
+        (rawF2 !== undefined && (isNaN(rawF2) || rawF2 < 0))
+      ) {
+        throw new ApiError(400, 'INVALID_QUANTITY', 'Số lượng tồn kho biến thể phải là số nguyên không âm', {
+          quantity: 'Không hợp lệ',
+        });
+      }
+      const f1 = rawF1 !== undefined ? rawF1 : vFloor === 'FLOOR_1' ? rawQ : 0;
+      const f2 = rawF2 !== undefined ? rawF2 : vFloor === 'FLOOR_2' ? rawQ : 0;
+      return { f1, f2, stock: f1 + f2 };
+    };
+
+    const current = getFloorStocks(product);
+    const newScheme = isNewSchemeProduct(product);
+    let additions: any[];
+    if (newScheme) {
+      additions = prepareSchemeVariants(product.code, raw, current.variants).map((v) => {
+        const st = parseVariantStock(v);
+        return {
+          variantKey: v.variantKey,
+          color: v.color,
+          colorCode: v.colorCode || undefined,
+          colorHexes: sanitizeColorHexes(v.colorHexes),
+          size: v.size,
+          variantCode: v.variantCode,
+          barcode: v.variantCode,
+          sellingPrice: parseMoneyField(v.sellingPrice, 'sellingPrice', 'INVALID_PRICE', 'Giá bán biến thể'),
+          costPrice: parseMoneyField(v.costPrice, 'costPrice', 'INVALID_COST_PRICE', 'Giá gốc biến thể'),
+          stockFloor1: st.f1,
+          stockFloor2: st.f2,
+          stock: st.stock,
+        };
+      });
+    } else {
+      const keys = new Set(current.variants.map((v) => v.variantKey));
+      additions = raw.map((v) => {
+        const color = String(v.color || '').trim();
+        const size = String(v.size || '').trim().toUpperCase();
+        const key = buildVariantKey(color, size);
+        if (keys.has(key)) {
+          throw new ApiError(400, 'DUPLICATE_VARIANT', `Biến thể ${color || '-'} / ${size || '-'} đã tồn tại`, {
+            variants: 'Trùng màu + size',
+          });
+        }
+        keys.add(key);
+        const vc = generateVariantProductCode(product.code, color, size);
+        const st = parseVariantStock(v);
+        return {
+          variantKey: key,
+          color,
+          colorHexes: sanitizeColorHexes(v.colorHexes),
+          size,
+          variantCode: vc,
+          barcode: vc,
+          sellingPrice: parseMoneyField(v.sellingPrice, 'sellingPrice', 'INVALID_PRICE', 'Giá bán biến thể'),
+          costPrice: parseMoneyField(v.costPrice, 'costPrice', 'INVALID_COST_PRICE', 'Giá gốc biến thể'),
+          stockFloor1: st.f1,
+          stockFloor2: st.f2,
+          stock: st.stock,
+        };
+      });
+    }
+    const totalAddedStock = additions.reduce((s, a) => s + (Number(a.stock) || 0), 0);
+    if (totalAddedStock > 0 && req.user?.role !== 'CEO' && req.user?.role !== 'ADMIN') {
+      throw new ApiError(
+        403,
+        'DIRECT_STOCK_FORBIDDEN',
+        'Chỉ CEO/Admin mới được thêm biến thể kèm số lượng tồn kho ban đầu'
+      );
+    }
+    additions = additions.map((a) => {
+      const out = { ...a };
+      if (out.sellingPrice === undefined) delete out.sellingPrice;
+      if (out.costPrice === undefined) delete out.costPrice;
+      return out;
+    });
+    const conflicts = await findCodeConflicts(additions.map((a) => a.variantCode), String(product._id));
+    if (conflicts.length > 0) {
+      throw new ApiError(409, 'CODE_CONFLICT', `Mã ${conflicts[0].code} đã được dùng bởi sản phẩm ${conflicts[0].productCode}`, {
+        code: conflicts[0].code,
+        conflictProductId: conflicts[0].productId,
+      });
+    }
+    // Sản phẩm đang có tồn chung (chưa chia biến thể) -> giữ tồn cũ vào biến thể DEFAULT
+    const base =
+      current.variants.length === 0 && current.stock > 0
+        ? [{ variantKey: 'DEFAULT', color: '', size: '', stockFloor1: current.stockFloor1, stockFloor2: current.stockFloor2, stock: current.stock }]
+        : current.variants;
+    const sum = summarizeVariants([...base, ...additions], product.code, { newScheme });
+    const updated = await productRepo.updateById(String(product._id), {
+      variants: sum.variants,
+      stockFloor1: sum.stockFloor1,
+      stockFloor2: sum.stockFloor2,
+      stock: sum.stock,
+    } as any);
+
+    if (totalAddedStock > 0) {
+      let runningBalance = current.stock;
+      const actorId = req.user?.userId || 'ADMIN';
+      const actorName = req.user?.fullName || 'Quản lý kho (CMS)';
+      const actorRole = inferActorRole(req.user?.role, actorId, actorName);
+      for (const a of additions) {
+        const floorEntries: { floor: 'FLOOR_1' | 'FLOOR_2'; qty: number }[] = [];
+        if (a.stockFloor1 > 0) floorEntries.push({ floor: 'FLOOR_1', qty: a.stockFloor1 });
+        if (a.stockFloor2 > 0) floorEntries.push({ floor: 'FLOOR_2', qty: a.stockFloor2 });
+        for (const fe of floorEntries) {
+          const nextBal = runningBalance + fe.qty;
+          await stockMovementRepo.create({
+            type: 'ADJUSTMENT',
+            productId: product._id,
+            productCode: product.code,
+            productName: formatProductWithVariant(product.name, a.color, a.size),
+            color: a.color,
+            size: a.size,
+            categoryId: product.categoryId,
+            unit: product.unit,
+            quantityChange: fe.qty,
+            balanceBefore: runningBalance,
+            balanceAfter: nextBal,
+            warehouseLocation: fe.floor,
+            referenceType: 'ADJUSTMENT',
+            referenceId: product._id,
+            referenceCode: 'CMS-DIEU-CHINH',
+            performedBy: actorId,
+            performedByName: actorName,
+            performedByRole: actorRole,
+            note: `[${floorLabel(fe.floor)}] ${actorRole === 'CEO' ? 'CEO' : 'Admin'} thêm biến thể ${a.variantCode} kèm tồn kho trực tiếp (${fe.qty} ${product.unit})`,
+          } as any);
+          runningBalance = nextBal;
+        }
+      }
+    }
+
+    res.json({ data: updated, meta: { addedVariants: additions.length, addedQuantity: totalAddedStock } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * v5.0: Cập nhật thuộc tính (color, size, colorCode, giá, màu Hex, tồn) của danh sách biến thể.
+ * Trên sản phẩm mã mới, khi sửa color / size / colorCode làm đổi variantCode:
+ * - Sinh lại variantCode theo scheme mới (Mã gốc + ColorCode + SizeCode).
+ * - Đẩy variantCode cũ vào legacyVariantCodes (và gán legacyVariantCode nếu chưa có) để tem cũ vẫn quét được.
+ */
+async function buildPatchedVariantsForProduct(
+  product: any,
+  currentVariants: any[],
+  rawPatches: any[],
+  options: { partial: boolean; role?: string }
+) {
+  const newScheme = isNewSchemeProduct(product);
+  const norm = (val: any) => normalizeToCompactUpperCode(String(val || ''));
+  const usedCurrentIndices = new Set<number>();
+  const matchedCurrentIndexByPatch = new Map<number, number>();
+
+  // Pass 1: khớp chính xác theo mã cũ/mới hoặc khoá biến thể
+  rawPatches.forEach((rv, pIdx) => {
+    const explicitCode = norm(rv?.fromVariantCode || rv?.oldVariantCode || rv?.targetVariantCode);
+    if (explicitCode) {
+      const i = currentVariants.findIndex(
+        (v, idx) =>
+          !usedCurrentIndices.has(idx) &&
+          (norm(v.variantCode) === explicitCode ||
+            norm(v.legacyVariantCode) === explicitCode ||
+            (v.legacyVariantCodes || []).some((c: any) => norm(c) === explicitCode))
+      );
+      if (i >= 0) {
+        usedCurrentIndices.add(i);
+        matchedCurrentIndexByPatch.set(pIdx, i);
+        return;
+      }
+    }
+    const explicitKey = String(rv?.fromVariantKey || rv?.oldVariantKey || rv?.targetVariantKey || '').trim();
+    if (explicitKey) {
+      const i = currentVariants.findIndex((v, idx) => !usedCurrentIndices.has(idx) && v.variantKey === explicitKey);
+      if (i >= 0) {
+        usedCurrentIndices.add(i);
+        matchedCurrentIndexByPatch.set(pIdx, i);
+        return;
+      }
+    }
+    const vc = norm(rv?.variantCode);
+    if (vc) {
+      const i = currentVariants.findIndex(
+        (v, idx) =>
+          !usedCurrentIndices.has(idx) &&
+          (norm(v.variantCode) === vc ||
+            norm(v.legacyVariantCode) === vc ||
+            (v.legacyVariantCodes || []).some((c: any) => norm(c) === vc))
+      );
+      if (i >= 0) {
+        usedCurrentIndices.add(i);
+        matchedCurrentIndexByPatch.set(pIdx, i);
+        return;
+      }
+    }
+    const vk = String(rv?.variantKey || '').trim();
+    if (vk) {
+      const i = currentVariants.findIndex((v, idx) => !usedCurrentIndices.has(idx) && v.variantKey === vk);
+      if (i >= 0) {
+        usedCurrentIndices.add(i);
+        matchedCurrentIndexByPatch.set(pIdx, i);
+        return;
+      }
+    }
+    if (rv?.color !== undefined || rv?.size !== undefined) {
+      const csKey = buildVariantKey(rv?.color, rv?.size);
+      const i = currentVariants.findIndex((v, idx) => !usedCurrentIndices.has(idx) && v.variantKey === csKey);
+      if (i >= 0) {
+        usedCurrentIndices.add(i);
+        matchedCurrentIndexByPatch.set(pIdx, i);
+      }
+    }
+  });
+
+  // Pass 2: nếu gửi toàn bộ danh sách có cùng độ dài, khớp theo vị trí cho phần tử vừa sửa cả color/size
+  if (rawPatches.length === currentVariants.length) {
+    rawPatches.forEach((_rv, pIdx) => {
+      if (!matchedCurrentIndexByPatch.has(pIdx) && !usedCurrentIndices.has(pIdx)) {
+        usedCurrentIndices.add(pIdx);
+        matchedCurrentIndexByPatch.set(pIdx, pIdx);
+      }
+    });
+  }
+
+  if (options.partial) {
+    for (let pIdx = 0; pIdx < rawPatches.length; pIdx++) {
+      if (!matchedCurrentIndexByPatch.has(pIdx)) {
+        const rv = rawPatches[pIdx];
+        throw new ApiError(
+          404,
+          'VARIANT_NOT_FOUND',
+          `Không tìm thấy biến thể cần cập nhật (${rv?.variantCode || rv?.fromVariantCode || rv?.variantKey || rv?.fromVariantKey || `${rv?.color || ''}/${rv?.size || ''}`})`
+        );
+      }
+    }
+  }
+
+  // Xây dựng danh sách biến thể sau khi áp dụng bản vá
+  const explicitColorCodeByColorKey = new Map<string, string>();
+  const working: any[] = options.partial
+    ? currentVariants.map((v) => ({ ...v, _prevVariantCode: v.variantCode, _hasExplicitCC: false }))
+    : [];
+
+  const applyPatchToPrev = (prev: any | undefined, rv: any) => {
+    const nextColor =
+      rv?.color !== undefined ? String(rv.color || '').trim() : String(prev?.color || '').trim();
+    const nextSize =
+      rv?.size !== undefined
+        ? String(rv.size || '').trim().toUpperCase()
+        : String(prev?.size || '').trim().toUpperCase();
+    const colorChanged = prev ? norm(nextColor) !== norm(prev.color) : true;
+    const rawExplicitCC =
+      rv?.colorCode !== undefined && String(rv.colorCode || '').trim()
+        ? String(rv.colorCode).trim().toUpperCase()
+        : '';
+    // Nếu đổi tên màu mà client vẫn gửi lại đúng colorCode cũ của màu trước đó (do form giữ state cũ),
+    // chỉ coi là explicit nếu người dùng thực sự truyền colorCode mới hoặc giữ nguyên màu.
+    const hasExplicitCC = Boolean(rawExplicitCC);
+    const ck = norm(nextColor);
+    if (ck && hasExplicitCC && !explicitColorCodeByColorKey.has(ck)) {
+      explicitColorCodeByColorKey.set(ck, rawExplicitCC);
+    }
+    const inheritedCC = !colorChanged && prev?.colorCode ? String(prev.colorCode).toUpperCase() : '';
+
+    let f1 = prev ? prev.stockFloor1 : 0;
+    let f2 = prev ? prev.stockFloor2 : 0;
+    if (rv?.stockFloor1 !== undefined) f1 = Math.max(0, Math.round(Number(rv.stockFloor1) || 0));
+    if (rv?.stockFloor2 !== undefined) f2 = Math.max(0, Math.round(Number(rv.stockFloor2) || 0));
+    if (rv?.stockFloor1 === undefined && rv?.stockFloor2 === undefined && rv?.stock !== undefined && !prev) {
+      f1 = Math.max(0, Math.round(Number(rv.stock) || 0));
+    }
+
+    const vSelling =
+      rv?.sellingPrice !== undefined
+        ? parseMoneyField(rv.sellingPrice, 'sellingPrice', 'INVALID_PRICE', 'Giá bán biến thể')
+        : prev?.sellingPrice;
+    const vCost =
+      rv?.costPrice !== undefined
+        ? parseMoneyField(rv.costPrice, 'costPrice', 'INVALID_COST_PRICE', 'Giá gốc biến thể')
+        : prev?.costPrice;
+    if (vSelling !== undefined && prev && vSelling !== (prev.sellingPrice || 0) && !canEditSellingPrice(options.role)) {
+      throw new ApiError(403, 'SELLING_PRICE_FORBIDDEN', 'Chỉ Quản lý/Admin hoặc Thủ kho mới được cập nhật giá bán');
+    }
+    if (vCost !== undefined && prev && vCost !== (prev.costPrice || 0) && !isPriceManager(options.role)) {
+      throw new ApiError(403, 'COST_PRICE_FORBIDDEN', 'Chỉ Quản lý/Admin mới được sửa giá gốc');
+    }
+
+    const colorHexes =
+      Array.isArray(rv?.colorHexes) && rv.colorHexes.length > 0
+        ? sanitizeColorHexes(rv.colorHexes)
+        : prev?.colorHexes || [];
+
+    return {
+      color: nextColor,
+      size: nextSize,
+      colorCode: hasExplicitCC ? rawExplicitCC : inheritedCC,
+      _hasExplicitCC: hasExplicitCC,
+      _prevVariantCode: prev?.variantCode || '',
+      colorHexes,
+      ...(vSelling !== undefined ? { sellingPrice: vSelling } : {}),
+      ...(vCost !== undefined ? { costPrice: vCost } : {}),
+      ...(prev?.legacyVariantCode ? { legacyVariantCode: prev.legacyVariantCode } : {}),
+      ...(Array.isArray(prev?.legacyVariantCodes) && prev.legacyVariantCodes.length > 0
+        ? { legacyVariantCodes: [...prev.legacyVariantCodes] }
+        : {}),
+      stockFloor1: f1,
+      stockFloor2: f2,
+      stock: f1 + f2,
+    };
+  };
+
+  if (options.partial) {
+    rawPatches.forEach((rv, pIdx) => {
+      const targetIdx = matchedCurrentIndexByPatch.get(pIdx)!;
+      working[targetIdx] = applyPatchToPrev(currentVariants[targetIdx], rv);
+    });
+  } else {
+    rawPatches.forEach((rv, pIdx) => {
+      const targetIdx = matchedCurrentIndexByPatch.get(pIdx);
+      const prev = targetIdx !== undefined ? currentVariants[targetIdx] : undefined;
+      working.push(applyPatchToPrev(prev, rv));
+    });
+  }
+
+  // Đồng bộ colorCode mới cho các biến thể cùng màu không truyền colorCode riêng trong request
+  for (const item of working) {
+    const ck = norm(item.color);
+    if (ck && !item._hasExplicitCC && explicitColorCodeByColorKey.has(ck)) {
+      item.colorCode = explicitColorCodeByColorKey.get(ck)!;
+    }
+  }
+
+  let finalVariants: any[];
+  if (newScheme) {
+    const prepared = prepareSchemeVariants(product.code, working, []);
+    finalVariants = prepared.map((v) => {
+      const prevCode = String(v._prevVariantCode || '').trim().toUpperCase();
+      const nextCode = v.variantCode;
+      let legacyVariantCode = v.legacyVariantCode ? String(v.legacyVariantCode).trim().toUpperCase() : undefined;
+      const legacySet = new Set<string>(
+        Array.isArray(v.legacyVariantCodes)
+          ? v.legacyVariantCodes.map((c: any) => String(c || '').trim().toUpperCase()).filter(Boolean)
+          : []
+      );
+      if (prevCode && norm(prevCode) !== norm(nextCode)) {
+        if (!legacyVariantCode) {
+          legacyVariantCode = prevCode;
+        }
+        legacySet.add(prevCode);
+      }
+      const legacyVariantCodes = Array.from(legacySet);
+      const { _prevVariantCode, _hasExplicitCC, sizeCode, ...rest } = v;
+      return {
+        ...rest,
+        variantKey: v.variantKey,
+        color: v.color,
+        ...(v.colorCode ? { colorCode: v.colorCode } : {}),
+        size: v.size,
+        variantCode: nextCode,
+        barcode: nextCode,
+        ...(legacyVariantCode ? { legacyVariantCode } : {}),
+        ...(legacyVariantCodes.length > 0 ? { legacyVariantCodes } : {}),
+      };
+    });
+    const conflicts = await findCodeConflicts(
+      finalVariants.map((v) => v.variantCode),
+      String(product._id)
+    );
+    if (conflicts.length > 0) {
+      throw new ApiError(
+        409,
+        'CODE_CONFLICT',
+        `Mã ${conflicts[0].code} đã được dùng bởi sản phẩm ${conflicts[0].productCode}`,
+        { code: conflicts[0].code, conflictProductId: conflicts[0].productId }
+      );
+    }
+  } else {
+    finalVariants = working.map((v) => {
+      const prevCode = String(v._prevVariantCode || '').trim().toUpperCase();
+      const nextCode = generateVariantProductCode(product.code, v.color, v.size);
+      let legacyVariantCode = v.legacyVariantCode ? String(v.legacyVariantCode).trim().toUpperCase() : undefined;
+      const legacySet = new Set<string>(
+        Array.isArray(v.legacyVariantCodes)
+          ? v.legacyVariantCodes.map((c: any) => String(c || '').trim().toUpperCase()).filter(Boolean)
+          : []
+      );
+      if (prevCode && norm(prevCode) !== norm(nextCode)) {
+        if (!legacyVariantCode) legacyVariantCode = prevCode;
+        legacySet.add(prevCode);
+      }
+      const legacyVariantCodes = Array.from(legacySet);
+      const { _prevVariantCode, _hasExplicitCC, ...rest } = v;
+      return {
+        ...rest,
+        variantKey: buildVariantKey(v.color, v.size),
+        variantCode: nextCode,
+        barcode: nextCode,
+        ...(legacyVariantCode ? { legacyVariantCode } : {}),
+        ...(legacyVariantCodes.length > 0 ? { legacyVariantCodes } : {}),
+      };
+    });
+  }
+
+  return summarizeVariants(finalVariants, product.code, { newScheme });
+}
+
+// PATCH /api/v1/products/:id/variants (v5.0) — sửa color / size / colorCode / giá của biến thể
+productsInventoryRouter.patch('/products/:id/variants', async (req, res, next) => {
+  try {
+    if (!isPriceManager(req.user?.role)) {
+      throw new ApiError(403, 'FORBIDDEN', 'Chỉ Quản lý/Admin/Kế toán kho mới được cập nhật biến thể');
+    }
+    const product = await productRepo.findById(req.params.id);
+    if (!product) throw new ApiError(404, 'PRODUCT_NOT_FOUND', 'Không tìm thấy sản phẩm');
+
+    const body = req.body || {};
+    const rawPatches: any[] = Array.isArray(body.variants)
+      ? body.variants
+      : body.variantCode || body.variantKey || body.fromVariantCode || body.fromVariantKey || body.color !== undefined || body.size !== undefined || body.colorCode !== undefined
+      ? [body]
+      : [];
+    if (rawPatches.length === 0) {
+      throw new ApiError(400, 'VALIDATION_ERROR', 'Danh sách biến thể cập nhật trống', { variants: 'Bắt buộc' });
+    }
+
+    const current = getFloorStocks(product);
+    const sum = await buildPatchedVariantsForProduct(product, current.variants, rawPatches, {
+      partial: true,
+      role: req.user?.role,
+    });
+
+    const updated = await productRepo.updateById(String(product._id), {
+      variants: sum.variants,
+      stockFloor1: sum.stockFloor1,
+      stockFloor2: sum.stockFloor2,
+      stock: sum.stock,
+    } as any);
+    const updatedFloors = getFloorStocks(updated);
+    res.json({
+      data: {
+        ...updated,
+        variants: updatedFloors.variants,
+        stockFloor1: updatedFloors.stockFloor1,
+        stockFloor2: updatedFloors.stockFloor2,
+        stock: updatedFloors.stock,
+      },
+      meta: { updatedVariants: rawPatches.length },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // PATCH /api/v1/products/:id
 productsInventoryRouter.patch('/products/:id', async (req, res, next) => {
   try {
@@ -582,10 +1503,33 @@ productsInventoryRouter.patch('/products/:id', async (req, res, next) => {
       status,
       parentSetProductId,
       packSize,
+      brandId,
+      versionCode,
+      versionName,
+      variantPrices,
+      allowRecode,
+      note,
     } = req.body || {};
 
-    // BR-03: Mã sản phẩm không được sửa sau khi tạo
-    if (code !== undefined && String(code).toUpperCase() !== product.code) {
+    // v5.0: Brand/Version nằm trong mã sản phẩm => không được đổi sau khi tạo trừ khi truyền allowRecode: true
+    const productAny = product as any;
+    if (
+      !allowRecode &&
+      ((brandId !== undefined && productAny.brandId && String(brandId) !== String(productAny.brandId)) ||
+        (versionCode !== undefined &&
+          productAny.versionCode &&
+          String(versionCode).trim().toUpperCase() !== String(productAny.versionCode)))
+    ) {
+      throw new ApiError(
+        400,
+        'PRODUCT_CODE_IMMUTABLE',
+        'Thương hiệu / mã Version nằm trong mã sản phẩm, không được sửa sau khi tạo',
+        { versionCode: 'Không được sửa' }
+      );
+    }
+
+    // BR-03: Mã sản phẩm không được sửa trực tiếp sau khi tạo
+    if (!allowRecode && code !== undefined && String(code).toUpperCase() !== product.code) {
       throw new ApiError(
         400,
         'PRODUCT_CODE_IMMUTABLE',
@@ -600,6 +1544,81 @@ productsInventoryRouter.patch('/products/:id', async (req, res, next) => {
     let deltaFloor2 = 0;
     const currentFloors = getFloorStocks(product);
     const balanceBefore = currentFloors.stock;
+
+    // Nếu truyền allowRecode hoặc cập nhật brandId + versionName/versionCode cho sản phẩm (cũ hoặc mới)
+    const wantsSchemeUpdate =
+      Boolean(allowRecode) &&
+      Boolean(brandId || productAny.brandId) &&
+      Boolean(versionName || versionCode || productAny.versionName || productAny.versionCode);
+    let workingProductForVariants: any = product;
+
+    if (wantsSchemeUpdate) {
+      if (!isPriceManager(req.user?.role)) {
+        throw new ApiError(403, 'FORBIDDEN', 'Chỉ Quản lý/Admin/Kế toán mới được sửa cấu trúc mã sản phẩm');
+      }
+      const targetCatId = String(categoryId || product.categoryId);
+      const targetBrandId = String(brandId || productAny.brandId);
+      const { category: catObj, brand: brandObj, categoryCode: cateCode } = await resolveCategoryAndBrand(
+        targetCatId,
+        targetBrandId
+      );
+      const bCode = String(brandObj.code || '');
+      const ver = resolveVersionCode(
+        versionName !== undefined ? versionName : productAny.versionName || product.name,
+        versionCode !== undefined ? versionCode : productAny.versionCode
+      );
+      const dup = await findDuplicateProduct(
+        String(catObj._id),
+        String(brandObj._id),
+        ver.versionCode,
+        String(product._id)
+      );
+      if (dup) {
+        throw new ApiError(
+          409,
+          'PRODUCT_DUPLICATE',
+          `Đã có sản phẩm cùng Danh mục + Thương hiệu + Version (${dup.code} - ${dup.name})`,
+          {
+            existingProductId: String(dup._id),
+            existingProductCode: String(dup.code),
+          }
+        );
+      }
+      const nextRootCode = buildSchemeRootCode(cateCode, bCode, ver.versionCode);
+      const rootConflicts = await findCodeConflicts([nextRootCode], String(product._id));
+      if (rootConflicts.length > 0) {
+        throw new ApiError(
+          409,
+          'CODE_CONFLICT',
+          `Mã gốc "${nextRootCode}" bị trùng với sản phẩm khác (${rootConflicts[0].productCode})`,
+          { code: nextRootCode }
+        );
+      }
+      updateData.categoryId = String(catObj._id);
+      updateData.categoryCode = catObj.code;
+      updateData.categoryName = catObj.name;
+      updateData.brandId = String(brandObj._id);
+      updateData.brandCode = bCode;
+      updateData.brandName = brandObj.name;
+      updateData.brand = brandObj.isSystem ? '' : brandObj.name;
+      updateData.versionName = ver.versionName;
+      updateData.versionCode = ver.versionCode;
+      if (nextRootCode !== product.code) {
+        const legSet = new Set<string>(Array.isArray(productAny.legacyCodes) ? productAny.legacyCodes : []);
+        if (productAny.legacyCode) legSet.add(String(productAny.legacyCode));
+        if (product.code) legSet.add(String(product.code));
+        updateData.legacyCode = productAny.legacyCode || product.code;
+        updateData.legacyCodes = Array.from(legSet);
+        updateData.code = nextRootCode;
+        updateData.barcode = nextRootCode;
+      }
+      workingProductForVariants = {
+        ...productAny,
+        ...updateData,
+        _id: product._id,
+        code: nextRootCode,
+      };
+    }
 
     // BR-05: Chỉ cho phép Admin sửa trực tiếp tồn kho từ CMS khi truyền allowDirectStock = true
     const hasVariantsEdit = Array.isArray(rawVariants);
@@ -624,7 +1643,15 @@ productsInventoryRouter.patch('/products/:id', async (req, res, next) => {
       }
 
       if (hasVariantsEdit) {
-        const sum = summarizeVariants(rawVariants, product.code);
+        const sum = await buildPatchedVariantsForProduct(
+          workingProductForVariants,
+          currentFloors.variants,
+          rawVariants as any[],
+          {
+            partial: false,
+            role: req.user?.role,
+          }
+        );
         deltaFloor1 = sum.stockFloor1 - currentFloors.stockFloor1;
         deltaFloor2 = sum.stockFloor2 - currentFloors.stockFloor2;
         stockDelta = sum.stock - balanceBefore;
@@ -690,23 +1717,87 @@ productsInventoryRouter.patch('/products/:id', async (req, res, next) => {
     if (name !== undefined && String(name).trim()) {
       updateData.name = String(name).trim();
     }
-    if (brand !== undefined) {
+    if (brand !== undefined && !productAny.brandId) {
       updateData.brand = String(brand).trim();
+    }
+    if (versionName !== undefined && productAny.versionCode) {
+      const vn = String(versionName).trim();
+      if (!vn) throw new ApiError(400, 'VALIDATION_ERROR', 'Version không được để trống', { versionName: 'Bắt buộc' });
+      updateData.versionName = vn;
+    }
+
+    // v5.0: sửa giá riêng của biến thể (không chạm tồn kho)
+    if (Array.isArray(variantPrices) && variantPrices.length > 0) {
+      const baseVariants: any[] = (updateData.variants || currentFloors.variants).map((v: any) => ({ ...v }));
+      for (const vp of variantPrices) {
+        const target = baseVariants.find(
+          (v) =>
+            (vp?.variantKey && v.variantKey === vp.variantKey) ||
+            (vp?.variantCode &&
+              normalizeToCompactUpperCode(String(v.variantCode || '')) ===
+                normalizeToCompactUpperCode(String(vp.variantCode)))
+        );
+        if (!target) {
+          throw new ApiError(404, 'VARIANT_NOT_FOUND', `Không tìm thấy biến thể ${vp?.variantCode || vp?.variantKey || ''}`);
+        }
+        if (vp.sellingPrice !== undefined) {
+          const sp = parseMoneyField(vp.sellingPrice, 'sellingPrice', 'INVALID_PRICE', 'Giá bán biến thể') ?? 0;
+          if (sp !== Math.round(Number(target.sellingPrice) || 0) && !canEditSellingPrice(req.user?.role)) {
+            throw new ApiError(403, 'SELLING_PRICE_FORBIDDEN', 'Chỉ Quản lý/Admin hoặc Thủ kho mới được cập nhật giá bán');
+          }
+          target.sellingPrice = sp;
+        }
+        if (vp.costPrice !== undefined) {
+          const cp = parseMoneyField(vp.costPrice, 'costPrice', 'INVALID_COST_PRICE', 'Giá gốc biến thể') ?? 0;
+          if (cp !== Math.round(Number(target.costPrice) || 0) && !isPriceManager(req.user?.role)) {
+            throw new ApiError(403, 'COST_PRICE_FORBIDDEN', 'Chỉ Quản lý/Admin mới được sửa giá gốc');
+          }
+          target.costPrice = cp;
+        }
+      }
+      updateData.variants = summarizeVariants(baseVariants, workingProductForVariants.code, {
+        newScheme: isNewSchemeProduct(workingProductForVariants),
+      }).variants;
+    } else if (wantsSchemeUpdate && !hasVariantsEdit && currentFloors.variants.length > 0) {
+      const sum = await buildPatchedVariantsForProduct(
+        workingProductForVariants,
+        currentFloors.variants,
+        currentFloors.variants as any[],
+        {
+          partial: false,
+          role: req.user?.role,
+        }
+      );
+      updateData.variants = sum.variants;
     }
     if (modelName !== undefined) {
       updateData.modelName = String(modelName).trim();
     }
-    if (categoryId !== undefined) {
+    if (note !== undefined) {
+      updateData.note = String(note || '').trim();
+    }
+    if (categoryId !== undefined && !wantsSchemeUpdate) {
       const cat = await categoryRepo.findById(String(categoryId));
       if (!cat) {
         throw new ApiError(400, 'CATEGORY_NOT_FOUND', 'Danh mục không tồn tại');
+      }
+      if (!allowRecode && isNewSchemeProduct(product) && String(cat._id) !== String(product.categoryId)) {
+        const oldCat = await categoryRepo.findById(String(product.categoryId));
+        if (!oldCat?.skuCode || oldCat.skuCode !== cat.skuCode) {
+          throw new ApiError(
+            400,
+            'PRODUCT_CODE_IMMUTABLE',
+            'Danh mục nằm trong mã sản phẩm, không được đổi sang danh mục có mã viết tắt khác',
+            { categoryId: 'Không được đổi' }
+          );
+        }
       }
       updateData.categoryId = cat._id;
       updateData.categoryCode = cat.code;
       updateData.categoryName = cat.name;
 
-      // Đồng bộ chữ cái đầu tiên của Category trong Mã sản phẩm khi đổi danh mục
-      const nextCode = generateProductCode(updateData.name || product.name, {
+      // Đồng bộ chữ cái đầu tiên của Category trong Mã sản phẩm khi đổi danh mục (chỉ sản phẩm legacy)
+      const nextCode = isNewSchemeProduct(product) ? product.code : generateProductCode(updateData.name || product.name, {
         categoryCode: cat.code,
         categoryName: cat.name,
         brand: updateData.brand !== undefined ? updateData.brand : product.brand,
@@ -780,6 +1871,11 @@ productsInventoryRouter.patch('/products/:id', async (req, res, next) => {
     }
 
     const updated = await productRepo.updateById(id, updateData);
+
+    // Đồng bộ toàn bộ 6 bảng lịch sử (orders, stockmovements, importreceipts, returnexchanges, promotions, shifthandovers) nếu mã gốc đổi
+    if (updated && updated.code !== product.code) {
+      await syncProductReferencesAfterRecode(product, updated);
+    }
 
     // Đồng bộ tên / đơn vị / category lên các bút toán Sổ kho liên quan nếu có thay đổi
     if (

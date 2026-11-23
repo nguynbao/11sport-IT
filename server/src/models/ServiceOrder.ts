@@ -146,4 +146,8 @@ const ServiceOrderSchema = new Schema<IServiceOrder>(
   { timestamps: true }
 );
 
+ServiceOrderSchema.index({ createdAt: -1 });
+ServiceOrderSchema.index({ status: 1, createdAt: -1 });
+ServiceOrderSchema.index({ status: 1, returnedAt: -1 });
+
 export const ServiceOrderModel = mongoose.model<IServiceOrder>('ServiceOrder', ServiceOrderSchema);

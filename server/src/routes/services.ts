@@ -973,7 +973,12 @@ servicesRouter.patch('/service-orders/:id/status', async (req, res, next) => {
       updateData.returnedAt = existing.returnedAt || new Date();
     }
 
-    const parsedCollect = Math.max(0, Math.round(Number(collectAmount) || 0));
+    const parsedCollect =
+      collectAmount !== undefined && collectAmount !== null
+        ? Math.max(0, Math.round(Number(collectAmount) || 0))
+        : status === 'RETURNED'
+          ? Math.max(0, Math.round(Number(existing.remainingAmount) || 0))
+          : 0;
     if (parsedCollect > 0) {
       const currentRemaining = Math.max(0, Number(existing.remainingAmount) || 0);
       const actualCollect = Math.min(currentRemaining, parsedCollect);

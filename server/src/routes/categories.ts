@@ -1,13 +1,41 @@
 import { Router } from 'express';
 import { categoryRepo, productRepo } from '../config/db';
-import { normalizeToUpperCode } from '../utils/productCode';
+import { normalizeToUpperCode, isValidSkuPart, suggestCategorySkuCode } from '../utils/productCode';
+import { syncProductReferencesAfterRecode } from '../utils/productScheme';
 import { ApiError } from '../utils/errors';
 import { filterAndRankBySearch } from '../utils/search';
 
 export const categoriesRouter = Router();
 
+/** v5.0: lấy (hoặc gán lần đầu) CateCode của category — dùng trong mã sản phẩm mới */
+export async function ensureCategorySkuCode(category: any): Promise<string> {
+  if (category?.skuCode) return String(category.skuCode);
+  const all = await categoryRepo.find({});
+  const used = new Set(all.map((c) => String(c.skuCode || '')).filter(Boolean));
+  const sku = suggestCategorySkuCode(String(category?.name || ''), String(category?.code || ''), used);
+  await categoryRepo.updateById(String(category._id), { skuCode: sku } as any);
+  category.skuCode = sku;
+  return sku;
+}
+
+async function validateSkuCode(raw: any, exceptId?: string): Promise<string> {
+  const sku = String(raw || '').trim().toUpperCase();
+  if (!isValidSkuPart(sku, 'category')) {
+    throw new ApiError(400, 'INVALID_SKU_CODE', 'Mã viết tắt (skuCode) phải gồm 1–3 ký tự A-Z, 0-9', {
+      skuCode: 'Mã không hợp lệ',
+    });
+  }
+  const dup = await categoryRepo.findOne({ skuCode: sku });
+  if (dup && String(dup._id) !== String(exceptId || '')) {
+    throw new ApiError(400, 'DUPLICATE_SKU_CODE', `Mã viết tắt "${sku}" đã được dùng cho danh mục "${dup.name}"`, {
+      skuCode: 'Mã đã tồn tại',
+    });
+  }
+  return sku;
+}
+
 function requireCategoryManager(role?: string) {
-  if (role && role !== 'CEO' && role !== 'ADMIN') {
+  if (!role || (role !== 'CEO' && role !== 'ADMIN')) {
     throw new ApiError(
       403,
       'FORBIDDEN',
@@ -58,7 +86,7 @@ categoriesRouter.get('/categories', async (req, res, next) => {
 categoriesRouter.post('/categories', async (req, res, next) => {
   try {
     requireCategoryManager(req.user?.role);
-    const { code, name, status } = req.body || {};
+    const { code, name, status, skuCode } = req.body || {};
     if (!code || !name) {
       throw new ApiError(400, 'VALIDATION_ERROR', 'Mã và tên category là bắt buộc', {
         code: !code ? 'Bắt buộc' : '',
@@ -78,8 +106,21 @@ categoriesRouter.post('/categories', async (req, res, next) => {
       });
     }
 
+    let finalSku: string;
+    if (skuCode !== undefined && String(skuCode).trim()) {
+      finalSku = await validateSkuCode(skuCode);
+    } else {
+      const all = await categoryRepo.find({});
+      finalSku = suggestCategorySkuCode(
+        String(name),
+        normalizedCode,
+        new Set(all.map((c) => String(c.skuCode || '')).filter(Boolean))
+      );
+    }
+
     const created = await categoryRepo.create({
       code: normalizedCode,
+      skuCode: finalSku,
       name: String(name).trim(),
       status: status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE',
     });
@@ -103,8 +144,38 @@ categoriesRouter.patch('/categories/:id', async (req, res, next) => {
       throw new ApiError(404, 'CATEGORY_NOT_FOUND', 'Không tìm thấy category');
     }
 
-    const { name, status } = req.body || {};
+    const { code, name, status, skuCode, allowRecode } = req.body || {};
     const updateData: Record<string, any> = {};
+
+    if (code !== undefined) {
+      const normalizedCode = normalizeToUpperCode(String(code));
+      if (!normalizedCode) {
+        throw new ApiError(400, 'VALIDATION_ERROR', 'Mã category không được để trống', { code: 'Bắt buộc' });
+      }
+      if (normalizedCode !== category.code) {
+        const existingCode = await categoryRepo.findOne({ code: normalizedCode });
+        if (existingCode && String(existingCode._id) !== String(id)) {
+          throw new ApiError(400, 'DUPLICATE_CATEGORY_CODE', `Mã category "${normalizedCode}" đã tồn tại`, {
+            code: 'Mã đã tồn tại',
+          });
+        }
+        updateData.code = normalizedCode;
+      }
+    }
+
+    if (skuCode !== undefined && String(skuCode).trim().toUpperCase() !== String(category.skuCode || '')) {
+      const sku = await validateSkuCode(skuCode, id);
+      const count = await productRepo.countDocuments({ categoryId: id });
+      if (!allowRecode && count > 0 && category.skuCode) {
+        throw new ApiError(
+          400,
+          'CATEGORY_SKU_CODE_IMMUTABLE',
+          'Danh mục đã có sản phẩm, không được đổi mã viết tắt (nằm trong mã sản phẩm)',
+          { skuCode: 'Không được đổi' }
+        );
+      }
+      updateData.skuCode = sku;
+    }
 
     if (name !== undefined) {
       if (!String(name).trim()) {
@@ -121,11 +192,48 @@ categoriesRouter.patch('/categories/:id', async (req, res, next) => {
 
     const updated = await categoryRepo.updateById(id, updateData);
 
-    // Đồng bộ tên category trên sản phẩm nếu đổi tên
-    if (updateData.name) {
+    // Đồng bộ tên / mã category và mã SKU trên sản phẩm nếu có thay đổi
+    if (updateData.name || updateData.code || updateData.skuCode) {
       const products = await productRepo.find({ categoryId: id });
-      for (const p of products) {
-        await productRepo.updateById(p._id, { categoryName: updateData.name });
+      for (const p of products as any[]) {
+        const prodPatch: Record<string, any> = {};
+        if (updateData.name) prodPatch.categoryName = updateData.name;
+        if (updateData.code) prodPatch.categoryCode = updateData.code;
+        if (updateData.skuCode && p.versionCode && p.brandCode) {
+          const nextRootCode = `${updateData.skuCode}${p.brandCode}${p.versionCode}`;
+          if (nextRootCode !== p.code) {
+            const legacySet = new Set<string>(Array.isArray(p.legacyCodes) ? p.legacyCodes : []);
+            if (p.legacyCode) legacySet.add(String(p.legacyCode));
+            if (p.code) legacySet.add(String(p.code));
+            prodPatch.legacyCode = p.legacyCode || p.code;
+            prodPatch.legacyCodes = Array.from(legacySet);
+            prodPatch.code = nextRootCode;
+            prodPatch.barcode = nextRootCode;
+            if (Array.isArray(p.variants) && p.variants.length > 0) {
+              prodPatch.variants = p.variants.map((v: any) => {
+                const cPart = String(v.colorCode || '').toUpperCase();
+                const sPart = normalizeToUpperCode(String(v.size || '')).replace(/[^A-Z0-9]/g, '');
+                const nextVarCode = `${nextRootCode}${cPart}${sPart}`;
+                const vLegSet = new Set<string>(Array.isArray(v.legacyVariantCodes) ? v.legacyVariantCodes : []);
+                if (v.legacyVariantCode) vLegSet.add(String(v.legacyVariantCode));
+                if (v.variantCode && v.variantCode !== nextVarCode) vLegSet.add(String(v.variantCode));
+                return {
+                  ...v,
+                  legacyVariantCode: v.legacyVariantCode || (v.variantCode !== nextVarCode ? v.variantCode : ''),
+                  legacyVariantCodes: Array.from(vLegSet),
+                  variantCode: nextVarCode,
+                  barcode: nextVarCode,
+                };
+              });
+            }
+          }
+        }
+        if (Object.keys(prodPatch).length > 0) {
+          const updatedProd = await productRepo.updateById(p._id, prodPatch as any);
+          if (prodPatch.code && updatedProd) {
+            await syncProductReferencesAfterRecode(p, updatedProd);
+          }
+        }
       }
     }
 

@@ -7,6 +7,8 @@ export type PromotionDiscountType = 'NONE' | 'PERCENT' | 'AMOUNT';
 export interface IPromotionConditionProduct {
   productId: string;
   productCode: string;
+  /** v5.0: mã cũ trước chuẩn hoá */
+  legacyCode?: string;
   productName: string;
   unit: string;
 }
@@ -20,6 +22,8 @@ export interface IPromotionConditionCategory {
 export interface IPromotionGiftItem {
   productId: string;
   productCode: string;
+  /** v5.0: mã cũ trước chuẩn hoá */
+  legacyCode?: string;
   productName: string;
   unit: string;
   quantity: number;
@@ -58,6 +62,7 @@ const PromotionConditionProductSchema = new Schema<IPromotionConditionProduct>(
   {
     productId: { type: String, required: true },
     productCode: { type: String, default: '' },
+    legacyCode: { type: String },
     productName: { type: String, default: '' },
     unit: { type: String, default: 'Cái' },
   },
@@ -77,6 +82,7 @@ const PromotionGiftItemSchema = new Schema<IPromotionGiftItem>(
   {
     productId: { type: String, required: true },
     productCode: { type: String, default: '' },
+    legacyCode: { type: String },
     productName: { type: String, default: '' },
     unit: { type: String, default: 'Cái' },
     quantity: { type: Number, required: true, default: 1, min: 1 },
