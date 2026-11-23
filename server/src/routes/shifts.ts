@@ -384,9 +384,9 @@ shiftsRouter.get('/shifts/my-schedule', async (req, res, next) => {
       .filter((a: any) => a.date >= currentMonday && a.date <= currentWeekEnd)
       .sort((a: any, b: any) => String(a.date).localeCompare(String(b.date)));
 
-    // Đếm các phân ca từ tuần hiện tại trở đi đã được HR xác nhận (assignedBy === 'HR') nhưng nhân viên chưa xem
+    // Đếm các phân ca từ tuần hiện tại trở đi đã được HR xác nhận (assignedBy === 'HR') hoặc yêu cầu đi làm ngày xin OFF nhưng nhân viên chưa xem
     const unseenConfirmed = myAssign.filter(
-      (a: any) => a.date >= currentMonday && a.assignedBy === 'HR' && !a.seenByStaff
+      (a: any) => a.date >= currentMonday && (a.assignedBy === 'HR' || a.overrideOffNotice) && !a.seenByStaff
     );
 
     const isConfirmedByHr =
@@ -453,6 +453,27 @@ shiftsRouter.get('/shifts/my-schedule', async (req, res, next) => {
       .filter((l) => l.reason !== SHIFT_REG_PAID_LEAVE_REASON)
       .map((l) => String(l.date))
       .sort();
+    const activeLeaveByDate = new Map<string, any>();
+    for (const l of activeWeekLeaves) {
+      const d = String(l.date || '');
+      if (!activeLeaveByDate.has(d) || l.status === 'APPROVED') {
+        activeLeaveByDate.set(d, l);
+      }
+    }
+    const offOverrideNotices = weekAssignments
+      .filter((a: any) => {
+        if (a.shiftCode === 'OFF') return false;
+        return Boolean(a.overrideOffNotice) || activeLeaveByDate.has(String(a.date || ''));
+      })
+      .map((a: any) => {
+        const lv = activeLeaveByDate.get(String(a.date || ''));
+        return {
+          date: String(a.date),
+          shiftCode: String(a.shiftCode),
+          leaveType: lv?.type || 'OFF',
+          leaveStatus: lv?.status || 'APPROVED',
+        };
+      });
 
     res.json({
       data: {
@@ -468,6 +489,7 @@ shiftsRouter.get('/shifts/my-schedule', async (req, res, next) => {
         isConfirmedByHr,
         unseenConfirmedCount: unseenConfirmed.length,
         hasUnseenConfirmedSchedule: unseenConfirmed.length > 0,
+        offOverrideNotices,
         weeklyOffRules: {
           maxOffPerWeek: SALES_MAX_OFF_PER_WEEK_SHIFT_REG,
           maxUnpaidOffPerWeek: SALES_MAX_UNPAID_OFF_PER_WEEK_SHIFT_REG,
@@ -503,7 +525,10 @@ shiftsRouter.post('/shifts/my-schedule/seen', async (req, res, next) => {
 
     const allAssign = await shiftAssignmentRepo.find({});
     const unseen = allAssign.filter(
-      (a: any) => String(a.staffId) === String(user.userId) && a.assignedBy === 'HR' && !a.seenByStaff
+      (a: any) =>
+        String(a.staffId) === String(user.userId) &&
+        (a.assignedBy === 'HR' || a.overrideOffNotice) &&
+        !a.seenByStaff
     );
     await Promise.all(
       unseen.map((a) => shiftAssignmentRepo.updateById(a._id, { seenByStaff: true }))
@@ -564,10 +589,19 @@ shiftsRouter.get('/shifts/schedule', async (req, res, next) => {
       }
     > = {};
 
+    const offRequestsByStaff: Record<
+      string,
+      { date: string; type: string; status: string; reason: string }[]
+    > = {};
+
     for (const s of allStaff as any[]) {
       const dept = s.department || (s.role === 'SALES' ? 'SALES' : 'OFFICE');
       if (dept !== 'SALES') continue;
       const sid = String(s._id);
+      const pBalance = await getStaffPaidLeaveBalance(sid, primaryMonth, { approvedOnly: false });
+      const paidLeaveBonus = pBalance.eligible ? Math.max(0, pBalance.entitledInMonth) : 0;
+      const combinedLimit = SALES_MAX_UNPAID_OFF_PER_MONTH + paidLeaveBonus;
+
       const byMonth: Record<string, { limit: number; usedTotal: number; usedOutsideWeek: number; remainingForWeek: number }> = {};
       for (const ym of monthsInWeek) {
         const [usedTotalSet, usedOutsideSet] = await Promise.all([
@@ -577,21 +611,25 @@ shiftsRouter.get('/shifts/schedule', async (req, res, next) => {
             includePendingLeave: true,
           }),
         ]);
+        const ymBalance =
+          ym === primaryMonth ? pBalance : await getStaffPaidLeaveBalance(sid, ym, { approvedOnly: false });
+        const ymBonus = ymBalance.eligible ? Math.max(0, ymBalance.entitledInMonth) : 0;
+        const ymLimit = SALES_MAX_UNPAID_OFF_PER_MONTH + ymBonus;
         byMonth[ym] = {
-          limit: SALES_MAX_UNPAID_OFF_PER_MONTH,
+          limit: ymLimit,
           usedTotal: usedTotalSet.size,
           usedOutsideWeek: usedOutsideSet.size,
-          remainingForWeek: Math.max(0, SALES_MAX_UNPAID_OFF_PER_MONTH - usedOutsideSet.size),
+          remainingForWeek: Math.max(0, ymLimit - usedOutsideSet.size),
         };
       }
       const pStats = byMonth[primaryMonth] || {
-        limit: SALES_MAX_UNPAID_OFF_PER_MONTH,
+        limit: combinedLimit,
         usedTotal: 0,
         usedOutsideWeek: 0,
-        remainingForWeek: SALES_MAX_UNPAID_OFF_PER_MONTH,
+        remainingForWeek: combinedLimit,
       };
       monthlyOffByStaff[sid] = {
-        limit: SALES_MAX_UNPAID_OFF_PER_MONTH,
+        limit: combinedLimit,
         primaryMonth,
         usedTotal: pStats.usedTotal,
         usedOutsideWeek: pStats.usedOutsideWeek,
@@ -599,7 +637,6 @@ shiftsRouter.get('/shifts/schedule', async (req, res, next) => {
         byMonth,
       };
 
-      const pBalance = await getStaffPaidLeaveBalance(sid, primaryMonth, { approvedOnly: false });
       const stWeekLeaves = (allLeaves as any[]).filter(
         (l) =>
           String(l.staffId) === sid &&
@@ -607,6 +644,15 @@ shiftsRouter.get('/shifts/schedule', async (req, res, next) => {
           (l.type === 'OFF' || l.type === 'PAID_LEAVE') &&
           (l.status === 'PENDING' || l.status === 'APPROVED')
       );
+      offRequestsByStaff[sid] = stWeekLeaves
+        .filter((l) => l.reason !== SHIFT_REG_PAID_LEAVE_REASON)
+        .map((l) => ({
+          date: String(l.date),
+          type: String(l.type),
+          status: String(l.status),
+          reason: String(l.reason || ''),
+        }))
+        .sort((a, b) => a.date.localeCompare(b.date));
       paidLeaveByStaff[sid] = {
         eligible: pBalance.eligible,
         entitledInMonth: pBalance.entitledInMonth,
@@ -635,6 +681,7 @@ shiftsRouter.get('/shifts/schedule', async (req, res, next) => {
         })),
         monthlyOffByStaff,
         paidLeaveByStaff,
+        offRequestsByStaff,
       },
       meta: { total: assignments.length },
     });
@@ -665,7 +712,7 @@ shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
       }
     }
 
-    // ---- Kiểm tra quy định: Khối Bán hàng xếp đủ 7 ngày/tuần & tối đa 4 ngày nghỉ không lương/tháng ----
+    // ---- HR xếp lịch không ràng buộc cứng điều kiện (logic nhân viên tự xin OFF vẫn giữ nguyên) ----
     const wsStr = /^\d{4}-\d{2}-\d{2}$/.test(String(weekStart || ''))
       ? String(weekStart)
       : String(changes[0]?.date || getNextMondayStr());
@@ -675,81 +722,18 @@ shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     });
     const weekDateSet = new Set<string>(weekDates);
-    const monthsInWeek = Array.from(new Set(weekDates.map((d) => d.slice(0, 7))));
-    const finalPlan = new Map<string, Map<string, string>>();
-    const allAssign = await shiftAssignmentRepo.find({});
-    for (const a of allAssign as any[]) {
-      if (!weekDates.includes(a.date)) continue;
-      const sid = String(a.staffId);
-      if (!finalPlan.has(sid)) finalPlan.set(sid, new Map());
-      finalPlan.get(sid)!.set(a.date, a.shiftCode);
-    }
-    for (const c of changes) {
-      if (!weekDates.includes(String(c.date))) continue;
-      const sid = String(c.staffId);
-      if (!finalPlan.has(sid)) finalPlan.set(sid, new Map());
-      if (c.shiftCode === null) finalPlan.get(sid)!.delete(String(c.date));
-      else finalPlan.get(sid)!.set(String(c.date), c.shiftCode);
-    }
     const allLeaves = await leaveRequestRepo.find({});
-    const violations: Record<string, string> = {};
-    for (const [sid, plan] of finalPlan) {
-      if (plan.size === 0) continue;
-      const st: any = await staffRepo.findById(sid);
-      if (!st) continue;
-      const dept = st.department || (st.role === 'SALES' ? 'SALES' : 'OFFICE');
-      if (dept !== 'SALES') continue;
-      const paidLeaveDatesInWeek = new Set<string>(
-        (allLeaves as any[])
-          .filter(
-            (l) =>
-              String(l.staffId) === sid &&
-              weekDateSet.has(String(l.date || '')) &&
-              l.type === 'PAID_LEAVE' &&
-              (l.status === 'PENDING' || l.status === 'APPROVED')
-          )
-          .map((l) => String(l.date))
-      );
-      const offDatesInWeek = Array.from(plan.entries())
-        .filter(([, v]) => v === 'OFF')
-        .map(([d]) => d);
-      const unpaidOffDatesInWeek = offDatesInWeek.filter((d) => !paidLeaveDatesInWeek.has(d));
-      const unpaidOffCount = unpaidOffDatesInWeek.length;
-      const missing = 7 - plan.size;
-      const problems: string[] = [];
-      if (missing > 0) problems.push(`còn ${missing} ngày chưa xếp`);
-      if (unpaidOffCount > SALES_MAX_UNPAID_OFF_PER_MONTH) {
-        problems.push(`đang nghỉ không lương ${unpaidOffCount} ngày trong tuần (tối đa ${SALES_MAX_UNPAID_OFF_PER_MONTH} ngày OFF không lương/tháng)`);
+    const leaveRequestMap = new Map<string, any>();
+    for (const l of allLeaves as any[]) {
+      const d = String(l.date || '');
+      if (!weekDateSet.has(d)) continue;
+      if (l.type !== 'OFF' && l.type !== 'PAID_LEAVE') continue;
+      if (l.status !== 'PENDING' && l.status !== 'APPROVED') continue;
+      if (l.reason === SHIFT_REG_PAID_LEAVE_REASON) continue;
+      const k = `${String(l.staffId)}_${d}`;
+      if (!leaveRequestMap.has(k) || l.status === 'APPROVED') {
+        leaveRequestMap.set(k, l);
       }
-      for (const ym of monthsInWeek) {
-        const usedOutside = await getSalesMonthlyUnpaidOffDates(sid, ym, {
-          excludeShiftDates: weekDateSet,
-          includePendingLeave: true,
-        });
-        const offInMonthThisWeek = unpaidOffDatesInWeek.filter((d) => d.startsWith(`${ym}-`) && !usedOutside.has(d));
-        const totalInMonth = usedOutside.size + offInMonthThisWeek.length;
-        if (totalInMonth > SALES_MAX_UNPAID_OFF_PER_MONTH) {
-          const remaining = Math.max(0, SALES_MAX_UNPAID_OFF_PER_MONTH - usedOutside.size);
-          problems.push(
-            remaining === 0
-              ? `tháng ${ym.slice(5, 7)}/${ym.slice(0, 4)} đã dùng hết ${SALES_MAX_UNPAID_OFF_PER_MONTH}/${SALES_MAX_UNPAID_OFF_PER_MONTH} ngày OFF ở các tuần trước (tuần này không được nghỉ thêm)`
-              : `tháng ${ym.slice(5, 7)}/${ym.slice(0, 4)} vượt hạn mức ${totalInMonth}/${SALES_MAX_UNPAID_OFF_PER_MONTH} ngày OFF (đã dùng ${usedOutside.size} ngày tuần khác, tuần này chỉ còn tối đa ${remaining} ngày)`
-          );
-        }
-      }
-      if (problems.length) {
-        violations[st.fullName || sid] = `${problems.join(', ')} (quy định: xếp đủ 7 ngày/tuần, tối đa ${SALES_MAX_UNPAID_OFF_PER_MONTH} ngày nghỉ không lương/tháng)`;
-      }
-    }
-    if (Object.keys(violations).length > 0) {
-      throw new ApiError(
-        400,
-        'WEEKLY_OFF_REQUIRED',
-        `Vi phạm quy định xếp ca khối Bán hàng (đủ 7 ngày/tuần, tối đa ${SALES_MAX_UNPAID_OFF_PER_MONTH} ngày OFF/tháng): ${Object.entries(violations)
-          .map(([n, p]) => `${n} – ${p}`)
-          .join('; ')}`,
-        violations
-      );
     }
 
     const staffCache = new Map<string, any>();
@@ -757,6 +741,14 @@ shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
     let updated = 0;
     let deleted = 0;
     const now = new Date();
+    const offOverrides: {
+      staffId: string;
+      staffName: string;
+      date: string;
+      shiftCode: string;
+      leaveType: string;
+      leaveStatus: string;
+    }[] = [];
 
     for (const c of changes) {
       const staffId = String(c.staffId);
@@ -773,9 +765,31 @@ shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
         continue;
       }
 
+      const leaveReq = leaveRequestMap.get(`${staffId}_${date}`);
+      const isOverrideOff = Boolean(leaveReq && c.shiftCode !== 'OFF');
+
+      if (!staffCache.has(staffId)) {
+        staffCache.set(staffId, await staffRepo.findById(staffId));
+      }
+      const staff = staffCache.get(staffId);
+      if (!staff) throw new ApiError(404, 'STAFF_NOT_FOUND', 'Không tìm thấy nhân viên');
+
+      if (isOverrideOff) {
+        offOverrides.push({
+          staffId,
+          staffName: staff.fullName || '',
+          date,
+          shiftCode: c.shiftCode,
+          leaveType: String(leaveReq.type),
+          leaveStatus: String(leaveReq.status),
+        });
+      }
+
       if (existing) {
         await shiftAssignmentRepo.updateById(existing._id, {
           shiftCode: c.shiftCode,
+          overrideOffNotice: isOverrideOff,
+          ...(isOverrideOff ? { seenByStaff: false } : {}),
           ...(confirmWeek
             ? {
               assignedBy: 'HR',
@@ -788,12 +802,6 @@ shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
         continue;
       }
 
-      if (!staffCache.has(staffId)) {
-        staffCache.set(staffId, await staffRepo.findById(staffId));
-      }
-      const staff = staffCache.get(staffId);
-      if (!staff) throw new ApiError(404, 'STAFF_NOT_FOUND', 'Không tìm thấy nhân viên');
-
       await shiftAssignmentRepo.create({
         weekStart: weekStart || date,
         date,
@@ -802,10 +810,11 @@ shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
         staffCode: staff.code,
         staffName: staff.fullName,
         shiftCode: c.shiftCode,
+        overrideOffNotice: isOverrideOff,
         assignedBy: confirmWeek ? 'HR' : 'AUTO',
-        ...(confirmWeek
+        ...(confirmWeek || isOverrideOff
           ? {
-            confirmedAt: now,
+            confirmedAt: confirmWeek ? now : undefined,
             seenByStaff: false,
           }
           : {
@@ -822,10 +831,23 @@ shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
       const weekOffKeys = new Set<string>();
       for (const a of remainingAssign as any[]) {
         if (!weekDates.includes(a.date)) continue;
+        const lv = leaveRequestMap.get(`${String(a.staffId)}_${String(a.date)}`);
+        const isOver = Boolean(lv && a.shiftCode !== 'OFF');
+        if (isOver && !offOverrides.some((o) => o.staffId === String(a.staffId) && o.date === String(a.date))) {
+          offOverrides.push({
+            staffId: String(a.staffId),
+            staffName: String(a.staffName || ''),
+            date: String(a.date),
+            shiftCode: String(a.shiftCode),
+            leaveType: String(lv.type),
+            leaveStatus: String(lv.status),
+          });
+        }
         await shiftAssignmentRepo.updateById(a._id, {
           assignedBy: 'HR',
           confirmedAt: now,
           seenByStaff: false,
+          overrideOffNotice: isOver,
         });
         if (a.shiftCode === 'OFF') {
           weekOffKeys.add(`${String(a.staffId)}_${String(a.date)}`);
@@ -853,11 +875,14 @@ shiftsRouter.put('/shifts/assign/bulk', async (req, res, next) => {
     }
 
     res.json({
-      data: { created, updated, deleted, confirmed },
+      data: { created, updated, deleted, confirmed, offOverrides },
       meta: {
-        message: confirmWeek
-          ? 'Đã lưu và xác nhận lịch phân ca tuần! Nhân viên sẽ nhận được thông báo lịch mới.'
-          : 'Đã lưu nháp lịch phân ca tuần.',
+        message:
+          offOverrides.length > 0
+            ? `Đã lưu lịch ca và gửi thông báo yêu cầu đi làm ngày OFF tới ${offOverrides.length} lượt Sales!`
+            : confirmWeek
+            ? 'Đã lưu và xác nhận lịch phân ca tuần! Nhân viên sẽ nhận được thông báo lịch mới.'
+            : 'Đã lưu nháp lịch phân ca tuần.',
       },
     });
   } catch (err) {

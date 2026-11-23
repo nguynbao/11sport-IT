@@ -12,6 +12,7 @@ export interface IShiftAssignment extends Document {
   shiftCode: ShiftType;
   preferenceShift?: ShiftType;
   isOffRequested?: boolean;
+  overrideOffNotice?: boolean;
   assignedBy: 'AUTO' | 'HR';
   confirmedAt?: Date;
   seenByStaff?: boolean;
@@ -31,6 +32,7 @@ const ShiftAssignmentSchema = new Schema<IShiftAssignment>(
     shiftCode: { type: String, enum: ['SHIFT_1', 'SHIFT_2', 'BOTH', 'OFF'], required: true, default: 'SHIFT_1' },
     preferenceShift: { type: String, enum: ['SHIFT_1', 'SHIFT_2', 'BOTH', 'OFF'] },
     isOffRequested: { type: Boolean, default: false },
+    overrideOffNotice: { type: Boolean, default: false },
     assignedBy: { type: String, enum: ['AUTO', 'HR'], default: 'AUTO' },
     confirmedAt: { type: Date },
     seenByStaff: { type: Boolean, default: false },

@@ -524,17 +524,17 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
                         ? "bg-slate-100/40 border border-slate-200/80 text-slate-300 opacity-65"
                         : hasHoliday
                           ? isOfficial
-                            ? "bg-rose-50 border-2 border-rose-400 hover:border-rose-500 shadow-2xs"
-                            : "bg-amber-50/85 border-2 border-amber-400 hover:border-amber-500 shadow-2xs"
+                            ? "bg-rose-50 border-2 border-rose-400 hover:border-rose-500 shadow-2xs dark:!bg-[#86198F] dark:!border-[#F0ABFC] dark:hover:!border-white dark:ring-2 dark:ring-[#E879F9]/50"
+                            : "bg-[#ECFEFF] border-2 border-[#22D3EE] hover:border-[#06B6D4] shadow-2xs dark:!bg-[#0E7490] dark:!border-[#22D3EE] dark:hover:!border-[#67E8F9]"
                           : cell.isToday
                             ? "bg-teal-50/80 border-2 border-teal-500 ring-2 ring-teal-500/20 shadow-xs"
                             : "bg-white border-2 border-slate-300 hover:border-teal-500 shadow-2xs cursor-pointer"
                         }`}
                     >
-                      {/* Label chéo góc trên phải rõ nét: phân biệt LỄ (Đỏ) vs SỰ KIỆN (Vàng cam) */}
+                      {/* Label chéo góc trên phải rõ nét: phân biệt LỄ vs SỰ KIỆN */}
                       {hasHoliday && (
                         <div
-                          className={`pointer-events-none absolute top-[7px] -right-[22px] w-[76px] text-center py-[1.5px] text-[7px] leading-tight font-black uppercase tracking-tight text-white rotate-45 shadow-2xs ${isOfficial ? "bg-rose-600" : "bg-amber-500"
+                          className={`pointer-events-none absolute top-[7px] -right-[22px] w-[76px] text-center py-[1.5px] text-[7px] leading-tight font-black uppercase tracking-tight text-white rotate-45 shadow-2xs ${isOfficial ? "bg-rose-600 dark:!bg-[#F0ABFC] dark:!text-[#4A044E]" : "bg-[#0891B2] dark:!bg-[#22D3EE] dark:!text-[#083344]"
                             }`}
                         >
                           {isOfficial ? "Lễ" : "Sự kiện"}
@@ -550,8 +550,8 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
                               ? "text-slate-300 font-medium"
                               : hasHoliday
                                 ? isOfficial
-                                  ? "text-rose-700 font-extrabold"
-                                  : "text-amber-800 font-extrabold"
+                                  ? "text-rose-700 font-extrabold dark:!text-white"
+                                  : "text-[#0E7490] font-extrabold dark:!text-[#ECFEFF]"
                                 : cell.weekday === 0
                                   ? "text-rose-600"
                                   : "text-slate-700"
@@ -579,7 +579,7 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
                       <div className="z-10">
                         {hasHoliday && cell.holiday ? (
                           <div
-                            className={`text-[10px] font-bold truncate leading-tight ${isOfficial ? "text-rose-800" : "text-amber-900"
+                            className={`text-[10px] font-bold truncate leading-tight ${isOfficial ? "text-rose-800 dark:!text-white" : "text-[#155E75] dark:!text-[#ECFEFF]"
                               }`}
                           >
                             {cell.holiday.name}
@@ -598,12 +598,12 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
               {/* Chú thích nhỏ dưới chân lịch */}
               <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] text-slate-600">
                 <div className="flex flex-wrap items-center gap-3">
-                  <span className="inline-flex items-center gap-1 font-semibold text-rose-700">
-                    <span className="w-2.5 h-2.5 rounded-xs bg-rose-600 inline-block" />
+                  <span className="inline-flex items-center gap-1 font-semibold text-rose-700 dark:!text-[#F5D0FE]">
+                    <span className="w-2.5 h-2.5 rounded-xs bg-rose-600 dark:!bg-[#E879F9] inline-block" />
                     Nghỉ lễ chính thức
                   </span>
-                  <span className="inline-flex items-center gap-1 font-semibold text-amber-800">
-                    <span className="w-2.5 h-2.5 rounded-xs bg-amber-500 inline-block" />
+                  <span className="inline-flex items-center gap-1 font-semibold text-[#0E7490] dark:!text-[#67E8F9]">
+                    <span className="w-2.5 h-2.5 rounded-xs bg-[#0891B2] dark:!bg-[#22D3EE] inline-block" />
                     Lễ sự kiện / Kỷ niệm
                   </span>
                   <span className="inline-flex items-center gap-1">
@@ -655,16 +655,16 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
                         }}
                         className={`group px-3.5 py-2.5 flex items-center justify-between gap-2 transition cursor-pointer ${isSelectedMonth
                           ? isOfficial
-                            ? "bg-rose-50/40 hover:bg-rose-50/80"
-                            : "bg-amber-50/40 hover:bg-amber-50/80"
+                            ? "bg-rose-50/40 hover:bg-rose-50/80 dark:!bg-[#701A75]/60 dark:hover:!bg-[#86198F]/70"
+                            : "bg-[#ECFEFF]/60 hover:bg-[#ECFEFF] dark:!bg-[#155E75]/60 dark:hover:!bg-[#0E7490]/70"
                           : "hover:bg-slate-50"
                           }`}
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
                           <span
                             className={`shrink-0 w-11 py-1 text-center text-[11px] font-extrabold rounded-lg border ${isOfficial
-                              ? "bg-rose-50 text-rose-700 border-rose-200"
-                              : "bg-amber-50 text-amber-800 border-amber-200"
+                              ? "bg-rose-50 text-rose-700 border-rose-200 dark:!bg-[#86198F] dark:!text-white dark:!border-[#F0ABFC]"
+                              : "bg-[#ECFEFF] text-[#0E7490] border-[#A5F3FC] dark:!bg-[#0E7490] dark:!text-[#ECFEFF] dark:!border-[#22D3EE]"
                               }`}
                           >
                             {dStr}/{mStr}
@@ -678,8 +678,8 @@ export default function HrmAttendanceModule({ currentUser }: { currentUser: Staf
                             <div className="flex items-center gap-1.5 mt-0.5 text-[10px]">
                               <span
                                 className={`px-1.5 py-0.2 rounded font-bold ${isOfficial
-                                  ? "bg-rose-100 text-rose-700"
-                                  : "bg-amber-100 text-amber-800"
+                                  ? "bg-rose-100 text-rose-700 dark:!bg-[#A21CAF] dark:!text-[#FDF4FF]"
+                                  : "bg-[#CFFAFE] text-[#0E7490] dark:!bg-[#0891B2] dark:!text-white"
                                   }`}
                               >
                                 {isOfficial ? "Chính thức" : "Sự kiện"}

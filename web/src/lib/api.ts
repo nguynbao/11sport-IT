@@ -1735,6 +1735,12 @@ export interface MyShiftScheduleData {
   isConfirmedByHr: boolean;
   unseenConfirmedCount: number;
   hasUnseenConfirmedSchedule: boolean;
+  offOverrideNotices?: {
+    date: string;
+    shiftCode: string;
+    leaveType: string;
+    leaveStatus: string;
+  }[];
   weeklyOffRules?: {
     maxOffPerWeek: number;
     maxUnpaidOffPerWeek: number;

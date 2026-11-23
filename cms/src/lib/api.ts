@@ -1856,11 +1856,19 @@ export interface StaffPaidLeaveStats {
   formalLeaveDatesInWeek: string[];
 }
 
+export interface StaffOffRequestItem {
+  date: string;
+  type: string;
+  status: string;
+  reason: string;
+}
+
 export async function fetchShiftSchedule(weekStart?: string): Promise<{
   assignments: ShiftAssignment[];
   staffList: StaffUser[];
   monthlyOffByStaff?: Record<string, StaffMonthlyOffStats>;
   paidLeaveByStaff?: Record<string, StaffPaidLeaveStats>;
+  offRequestsByStaff?: Record<string, StaffOffRequestItem[]>;
 }> {
   const query = weekStart ? `?weekStart=${weekStart}` : "";
   const res = await apiRequest<{
@@ -1868,6 +1876,7 @@ export async function fetchShiftSchedule(weekStart?: string): Promise<{
     staffList: StaffUser[];
     monthlyOffByStaff?: Record<string, StaffMonthlyOffStats>;
     paidLeaveByStaff?: Record<string, StaffPaidLeaveStats>;
+    offRequestsByStaff?: Record<string, StaffOffRequestItem[]>;
   }>(`/shifts/schedule${query}`);
   return res.data;
 }
@@ -2136,12 +2145,21 @@ export interface ShiftChange {
   shiftCode: "SHIFT_1" | "SHIFT_2" | "BOTH" | "OFF" | null;
 }
 
+export interface ShiftOffOverride {
+  staffId: string;
+  staffName: string;
+  date: string;
+  shiftCode: string;
+  leaveType: string;
+  leaveStatus: string;
+}
+
 export async function saveShiftChangesApi(
   weekStart: string,
   changes: ShiftChange[],
   confirmWeek?: boolean
-): Promise<{ created: number; updated: number; deleted: number; confirmed?: number }> {
-  const res = await apiRequest<{ created: number; updated: number; deleted: number; confirmed?: number }>("/shifts/assign/bulk", {
+): Promise<{ created: number; updated: number; deleted: number; confirmed?: number; offOverrides?: ShiftOffOverride[] }> {
+  const res = await apiRequest<{ created: number; updated: number; deleted: number; confirmed?: number; offOverrides?: ShiftOffOverride[] }>("/shifts/assign/bulk", {
     method: "PUT",
     body: JSON.stringify({ weekStart, changes, confirmWeek }),
   });

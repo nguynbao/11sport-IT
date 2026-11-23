@@ -48,22 +48,22 @@ const CELL_STYLE: Record<
   TimesheetCellCode,
   { symbol: string; label: string; className: string; excel: string }
 > = {
-  ON_TIME: { symbol: "✓", label: "Đúng giờ", className: "bg-teal-500 text-white", excel: "X" },
-  WFH: { symbol: "W", label: "Làm từ xa (WFH)", className: "bg-cyan-600 text-white", excel: "W" },
+  ON_TIME: { symbol: "✓", label: "Đúng giờ", className: "bg-transparent text-[#10B981]", excel: "X" },
+  WFH: { symbol: "W", label: "Làm từ xa (WFH)", className: "bg-[#0891B2] text-white", excel: "W" },
   WORKING: {
     symbol: "●",
     label: "Đang làm",
-    className: "bg-teal-500 text-white animate-pulse",
+    className: "bg-[#3B82F6] text-white animate-pulse",
     excel: "●",
   },
   LATE: { symbol: "T", label: "Đi trễ", className: "bg-amber-400 text-amber-950", excel: "T" },
   EARLY: { symbol: "S", label: "Về sớm", className: "bg-amber-400 text-amber-950", excel: "S" },
   LATE_EARLY: { symbol: "TS", label: "Trễ & về sớm", className: "bg-amber-500 text-amber-950", excel: "TS" },
-  MISSING_OUT: { symbol: "!", label: "Quên check-out", className: "bg-red-600 text-white", excel: "!" },
+  MISSING_OUT: { symbol: "!", label: "Quên check-out", className: "bg-[#DC2626] text-white", excel: "!" },
   ABSENT: {
     symbol: "V",
     label: "Vắng không phép",
-    className: "bg-rose-100 text-rose-700 border border-rose-400",
+    className: "bg-[#FFE4E6] text-[#BE123C] border border-[#FB7185]",
     excel: "V",
   },
   LEAVE: {
@@ -75,7 +75,7 @@ const CELL_STYLE: Record<
   PAID_LEAVE: {
     symbol: "PL",
     label: "Nghỉ phép có lương (+1 công)",
-    className: "bg-teal-600 text-white",
+    className: "bg-fuchsia-600 text-white",
     excel: "PL",
   },
   HOLIDAY: {
@@ -679,39 +679,39 @@ export default function AttendanceTimesheetModule() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-1 gap-1.5 text-[11px] text-slate-700">
                   {/* Đúng giờ */}
                   <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-slate-200/80">
-                    <span className="w-4 h-4 shrink-0 rounded bg-teal-500 text-white text-[9px] font-black inline-flex items-center justify-center">
+                    <span className="w-4 h-4 shrink-0 rounded bg-transparent text-[#10B981] text-[11px] font-black inline-flex items-center justify-center">
                       ✓
                     </span>
                     <span className="font-medium truncate">Đúng giờ</span>
                   </div>
 
                   {/* Đang làm */}
-                  <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-teal-200">
-                    <span className="w-4 h-4 shrink-0 rounded bg-teal-500 text-white animate-pulse text-[9px] font-black inline-flex items-center justify-center">
+                  <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-[#BFDBFE]">
+                    <span className="w-4 h-4 shrink-0 rounded bg-[#3B82F6] text-white animate-pulse text-[9px] font-black inline-flex items-center justify-center">
                       ●
                     </span>
                     <span className="font-medium truncate">Đang làm</span>
                   </div>
 
                   {/* Làm từ xa (WFH) */}
-                  <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-cyan-200">
-                    <span className="w-4 h-4 shrink-0 rounded bg-cyan-600 text-white text-[9px] font-black inline-flex items-center justify-center">
+                  <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-[#A5F3FC]">
+                    <span className="w-4 h-4 shrink-0 rounded bg-[#0891B2] text-white text-[9px] font-black inline-flex items-center justify-center">
                       W
                     </span>
                     <span className="font-medium truncate">Làm từ xa (WFH)</span>
                   </div>
 
                   {/* Tăng ca (đã duyệt) */}
-                  <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-indigo-200">
-                    <span className="w-4 h-4 shrink-0 rounded bg-indigo-600 text-white text-[8px] font-black inline-flex items-center justify-center">
+                  <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-[#C7D2FE]">
+                    <span className="w-4 h-4 shrink-0 rounded bg-[#4F46E5] text-white text-[8px] font-black inline-flex items-center justify-center">
                       TC
                     </span>
                     <span className="font-medium truncate">Tăng ca (đã duyệt)</span>
                   </div>
 
                   {/* Đi trễ / Về sớm (giữ chung) */}
-                  <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-amber-200">
-                    <span className="w-4 h-4 shrink-0 rounded bg-amber-400 text-amber-950 text-[8px] font-black inline-flex items-center justify-center">
+                  <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-[#FDE68A]">
+                    <span className="w-4 h-4 shrink-0 rounded bg-[#FBBF24] text-[#451A03] text-[8px] font-black inline-flex items-center justify-center">
                       T/S
                     </span>
                     <span className="font-medium truncate" title="Đi trễ (T) / Về sớm (S) / Cả hai (TS)">
@@ -720,16 +720,16 @@ export default function AttendanceTimesheetModule() {
                   </div>
 
                   {/* Quên check-out */}
-                  <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-red-200">
-                    <span className="w-4 h-4 shrink-0 rounded bg-red-600 text-white text-[9px] font-black inline-flex items-center justify-center">
+                  <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-[#FECACA]">
+                    <span className="w-4 h-4 shrink-0 rounded bg-[#DC2626] text-white text-[9px] font-black inline-flex items-center justify-center">
                       !
                     </span>
                     <span className="font-medium truncate">Quên check-out</span>
                   </div>
 
                   {/* Vắng không phép */}
-                  <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-rose-200">
-                    <span className="w-4 h-4 shrink-0 rounded bg-rose-100 text-rose-700 border border-rose-400 text-[9px] font-black inline-flex items-center justify-center">
+                  <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-[#FECDD3]">
+                    <span className="w-4 h-4 shrink-0 rounded bg-[#FFE4E6] text-[#BE123C] border border-[#FB7185] text-[9px] font-black inline-flex items-center justify-center">
                       V
                     </span>
                     <span className="font-medium truncate">Vắng không phép</span>
@@ -744,8 +744,8 @@ export default function AttendanceTimesheetModule() {
                   </div>
 
                   {/* Phép có lương (+1 công) */}
-                  <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-teal-200">
-                    <span className="w-4 h-4 shrink-0 rounded bg-teal-600 text-white text-[8px] font-black inline-flex items-center justify-center">
+                  <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-fuchsia-200">
+                    <span className="w-4 h-4 shrink-0 rounded bg-fuchsia-600 text-white text-[8px] font-black inline-flex items-center justify-center">
                       PL
                     </span>
                     <span className="font-medium truncate">Phép có lương (+1 công)</span>
@@ -760,8 +760,8 @@ export default function AttendanceTimesheetModule() {
                   </div>
 
                   {/* Đi làm lễ (lương x4) */}
-                  <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-amber-200">
-                    <span className="w-4 h-4 shrink-0 rounded bg-teal-500 text-white ring-2 ring-yellow-400 text-[9px] font-black inline-flex items-center justify-center">
+                  <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-[#FDE68A]">
+                    <span className="w-4 h-4 shrink-0 rounded bg-transparent text-[#10B981] ring-2 ring-yellow-400 text-[9px] font-black inline-flex items-center justify-center">
                       ★
                     </span>
                     <span className="font-medium truncate">Đi làm lễ (lương x4)</span>
@@ -957,7 +957,7 @@ function MatrixView({
                       ? {
                         ...baseStyle,
                         symbol: "TC",
-                        className: "bg-indigo-600 text-white",
+                        className: "bg-[#4F46E5] text-white",
                         label: `${baseStyle.label} + Tăng ca (${cell.overtimeMinutes}p)`,
                       }
                       : baseStyle;
@@ -990,20 +990,20 @@ function MatrixView({
                         disabled={!clickable}
                         onClick={() => onCellClick(row, d, cell)}
                         className={`relative w-[26px] h-[26px] rounded-md text-[10px] font-black inline-flex items-center justify-center transition ${style.className
-                          } ${cell.isHolidayWork ? "ring-2 ring-yellow-400 ring-offset-1" : ""} ${hasApprovedOvertime && cell.code !== "ON_TIME" && cell.code !== "WFH" ? "ring-2 ring-indigo-600 ring-offset-1" : ""} ${cell.overtimeStatus === "PENDING" ? "ring-2 ring-indigo-400 ring-offset-1" : ""} ${clickable ? "hover:scale-110 hover:shadow-md cursor-pointer" : "cursor-default"
+                          } ${cell.isHolidayWork ? "ring-2 ring-yellow-400 ring-offset-1" : ""} ${hasApprovedOvertime && cell.code !== "ON_TIME" && cell.code !== "WFH" ? "ring-2 ring-[#4F46E5] ring-offset-1" : ""} ${cell.overtimeStatus === "PENDING" ? "ring-2 ring-[#4F46E5] ring-offset-1" : ""} ${clickable ? "hover:scale-110 hover:shadow-md cursor-pointer" : "cursor-default"
                           }`}
                       >
                         {style.symbol}
                         {hasApprovedOvertime && cell.code !== "ON_TIME" && cell.code !== "WFH" && (
-                          <span className="absolute -bottom-1 -right-1 px-0.5 rounded bg-indigo-600 text-white text-[7px] font-black leading-tight border border-white">
+                          <span className="absolute -bottom-1 -right-1 px-0.5 rounded bg-[#4F46E5] text-white text-[7px] font-black leading-tight border border-white">
                             TC
                           </span>
                         )}
                         {cell.overtimeStatus === "PENDING" && (
-                          <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-indigo-500 border border-white" />
+                          <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#EC4899] border border-white" />
                         )}
                         {cell.adjusted && (
-                          <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-teal-600" />
+                          <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-[#171717] ring-1 ring-white/80" />
                         )}
                       </button>
                     </td>
@@ -1025,7 +1025,7 @@ function MatrixView({
                         </span>
                       )}
                       {(row.summary.paidLeaveUsed || 0) > 0 && (
-                        <span className="px-1 rounded bg-teal-100 text-brand-ink text-[8px] font-bold leading-tight">
+                        <span className="px-1 rounded bg-fuchsia-100 text-fuchsia-700 text-[8px] font-bold leading-tight">
                           +{row.summary.paidLeaveUsed}PL
                         </span>
                       )}
@@ -1042,7 +1042,7 @@ function MatrixView({
                   <div className="font-bold text-brand-ink leading-tight">{row.summary.totalHours.toFixed(1)}</div>
                   {(row.summary.overtimeMinutes || 0) > 0 && (
                     <div
-                      className="mt-0.5 px-1 rounded bg-indigo-100 text-brand-ink text-[8px] font-bold leading-tight inline-block"
+                      className="mt-0.5 px-1 rounded bg-[#E0E7FF] text-[#3730A3] text-[8px] font-bold leading-tight inline-block"
                       title={`Tăng ca đã duyệt: ${row.summary.overtimeMinutes} phút (${row.summary.overtimeDays || 1} ngày)`}
                     >
                       +{formatMinutes(row.summary.overtimeMinutes || 0)} TC
@@ -1117,7 +1117,7 @@ function SummaryView({ rows }: { rows: TimesheetRow[] }) {
                 <td className="px-2 py-2 text-center font-bold text-brand-ink">{s.totalHours.toFixed(1)}h</td>
                 <td className="px-2 py-2 text-center">
                   {(s.overtimeMinutes || 0) > 0 ? (
-                    <span className="px-2 py-0.5 rounded bg-indigo-100 text-brand-ink font-bold">
+                    <span className="px-2 py-0.5 rounded bg-[#E0E7FF] text-[#3730A3] font-bold">
                       {s.overtimeDays || 1} ngày • {formatMinutes(s.overtimeMinutes || 0)}
                     </span>
                   ) : (

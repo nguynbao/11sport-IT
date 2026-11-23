@@ -7,6 +7,7 @@ import {
   ShiftChange,
   StaffMonthlyOffStats,
   StaffPaidLeaveStats,
+  StaffOffRequestItem,
   fetchShiftSchedule,
   saveShiftChangesApi,
 } from "@/lib/api";
@@ -47,9 +48,9 @@ const ROWS: { code: RowShiftCode; title: string; time: string; header: string; c
     code: "SHIFT_2",
     title: "Ca 2",
     time: "12:00 – 21:00",
-    header: "bg-indigo-100/70 text-indigo-900",
-    chip: "border-indigo-300 bg-white",
-    cellHover: "hover:bg-indigo-50",
+    header: "bg-[#E0E7FF]/70 text-[#312E81]",
+    chip: "border-[#A5B4FC] bg-white",
+    cellHover: "hover:bg-[#EEF2FF]",
   },
   {
     code: "OFF",
@@ -95,6 +96,7 @@ export default function ShiftScheduleModule({ onScheduleUpdated }: { onScheduleU
   const [staffList, setStaffList] = useState<StaffUser[]>([]);
   const [monthlyOffByStaff, setMonthlyOffByStaff] = useState<Record<string, StaffMonthlyOffStats>>({});
   const [paidLeaveByStaff, setPaidLeaveByStaff] = useState<Record<string, StaffPaidLeaveStats>>({});
+  const [offRequestsByStaff, setOffRequestsByStaff] = useState<Record<string, StaffOffRequestItem[]>>({});
   const [nextWeekPendingStaffCount, setNextWeekPendingStaffCount] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -131,6 +133,7 @@ export default function ShiftScheduleModule({ onScheduleUpdated }: { onScheduleU
       setStaffList(res.staffList.filter((s) => s.role === "SALES" || s.department === "SALES"));
       setMonthlyOffByStaff(res.monthlyOffByStaff || {});
       setPaidLeaveByStaff(res.paidLeaveByStaff || {});
+      setOffRequestsByStaff(res.offRequestsByStaff || {});
       refreshNextWeekBadge();
     } catch (e: any) {
       showToast("err", e?.message || "Lỗi tải lịch ca");
@@ -252,7 +255,49 @@ export default function ShiftScheduleModule({ onScheduleUpdated }: { onScheduleU
     return list;
   }, [days, staffList, effectiveCode]);
 
-  // Quy định: Khối Bán hàng xếp đủ 7 ngày/tuần, tối đa 4 ngày nghỉ không lương (OFF)/tháng (đăng ký ca tối đa 2 ngày nghỉ/tuần gồm 1 OFF + 1 phép; từ 3 ngày phải tạo đơn trước 3 tuần)
+  const offRequestByStaffDate = useMemo(() => {
+    const m = new Map<string, StaffOffRequestItem>();
+    for (const [sid, list] of Object.entries(offRequestsByStaff)) {
+      for (const item of list) {
+        m.set(keyOf(sid, item.date), item);
+      }
+    }
+    return m;
+  }, [offRequestsByStaff]);
+
+  const offRequestsSummary = useMemo(() => {
+    const list: { staffName: string; items: string[] }[] = [];
+    for (const st of staffList) {
+      const reqs = offRequestsByStaff[st._id] || [];
+      if (reqs.length === 0) continue;
+      const items = reqs.map((r) => {
+        const d = days.find((x) => x.date === r.date);
+        const dayStr = d ? `${d.name} ${d.display}` : r.date;
+        const typeStr = r.type === "PAID_LEAVE" ? "Phép" : "OFF";
+        const statusStr = r.status === "APPROVED" ? "đã duyệt" : "chờ duyệt";
+        return `${dayStr} (${typeStr} ${statusStr})`;
+      });
+      list.push({ staffName: st.fullName, items });
+    }
+    return list;
+  }, [staffList, offRequestsByStaff, days]);
+
+  const offOverrideWarnings = useMemo(() => {
+    const list: string[] = [];
+    for (const st of staffList) {
+      for (const d of days) {
+        const req = offRequestByStaffDate.get(keyOf(st._id, d.date));
+        if (!req) continue;
+        const code = effectiveCode(st._id, d.date);
+        if (code && code !== "OFF") {
+          list.push(`${st.fullName} (${d.name} ${d.display})`);
+        }
+      }
+    }
+    return list;
+  }, [staffList, days, offRequestByStaffDate, effectiveCode]);
+
+  // Tham khảo: 1 tháng nghỉ tối đa 4 ngày OFF + số phép đang có (HR xếp lịch không bị ràng buộc cứng)
   const weekCheck = useMemo(() => {
     const result = new Map<
       string,
@@ -270,13 +315,15 @@ export default function ShiftScheduleModule({ onScheduleUpdated }: { onScheduleU
     const monthsInWeek = Array.from(new Set(days.map((d) => d.date.slice(0, 7))));
     for (const st of staffList) {
       const codes = days.map((d) => effectiveCode(st._id, d.date));
-      const paidDatesSet = new Set(paidLeaveByStaff[st._id]?.paidLeaveDatesInWeek || []);
+      const paidStats = paidLeaveByStaff[st._id];
+      const paidDatesSet = new Set(paidStats?.paidLeaveDatesInWeek || []);
+      const paidBonus = paidStats?.eligible ? Math.max(0, paidStats?.entitledInMonth || 0) : 0;
       const assigned = codes.filter((c) => c !== null).length;
       const off = codes.filter((c) => c === "OFF").length;
       const paidLeaveOff = days.filter((d, idx) => codes[idx] === "OFF" && paidDatesSet.has(d.date)).length;
       const unpaidOff = Math.max(0, off - paidLeaveOff);
       const stats = monthlyOffByStaff[st._id];
-      const limit = stats?.limit ?? 4;
+      const limit = stats?.limit ?? (4 + paidBonus);
       const primaryOutside = stats?.usedOutsideWeek ?? 0;
       const primaryMonth = stats?.primaryMonth || weekStart.slice(0, 7);
       const offInPrimaryMonthThisWeek = days.filter(
@@ -290,20 +337,20 @@ export default function ShiftScheduleModule({ onScheduleUpdated }: { onScheduleU
       else {
         const problems: string[] = [];
         if (assigned < 7) problems.push(`còn ${7 - assigned} ngày chưa xếp`);
-        if (unpaidOff > limit) problems.push(`đang nghỉ không lương ${unpaidOff} ngày/tuần (tối đa ${limit} ngày OFF/tháng)`);
         for (const ym of monthsInWeek) {
           const mStats = stats?.byMonth?.[ym];
+          const ymLimit = mStats?.limit ?? limit;
           const usedOutside = mStats?.usedOutsideWeek ?? (ym === primaryMonth ? primaryOutside : 0);
           const offInMonth = days.filter(
             (d, idx) => d.date.startsWith(`${ym}-`) && codes[idx] === "OFF" && !paidDatesSet.has(d.date)
           ).length;
-          if (usedOutside + offInMonth > limit) {
+          if (usedOutside + offInMonth > ymLimit) {
             monthQuotaExceeded = true;
-            const rem = Math.max(0, limit - usedOutside);
+            const rem = Math.max(0, ymLimit - usedOutside);
             problems.push(
               rem === 0
-                ? `T${ym.slice(5, 7)} đã hết ${limit}/${limit} ngày OFF ở tuần khác`
-                : `T${ym.slice(5, 7)} vượt ${usedOutside + offInMonth}/${limit} ngày OFF (chỉ còn ${rem} ngày)`
+                ? `T${ym.slice(5, 7)} vượt hạn mức ${ymLimit} ngày (OFF + phép)`
+                : `T${ym.slice(5, 7)} vượt ${usedOutside + offInMonth}/${ymLimit} ngày (còn ${rem})`
             );
           }
         }
@@ -314,7 +361,7 @@ export default function ShiftScheduleModule({ onScheduleUpdated }: { onScheduleU
         off,
         unpaidOff,
         paidLeaveOff,
-        ok: assigned === 7 && unpaidOff >= 0 && unpaidOff <= limit && !monthQuotaExceeded,
+        ok: assigned === 7 && !monthQuotaExceeded,
         message,
         monthUsedAfterWeek,
         monthLimit: limit,
@@ -365,16 +412,6 @@ export default function ShiftScheduleModule({ onScheduleUpdated }: { onScheduleU
   };
 
   const handleSave = async (confirmWeek = false) => {
-    if (confirmWeek && emptyShifts.length > 0) {
-      showToast(
-        "err",
-        `Không được để ca bị trống! Đang có ${emptyShifts.length} ca chưa có người trực (${emptyShifts
-          .slice(0, 3)
-          .map((e) => `${e.dayLabel} ${e.shiftTitle}`)
-          .join(", ")}${emptyShifts.length > 3 ? "..." : ""}). Vui lòng xếp đủ người trước khi xác nhận.`
-      );
-      return;
-    }
     if (!confirmWeek && pendingChanges.length === 0) {
       setEditMode(false);
       return;
@@ -382,7 +419,14 @@ export default function ShiftScheduleModule({ onScheduleUpdated }: { onScheduleU
     setSaving(true);
     try {
       const res = await saveShiftChangesApi(weekStart, pendingChanges, confirmWeek);
-      if (confirmWeek) {
+      const overrideCount = res.offOverrides?.length || 0;
+      if (overrideCount > 0) {
+        const names = Array.from(new Set(res.offOverrides!.map((o) => o.staffName))).join(", ");
+        showToast(
+          "ok",
+          `Đã lưu lịch ca & gửi thông báo yêu cầu đi làm ngày OFF tới Sales: ${names}!`
+        );
+      } else if (confirmWeek) {
         showToast(
           "ok",
           `Đã xác nhận & hoàn tất lịch ca tuần (${wsD}/${wsM} – ${weD}/${weM}). Đã gửi thông báo lịch mới tới nhân viên Bán hàng!`
@@ -465,12 +509,12 @@ export default function ShiftScheduleModule({ onScheduleUpdated }: { onScheduleU
             <Users className="w-5 h-5 text-brand-ink" />
             Xếp Ca Tuần – Khối Bán Hàng
             {weekStart === nextMonday && (
-              <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-brand-ink text-[11px] font-bold">
+              <span className="px-2 py-0.5 rounded-full bg-[#E0E7FF] text-[#4338CA] text-[11px] font-bold">
                 Tuần sau
               </span>
             )}
             {weekStart === currentMonday && (
-              <span className="px-2 py-0.5 rounded-full bg-teal-100 text-brand-ink text-[11px] font-bold">
+              <span className="px-2 py-0.5 rounded-full bg-[#D1FAE5] text-[#047857] text-[11px] font-bold">
                 Tuần này
               </span>
             )}
@@ -553,14 +597,8 @@ export default function ShiftScheduleModule({ onScheduleUpdated }: { onScheduleU
                 <button
                   type="button"
                   onClick={() => handleSave(true)}
-                  disabled={saving || loading || blockingViolations.length > 0 || emptyShifts.length > 0}
-                  title={
-                    blockingViolations.length > 0
-                      ? "Mỗi nhân viên phải có 6 ngày làm + đúng 1 ngày nghỉ trong tuần trước khi xác nhận"
-                      : emptyShifts.length > 0
-                      ? `Không được để ca bị trống (${emptyShifts.length} ca chưa có người đăng ký)`
-                      : "Chốt lịch ca tuần này và gửi thông báo chấm đỏ cho nhân viên Bán hàng"
-                  }
+                  disabled={saving || loading}
+                  title="Chốt lịch ca tuần này và gửi thông báo chấm đỏ cho nhân viên Bán hàng"
                   className="px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
@@ -594,12 +632,7 @@ export default function ShiftScheduleModule({ onScheduleUpdated }: { onScheduleU
               <button
                 type="button"
                 onClick={() => handleSave(false)}
-                disabled={saving || blockingViolations.length > 0}
-                title={
-                  blockingViolations.length > 0
-                    ? "Mỗi nhân viên phải có 6 ngày làm + đúng 1 ngày nghỉ trong tuần"
-                    : undefined
-                }
+                disabled={saving}
                 className="px-3 py-2 bg-slate-800 hover:bg-teal-600 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
               >
                 <Save className="w-3.5 h-3.5" />
@@ -608,14 +641,8 @@ export default function ShiftScheduleModule({ onScheduleUpdated }: { onScheduleU
               <button
                 type="button"
                 onClick={() => handleSave(true)}
-                disabled={saving || blockingViolations.length > 0 || emptyShifts.length > 0}
-                title={
-                  blockingViolations.length > 0
-                    ? "Mỗi nhân viên phải có 6 ngày làm + đúng 1 ngày nghỉ trong tuần"
-                    : emptyShifts.length > 0
-                    ? `Không được để ca bị trống (${emptyShifts.length} ca chưa có người đăng ký)`
-                    : "Lưu thay đổi, chốt lịch tuần và gửi thông báo chấm đỏ tới nhân viên Bán hàng"
-                }
+                disabled={saving}
+                title="Lưu thay đổi, chốt lịch tuần và gửi thông báo chấm đỏ tới nhân viên Bán hàng"
                 className="px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
               >
                 <CheckCircle2 className="w-3.5 h-3.5" />
@@ -629,15 +656,15 @@ export default function ShiftScheduleModule({ onScheduleUpdated }: { onScheduleU
       {/* Trạng thái đăng ký ca của nhân viên & cảnh báo trùng lịch */}
       <div className="flex flex-wrap items-center gap-2 text-[11px]">
         {pendingConfirmStaffList.length > 0 && (
-          <span className="px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-200 text-brand-ink font-semibold flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />
+          <span className="px-2.5 py-1 rounded-lg bg-[#EEF2FF] border border-[#C7D2FE] text-[#3730A3] font-semibold flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-[#4F46E5] animate-pulse" />
             NV đã đăng ký chờ HR xác nhận ({pendingConfirmStaffList.length}):{" "}
             {pendingConfirmStaffList.map((st) => st.fullName).join(", ")}
           </span>
         )}
         {confirmedStaffList.length > 0 && pendingConfirmStaffList.length === 0 && (
-          <span className="px-2.5 py-1 rounded-lg bg-teal-50 border border-teal-200 text-brand-ink font-semibold flex items-center gap-1">
-            <CheckCircle2 className="w-3.5 h-3.5 text-brand-ink" />
+          <span className="px-2.5 py-1 rounded-lg bg-[#ECFDF5] border border-[#A7F3D0] text-[#065F46] font-semibold flex items-center gap-1">
+            <CheckCircle2 className="w-3.5 h-3.5 text-[#059669]" />
             HR đã xác nhận lịch tuần cho {confirmedStaffList.length}/{staffList.length} nhân viên
           </span>
         )}
@@ -648,24 +675,41 @@ export default function ShiftScheduleModule({ onScheduleUpdated }: { onScheduleU
             {offConflictsByDay.map((c) => `${c.dayLabel}: ${c.names.join(" & ")}`).join(" | ")} — HR có thể bấm &ldquo;Sửa lịch ca&rdquo; để chỉnh tay
           </span>
         )}
-        {emptyShifts.length > 0 && (
-          <span className="px-2.5 py-1 rounded-lg bg-rose-50 border border-rose-300 text-rose-800 font-semibold flex items-center gap-1.5">
-            <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+        {offRequestsSummary.length > 0 && (
+          <span className="px-2.5 py-1 rounded-lg bg-[#ECFEFF] border border-[#A5F3FC] text-[#0E7490] font-semibold flex items-center gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5 text-[#0891B2] shrink-0" />
             <span>
-              Không được để ca bị trống ({emptyShifts.length} ca chưa có ai đăng ký):{" "}
+              NV đã xin OFF/Phép tuần này:{" "}
+              {offRequestsSummary.map((x) => `${x.staffName} (${x.items.join(", ")})`).join(" | ")}
+            </span>
+          </span>
+        )}
+        {offOverrideWarnings.length > 0 && (
+          <span className="px-2.5 py-1 rounded-lg bg-[#FCE7F3] border border-[#F9A8D4] text-[#BE185D] font-semibold flex items-center gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5 text-[#EC4899] shrink-0" />
+            <span>
+              Đang xếp đi làm vào ngày NV đã xin OFF ({offOverrideWarnings.join(", ")}) — Khi lưu sẽ gửi thông báo cho Sales!
+            </span>
+          </span>
+        )}
+        {emptyShifts.length > 0 && (
+          <span className="px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 font-semibold flex items-center gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+            <span>
+              Lưu ý: có {emptyShifts.length} ca chưa có người trực (
               <b>
                 {emptyShifts
                   .map((e) => `${e.dayLabel} - ${e.shiftTitle}`)
                   .join(", ")}
-              </b>{" "}
-              — Vui lòng bấm &ldquo;Sửa lịch ca&rdquo; để phân công đủ người trước khi xác nhận!
+              </b>
+              ) — HR vẫn có thể lưu hoặc bấm &ldquo;Sửa lịch ca&rdquo; để bổ sung.
             </span>
           </span>
         )}
         {editMode && blockingViolations.length > 0 && (
-          <span className="px-2 py-1 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 font-semibold flex items-center gap-1">
+          <span className="px-2 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 font-semibold flex items-center gap-1">
             <AlertTriangle className="w-3.5 h-3.5" />
-            Chưa thể lưu: {blockingViolations.map((st) => `${st.fullName} (${weekCheck.get(st._id)?.message})`).join("; ")}
+            Tham khảo: {blockingViolations.map((st) => `${st.fullName} (${weekCheck.get(st._id)?.message})`).join("; ")}
           </span>
         )}
         {unscheduled.length > 0 && (
@@ -773,27 +817,35 @@ export default function ShiftScheduleModule({ onScheduleUpdated }: { onScheduleU
                               {isWorkingBoth ? (
                                 <span
                                   title="Nhân viên làm cả 2 ca trong ngày (Ca 1 + Ca 2)"
-                                  className="shrink-0 px-1 py-0.2 rounded bg-teal-100 text-brand-ink text-[9px] font-extrabold"
+                                  className="shrink-0 px-1 py-0.2 rounded bg-[#D1FAE5] text-[#065F46] text-[9px] font-extrabold"
                                 >
                                   {isStaffRegistered ? "ĐK 2 ca" : "2 ca"}
                                 </span>
                               ) : isStaffRegistered ? (
                                 <span
                                   title="Nhân viên tự đăng ký, chờ HR xác nhận"
-                                  className="shrink-0 px-1 py-0.2 rounded bg-indigo-100 text-brand-ink text-[9px] font-extrabold"
+                                  className="shrink-0 px-1 py-0.2 rounded bg-[#E0E7FF] text-[#4338CA] text-[9px] font-extrabold"
                                 >
                                   ĐK
                                 </span>
                               ) : null}
                             </div>
                             {isRandomFromBoth && (
-                              <div className="text-[9px] font-medium text-brand-ink truncate">
+                              <div className="text-[9px] font-medium text-[#4F46E5] truncate">
                                 ĐK 2 ca • Random 1 ca
                               </div>
                             )}
                             {prefDiffers && prefLabel && (
                               <div className="text-[9px] font-medium text-amber-700 truncate">
                                 ĐK gốc: {prefLabel}
+                              </div>
+                            )}
+                            {row.code !== "OFF" && offRequestByStaffDate.has(keyOf(s._id, d.date)) && (
+                              <div
+                                title="Nhân viên đã xin OFF/Phép ngày này — Lưu sẽ báo cho Sales"
+                                className="text-[9px] font-bold text-[#BE185D] bg-[#FCE7F3] px-1 rounded mt-0.5 truncate"
+                              >
+                                ⚠ Đã xin OFF (báo Sales)
                               </div>
                             )}
                             {editMode && (
@@ -940,19 +992,19 @@ export default function ShiftScheduleModule({ onScheduleUpdated }: { onScheduleU
                     <div className="flex items-center gap-1.5">
                       <span className="text-[10px] text-slate-400 font-mono">{s.code}</span>
                       {regStatus === "PENDING_HR" && (
-                        <span className="px-1.5 py-0.2 rounded bg-indigo-100 text-brand-ink text-[9px] font-bold">
+                        <span className="px-1.5 py-0.2 rounded bg-[#E0E7FF] text-[#4338CA] text-[9px] font-bold">
                           Đã ĐK • Chờ duyệt
                         </span>
                       )}
                       {regStatus === "CONFIRMED_HR" && (
-                        <span className="px-1.5 py-0.2 rounded bg-teal-100 text-brand-ink text-[9px] font-bold">
+                        <span className="px-1.5 py-0.2 rounded bg-[#D1FAE5] text-[#047857] text-[9px] font-bold">
                           ✓ HR đã chốt
                         </span>
                       )}
                     </div>
                   </div>
                   <div className="text-right shrink-0">
-                    <div className="text-[11px] font-extrabold text-brand-ink">
+                    <div className="text-[11px] font-extrabold text-[#047857]">
                       {totalShiftUnits > workDays
                         ? `${workDays} ngày (${totalShiftUnits} ca) • ${offDays} nghỉ`
                         : `${workDays} ca • ${offDays} nghỉ`}
@@ -966,7 +1018,7 @@ export default function ShiftScheduleModule({ onScheduleUpdated }: { onScheduleU
                             OFF tháng: {c.monthUsedAfterWeek}/{c.monthLimit} ngày
                           </div>
                           {c.ok ? (
-                            <div className="text-[10px] font-bold text-brand-ink">✓ Đúng quy định</div>
+                            <div className="text-[10px] font-bold text-[#059669]">✓ Đúng quy định</div>
                           ) : (
                             <div className={`text-[10px] font-bold ${c.assigned === 0 ? "text-amber-600" : "text-rose-600"}`}>
                               ⚠ {c.message}

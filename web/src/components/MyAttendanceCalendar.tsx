@@ -51,10 +51,10 @@ const STATUS: Record<
     label: "Đúng giờ",
     short: "Đúng giờ",
     badge: "✓",
-    badgeCls: "bg-blue-500 text-white",
-    box: "bg-blue-50 border-blue-400",
-    dayNum: "text-brand-ink",
-    dot: "bg-blue-500",
+    badgeCls: "bg-transparent text-[#10B981]",
+    box: "bg-transparent border-[#6EE7B7]",
+    dayNum: "text-[#047857]",
+    dot: "bg-[#10B981]",
   },
   LATE: {
     label: "Đi trễ (T)",
@@ -87,37 +87,37 @@ const STATUS: Record<
     label: "Làm từ xa (WFH)",
     short: "WFH",
     badge: "W",
-    badgeCls: "bg-cyan-600 text-white",
-    box: "bg-cyan-50 border-cyan-400",
-    dayNum: "text-brand-ink",
-    dot: "bg-cyan-600",
+    badgeCls: "bg-[#0891B2] text-white",
+    box: "bg-[#ECFEFF] border-[#22D3EE]",
+    dayNum: "text-[#0E7490]",
+    dot: "bg-[#0891B2]",
   },
   WORKING: {
     label: "Đang làm",
     short: "Đang làm",
     badge: "●",
-    badgeCls: "bg-blue-500 text-white animate-pulse",
-    box: "bg-blue-50 border-blue-400",
-    dayNum: "text-brand-ink",
-    dot: "bg-blue-500",
+    badgeCls: "bg-[#3B82F6] text-white animate-pulse",
+    box: "bg-[#EFF6FF] border-[#60A5FA]",
+    dayNum: "text-[#1D4ED8]",
+    dot: "bg-[#3B82F6]",
   },
   MISSING_OUT: {
     label: "Quên check-out",
     short: "Quên ra ca",
     badge: "!",
-    badgeCls: "bg-red-600 text-white",
-    box: "bg-red-50 border-red-500 border-dashed",
-    dayNum: "text-red-700",
-    dot: "bg-red-600",
+    badgeCls: "bg-[#DC2626] text-white",
+    box: "bg-[#FEF2F2] border-[#EF4444] border-dashed",
+    dayNum: "text-[#B91C1C]",
+    dot: "bg-[#DC2626]",
   },
   PAID_LEAVE: {
     label: "Phép có lương (+1 công)",
     short: "Phép có lương",
     badge: "PL",
-    badgeCls: "bg-blue-600 text-white",
-    box: "bg-blue-50 border-blue-400",
-    dayNum: "text-brand-ink",
-    dot: "bg-blue-600",
+    badgeCls: "bg-fuchsia-600 text-white",
+    box: "bg-fuchsia-50 border-fuchsia-400",
+    dayNum: "text-fuchsia-700",
+    dot: "bg-fuchsia-600",
   },
   LEAVE: {
     label: "Nghỉ OFF không lương",
@@ -132,10 +132,10 @@ const STATUS: Record<
     label: "Vắng không phép",
     short: "Vắng",
     badge: "V",
-    badgeCls: "bg-rose-100 text-rose-700 border border-rose-400",
-    box: "bg-rose-50 border-rose-400",
-    dayNum: "text-rose-700",
-    dot: "bg-rose-500",
+    badgeCls: "bg-[#FFE4E6] text-[#BE123C] border border-[#FB7185]",
+    box: "bg-[#FFF1F2] border-[#FB7185]",
+    dayNum: "text-[#BE123C]",
+    dot: "bg-[#F43F5E]",
   },
   HOLIDAY: {
     label: "Nghỉ lễ (+1 công VP)",
@@ -626,6 +626,23 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
                   </button>
                 </div>
 
+                {myShiftSchedule.offOverrideNotices && myShiftSchedule.offOverrideNotices.length > 0 && (
+                  <div className="rounded-xl border border-[#F9A8D4] bg-[#FCE7F3] px-3 py-2 text-xs text-[#BE185D] font-semibold flex flex-wrap items-center gap-1.5">
+                    <span>📢</span>
+                    <span>
+                      HR yêu cầu bạn đi làm vào ngày bạn đã xin OFF:{" "}
+                      {myShiftSchedule.offOverrideNotices
+                        .map((o) => {
+                          const [, om, od] = o.date.split("-");
+                          const sc =
+                            o.shiftCode === "BOTH" ? "Ca 1 + Ca 2" : o.shiftCode === "SHIFT_1" ? "Ca 1" : "Ca 2";
+                          return `${od}/${om} (${sc})`;
+                        })
+                        .join(", ")}
+                    </span>
+                  </div>
+                )}
+
                 {myShiftSchedule.isRegistered ? (
                   <div className="grid grid-cols-2 sm:grid-cols-7 gap-2">
                     {Array.from({ length: 7 }, (_, i) => {
@@ -742,39 +759,39 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
             <div className="flex flex-col gap-1.5 text-[11px] text-slate-700">
               {/* Đúng giờ */}
               <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-slate-200/80">
-                <span className="w-4 h-4 shrink-0 rounded bg-blue-500 text-white text-[9px] font-black inline-flex items-center justify-center">
+                <span className="w-4 h-4 shrink-0 rounded bg-transparent text-[#10B981] text-[11px] font-black inline-flex items-center justify-center">
                   ✓
                 </span>
                 <span className="font-medium truncate">Đúng giờ</span>
               </div>
 
               {/* Đang làm */}
-              <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-blue-200">
-                <span className="w-4 h-4 shrink-0 rounded bg-blue-500 text-white animate-pulse text-[9px] font-black inline-flex items-center justify-center">
+              <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-[#BFDBFE]">
+                <span className="w-4 h-4 shrink-0 rounded bg-[#3B82F6] text-white animate-pulse text-[9px] font-black inline-flex items-center justify-center">
                   ●
                 </span>
                 <span className="font-medium truncate">Đang làm</span>
               </div>
 
               {/* Làm từ xa (WFH) */}
-              <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-cyan-200">
-                <span className="w-4 h-4 shrink-0 rounded bg-cyan-600 text-white text-[9px] font-black inline-flex items-center justify-center">
+              <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-[#A5F3FC]">
+                <span className="w-4 h-4 shrink-0 rounded bg-[#0891B2] text-white text-[9px] font-black inline-flex items-center justify-center">
                   W
                 </span>
                 <span className="font-medium truncate">Làm từ xa (WFH)</span>
               </div>
 
               {/* Tăng ca (đã duyệt) */}
-              <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-indigo-200">
-                <span className="w-4 h-4 shrink-0 rounded bg-indigo-600 text-white text-[8px] font-black inline-flex items-center justify-center">
+              <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-[#C7D2FE]">
+                <span className="w-4 h-4 shrink-0 rounded bg-[#4F46E5] text-white text-[8px] font-black inline-flex items-center justify-center">
                   TC
                 </span>
                 <span className="font-medium truncate">Tăng ca (đã duyệt)</span>
               </div>
 
               {/* Đi trễ / Về sớm */}
-              <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-amber-200">
-                <span className="w-4 h-4 shrink-0 rounded bg-amber-400 text-amber-950 text-[8px] font-black inline-flex items-center justify-center">
+              <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-[#FDE68A]">
+                <span className="w-4 h-4 shrink-0 rounded bg-[#FBBF24] text-[#451A03] text-[8px] font-black inline-flex items-center justify-center">
                   T/S
                 </span>
                 <span className="font-medium truncate" title="Đi trễ (T) / Về sớm (S) / Cả hai (TS)">
@@ -783,16 +800,16 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
               </div>
 
               {/* Quên check-out */}
-              <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-red-200">
-                <span className="w-4 h-4 shrink-0 rounded bg-red-600 text-white text-[9px] font-black inline-flex items-center justify-center">
+              <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-[#FECACA]">
+                <span className="w-4 h-4 shrink-0 rounded bg-[#DC2626] text-white text-[9px] font-black inline-flex items-center justify-center">
                   !
                 </span>
                 <span className="font-medium truncate">Quên check-out</span>
               </div>
 
               {/* Vắng không phép */}
-              <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-rose-200">
-                <span className="w-4 h-4 shrink-0 rounded bg-rose-100 text-rose-700 border border-rose-400 text-[9px] font-black inline-flex items-center justify-center">
+              <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-[#FECDD3]">
+                <span className="w-4 h-4 shrink-0 rounded bg-[#FFE4E6] text-[#BE123C] border border-[#FB7185] text-[9px] font-black inline-flex items-center justify-center">
                   V
                 </span>
                 <span className="font-medium truncate">Vắng không phép</span>
@@ -807,8 +824,8 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
               </div>
 
               {/* Phép có lương (+1 công) */}
-              <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-blue-200">
-                <span className="w-4 h-4 shrink-0 rounded bg-blue-600 text-white text-[8px] font-black inline-flex items-center justify-center">
+              <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-fuchsia-200">
+                <span className="w-4 h-4 shrink-0 rounded bg-fuchsia-600 text-white text-[8px] font-black inline-flex items-center justify-center">
                   PL
                 </span>
                 <span className="font-medium truncate">Phép có lương (+1 công)</span>
@@ -823,8 +840,8 @@ export default function MyAttendanceCalendar({ currentUser, onBack, onScheduleSe
               </div>
 
               {/* Đi làm lễ (lương x4) */}
-              <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-amber-200">
-                <span className="w-4 h-4 shrink-0 rounded bg-blue-500 text-white ring-2 ring-yellow-400 text-[9px] font-black inline-flex items-center justify-center">
+              <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-[#FDE68A]">
+                <span className="w-4 h-4 shrink-0 rounded bg-transparent text-[#10B981] ring-2 ring-yellow-400 text-[9px] font-black inline-flex items-center justify-center">
                   ★
                 </span>
                 <span className="font-medium truncate">Đi làm lễ (lương x{multiplier})</span>
@@ -1016,7 +1033,7 @@ function DayCell({
             {day.day}
           </span>
           {hasPending && <span className="w-2 h-2 rounded-full bg-amber-500" title="Có đơn chờ duyệt" />}
-          {cell.adjusted && <span className="w-1.5 h-1.5 rounded-full bg-slate-800" title="HR đã điều chỉnh" />}
+          {cell.adjusted && <span className="w-1.5 h-1.5 rounded-full bg-[#171717] ring-1 ring-white/80" title="HR đã điều chỉnh" />}
         </div>
         {cell.isHolidayWork ? (
           <span className="w-4 h-4 shrink-0 rounded bg-blue-500 text-white ring-2 ring-yellow-400 text-[9px] font-black inline-flex items-center justify-center">
@@ -1045,12 +1062,12 @@ function DayCell({
         )}
         <div className="flex flex-wrap gap-0.5">
           {!!cell.overtimeMinutes && (
-            <span className="px-1 rounded bg-indigo-600 text-white text-[9px] font-black">
+            <span className="px-1 rounded bg-[#4F46E5] text-white text-[9px] font-black">
               TC {fmtMinutes(cell.overtimeMinutes)}
             </span>
           )}
           {!cell.overtimeMinutes && cell.overtimeStatus === "PENDING" && !!cell.lateCheckoutMinutes && (
-            <span className="px-1 rounded bg-amber-100 text-amber-800 text-[9px] font-bold">
+            <span className="px-1 rounded bg-[#FCE7F3] text-[#BE185D] text-[9px] font-bold">
               ⏳ Chờ duyệt TC ({fmtMinutes(cell.lateCheckoutMinutes)})
             </span>
           )}
