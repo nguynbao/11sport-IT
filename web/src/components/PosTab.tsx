@@ -112,13 +112,15 @@ const cartUnitPrice = (ci: { product: Product; color?: string; size?: string }):
   Math.round(variantEffectiveSellingPrice(ci.product, findVariantByColorSize(ci.product, ci.color, ci.size)) || 0);
 
 /** Giá hiển thị của sản phẩm trên lưới POS: giá gốc, hoặc giá thấp nhất của biến thể nếu gốc chưa có giá */
-const productDisplayPrice = (p: Product): { price: number; hasVariantPrices: boolean } => {
+const productDisplayPrice = (p: Product): { price: number; minPrice: number; maxPrice: number; hasVariantPrices: boolean } => {
   const vars = Array.isArray(p.variants) ? p.variants : [];
   const prices = vars.map((v) => variantEffectiveSellingPrice(p, v)).filter((x) => x > 0);
   const base = Number(p.sellingPrice || 0);
   const hasVariantPrices = vars.some((v) => Number(v.sellingPrice || 0) > 0 && Number(v.sellingPrice) !== base);
-  if (base > 0) return { price: base, hasVariantPrices };
-  return { price: prices.length ? Math.min(...prices) : 0, hasVariantPrices };
+  const minPrice = prices.length ? Math.min(...prices) : base;
+  const maxPrice = prices.length ? Math.max(...prices) : base;
+  if (base > 0) return { price: base, minPrice: Math.min(minPrice, base), maxPrice: Math.max(maxPrice, base), hasVariantPrices };
+  return { price: minPrice, minPrice, maxPrice, hasVariantPrices };
 };
 
 const getCartLineKey = (productId: string, color?: string, size?: string): string =>
@@ -2598,10 +2600,11 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
         <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
           {displayPrice.price > 0 ? (
             <span className="font-mono font-extrabold text-brand-ink text-base">
-              {displayPrice.hasVariantPrices || Number(p.sellingPrice || 0) <= 0 ? (
-                <span className="text-[10px] font-sans font-bold text-amber-600 mr-1">Từ/giá theo biến thể</span>
-              ) : null}
-              {formatVND(displayPrice.price)}
+              {displayPrice.minPrice > 0 && displayPrice.maxPrice > displayPrice.minPrice ? (
+                <>{formatVND(displayPrice.minPrice)} – {formatVND(displayPrice.maxPrice)}</>
+              ) : (
+                formatVND(displayPrice.price)
+              )}
             </span>
           ) : (
             <span className="text-xs font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded">
@@ -2645,7 +2648,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
   const renderCartList = () => (
     <div className="flex-1 min-h-0 flex flex-col gap-2 overflow-y-auto pr-1">
       {cart.length === 0 && giftCart.length === 0 ? (
-        <div className="flex-1 bg-white/70 rounded-xl border border-dashed border-slate-300 flex flex-col items-center justify-center p-8 text-center gap-3">
+        <div className="flex-1 bg-white/70 dark:bg-[#363636] rounded-xl border border-dashed border-slate-300 flex flex-col items-center justify-center p-8 text-center gap-3">
           <div className="w-12 h-12 rounded-full bg-blue-50 text-brand-ink flex items-center justify-center">
             <ScanLine className="w-6 h-6" />
           </div>
@@ -3924,7 +3927,7 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
 
                 {/* Dropdown gợi ý sản phẩm Kho Tầng 1 */}
                 {showSearchDropdown && search.trim().length > 0 && (
-                  <div className="absolute left-0 right-0 top-10 z-50 bg-white text-slate-900 rounded-xl shadow-2xl border border-slate-200 max-h-96 overflow-y-auto divide-y divide-slate-100">
+                  <div className="pos-search-dropdown absolute left-0 right-0 top-10 z-50 bg-white dark:!bg-[#2D2D2D] text-slate-900 rounded-xl shadow-2xl border border-slate-200 dark:!border-[#505050] max-h-96 overflow-y-auto divide-y divide-slate-100">
                     {filteredAndSortedProducts.length === 0 ? (
                       <div className="p-4 text-center text-xs text-slate-500">
                         Không tìm thấy sản phẩm &ldquo;{search}&rdquo; trong Kho Tầng 1.
@@ -3994,7 +3997,12 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                             </div>
                             <div className="text-right shrink-0">
                               <div className="font-mono font-extrabold text-xs sm:text-sm text-brand-ink">
-                                {formatNumberDots(p.sellingPrice)}
+                                {(() => {
+                                  const dp = productDisplayPrice(p);
+                                  return dp.minPrice > 0 && dp.maxPrice > dp.minPrice
+                                    ? `${formatNumberDots(dp.minPrice)} – ${formatNumberDots(dp.maxPrice)}`
+                                    : formatNumberDots(dp.price || p.sellingPrice);
+                                })()}
                               </div>
                               <div className="text-[10px] text-brand-ink font-bold">
                                 {namedVars.length > 1
@@ -4560,7 +4568,9 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
                                 </div>
                                 <div className="font-mono font-extrabold text-xs text-brand-ink mt-0.5 flex items-center gap-1">
                                   <span>
-                                    {formatNumberDots(displayPrice.price)}
+                                    {displayPrice.minPrice > 0 && displayPrice.maxPrice > displayPrice.minPrice
+                                      ? `${formatNumberDots(displayPrice.minPrice)} – ${formatNumberDots(displayPrice.maxPrice)}`
+                                      : formatNumberDots(displayPrice.price)}
                                   </span>
                                 </div>
                               </div>

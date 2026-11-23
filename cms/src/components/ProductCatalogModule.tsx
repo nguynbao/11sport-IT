@@ -954,6 +954,10 @@ export default function ProductCatalogModule() {
                                                 }
                                                 key={`vcost_${p._id}_${vIdx}_${v.costPrice || 0}`}
                                                 placeholder={`Mặc định: ${formatNumberDots(effCost)}`}
+                                                onChange={(e) => {
+                                                  const digits = e.target.value.replace(/\D/g, "");
+                                                  e.target.value = digits ? formatNumberDots(Number(digits)) : "";
+                                                }}
                                                 onBlur={(e) =>
                                                   handleSaveVariantPrice(
                                                     p,
@@ -977,6 +981,10 @@ export default function ProductCatalogModule() {
                                               }
                                               key={`vsell_${p._id}_${vIdx}_${v.sellingPrice || 0}`}
                                               placeholder={`Mặc định: ${formatNumberDots(effSell)}`}
+                                              onChange={(e) => {
+                                                const digits = e.target.value.replace(/\D/g, "");
+                                                e.target.value = digits ? formatNumberDots(Number(digits)) : "";
+                                              }}
                                               onBlur={(e) =>
                                                 handleSaveVariantPrice(
                                                   p,

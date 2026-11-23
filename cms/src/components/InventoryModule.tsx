@@ -4067,6 +4067,10 @@ export default function InventoryModule() {
                                                     defaultValue={Number(v.sellingPrice || 0) > 0 ? formatNumberDots(Number(v.sellingPrice)) : ""}
                                                     key={`sp_${p._id}_${vIdx}_${v.sellingPrice || 0}`}
                                                     placeholder={formatNumberDots(sellVal)}
+                                                    onChange={(e) => {
+                                                      const digits = e.target.value.replace(/\D/g, "");
+                                                      e.target.value = digits ? formatNumberDots(Number(digits)) : "";
+                                                    }}
                                                     onBlur={(e) => handleSaveVariantPrice(p, v, "sellingPrice", parseNumberDots(e.target.value))}
                                                     className="w-28 px-2 py-1 rounded border border-slate-300 font-mono text-right disabled:bg-slate-100"
                                                     title="Giá niêm yết riêng của biến thể — để trống = dùng giá niêm yết gốc (R8). Rời ô để lưu."
@@ -4082,6 +4086,10 @@ export default function InventoryModule() {
                                                       defaultValue={Number(v.costPrice || 0) > 0 ? formatNumberDots(Number(v.costPrice)) : ""}
                                                       key={`cp_${p._id}_${vIdx}_${v.costPrice || 0}`}
                                                       placeholder={formatNumberDots(costVal)}
+                                                      onChange={(e) => {
+                                                        const digits = e.target.value.replace(/\D/g, "");
+                                                        e.target.value = digits ? formatNumberDots(Number(digits)) : "";
+                                                      }}
                                                       onBlur={(e) => handleSaveVariantPrice(p, v, "costPrice", parseNumberDots(e.target.value))}
                                                       className="w-28 px-2 py-1 rounded border border-slate-300 font-mono text-right disabled:bg-slate-100"
                                                       title="Giá vốn riêng của biến thể — để trống = dùng giá vốn gốc. Rời ô để lưu."

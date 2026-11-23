@@ -209,7 +209,7 @@ html.dark [class*="hover:text-rose-"]:hover, html.dark [class*="hover:text-red-"
 html.dark [class*="hover:bg-teal-50"]:hover, html.dark [class*="hover:bg-blue-50"]:hover,
 html.dark [class*="hover:bg-indigo-50"]:hover, html.dark [class*="hover:bg-sky-50"]:hover { background-color: #524519; }
 html.dark input:not([type="checkbox"]):not([type="radio"]), html.dark select, html.dark textarea {
-  background-color: #404040; color: #F5F5F5; border-color: #7A7A7A; }
+  background-color: #404040 !important; color: #F5F5F5 !important; border-color: #7A7A7A; }
 html.dark input::placeholder, html.dark textarea::placeholder { color: #9A9A9B; }
 html.dark :focus-visible { outline-color: #E8B020; }
 html.dark thead, html.dark th { background-color: #404040; }

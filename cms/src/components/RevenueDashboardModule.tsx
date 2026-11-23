@@ -1874,7 +1874,7 @@ export default function RevenueDashboardModule({
         fullLabel: `${h.hour} (${activeDateLabel})`,
         orders: h.orders,
         unitsSold: h.unitsSold,
-        netRevenue: h.netRevenue,
+        netRevenue: h.cashCollected ?? h.netRevenue,
         grossProfit: h.grossProfit,
         cogs: h.cogs,
       }));
@@ -1887,7 +1887,7 @@ export default function RevenueDashboardModule({
         fullLabel: d.date.split("-").reverse().join("/"),
         orders: d.orders,
         unitsSold: d.unitsSold,
-        netRevenue: d.netRevenue,
+        netRevenue: d.cashCollected ?? d.netRevenue,
         grossProfit: d.grossProfit,
         cogs: d.cogs,
       }));
@@ -1944,7 +1944,7 @@ export default function RevenueDashboardModule({
       const m = monthMap.get(ym)!;
       m.orders += d.orders;
       m.unitsSold += d.unitsSold;
-      m.netRevenue += d.netRevenue;
+      m.netRevenue += d.cashCollected ?? d.netRevenue;
       m.grossProfit += d.grossProfit;
       m.cogs += d.cogs;
     });
@@ -3142,7 +3142,7 @@ export default function RevenueDashboardModule({
                   </span>
                   <div className="flex items-center gap-4">
                     <span className="inline-flex items-center gap-1.5 text-brand-ink">
-                      <span className="w-3 h-3 rounded-sm bg-teal-500 inline-block" /> Doanh thu thuần
+                      <span className="w-3 h-3 rounded-sm bg-teal-500 inline-block" /> Doanh thu thực tế
                     </span>
                     <span className="inline-flex items-center gap-1.5 text-brand-ink">
                       <span className="w-3 h-3 rounded-sm bg-[#212121] inline-block" /> Lãi gộp
@@ -3870,12 +3870,12 @@ export default function RevenueDashboardModule({
                     Biểu đồ Top Sản Phẩm Đóng Góp Doanh Thu & Lãi Gộp Cao Nhất
                   </h3>
                   <p className="text-xs text-slate-500">
-                    So sánh trực quan doanh thu thuần và lợi nhuận gộp của các mặt hàng chủ lực trong kỳ.
+                    So sánh trực quan doanh thu thực tế và lợi nhuận gộp của các mặt hàng chủ lực trong kỳ.
                   </p>
                 </div>
                 <div className="flex items-center gap-4 text-xs font-bold">
                   <span className="inline-flex items-center gap-1.5 text-brand-ink">
-                    <span className="w-3 h-3 rounded-sm bg-teal-500 inline-block" /> Doanh thu thuần
+                    <span className="w-3 h-3 rounded-sm bg-teal-500 inline-block" /> Doanh thu thực tế
                   </span>
                   <span className="inline-flex items-center gap-1.5 text-brand-ink">
                     <span className="w-3 h-3 rounded-sm bg-[#212121] inline-block" /> Lãi gộp thực tế
