@@ -1959,7 +1959,7 @@ export default function PosServiceSection({
                   type="button"
                   onClick={() => handlePrintServiceReceipt("SPLIT_2_BILLS")}
                   title="Tách thành 2 lệnh in riêng biệt để máy in K80 tự động cắt rời Liên 1 và Liên 2"
-                  className="px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 transition shadow cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 !text-white text-xs font-bold flex items-center gap-1.5 transition shadow cursor-pointer"
                 >
                   <Printer className="w-4 h-4" />
                   In 2 Bill (Tự cắt rời)
@@ -1968,7 +1968,7 @@ export default function PosServiceSection({
                   type="button"
                   onClick={() => handlePrintServiceReceipt("COPY_1")}
                   title="Chỉ in Liên 1 (Bản giao khách)"
-                  className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition cursor-pointer"
+                  className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 !text-white border border-slate-700 text-xs font-bold transition cursor-pointer"
                 >
                   In Liên 1 (Khách)
                 </button>
@@ -1976,14 +1976,14 @@ export default function PosServiceSection({
                   type="button"
                   onClick={() => handlePrintServiceReceipt("COPY_2")}
                   title="Chỉ in Liên 2 (Bản lưu shop)"
-                  className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition cursor-pointer"
+                  className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 !text-white border border-slate-700 text-xs font-bold transition cursor-pointer"
                 >
                   In Liên 2 (Shop)
                 </button>
                 <button
                   type="button"
                   onClick={() => setPrintOrder(null)}
-                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer"
+                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 !text-white cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>

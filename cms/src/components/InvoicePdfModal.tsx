@@ -210,19 +210,19 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
                 type="button"
                 onClick={() => setPaperSize("K80")}
                 className={`min-h-[40px] px-3 py-1.5 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition ${paperSize === "K80"
-                    ? "bg-teal-600 text-white shadow-xs"
-                    : "text-slate-600 hover:text-slate-900"
+                  ? "bg-teal-600 text-white shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
                   }`}
               >
                 <Receipt className="w-4 h-4" />
-                Khổ Bill K80 (80mm)
+                Khổ Bill
               </button>
               <button
                 type="button"
                 onClick={() => setPaperSize("A4")}
                 className={`min-h-[40px] px-3 py-1.5 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition ${paperSize === "A4"
-                    ? "bg-teal-600 text-white shadow-xs"
-                    : "text-slate-600 hover:text-slate-900"
+                  ? "bg-teal-600 text-white shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
                   }`}
               >
                 <FileText className="w-4 h-4" />
@@ -256,8 +256,8 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
             ref={printAreaRef}
             id="printable-invoice"
             className={`mx-auto bg-white text-black shadow-md border border-slate-300 overflow-hidden ${paperSize === "K80"
-                ? "w-full max-w-[360px] p-3.5 sm:p-4 text-[11px]"
-                : "w-full min-w-[560px] max-w-[794px] p-6 sm:p-8 text-xs"
+              ? "w-full max-w-[360px] p-3.5 sm:p-4 text-[11px]"
+              : "w-full min-w-[560px] max-w-[794px] p-6 sm:p-8 text-xs"
               }`}
           >
             {/* Header cửa hàng 11Sport với Logo */}

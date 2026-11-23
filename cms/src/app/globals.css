@@ -248,6 +248,21 @@ html.dark .bg-cyan-500 [class*="text-"],
 html.dark .bg-cyan-600,
 html.dark .bg-cyan-600 [class*="text-"] { color: #212121 !important; }
 
+/* Hóa đơn xem trước luôn giữ nền giấy trắng & chữ đen ở chế độ tối */
+html.dark #printable-invoice,
+html.dark #service-receipt-print-area .bg-white {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
+html.dark #printable-invoice .text-slate-500,
+html.dark #printable-invoice .text-slate-600,
+html.dark #printable-invoice .text-slate-700,
+html.dark #service-receipt-print-area .text-slate-500,
+html.dark #service-receipt-print-area .text-slate-600,
+html.dark #service-receipt-print-area .text-slate-700 {
+  color: #334155 !important;
+}
+
 /* Logo bản tối: chế độ tối + drawer (luôn nền tối). Hoá đơn in giữ logo gốc. */
 html.dark img[src="/logo-11sport.svg"]:not([data-keep-logo]),
 .drawer-dark img[src="/logo-11sport.svg"] {

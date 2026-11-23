@@ -39,6 +39,7 @@ interface ReturnItemForm {
   color: string;
   size: string;
   isGift: boolean;
+  originalUnitPrice: number;
   unitPrice: number;
   maxReturnable: number;
   quantity: number;
@@ -292,6 +293,7 @@ export default function ReturnExchangeTab() {
         color: String(it.color || "").trim(),
         size: String(it.size || "").trim(),
         isGift: Boolean(it.isGift) || it.discountType === "GIFT",
+        originalUnitPrice: Number((it as any).originalUnitPrice || it.unitPrice || 0),
         unitPrice: Number(it.unitPrice),
         maxReturnable,
         quantity: 0,
@@ -465,8 +467,8 @@ export default function ReturnExchangeTab() {
           const v = findVariantByColorSize(opt.product, opt.color, opt.size);
           return Boolean(
             v &&
-              (String(v.legacyVariantCode || "").toUpperCase() === q ||
-                (v.legacyVariantCodes || []).some((c) => c.toUpperCase() === q))
+            (String(v.legacyVariantCode || "").toUpperCase() === q ||
+              (v.legacyVariantCodes || []).some((c) => c.toUpperCase() === q))
           );
         })() ||
         (opt.product.barcode || "").toUpperCase() === q
@@ -511,18 +513,18 @@ export default function ReturnExchangeTab() {
             exchangeItems:
               mode === "EXCHANGE"
                 ? exchangeRows.map((ex) => {
-                    const pricing = getExchangeItemPricing(ex);
-                    return {
-                      productId: ex.product._id,
-                      color: ex.color,
-                      size: ex.size,
-                      quantity: ex.quantity,
-                      originalUnitPrice: pricing.originalUnitPrice,
-                      discountType: ex.discountValue > 0 ? ex.discountType : "NONE",
-                      discountValue: ex.discountValue > 0 ? ex.discountValue : 0,
-                      unitPrice: pricing.unitPrice,
-                    };
-                  })
+                  const pricing = getExchangeItemPricing(ex);
+                  return {
+                    productId: ex.product._id,
+                    color: ex.color,
+                    size: ex.size,
+                    quantity: ex.quantity,
+                    originalUnitPrice: pricing.originalUnitPrice,
+                    discountType: ex.discountValue > 0 ? ex.discountType : "NONE",
+                    discountValue: ex.discountValue > 0 ? ex.discountValue : 0,
+                    unitPrice: pricing.unitPrice,
+                  };
+                })
                 : [],
           }),
         });
@@ -543,6 +545,8 @@ export default function ReturnExchangeTab() {
   const localCalc = useMemo(() => {
     if (!selectedOrder) {
       return {
+        unitRefundPrices: [] as number[],
+        lineRefundTotals: [] as number[],
         returnSubtotal: 0,
         refundedCardFee: 0,
         returnTotal: 0,
@@ -560,62 +564,96 @@ export default function ReturnExchangeTab() {
     }
 
     const orderItems = Array.isArray(selectedOrder.items) ? selectedOrder.items : [];
-    const orderSubtotalS = orderItems.reduce(
-      (sum, it) =>
-        sum +
-        (Number(it.lineTotal) ||
-          Math.max(0, Number(it.unitPrice) || 0) * Math.max(0, Number(it.quantity) || 0)),
-      0
+    const orderSubtotalS = Math.max(
+      0,
+      Number(selectedOrder.subtotal) ||
+      orderItems.reduce(
+        (sum, it) =>
+          sum +
+          (Boolean(it.isGift) || it.discountType === "GIFT"
+            ? 0
+            : Math.max(
+              0,
+              Number(it.lineTotal) ||
+              Math.max(0, Number(it.unitPrice) || 0) * Math.max(0, Number(it.quantity) || 0)
+            )),
+        0
+      )
     );
     const orderBillDiscB = Math.min(
       orderSubtotalS,
       Math.max(0, Math.round(Number(selectedOrder.billDiscountAmount) || 0))
     );
-    const orderNetGoods = Math.max(0, orderSubtotalS - orderBillDiscB);
 
-    const lineNetAmounts = orderItems.map((it) => {
-      const l_i =
+    const paidLineIndices = orderItems
+      .map((it, idx) => ({ it, idx }))
+      .filter(({ it }) => {
+        const lTotal =
+          Number(it.lineTotal) ||
+          Math.max(0, Number(it.unitPrice) || 0) * Math.max(0, Number(it.quantity) || 0);
+        return !it.isGift && it.discountType !== "GIFT" && lTotal > 0;
+      })
+      .map(({ idx }) => idx);
+    const lastPaidIdx = paidLineIndices.length > 0 ? paidLineIndices[paidLineIndices.length - 1] : -1;
+
+    const lineNetAmounts: number[] = [];
+    let allocatedBillDisc = 0;
+    for (let idx = 0; idx < orderItems.length; idx++) {
+      const it = orderItems[idx];
+      const lineTotal = Math.max(
+        0,
         Number(it.lineTotal) ||
-        Math.max(0, Number(it.unitPrice) || 0) * Math.max(0, Number(it.quantity) || 0);
-      if (l_i <= 0 || orderSubtotalS <= 0) return 0;
-      const b_i = (l_i / orderSubtotalS) * orderBillDiscB;
-      return Math.max(0, Math.round(l_i - b_i));
-    });
-
-    if (orderNetGoods > 0 && lineNetAmounts.length > 0) {
-      const sumNet = lineNetAmounts.reduce((s, v) => s + v, 0);
-      const diff = orderNetGoods - sumNet;
-      if (diff !== 0) {
-        let lastPaidIdx = -1;
-        for (let i = lineNetAmounts.length - 1; i >= 0; i--) {
-          if (lineNetAmounts[i] > 0) {
-            lastPaidIdx = i;
-            break;
-          }
-        }
-        if (lastPaidIdx >= 0) {
-          lineNetAmounts[lastPaidIdx] = Math.max(0, lineNetAmounts[lastPaidIdx] + diff);
-        }
+        Math.max(0, Number(it.unitPrice) || 0) * Math.max(0, Number(it.quantity) || 0)
+      );
+      if (it.isGift || it.discountType === "GIFT" || lineTotal <= 0 || orderSubtotalS <= 0 || orderBillDiscB <= 0) {
+        lineNetAmounts[idx] = lineTotal;
+        continue;
       }
+      let bShare = 0;
+      if (idx === lastPaidIdx) {
+        bShare = Math.max(0, orderBillDiscB - allocatedBillDisc);
+      } else {
+        bShare = Math.min(
+          Math.max(0, orderBillDiscB - allocatedBillDisc),
+          Math.round((lineTotal / orderSubtotalS) * orderBillDiscB)
+        );
+      }
+      allocatedBillDisc += bShare;
+      lineNetAmounts[idx] = Math.max(0, lineTotal - bShare);
     }
 
+    const orderNetGoods = Math.max(0, orderSubtotalS - orderBillDiscB);
+    const unitRefundPrices: number[] = [];
+    const lineRefundTotals: number[] = [];
     let calcReturnSubtotal = 0;
-    for (const r of returnRows) {
-      if (r.quantity <= 0) continue;
+
+    for (let i = 0; i < returnRows.length; i++) {
+      const r = returnRows[i];
       const ordItem = orderItems[r.lineIndex];
       const q_i = Math.max(1, Number(ordItem?.quantity || r.maxReturnable || 1));
-      const alreadyReturned = Math.max(0, Number(ordItem?.returnedQuantity || 0));
+      const alreadyReturned = Math.min(q_i, Math.max(0, Number(ordItem?.returnedQuantity || 0)));
       const N_i =
         lineNetAmounts[r.lineIndex] ??
         Math.max(0, Math.round(r.unitPrice * q_i));
       const unitRefundPrice = r.isGift ? 0 : Math.max(0, Math.round(N_i / q_i));
+      unitRefundPrices[i] = unitRefundPrice;
+
+      if (r.quantity <= 0 || r.isGift) {
+        lineRefundTotals[i] = 0;
+        continue;
+      }
+      const alreadyAllocNet =
+        alreadyReturned >= q_i
+          ? N_i
+          : alreadyReturned > 0
+            ? Math.round((alreadyReturned / q_i) * N_i)
+            : 0;
+      const remainingNetForLine = Math.max(0, N_i - alreadyAllocNet);
       const isReturningRemainingAll = alreadyReturned + r.quantity >= q_i;
-      const alreadyRefundedOnLine = alreadyReturned * unitRefundPrice;
-      const lineRefundTotal = r.isGift
-        ? 0
-        : isReturningRemainingAll
-        ? Math.max(0, N_i - alreadyRefundedOnLine)
-        : unitRefundPrice * r.quantity;
+      const lineRefundTotal = isReturningRemainingAll
+        ? remainingNetForLine
+        : Math.min(remainingNetForLine, Math.round((r.quantity / q_i) * N_i));
+      lineRefundTotals[i] = lineRefundTotal;
       calcReturnSubtotal += lineRefundTotal;
     }
 
@@ -625,10 +663,10 @@ export default function ReturnExchangeTab() {
       const orderReturns: ReturnReceipt[] = Array.isArray((selectedOrder as any).returns)
         ? (selectedOrder as any).returns
         : recentReturns.filter(
-            (r) =>
-              r.orderId === selectedOrder._id ||
-              r.orderCode === (selectedOrder.orderCode || selectedOrder.code)
-          );
+          (r) =>
+            r.orderId === selectedOrder._id ||
+            r.orderCode === (selectedOrder.orderCode || selectedOrder.code)
+        );
       const alreadyRefunded = orderReturns.reduce(
         (sum, r) => sum + Math.max(0, Math.round(Number(r.refundedCardFee) || 0)),
         0
@@ -655,9 +693,9 @@ export default function ReturnExchangeTab() {
     const calcExchangeRawSubtotal =
       mode === "EXCHANGE"
         ? exchangeRows.reduce(
-            (sum, r) => sum + getExchangeItemPricing(r).originalUnitPrice * r.quantity,
-            0
-          )
+          (sum, r) => sum + getExchangeItemPricing(r).originalUnitPrice * r.quantity,
+          0
+        )
         : 0;
     const calcExchangeDiscountTotal =
       mode === "EXCHANGE"
@@ -676,6 +714,8 @@ export default function ReturnExchangeTab() {
     const calcDebtAfter = Math.max(0, calcDebtBefore - calcDebtReduction);
 
     return {
+      unitRefundPrices,
+      lineRefundTotals,
       returnSubtotal: calcReturnSubtotal,
       refundedCardFee: calcRefundedCardFee,
       returnTotal: calcReturnTotal,
@@ -744,18 +784,18 @@ export default function ReturnExchangeTab() {
         exchangeItems:
           mode === "EXCHANGE"
             ? exchangeRows.map((ex) => {
-                const pricing = getExchangeItemPricing(ex);
-                return {
-                  productId: ex.product._id,
-                  color: ex.color,
-                  size: ex.size,
-                  quantity: ex.quantity,
-                  originalUnitPrice: pricing.originalUnitPrice,
-                  discountType: ex.discountValue > 0 ? ex.discountType : "NONE",
-                  discountValue: ex.discountValue > 0 ? ex.discountValue : 0,
-                  unitPrice: pricing.unitPrice,
-                };
-              })
+              const pricing = getExchangeItemPricing(ex);
+              return {
+                productId: ex.product._id,
+                color: ex.color,
+                size: ex.size,
+                quantity: ex.quantity,
+                originalUnitPrice: pricing.originalUnitPrice,
+                discountType: ex.discountValue > 0 ? ex.discountType : "NONE",
+                discountValue: ex.discountValue > 0 ? ex.discountValue : 0,
+                unitPrice: pricing.unitPrice,
+              };
+            })
             : [],
       };
 
@@ -780,18 +820,16 @@ export default function ReturnExchangeTab() {
 
       setSuccessMsg(
         createdDebtReduction > 0
-          ? `Đã xử lý phiếu ${
-              createdReturn?.returnCode || createdReturn?.code || "Trả/Đổi"
-            } thành công! Tổng tiền hoàn trả: ${formatVND(
-              createdRefundAmount
-            )} · Cấn trừ vào công nợ đơn gốc: -${formatVND(
-              createdDebtReduction
-            )} (Nợ còn lại: ${formatVND(
-              createdDebtAfter
-            )}) · Tiền mặt/CK thực hoàn cho khách: ${formatVND(createdCashRefund)}.`
-          : `Đã xử lý phiếu ${
-              createdReturn?.returnCode || createdReturn?.code || "Trả/Đổi"
-            } thành công! Tồn kho và trạng thái đơn gốc đã được cập nhật.`
+          ? `Đã xử lý phiếu ${createdReturn?.returnCode || createdReturn?.code || "Trả/Đổi"
+          } thành công! Tổng tiền hoàn trả: ${formatVND(
+            createdRefundAmount
+          )} · Cấn trừ vào công nợ đơn gốc: -${formatVND(
+            createdDebtReduction
+          )} (Nợ còn lại: ${formatVND(
+            createdDebtAfter
+          )}) · Tiền mặt/CK thực hoàn cho khách: ${formatVND(createdCashRefund)}.`
+          : `Đã xử lý phiếu ${createdReturn?.returnCode || createdReturn?.code || "Trả/Đổi"
+          } thành công! Tồn kho và trạng thái đơn gốc đã được cập nhật.`
       );
       setNote("");
       await loadInitialLists();
@@ -918,6 +956,12 @@ export default function ReturnExchangeTab() {
                   </span>
                 )}
                 <span>
+                  · Giá Bill thực thu:{" "}
+                  <strong className="font-mono text-brand-ink">
+                    {formatVND(Number(selectedOrder.totalAmount) || Math.max(0, Number(selectedOrder.subtotal || 0) - Number(selectedOrder.billDiscountAmount || 0)))}
+                  </strong>
+                </span>
+                <span>
                   · Phí thẻ:{" "}
                   <strong className="font-mono">{formatVND(selectedOrder.cardFee)}</strong>{" "}
                   {Number(selectedOrder.cardFee) > 0 ? (
@@ -979,7 +1023,7 @@ export default function ReturnExchangeTab() {
                 <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 uppercase">
                   <tr>
                     <th className="py-2.5 px-3">Sản phẩm trong đơn</th>
-                    <th className="py-2.5 px-3 text-right">Đơn giá niêm yết</th>
+                    <th className="py-2.5 px-3 text-right">Giá niêm yết / Giá bán</th>
                     <th className="py-2.5 px-3 text-center">Còn có thể trả</th>
                     <th className="py-2.5 px-3 text-center w-40">Số lượng trả</th>
                     <th className="py-2.5 px-3 w-64">Tình trạng hàng trả về (BR-15)</th>
@@ -1016,7 +1060,22 @@ export default function ReturnExchangeTab() {
                         </div>
                       </td>
                       <td className="py-3 px-3 text-right font-mono font-semibold">
-                        {formatVND(row.unitPrice)}
+                        {(() => {
+                          const effUnit = localCalc.unitRefundPrices[idx] ?? row.unitPrice;
+                          const hasBillOrItemDisc = !row.isGift && Math.max(row.originalUnitPrice, row.unitPrice) > effUnit;
+                          return (
+                            <div>
+                              {hasBillOrItemDisc && (
+                                <div className="line-through text-slate-400 text-[11px]">
+                                  {formatVND(Math.max(row.originalUnitPrice, row.unitPrice))}
+                                </div>
+                              )}
+                              <div className="font-bold text-brand-ink">
+                                {formatVND(effUnit)}
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="py-3 px-3 text-center font-mono font-bold text-brand-ink">
                         {row.maxReturnable}
@@ -1067,9 +1126,9 @@ export default function ReturnExchangeTab() {
                                 prev.map((r, i) =>
                                   i === idx
                                     ? {
-                                        ...r,
-                                        quantity: Math.min(r.maxReturnable, r.quantity + 1),
-                                      }
+                                      ...r,
+                                      quantity: Math.min(r.maxReturnable, r.quantity + 1),
+                                    }
                                     : r
                                 )
                               )
@@ -1089,9 +1148,9 @@ export default function ReturnExchangeTab() {
                               prev.map((r, i) =>
                                 i === idx
                                   ? {
-                                      ...r,
-                                      condition: e.target.value as "GOOD" | "DAMAGED",
-                                    }
+                                    ...r,
+                                    condition: e.target.value as "GOOD" | "DAMAGED",
+                                  }
                                   : r
                               )
                             )
@@ -1107,7 +1166,7 @@ export default function ReturnExchangeTab() {
                         </select>
                       </td>
                       <td className="py-3 px-3 text-right font-mono font-extrabold text-slate-900">
-                        {formatVND(row.unitPrice * row.quantity)}
+                        {formatVND(localCalc.lineRefundTotals[idx] ?? row.unitPrice * row.quantity)}
                       </td>
                     </tr>
                   ))}
@@ -1393,7 +1452,7 @@ export default function ReturnExchangeTab() {
                                     inputMode="numeric"
                                     value={
                                       ex.discountInputMode === "PRICE" &&
-                                      ex.customPriceText !== undefined
+                                        ex.customPriceText !== undefined
                                         ? ex.customPriceText
                                         : pricing.discountAmount > 0
                                           ? formatNumberDots(pricing.unitPrice)
@@ -1470,9 +1529,9 @@ export default function ReturnExchangeTab() {
                                       prev.map((r, idx) =>
                                         idx === i
                                           ? {
-                                              ...r,
-                                              quantity: Math.min(ex.stockFloor1, r.quantity + 1),
-                                            }
+                                            ...r,
+                                            quantity: Math.min(ex.stockFloor1, r.quantity + 1),
+                                          }
                                           : r
                                       )
                                     )
@@ -1609,13 +1668,12 @@ export default function ReturnExchangeTab() {
                   {netDifference > 0
                     ? "Khách cần trả thêm:"
                     : netDifference < 0
-                    ? "Tổng tiền hoàn trả (refundAmount):"
-                    : "Chênh lệch thanh toán:"}
+                      ? "Tổng tiền hoàn trả (refundAmount):"
+                      : "Chênh lệch thanh toán:"}
                 </span>
                 <span
-                  className={`font-mono text-xl font-extrabold ${
-                    netDifference > 0 ? "text-brand-ink" : "text-amber-700"
-                  }`}
+                  className={`font-mono text-xl font-extrabold ${netDifference > 0 ? "text-brand-ink" : "text-amber-700"
+                    }`}
                 >
                   {formatVND(Math.abs(netDifference))}
                 </span>
@@ -1660,10 +1718,10 @@ export default function ReturnExchangeTab() {
                 {submitting
                   ? "Đang xử lý..."
                   : mode === "EXCHANGE"
-                  ? "XÁC NHẬN PHIẾU ĐỔI HÀNG"
-                  : debtReduction > 0 && cashRefund === 0
-                  ? "XÁC NHẬN TRẢ HÀNG & CẤN TRỪ CÔNG NỢ"
-                  : "XÁC NHẬN PHIẾU TRẢ HÀNG & HOÀN TIỀN"}
+                    ? "XÁC NHẬN PHIẾU ĐỔI HÀNG"
+                    : debtReduction > 0 && cashRefund === 0
+                      ? "XÁC NHẬN TRẢ HÀNG & CẤN TRỪ CÔNG NỢ"
+                      : "XÁC NHẬN PHIẾU TRẢ HÀNG & HOÀN TIỀN"}
               </button>
             </div>
           </div>
@@ -1715,8 +1773,8 @@ export default function ReturnExchangeTab() {
                         {r.netDifference < 0
                           ? `Hoàn khách ${formatVND(Math.abs(r.netDifference))}`
                           : r.netDifference > 0
-                          ? `Thu thêm ${formatVND(r.netDifference)}`
-                          : "0 ₫"}
+                            ? `Thu thêm ${formatVND(r.netDifference)}`
+                            : "0 ₫"}
                       </div>
                       {r.netDifference < 0 && Number(r.debtReduction) > 0 && (
                         <div className="text-[10px] font-sans font-semibold text-purple-700 mt-0.5 space-y-0.5">
