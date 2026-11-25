@@ -1,43 +1,28 @@
-import { Request, Response, NextFunction } from 'express';
+import { handle } from '../shared/http';
+import { created, ok } from '../shared/result';
 import {
   createLeaveRequest,
   listLeaveRequests,
   cancelLeaveRequest,
   reviewLeaveRequest,
-} from '../services/leaveRequests.service';
+} from '../services/leave';
 
-export async function createLeaveRequestHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const created = await createLeaveRequest(req.user, req.body);
-    res.status(201).json({ data: created, meta: {} });
-  } catch (err) {
-    next(err);
-  }
-}
+export const createLeaveRequestHandler = handle(async (req, ctx) => {
+  const createdReq = await createLeaveRequest(ctx.user, req.body);
+  return created(createdReq);
+});
 
-export async function getLeaveRequestsHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const list = await listLeaveRequests(req.user, req.query);
-    res.json({ data: list, meta: { total: list.length } });
-  } catch (err) {
-    next(err);
-  }
-}
+export const getLeaveRequestsHandler = handle(async (req, ctx) => {
+  const list = await listLeaveRequests(ctx.user, req.query);
+  return ok(list, { total: list.length });
+});
 
-export async function deleteLeaveRequestHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    await cancelLeaveRequest(req.user, req.params.id);
-    res.json({ data: { success: true }, meta: { message: 'Đã hủy đơn' } });
-  } catch (err) {
-    next(err);
-  }
-}
+export const deleteLeaveRequestHandler = handle(async (req, ctx) => {
+  await cancelLeaveRequest(ctx.user, req.params.id);
+  return ok({ success: true }, { message: 'Đã hủy đơn' });
+});
 
-export async function patchLeaveRequestHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const updated = await reviewLeaveRequest(req.user, req.params.id, req.body);
-    res.json({ data: updated, meta: {} });
-  } catch (err) {
-    next(err);
-  }
-}
+export const patchLeaveRequestHandler = handle(async (req, ctx) => {
+  const updated = await reviewLeaveRequest(ctx.user, req.params.id, req.body);
+  return ok(updated);
+});

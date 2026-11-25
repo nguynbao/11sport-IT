@@ -7,7 +7,7 @@ import {
   getSalesMonthlyUnpaidOffDates,
   getStaffPaidLeaveBalance,
   SALES_MAX_UNPAID_OFF_PER_MONTH,
-} from '../leaveRequests.service';
+} from '../leave';
 import {
   getCurrentMondayStr,
   getNextMondayStr,

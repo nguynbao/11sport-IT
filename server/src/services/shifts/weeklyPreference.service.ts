@@ -13,7 +13,7 @@ import {
   SALES_MAX_PAID_LEAVE_PER_WEEK_SHIFT_REG,
   SALES_MAX_UNPAID_OFF_PER_MONTH,
   SALES_MAX_UNPAID_OFF_PER_WEEK_SHIFT_REG,
-} from '../leaveRequests.service';
+} from '../leave';
 import {
   getCurrentMondayStr,
   getNextMondayStr,

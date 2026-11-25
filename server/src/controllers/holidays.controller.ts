@@ -1,11 +1,12 @@
-import { Request, Response, NextFunction } from 'express';
 import { ApiError } from '../shared/errors';
+import { handle } from '../shared/http';
+import { created, ok } from '../shared/result';
 import {
   listHolidays,
   syncVietnamHolidays,
   createHoliday,
   deleteHolidayById,
-} from '../services/holidays.service';
+} from '../services/holidays';
 
 const HOLIDAY_MANAGER_ROLES = new Set(['CEO', 'ADMIN', 'HR']);
 
@@ -15,54 +16,29 @@ function assertHolidayManager(role?: string, actionLabel = 'quản lý ngày l�
   }
 }
 
-export async function getHolidaysHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const { result, requestedYear } = await listHolidays(req.query.year);
-    res.json({
-      data: result,
-      meta: { total: result.length, year: requestedYear },
-    });
-  } catch (err) {
-    next(err);
-  }
-}
+export const getHolidaysHandler = handle(async (req) => {
+  const { result, requestedYear } = await listHolidays(req.query.year);
+  return ok(result, { total: result.length, year: requestedYear });
+});
 
-export async function syncVnHolidaysHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    assertHolidayManager(req.user?.role, 'đồng bộ ngày lễ');
-    const { year, syncedCount, totalVietnamHolidays } = await syncVietnamHolidays(req.body?.year);
-    const label = syncedCount > 0 ? `${syncedCount}/${totalVietnamHolidays}` : `${totalVietnamHolidays}`;
-    res.json({
-      data: { year, syncedCount, totalVietnamHolidays },
-      meta: { message: `Đã đồng bộ ${label} ngày lễ Việt Nam năm ${year}` },
-    });
-  } catch (err) {
-    next(err);
-  }
-}
+export const syncVnHolidaysHandler = handle(async (req, ctx) => {
+  assertHolidayManager(ctx.user?.role, 'đồng bộ ngày lễ');
+  const { year, syncedCount, totalVietnamHolidays } = await syncVietnamHolidays(req.body?.year);
+  const label = syncedCount > 0 ? `${syncedCount}/${totalVietnamHolidays}` : `${totalVietnamHolidays}`;
+  return ok(
+    { year, syncedCount, totalVietnamHolidays },
+    { message: `Đã đồng bộ ${label} ngày lễ Việt Nam năm ${year}` }
+  );
+});
 
-export async function createHolidayHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    assertHolidayManager(req.user?.role, 'tạo ngày lễ');
-    const created = await createHoliday(req.body || {});
-    res.status(201).json({
-      data: created,
-      meta: { message: 'Thêm ngày lễ thành công' },
-    });
-  } catch (err) {
-    next(err);
-  }
-}
+export const createHolidayHandler = handle(async (req, ctx) => {
+  assertHolidayManager(ctx.user?.role, 'tạo ngày lễ');
+  const createdHoliday = await createHoliday(req.body || {});
+  return created(createdHoliday, { message: 'Thêm ngày lễ thành công' });
+});
 
-export async function deleteHolidayHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    assertHolidayManager(req.user?.role, 'xóa ngày lễ');
-    await deleteHolidayById(req.params.id);
-    res.json({
-      data: { success: true },
-      meta: { message: 'Đã xóa ngày lễ' },
-    });
-  } catch (err) {
-    next(err);
-  }
-}
+export const deleteHolidayHandler = handle(async (req, ctx) => {
+  assertHolidayManager(ctx.user?.role, 'xóa ngày lễ');
+  await deleteHolidayById(req.params.id);
+  return ok({ success: true }, { message: 'Đã xóa ngày lễ' });
+});
