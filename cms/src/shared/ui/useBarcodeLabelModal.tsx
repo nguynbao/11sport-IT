@@ -29,6 +29,8 @@ import {
   sanitizeAscii,
   escapeHtml,
 } from "./barcodeLabelCode128";
+import { openBrowserPrintDialog } from "./barcodePrintDialog";
+import { BarcodeStickerPreview } from "./BarcodeStickerPreview";
 
 export function useBarcodeLabelModal({
   open,
@@ -331,378 +333,39 @@ export function useBarcodeLabelModal({
   };
 
   // IN QUA HỘP THOẠI TRÌNH DUYỆT (CHUẨN 2 CỘT 70x20mm)
-  const handleBrowserPrintDialog = () => {
-    if (totalLabels <= 0) return;
-
-    const expandedLabels: {
-      code: string;
-      name: string;
-      price: number;
-    }[] = [];
-
-    normalizedItems.forEach((item) => {
-      const qty = quantities[item.id] || 0;
-      const effPrice = getEffectiveItemPrice(item);
-      const compactCode = toCompactBarcode128(sanitizeAscii(item.code), 200);
-      for (let i = 0; i < qty; i++) {
-        expandedLabels.push({
-          code: compactCode,
-          name: item.name,
-          price: effPrice
-        });
-      }
+  const handleBrowserPrintDialog = () =>
+    openBrowserPrintDialog({
+      totalLabels,
+      normalizedItems,
+      quantities,
+      getEffectiveItemPrice,
+      showShopName,
+      shopName,
+      showProductName,
+      wrapProductName,
+      nameFontSizePx,
+      getEffectiveNameFontPx,
+      showPrice,
+      printIframeRef,
     });
-
-    const pagesHtml: string[] = [];
-    const cols = FIXED_LABEL_CONFIG.columns;
-
-    const svgCache = new Map<string, string>();
-    const getSvgForCode = (code: string) => {
-      if (!svgCache.has(code)) {
-        svgCache.set(
-          code,
-          renderCode128PrintSvgFor203Dpi(code, FIXED_LABEL_CONFIG.labelWidthMm)
-        );
-      }
-      return svgCache.get(code) || "";
-    };
-
-    for (let i = 0; i < expandedLabels.length; i += cols) {
-      const rowItems = expandedLabels.slice(i, i + cols);
-      const cellsHtml = rowItems
-        .map((item) => {
-          const svgMarkup = getSvgForCode(item.code);
-          const shopHtml = showShopName
-            ? `<div class="label-shop">${escapeHtml(shopName)}</div>`
-            : "";
-          const effectiveNamePx = getEffectiveNameFontPx(item.name, nameFontSizePx);
-          const nameFontPt = (effectiveNamePx * 0.35).toFixed(1);
-          const nameWrapCss = wrapProductName
-            ? "white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word;"
-            : "white-space: nowrap; text-overflow: ellipsis;";
-          const nameHtml = showProductName
-            ? `<div class="label-name" style="font-size:${nameFontPt}pt;${nameWrapCss}">${escapeHtml(item.name)}</div>`
-            : "";
-          const priceHtml =
-            showPrice && item.price > 0
-              ? `<div class="label-price">${item.price.toLocaleString("vi-VN")} đ</div>`
-              : "";
-
-          return `
-            <div class="label-cell">
-              ${shopHtml}
-              ${nameHtml}
-              <div class="label-barcode">
-                ${svgMarkup}
-              </div>
-              <div class="label-code">${escapeHtml(item.code)}</div>
-              ${priceHtml}
-            </div>
-          `;
-        })
-        .join("");
-
-      const emptyCells =
-        rowItems.length < cols
-          ? Array.from({ length: cols - rowItems.length })
-            .map(() => `<div class="label-cell empty"></div>`)
-            .join("")
-          : "";
-
-      pagesHtml.push(`<div class="label-page">${cellsHtml}${emptyCells}</div>`);
-    }
-
-    const safePrintHeightMm = (FIXED_LABEL_CONFIG.pageHeightMm - 0.3).toFixed(1);
-
-    const htmlContent = `<!DOCTYPE html>
-<html lang="vi">
-<head>
-  <meta charset="UTF-8" />
-  <title>In tem 2 cot 70x20mm - ${escapeHtml(shopName)}</title>
-  <style>
-    @page {
-      size: 70mm 20mm;
-      margin: 0mm !important;
-    }
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      -webkit-print-color-adjust: exact !important;
-      print-color-adjust: exact !important;
-    }
-    html, body {
-      width: 70mm;
-      margin: 0 !important;
-      padding: 0 !important;
-      background: #ffffff;
-      color: #000000;
-      font-family: Arial, Helvetica, sans-serif;
-      -webkit-font-smoothing: none;
-      text-rendering: geometricPrecision;
-    }
-    .label-page {
-      width: 70mm;
-      height: ${safePrintHeightMm}mm;
-      max-height: ${safePrintHeightMm}mm;
-      display: grid;
-      grid-template-columns: 34mm 34mm;
-      column-gap: 2mm;
-      align-items: stretch;
-      justify-content: space-between;
-      page-break-after: always;
-      break-after: page;
-      overflow: hidden;
-      background: #ffffff;
-    }
-    .label-page:last-child {
-      page-break-after: auto;
-      break-after: auto;
-    }
-    .label-cell {
-      width: 34mm;
-      height: ${safePrintHeightMm}mm;
-      padding: 0.15mm 2.2mm;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      align-items: center;
-      text-align: center;
-      overflow: hidden;
-      background: #ffffff;
-    }
-    .label-cell.empty {
-      visibility: hidden;
-    }
-    .label-shop {
-      width: 100%;
-      flex-shrink: 0;
-      font-size: 7.0pt;
-      font-weight: 900;
-      line-height: 1.05;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      border-bottom: 0.35mm solid #000000;
-      padding-bottom: 0.15mm;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .label-name {
-      width: 100%;
-      flex-shrink: 0;
-      font-size: 8.2pt;
-      font-weight: 800;
-      line-height: 1.05;
-      max-height: 5.2mm;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .label-barcode {
-      width: 100%;
-      flex: 1 1 auto;
-      min-height: 4.2mm;
-      max-height: ${showProductName ? "9.0mm" : "12.0mm"};
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: #ffffff;
-      overflow: hidden;
-    }
-    .barcode-svg {
-      display: block;
-      height: 100%;
-      shape-rendering: crispEdges;
-    }
-    .label-code {
-      width: 100%;
-      flex-shrink: 0;
-      font-family: "Courier New", Consolas, monospace;
-      font-size: 6.4pt;
-      font-weight: 800;
-      letter-spacing: 0.06em;
-      line-height: 1.05;
-      white-space: nowrap;
-      overflow: hidden;
-    }
-    .label-price {
-      width: 100%;
-      flex-shrink: 0;
-      font-size: 9.4pt;
-      font-weight: 900;
-      line-height: 1.05;
-      white-space: nowrap;
-    }
-  </style>
-</head>
-<body>
-  ${pagesHtml.join("\n")}
-</body>
-</html>`;
-
-    let iframe = printIframeRef.current;
-    if (!iframe) {
-      iframe = document.createElement("iframe");
-      iframe.style.position = "fixed";
-      iframe.style.right = "0";
-      iframe.style.bottom = "0";
-      iframe.style.width = "0";
-      iframe.style.height = "0";
-      iframe.style.border = "0";
-      iframe.setAttribute("aria-hidden", "true");
-      document.body.appendChild(iframe);
-      printIframeRef.current = iframe;
-    }
-
-    const doc = iframe.contentWindow?.document;
-    if (!doc || !iframe.contentWindow) return;
-
-    doc.open();
-    doc.write(htmlContent);
-    doc.close();
-
-    setTimeout(() => {
-      iframe?.contentWindow?.focus();
-      iframe?.contentWindow?.print();
-    }, 220);
-  };
 
   const previewItem =
     normalizedItems.find((it) => (quantities[it.id] || 0) > 0) || normalizedItems[0];
 
-  const renderSingleStickerPreview = (item: NormalizedLabelItem | undefined, indexLabel: string) => {
-    if (!item) return null;
-    const cleanCode = toCompactBarcode128(sanitizeAscii(item.code), 200);
-    const effPrice = getEffectiveItemPrice(item);
-    const effective203Px = getEffectiveNameFontPx(item.name, nameFontSizePx);
-    const previewNameFontPx = Math.round(effective203Px * 0.62 * 10) / 10;
-    const isTwoLinePreview =
-      showProductName && wrapProductName && (item.name || "").trim().length > 18;
-    const previewBarHeight = !showProductName ? 58 : isTwoLinePreview ? 34 : 44;
-
-    return (
-      <div
-        style={{
-          flex: 1,
-          minWidth: 0,
-          minHeight: 132,
-          backgroundColor: "#ffffff",
-          border: "1.5px dashed #64748b",
-          borderRadius: 6,
-          padding: "3px 8px",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "space-between",
-          alignItems: "center",
-          textAlign: "center",
-          boxShadow: "0 4px 10px rgba(0, 0, 0, 0.08)",
-          color: "#000000",
-          position: "relative"
-        }}
-      >
-        <span
-          style={{
-            position: "absolute",
-            top: 2,
-            right: 4,
-            fontSize: 8.5,
-            fontWeight: 700,
-            color: "#64748b"
-          }}
-        >
-          {indexLabel}
-        </span>
-
-        {showShopName && (
-          <div
-            style={{
-              width: "100%",
-              flexShrink: 0,
-              fontSize: 11,
-              fontWeight: 900,
-              lineHeight: 1.05,
-              textTransform: "uppercase",
-              letterSpacing: "0.04em",
-              borderBottom: "2px solid #000000",
-              paddingBottom: 2
-            }}
-          >
-            {shopName}
-          </div>
-        )}
-
-        {showProductName && (
-          <div
-            style={{
-              width: "100%",
-              flexShrink: 0,
-              fontSize: previewNameFontPx,
-              fontWeight: 800,
-              lineHeight: 1.05,
-              ...(wrapProductName
-                ? {
-                    display: "-webkit-box",
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: "vertical" as const,
-                    whiteSpace: "normal",
-                    overflow: "hidden",
-                    wordBreak: "break-word" as const
-                  }
-                : {
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis"
-                  })
-            }}
-          >
-            {item.name}
-          </div>
-        )}
-
-        <div
-          style={{
-            width: "88%",
-            height: previewBarHeight,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center"
-          }}
-          dangerouslySetInnerHTML={{
-            __html: renderCode128SvgString(cleanCode, previewBarHeight)
-          }}
-        />
-
-        <div
-          style={{
-            width: "100%",
-            flexShrink: 0,
-            fontFamily: "Consolas, 'Courier New', monospace",
-            fontSize: 10.2,
-            fontWeight: 800,
-            lineHeight: 1.05,
-            letterSpacing: "0.06em",
-            whiteSpace: "nowrap",
-            overflow: "hidden"
-          }}
-        >
-          {cleanCode}
-        </div>
-
-        {showPrice && (
-          effPrice > 0 ? (
-            <div style={{ width: "100%", flexShrink: 0, fontSize: 15, fontWeight: 900, lineHeight: 1.05 }}>
-              {effPrice.toLocaleString("vi-VN")} đ
-            </div>
-          ) : (
-            <div style={{ width: "100%", flexShrink: 0, fontSize: 10.5, fontWeight: 700, color: "#dc2626", lineHeight: 1.05 }}>
-              Chưa nhập giá niêm yết
-            </div>
-          )
-        )}
-      </div>
-    );
-  };
+  const renderSingleStickerPreview = (item: NormalizedLabelItem | undefined, indexLabel: string) => (
+    <BarcodeStickerPreview
+      item={item}
+      indexLabel={indexLabel}
+      getEffectiveItemPrice={getEffectiveItemPrice}
+      getEffectiveNameFontPx={getEffectiveNameFontPx}
+      nameFontSizePx={nameFontSizePx}
+      showProductName={showProductName}
+      wrapProductName={wrapProductName}
+      showShopName={showShopName}
+      shopName={shopName}
+      showPrice={showPrice}
+    />
+  );
 
 
   return {

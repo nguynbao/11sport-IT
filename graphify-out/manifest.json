@@ -1938,9 +1938,9 @@
     "semantic_hash": ""
   },
   "cms/src/features/catalog/components/BrandModule.tsx": {
-    "mtime": 1795629450.07102,
-    "seen": 1795629608.064888,
-    "ast_hash": "70cd596564822dd26fdd41eb65403101",
+    "mtime": 1795631639.4566267,
+    "seen": 1795632114.900393,
+    "ast_hash": "2db367d4bf4cdd9ee67b528456bf9bc4",
     "semantic_hash": ""
   },
   "cms/src/features/catalog/components/CategoryBrandModule.tsx": {
@@ -1950,15 +1950,15 @@
     "semantic_hash": ""
   },
   "cms/src/features/catalog/components/CategoryModule.tsx": {
-    "mtime": 1795629450.0720346,
-    "seen": 1795629608.0648918,
-    "ast_hash": "d5d4bb0224c548d82442977142db6d62",
+    "mtime": 1795631639.4538143,
+    "seen": 1795632114.900397,
+    "ast_hash": "64a7367c93a52f3ebfffe9a6f6c937e6",
     "semantic_hash": ""
   },
   "cms/src/features/catalog/components/ProductCatalogModule.tsx": {
-    "mtime": 1795629473.5609212,
-    "seen": 1795629608.064893,
-    "ast_hash": "75bb9a8038f000aa09a362da6b849dfd",
+    "mtime": 1795631740.1866033,
+    "seen": 1795632114.900398,
+    "ast_hash": "b871ecb008de59797f69125e243c4647",
     "semantic_hash": ""
   },
   "cms/src/features/catalog/exports.ts": {
@@ -2088,9 +2088,9 @@
     "semantic_hash": ""
   },
   "cms/src/features/shifts/components/ShiftScheduleModule.tsx": {
-    "mtime": 1795631532.480308,
-    "seen": 1795631585.661528,
-    "ast_hash": "a131131bf77f7f6a040aa1f81f452727",
+    "mtime": 1795631806.1828747,
+    "seen": 1795632114.9005508,
+    "ast_hash": "f605c37e542e77f4bf8e2e9f7170b5e7",
     "semantic_hash": ""
   },
   "cms/src/features/shifts/index.ts": {
@@ -2100,9 +2100,9 @@
     "semantic_hash": ""
   },
   "cms/src/features/staff/components/AccountProfileModule.tsx": {
-    "mtime": 1795629371.2364874,
-    "seen": 1795629608.0649521,
-    "ast_hash": "8941c9c78941a2d8a4fa16d628bf8782",
+    "mtime": 1795631742.3164957,
+    "seen": 1795632114.9005609,
+    "ast_hash": "39d967d0795931ea14b8591990042e39",
     "semantic_hash": ""
   },
   "cms/src/features/staff/components/StaffModule.tsx": {
@@ -2232,9 +2232,9 @@
     "semantic_hash": ""
   },
   "cms/src/features/inventory/hooks/useInventoryModule.tsx": {
-    "mtime": 1795631187.6798298,
-    "seen": 1795631234.828026,
-    "ast_hash": "00a56b01d259a9a3116d8b4bd6497819",
+    "mtime": 1795631975.5879335,
+    "seen": 1795632114.900457,
+    "ast_hash": "b9bd1ec541753563efca8311fdfdb08b",
     "semantic_hash": ""
   },
   "cms/src/features/inventory/types.ts": {
@@ -2274,9 +2274,9 @@
     "semantic_hash": ""
   },
   "cms/src/features/reports/fallbackDashboard.ts": {
-    "mtime": 1795631448.879097,
-    "seen": 1795631485.4741812,
-    "ast_hash": "56686b36eaaf986bd4dd0d0d2e464677",
+    "mtime": 1795631966.8654945,
+    "seen": 1795632114.900521,
+    "ast_hash": "1607a7d997cefaf83f61475967ec251c",
     "semantic_hash": ""
   },
   "cms/src/features/reports/hooks/useRevenueDashboard.ts": {
@@ -2286,15 +2286,15 @@
     "semantic_hash": ""
   },
   "cms/src/features/staff/components/StaffCreateForm.tsx": {
-    "mtime": 1795630019.3200095,
-    "seen": 1795630088.671932,
-    "ast_hash": "11b1cae23215ae69e284d8df0c137ffa",
+    "mtime": 1795631686.4528613,
+    "seen": 1795632114.900564,
+    "ast_hash": "4f33cfbafea7be682bd9c8aec2106a62",
     "semantic_hash": ""
   },
   "cms/src/features/staff/components/StaffEditProfileModal.tsx": {
-    "mtime": 1795630019.3257587,
-    "seen": 1795630088.671934,
-    "ast_hash": "3ebcb12f49183975bbf7ec10b60ba5df",
+    "mtime": 1795631689.2458258,
+    "seen": 1795632114.900566,
+    "ast_hash": "82aa5ac5209dede3f37669bf0cfc68df",
     "semantic_hash": ""
   },
   "cms/src/features/staff/components/StaffImportPreviewModal.tsx": {
@@ -2316,9 +2316,9 @@
     "semantic_hash": ""
   },
   "cms/src/features/staff/hooks/useStaffModule.ts": {
-    "mtime": 1795630019.3177192,
-    "seen": 1795630088.671943,
-    "ast_hash": "20f625ad406e2cc8bb45463c44f5c0a6",
+    "mtime": 1795632043.8733056,
+    "seen": 1795632114.9005811,
+    "ast_hash": "aaee9d28390138261c2046bc252a2981",
     "semantic_hash": ""
   },
   "cms/src/features/staff/utils.ts": {
@@ -2580,9 +2580,9 @@
     "semantic_hash": ""
   },
   "cms/src/shared/ui/BarcodeLabelLeftColumn.tsx": {
-    "mtime": 1795630831.9570527,
-    "seen": 1795630871.001651,
-    "ast_hash": "42a0b373acdf80176742308d097254d5",
+    "mtime": 1795631806.1837714,
+    "seen": 1795632114.9006221,
+    "ast_hash": "3dcce34400d106625f5c24da47974505",
     "semantic_hash": ""
   },
   "cms/src/shared/ui/barcodeLabelCode128.ts": {
@@ -2592,9 +2592,9 @@
     "semantic_hash": ""
   },
   "cms/src/shared/ui/useBarcodeLabelModal.tsx": {
-    "mtime": 1795630804.735203,
-    "seen": 1795630871.001675,
-    "ast_hash": "672aef418f0ad52bd1f7d466fd9d22f9",
+    "mtime": 1795631886.4971018,
+    "seen": 1795632114.90064,
+    "ast_hash": "2c30688de0cedd95f7ca4cb5d6bebfbd",
     "semantic_hash": ""
   },
   "cms/src/shared/ui/useProductCodeCreator.ts": {
@@ -2871,6 +2871,102 @@
     "mtime": 1795631546.6796563,
     "seen": 1795631585.661532,
     "ast_hash": "cc009cb4f19d78f0d24981d9fe198703",
+    "semantic_hash": ""
+  },
+  "cms/src/features/catalog/components/ProductCatalogTable.tsx": {
+    "mtime": 1795631835.3921537,
+    "seen": 1795632114.9004002,
+    "ast_hash": "86cbb21edb5a55ea1e13fc424300b636",
+    "semantic_hash": ""
+  },
+  "cms/src/features/catalog/components/ProductCatalogVariantSection.tsx": {
+    "mtime": 1795631935.3970637,
+    "seen": 1795632114.9004018,
+    "ast_hash": "98f671b655b35f864a0539998e324478",
+    "semantic_hash": ""
+  },
+  "cms/src/features/catalog/hooks/useBrandModule.ts": {
+    "mtime": 1795631741.1199896,
+    "seen": 1795632114.900405,
+    "ast_hash": "9247f146215d091ae3109ed055f00e04",
+    "semantic_hash": ""
+  },
+  "cms/src/features/catalog/hooks/useCategoryModule.ts": {
+    "mtime": 1795631639.453005,
+    "seen": 1795632114.900407,
+    "ast_hash": "158dc4051b8a6eca441d4da8d3b951d8",
+    "semantic_hash": ""
+  },
+  "cms/src/features/catalog/hooks/useProductCatalog.ts": {
+    "mtime": 1795631757.8884,
+    "seen": 1795632114.900408,
+    "ast_hash": "8d03e211624fad4b0beb43a9bfddb69d",
+    "semantic_hash": ""
+  },
+  "cms/src/features/reports/fallbackOrderAggregation.ts": {
+    "mtime": 1795631967.9365647,
+    "seen": 1795632114.9005241,
+    "ast_hash": "d36ad679ac6866a7bfddfbe92340d5c0",
+    "semantic_hash": ""
+  },
+  "cms/src/features/shifts/components/ShiftStaffSidebar.tsx": {
+    "mtime": 1795631883.7486453,
+    "seen": 1795632114.900553,
+    "ast_hash": "a81cc6302d46b3e7a15d54b35163f2c2",
+    "semantic_hash": ""
+  },
+  "cms/src/features/staff/components/ProfilePersonalCard.tsx": {
+    "mtime": 1795631639.439955,
+    "seen": 1795632114.9005618,
+    "ast_hash": "147542150781e13dc9dcbc429bf4e854",
+    "semantic_hash": ""
+  },
+  "cms/src/features/staff/components/StaffCreateHrFields.tsx": {
+    "mtime": 1795631743.4981153,
+    "seen": 1795632114.900565,
+    "ast_hash": "d7e4eb9d6c24f6bad2a83db7a85a45fe",
+    "semantic_hash": ""
+  },
+  "cms/src/features/staff/components/StaffEditSalarySection.tsx": {
+    "mtime": 1795631745.7554889,
+    "seen": 1795632114.900567,
+    "ast_hash": "478a1ef8b8b7d363b93be1fc0d71cd83",
+    "semantic_hash": ""
+  },
+  "cms/src/features/staff/hooks/staffActionsHelper.ts": {
+    "mtime": 1795631865.0564842,
+    "seen": 1795632114.900577,
+    "ast_hash": "783d2eb63c02317b5aa913bf988d0a54",
+    "semantic_hash": ""
+  },
+  "cms/src/features/staff/hooks/staffImportHelper.ts": {
+    "mtime": 1795631942.6475194,
+    "seen": 1795632114.900578,
+    "ast_hash": "94f9bc65f17e91e4f1983f47624b7ac2",
+    "semantic_hash": ""
+  },
+  "cms/src/features/staff/hooks/useAccountProfile.ts": {
+    "mtime": 1795631691.8975348,
+    "seen": 1795632114.9005802,
+    "ast_hash": "4a7d3584c1138f16d76425dff3e1d8d2",
+    "semantic_hash": ""
+  },
+  "cms/src/shared/ui/BarcodeLabelItemList.tsx": {
+    "mtime": 1795631936.423574,
+    "seen": 1795632114.90062,
+    "ast_hash": "9ffe2a4d11df86381ddedcacc1fbc2a9",
+    "semantic_hash": ""
+  },
+  "cms/src/shared/ui/BarcodeStickerPreview.tsx": {
+    "mtime": 1795631835.393244,
+    "seen": 1795632114.900625,
+    "ast_hash": "2facd89a6681b1bfa596615f7e8b2f00",
+    "semantic_hash": ""
+  },
+  "cms/src/shared/ui/barcodePrintDialog.ts": {
+    "mtime": 1795631937.9164488,
+    "seen": 1795632114.900639,
+    "ast_hash": "0b6a8fab96cbe0525b6eca6552df4c40",
     "semantic_hash": ""
   },
   "cms/package-lock.json": {
