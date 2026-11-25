@@ -1,102 +1,40 @@
-import { Request, Response, NextFunction } from 'express';
+import { handle } from '../shared/http';
 import {
-  postImportsParseFile,
-  postImportsOcrPreview,
-  postImportsOcrScan,
-  getImports,
-  getImports_ById,
-  postImports,
-  putImports_ById,
-  postImports_ByIdFinishListing,
-  deleteImports_ById,
-  postImports_ByIdScanCheck,
-  postImports_ByIdScanTag,
-  postImports_ByIdComplete,
-} from '../services/imports.service';
+  parseImportFile,
+  ocrPreview,
+  ocrScan,
+  listImports,
+  getImportById,
+  createImport,
+  updateImport,
+  finishImportListing,
+  deleteImport,
+  scanCheck,
+  scanTag,
+  completeImport,
+} from '../services/imports';
 
-export async function postImportsParseFileHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await postImportsParseFile({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function postImportsOcrPreviewHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await postImportsOcrPreview({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function postImportsOcrScanHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await postImportsOcrScan({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function getImportsHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await getImports({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function getImports_ByIdHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await getImports_ById({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function postImportsHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await postImports({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function putImports_ByIdHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await putImports_ById({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function postImports_ByIdFinishListingHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await postImports_ByIdFinishListing({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function deleteImports_ByIdHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await deleteImports_ById({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function postImports_ByIdScanCheckHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await postImports_ByIdScanCheck({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function postImports_ByIdScanTagHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await postImports_ByIdScanTag({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    if (result.headers) {
-      for (const [k, v] of Object.entries(result.headers)) res.setHeader(k, v);
-    }
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function postImports_ByIdCompleteHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await postImports_ByIdComplete({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
+export const postImportsParseFileHandler = handle((req) => parseImportFile(req.body));
+export const postImportsOcrPreviewHandler = handle((req) => ocrPreview(req.body));
+export const postImportsOcrScanHandler = handle((req) => ocrScan(req.body));
+export const getImportsHandler = handle((req) => listImports(req.query));
+export const getImports_ByIdHandler = handle((req) => getImportById(req.params.id));
+export const postImportsHandler = handle((req, ctx) => createImport(ctx, req.body));
+export const putImports_ByIdHandler = handle((req, ctx) =>
+  updateImport(ctx, req.params.id, req.body)
+);
+export const postImports_ByIdFinishListingHandler = handle((req, ctx) =>
+  finishImportListing(ctx, req.params.id, req.body)
+);
+export const deleteImports_ByIdHandler = handle((req, ctx) =>
+  deleteImport(ctx, req.params.id)
+);
+export const postImports_ByIdScanCheckHandler = handle((req, ctx) =>
+  scanCheck(ctx, req.params.id, req.body)
+);
+export const postImports_ByIdScanTagHandler = handle((req, ctx) =>
+  scanTag(ctx, req.params.id, req.body)
+);
+export const postImports_ByIdCompleteHandler = handle((req, ctx) =>
+  completeImport(ctx, req.params.id, req.body)
+);
