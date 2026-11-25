@@ -1,63 +1,33 @@
-import { Request, Response, NextFunction } from 'express';
+import { handle } from '../shared/http';
 import {
-  postAttendanceCheckIn,
-  postAttendanceCheckOut,
-  getAttendanceToday,
+  checkIn,
+  checkOut,
+  getTodayAttendance,
   getAttendanceHistory,
   getAttendanceConfig,
-  putAttendanceConfig,
-} from '../services/attendance.service';
+  updateAttendanceConfig,
+} from '../services/attendance';
 
-export async function postAttendanceCheckInHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await postAttendanceCheckIn({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) {
-    next(err);
-  }
-}
+export const postAttendanceCheckInHandler = handle((req, ctx) =>
+  checkIn(ctx, req.body)
+);
 
-export async function postAttendanceCheckOutHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await postAttendanceCheckOut({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) {
-    next(err);
-  }
-}
+export const postAttendanceCheckOutHandler = handle((req, ctx) =>
+  checkOut(ctx, req.body)
+);
 
-export async function getAttendanceTodayHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await getAttendanceToday({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) {
-    next(err);
-  }
-}
+export const getAttendanceTodayHandler = handle((_req, ctx) =>
+  getTodayAttendance(ctx)
+);
 
-export async function getAttendanceHistoryHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await getAttendanceHistory({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) {
-    next(err);
-  }
-}
+export const getAttendanceHistoryHandler = handle((req, ctx) =>
+  getAttendanceHistory(ctx, req.query)
+);
 
-export async function getAttendanceConfigHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await getAttendanceConfig({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) {
-    next(err);
-  }
-}
+export const getAttendanceConfigHandler = handle((_req, ctx) =>
+  getAttendanceConfig(ctx)
+);
 
-export async function putAttendanceConfigHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await putAttendanceConfig({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) {
-    next(err);
-  }
-}
+export const putAttendanceConfigHandler = handle((req, ctx) =>
+  updateAttendanceConfig(ctx, req.body)
+);

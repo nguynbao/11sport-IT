@@ -1,43 +1,28 @@
-import { Request, Response, NextFunction } from 'express';
+import { handle } from '../shared/http';
+import { created, ok } from '../shared/result';
 import {
   getTimesheetReport,
   getMyAttendanceCalendar,
   adjustAttendanceRecord,
   createManualAttendance,
-} from '../services/attendanceTimesheet.service';
+} from '../services/timesheet';
 
-export async function getTimesheetHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const data = await getTimesheetReport(req.user, req.query);
-    res.json({ data, meta: { total: data.rows.length } });
-  } catch (err) {
-    next(err);
-  }
-}
+export const getTimesheetHandler = handle(async (req, ctx) => {
+  const data = await getTimesheetReport(ctx.user, req.query);
+  return ok(data, { total: data.rows.length });
+});
 
-export async function getMyCalendarHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const data = await getMyAttendanceCalendar(req.user, req.query);
-    res.json({ data, meta: {} });
-  } catch (err) {
-    next(err);
-  }
-}
+export const getMyCalendarHandler = handle(async (req, ctx) => {
+  const data = await getMyAttendanceCalendar(ctx.user, req.query);
+  return ok(data);
+});
 
-export async function patchAttendanceHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await adjustAttendanceRecord(req.user, req.params.id, req.body);
-    res.json({ data: result.data, meta: { message: result.message } });
-  } catch (err) {
-    next(err);
-  }
-}
+export const patchAttendanceHandler = handle(async (req, ctx) => {
+  const result = await adjustAttendanceRecord(ctx.user, req.params.id, req.body);
+  return ok(result.data, { message: result.message });
+});
 
-export async function postManualAttendanceHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await createManualAttendance(req.user, req.body);
-    res.status(201).json({ data: result.data, meta: { message: result.message } });
-  } catch (err) {
-    next(err);
-  }
-}
+export const postManualAttendanceHandler = handle(async (req, ctx) => {
+  const result = await createManualAttendance(ctx.user, req.body);
+  return created(result.data, { message: result.message });
+});
