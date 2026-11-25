@@ -1908,9 +1908,9 @@
     "semantic_hash": ""
   },
   "cms/src/features/attendance/components/AttendanceTimesheetModule.tsx": {
-    "mtime": 1795629450.067852,
-    "seen": 1795629608.064874,
-    "ast_hash": "f0eda1fe602a0df0ae0ffa3fde864dfc",
+    "mtime": 1795630108.67953,
+    "seen": 1795630199.380467,
+    "ast_hash": "9e7ffccdb430822e64c80d7bc151a5c8",
     "semantic_hash": ""
   },
   "cms/src/features/attendance/components/HeaderAttendanceBar.tsx": {
@@ -2028,9 +2028,9 @@
     "semantic_hash": ""
   },
   "cms/src/features/promotions/components/PromotionModule.tsx": {
-    "mtime": 1795629371.116304,
-    "seen": 1795629608.064919,
-    "ast_hash": "1fc00ba32f6d9189c5a8f08a00fee41f",
+    "mtime": 1795630108.6907756,
+    "seen": 1795630199.3805351,
+    "ast_hash": "6617f3098d2fb2b07ae1d3b5d7939ea0",
     "semantic_hash": ""
   },
   "cms/src/features/promotions/index.ts": {
@@ -2070,9 +2070,9 @@
     "semantic_hash": ""
   },
   "cms/src/features/services/components/ServiceManagementModule.tsx": {
-    "mtime": 1795629371.2103183,
-    "seen": 1795629608.064939,
-    "ast_hash": "6b3abb2e6b19e9b0b6f939dc024af457",
+    "mtime": 1795630108.699756,
+    "seen": 1795630199.380563,
+    "ast_hash": "4b4c5d4214aa3463efe5d0472e45df71",
     "semantic_hash": ""
   },
   "cms/src/features/services/index.ts": {
@@ -2325,6 +2325,90 @@
     "mtime": 1795630019.309277,
     "seen": 1795630088.671946,
     "ast_hash": "d1898381c9cb71a5dbc63551e5e29bfa",
+    "semantic_hash": ""
+  },
+  "cms/src/features/attendance/components/ManualAttendanceModal.tsx": {
+    "mtime": 1795630108.6790845,
+    "seen": 1795630199.380472,
+    "ast_hash": "f833d0bd5cf1aa61b337f3626042dca3",
+    "semantic_hash": ""
+  },
+  "cms/src/features/attendance/components/Time24Input.tsx": {
+    "mtime": 1795630108.6782837,
+    "seen": 1795630199.380476,
+    "ast_hash": "66fa24db4c7a3ace1484be605b5eda68",
+    "semantic_hash": ""
+  },
+  "cms/src/features/attendance/components/TimesheetCellDetailModal.tsx": {
+    "mtime": 1795630108.6787271,
+    "seen": 1795630199.380478,
+    "ast_hash": "65be32eec0498650f42fff029429da3a",
+    "semantic_hash": ""
+  },
+  "cms/src/features/attendance/components/TimesheetKpiCard.tsx": {
+    "mtime": 1795630108.6773493,
+    "seen": 1795630199.3804789,
+    "ast_hash": "f727325860dabc4075997e706a7af64e",
+    "semantic_hash": ""
+  },
+  "cms/src/features/attendance/components/TimesheetMatrixView.tsx": {
+    "mtime": 1795630108.6777484,
+    "seen": 1795630199.380481,
+    "ast_hash": "4433d1c29f8634b03bd5aebf863c8821",
+    "semantic_hash": ""
+  },
+  "cms/src/features/attendance/components/TimesheetSummaryView.tsx": {
+    "mtime": 1795630108.6780794,
+    "seen": 1795630199.380482,
+    "ast_hash": "4999cf0b1e35fb4dba3b79c27e8db258",
+    "semantic_hash": ""
+  },
+  "cms/src/features/attendance/timesheet.constants.ts": {
+    "mtime": 1795630108.6770773,
+    "seen": 1795630199.3804858,
+    "ast_hash": "6190972ac1134def6246c53319f9d58c",
+    "semantic_hash": ""
+  },
+  "cms/src/features/promotions/components/PromotionFormModal.tsx": {
+    "mtime": 1795630108.6877348,
+    "seen": 1795630199.380534,
+    "ast_hash": "322a119e6e798285352047c19f8e7167",
+    "semantic_hash": ""
+  },
+  "cms/src/features/promotions/hooks/usePromotionModule.tsx": {
+    "mtime": 1795630108.6864095,
+    "seen": 1795630199.380537,
+    "ast_hash": "c712583e1ba5080c561b600baac5278e",
+    "semantic_hash": ""
+  },
+  "cms/src/features/services/components/ServiceEditModal.tsx": {
+    "mtime": 1795630140.5279977,
+    "seen": 1795630199.3805618,
+    "ast_hash": "08fa3db9085770b4bc00cb514e582848",
+    "semantic_hash": ""
+  },
+  "cms/src/features/services/components/ServiceOrdersTab.tsx": {
+    "mtime": 1795630108.6970403,
+    "seen": 1795630199.380565,
+    "ast_hash": "379d8cac82f1dd17a1761ab668763ab6",
+    "semantic_hash": ""
+  },
+  "cms/src/features/services/components/ServicePaymentModal.tsx": {
+    "mtime": 1795630141.6004863,
+    "seen": 1795630199.3805661,
+    "ast_hash": "89c1c4d4257a480d9ddc1d98b5edfa00",
+    "semantic_hash": ""
+  },
+  "cms/src/features/services/components/ServiceTypesTab.tsx": {
+    "mtime": 1795630108.6977487,
+    "seen": 1795630199.380567,
+    "ast_hash": "af9b2c164410ad05478cc427fd82a817",
+    "semantic_hash": ""
+  },
+  "cms/src/features/services/hooks/useServiceManagement.ts": {
+    "mtime": 1795630122.8817322,
+    "seen": 1795630199.380569,
+    "ast_hash": "1be18f77381bdced4c9859656ed15a15",
     "semantic_hash": ""
   },
   "cms/package-lock.json": {
