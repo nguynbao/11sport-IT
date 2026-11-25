@@ -10,7 +10,7 @@ import {
   staffRepo,
 } from '../src/config/db';
 import { seedDatabaseIfNeeded } from '../src/config/seed';
-import { toLocalDateStr } from '../src/routes/ordersCustomers';
+import { toLocalDateStr } from '../src/shared/date';
 
 const app = createApp();
 

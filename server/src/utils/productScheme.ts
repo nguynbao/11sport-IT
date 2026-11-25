@@ -13,8 +13,8 @@ import {
   promotionRepo,
   shiftHandoverRepo,
 } from '../config/db';
-import { ensureCategorySkuCode } from '../routes/categories';
-import { ensureSystemBrand } from '../routes/brands';
+import { ensureCategorySkuCode } from '../services/categories.service';
+import { ensureSystemBrand } from '../services/brands.service';
 import { ApiError } from './errors';
 import {
   NO_BRAND_CODE,
