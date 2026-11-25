@@ -1,33 +1,26 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import ThemeToggle from "@/components/ThemeToggle";
-import {
-  StaffUser,
-  Order,
-  apiRequest,
-  getStoredUser,
-  getStoredToken,
-  setStoredAuth,
-  clearStoredAuth,
-} from "@/lib/api";
-import InventoryModule from "@/components/InventoryModule";
-import RevenueDashboardModule from "@/components/RevenueDashboardModule";
-import CategoryBrandModule from "@/components/CategoryBrandModule";
-import OrdersReturnsModule from "@/components/OrdersReturnsModule";
-import StaffModule from "@/components/StaffModule";
-import StaffActivityModule from "@/components/StaffActivityModule";
-import PromotionModule from "@/components/PromotionModule";
-import DebtManagementModule from "@/components/DebtManagementModule";
-import HrmAttendanceModule from "@/components/HrmAttendanceModule";
-import ShiftHandoverModule from "@/components/ShiftHandoverModule";
-import MarketingPushProductsModule from "@/components/MarketingPushProductsModule";
-import AccountProfileModule from "@/components/AccountProfileModule";
-import ServiceManagementModule from "@/components/ServiceManagementModule";
-import MyAttendanceCalendar from "@/components/MyAttendanceCalendar";
-import HeaderAttendanceBar from "@/components/HeaderAttendanceBar";
-import InvoicePdfModal from "@/components/InvoicePdfModal";
-import AttendanceIpConfigModule from "@/components/AttendanceIpConfigModule";
+import ThemeToggle from "@/shared/ui/ThemeToggle";
+import { StaffUser, Order } from "@/shared/types";
+import { apiRequest, getStoredUser, getStoredToken, setStoredAuth, clearStoredAuth } from "@/shared/api/client";
+import { InventoryModule } from "@/features/inventory";
+import { RevenueDashboardModule } from "@/features/reports";
+import { CategoryBrandModule } from "@/features/catalog";
+import { OrdersReturnsModule } from "@/features/orders";
+import { StaffModule } from "@/features/staff";
+import { StaffActivityModule } from "@/features/reports";
+import { PromotionModule } from "@/features/promotions";
+import { DebtManagementModule } from "@/features/orders";
+import { HrmAttendanceModule } from "@/features/attendance";
+import { ShiftHandoverModule } from "@/features/shifts";
+import { MarketingPushProductsModule } from "@/features/reports";
+import { AccountProfileModule } from "@/features/staff";
+import { ServiceManagementModule } from "@/features/services";
+import { MyAttendanceCalendar } from "@/features/attendance";
+import { HeaderAttendanceBar } from "@/features/attendance";
+import InvoicePdfModal from "@/shared/ui/InvoicePdfModal";
+import { AttendanceIpConfigModule } from "@/features/attendance";
 import {
   Boxes,
   TrendingUp,
