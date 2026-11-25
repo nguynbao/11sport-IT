@@ -1848,9 +1848,9 @@
     "semantic_hash": ""
   },
   "cms/src/shared/lib/search.ts": {
-    "mtime": 1795629033.011033,
-    "seen": 1795629181.752077,
-    "ast_hash": "68920705f3417d804a2907c11d782a74",
+    "mtime": 1795634600.7712812,
+    "seen": 1795634650.9278111,
+    "ast_hash": "bae8935efdba317491c7e76aaf9e939d",
     "semantic_hash": ""
   },
   "cms/src/shared/types/index.ts": {
@@ -3021,6 +3021,60 @@
     "mtime": 1795634268.27836,
     "seen": 1795634343.279226,
     "ast_hash": "213af7092e77fe6c04074dc023f639b3",
+    "semantic_hash": ""
+  },
+  "cms/src/config/listing.ts": {
+    "mtime": 1795634581.5867896,
+    "seen": 1795634650.927478,
+    "ast_hash": "e5eb73ee37b3bb9e4d7f29bb56a138ef",
+    "semantic_hash": ""
+  },
+  "cms/src/shared/api/pagination.ts": {
+    "mtime": 1795634585.1424608,
+    "seen": 1795634650.927788,
+    "ast_hash": "c20c377596dd223e3f64e156f44abefc",
+    "semantic_hash": ""
+  },
+  "cms/src/shared/hooks/useClientPagination.ts": {
+    "mtime": 1795634589.779709,
+    "seen": 1795634650.9277902,
+    "ast_hash": "444c9628751b93df007f8956937a04e4",
+    "semantic_hash": ""
+  },
+  "cms/src/shared/hooks/useDebounce.ts": {
+    "mtime": 1795634586.3522894,
+    "seen": 1795634650.927792,
+    "ast_hash": "3ca73890a1d00a4a4a5d39044e993896",
+    "semantic_hash": ""
+  },
+  "cms/src/shared/hooks/useDebouncedSearch.ts": {
+    "mtime": 1795634587.9315853,
+    "seen": 1795634650.927794,
+    "ast_hash": "323dd2646edeff88632fcf1d8b229353",
+    "semantic_hash": ""
+  },
+  "cms/src/shared/hooks/usePagedList.ts": {
+    "mtime": 1795634591.194646,
+    "seen": 1795634650.927795,
+    "ast_hash": "30bf1f91eca4338a5f56f8121d09413e",
+    "semantic_hash": ""
+  },
+  "cms/src/shared/ui/PaginationBar.tsx": {
+    "mtime": 1795634592.54769,
+    "seen": 1795634650.927847,
+    "ast_hash": "97791b346289b99cab98ecffbbc9d01f",
+    "semantic_hash": ""
+  },
+  "cms/src/shared/utils/pagination.ts": {
+    "mtime": 1795634583.5731905,
+    "seen": 1795634650.927864,
+    "ast_hash": "72777304597b1a67007c807a5d276e9b",
+    "semantic_hash": ""
+  },
+  "cms/tests/pagination.test.ts": {
+    "mtime": 1795634594.0184722,
+    "seen": 1795634650.927875,
+    "ast_hash": "2035b251476aeb5edb9f640ef22a2a09",
     "semantic_hash": ""
   },
   "cms/package-lock.json": {

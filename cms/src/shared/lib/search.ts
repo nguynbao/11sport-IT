@@ -1,32 +1,4 @@
-import { useEffect, useState } from "react";
-
-/**
- * React Hook: Debounce một giá trị theo khoảng thời gian `delayMs` (từ 300ms đến 500ms, mặc định 400ms).
- * Giúp gom các lần gõ phím liên tiếp thành một lần cập nhật duy nhất, tối ưu số lượng request API
- * và tính toán lọc dữ liệu lớn trên giao diện.
- * - Khi giá trị rỗng (xóa trắng ô tìm kiếm), cập nhật ngay lập tức (0ms) để phản hồi tức thì.
- */
-export function useDebounce<T>(value: T, delayMs = 400): T {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value);
-
-  useEffect(() => {
-    // Nếu người dùng xóa trắng chuỗi tìm kiếm thì cập nhật ngay lập tức
-    if (typeof value === "string" && value.trim() === "") {
-      setDebouncedValue(value);
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delayMs);
-
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [value, delayMs]);
-
-  return debouncedValue;
-}
+export { useDebounce } from "../hooks/useDebounce";
 
 /**
  * Chuẩn hóa chuỗi tiếng Việt về dạng không dấu, chữ thường, gom khoảng trắng
