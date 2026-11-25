@@ -88,8 +88,48 @@ export function paginate<T>(
   };
 }
 
+const BLOCKED_SORT_KEYS = new Set(['__proto__', 'constructor', 'prototype', 'passwordHash']);
+
+/**
+ * Sort items generically by `query.sortBy` and `query.sortOrder` ('asc' | 'desc')
+ * with a stable `_id` tie-breaker so paginated slices never shift or duplicate rows.
+ */
+export function applyQuerySort<T>(
+  items: readonly T[],
+  query: Record<string, unknown> | undefined | null
+): T[] {
+  const rawSortBy = query?.sortBy;
+  if (typeof rawSortBy !== 'string' || !rawSortBy.trim()) {
+    return [...items];
+  }
+  const field = rawSortBy.trim();
+  if (BLOCKED_SORT_KEYS.has(field)) {
+    return [...items];
+  }
+
+  const dir = String(query?.sortOrder || 'asc').toLowerCase() === 'desc' ? -1 : 1;
+
+  return [...items].sort((a: any, b: any) => {
+    const va = a?.[field];
+    const vb = b?.[field];
+    let cmp = 0;
+
+    if (typeof va === 'number' && typeof vb === 'number') {
+      cmp = va - vb;
+    } else if (va instanceof Date || vb instanceof Date || field === 'createdAt' || field === 'updatedAt') {
+      cmp = new Date(va || 0).getTime() - new Date(vb || 0).getTime();
+    } else {
+      cmp = String(va ?? '').localeCompare(String(vb ?? ''), 'vi');
+    }
+
+    if (cmp !== 0) return cmp * dir;
+    return String(a?._id ?? '').localeCompare(String(b?._id ?? ''));
+  });
+}
+
 /**
  * Convenience helper returning a standard ServiceResult with opt-in pagination.
+ * Honors `sortBy` / `sortOrder` before slicing pages when provided.
  * When pagination is disabled, returns all items with `meta.total` (plus `extraMeta`).
  */
 export function withPagination<T>(
@@ -98,10 +138,11 @@ export function withPagination<T>(
   extraMeta: Record<string, any> = {},
   options: ParsePaginationOptions = {}
 ): ServiceResult<T[]> {
+  const sorted = applyQuerySort(items, query);
   const parsed = parsePagination(query, options);
   if (!parsed.enabled) {
-    return ok([...items], { total: items.length, ...extraMeta });
+    return ok(sorted, { total: sorted.length, ...extraMeta });
   }
-  const { data, pagination } = paginate(items, parsed);
+  const { data, pagination } = paginate(sorted, parsed);
   return ok(data, { total: pagination.total, pagination, ...extraMeta });
 }

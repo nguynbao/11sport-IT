@@ -53,4 +53,20 @@ describe('server/src/shared/pagination', () => {
       hasPrev: false,
     });
   });
+
+  it('applies sortBy and sortOrder before slicing pages', () => {
+    const rows = [
+      { _id: '1', name: 'B', price: 200 },
+      { _id: '2', name: 'A', price: 300 },
+      { _id: '3', name: 'C', price: 100 },
+    ];
+    const res = withPagination(rows, {
+      page: '1',
+      pageSize: '2',
+      sortBy: 'price',
+      sortOrder: 'desc',
+    });
+    expect(res.data?.map((r) => r._id)).toEqual(['2', '1']);
+    expect(res.meta?.pagination?.total).toBe(3);
+  });
 });
