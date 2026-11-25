@@ -19,6 +19,14 @@ function getLayer(relPath) {
   return parts.length > 1 ? parts[0] : 'root';
 }
 
+function getServiceSubdir(relPath) {
+  const parts = relPath.split(path.sep);
+  if (parts[0] === 'services' && parts.length >= 3) {
+    return parts[1];
+  }
+  return null;
+}
+
 function resolveImport(fromFile, spec) {
   if (!spec.startsWith('.')) return null;
   const base = path.resolve(path.dirname(fromFile), spec);
@@ -47,6 +55,8 @@ const importRe = /(?:import|export)\s+(?:type\s+)?(?:[^'"]*?\s+from\s+)?['"]([^'
 for (const f of files) {
   const relFrom = path.relative(SRC_ROOT, f);
   const fromLayer = getLayer(relFrom);
+  const fromSvcDir = getServiceSubdir(relFrom);
+  const isRulesFile = relFrom.endsWith('.rules.ts');
   const content = fs.readFileSync(f, 'utf8');
   const deps = [];
 
@@ -56,23 +66,33 @@ for (const f of files) {
     if (!target) continue;
     const relTo = path.relative(SRC_ROOT, target);
     const toLayer = getLayer(relTo);
+    const toSvcDir = getServiceSubdir(relTo);
     deps.push(relTo);
 
-    // Allow routes/index.ts to import ./routes/* for mounting
     if (relFrom === 'routes/index.ts' && toLayer === 'routes') continue;
-
-    // Allow shared/auth.ts to import type from models/Staff
     const isTypeOnly = m[0].startsWith('import type');
     if (isTypeOnly) continue;
 
     if (FORBIDDEN[fromLayer]?.has(toLayer)) {
       violations.push(`[LAYER] ${relFrom} (${fromLayer}) -> ${relTo} (${toLayer})`);
     }
+
+    // *.rules.ts must be pure: no repositories or models
+    if (isRulesFile && (toLayer === 'repositories' || toLayer === 'models')) {
+      violations.push(`[PURE-RULES] ${relFrom} -> ${relTo} (rules files must not import DB/models)`);
+    }
+
+    // Cross-domain service imports must go through <domain>/index.ts
+    if (fromLayer === 'services' && toLayer === 'services' && toSvcDir && fromSvcDir !== toSvcDir) {
+      const targetBase = path.basename(relTo);
+      if (targetBase !== 'index.ts') {
+        violations.push(`[BARREL] ${relFrom} -> ${relTo} (must import services/${toSvcDir}/index.ts)`);
+      }
+    }
   }
   graph.set(relFrom, deps);
 }
 
-// Detect circular dependencies
 const visited = new Set();
 const inStack = new Set();
 const cycles = [];
@@ -97,7 +117,7 @@ for (const node of graph.keys()) {
 
 if (violations.length > 0 || cycles.length > 0) {
   if (violations.length > 0) {
-    console.error('Architecture layer violations found:');
+    console.error('Architecture violations found:');
     for (const v of violations) console.error('  ' + v);
   }
   if (cycles.length > 0) {
@@ -107,4 +127,4 @@ if (violations.length > 0 || cycles.length > 0) {
   process.exit(1);
 }
 
-console.log(`[arch-check] OK (${files.length} files checked, 0 layer violations, 0 cycles)`);
+console.log(`[arch-check] OK (${files.length} files checked, 0 violations, 0 cycles)`);

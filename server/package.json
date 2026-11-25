@@ -12,6 +12,7 @@
     "test": "vitest run",
     "lint": "tsc --noEmit && npm run lint:arch",
     "lint:arch": "node scripts/check-architecture.mjs",
+    "routes:check": "node scripts/dump-routes.mjs --check",
     "migrate": "ts-node-dev --transpile-only --no-notify --exit-child src/migrations/cli.ts",
     "migrate:prod": "node dist/migrations/cli.js",
     "start:migrate": "npm run migrate:prod -- up --yes && npm start",
