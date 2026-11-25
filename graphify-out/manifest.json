@@ -1908,9 +1908,9 @@
     "semantic_hash": ""
   },
   "cms/src/features/attendance/components/AttendanceTimesheetModule.tsx": {
-    "mtime": 1795630108.67953,
-    "seen": 1795630199.380467,
-    "ast_hash": "9e7ffccdb430822e64c80d7bc151a5c8",
+    "mtime": 1795631504.2640405,
+    "seen": 1795631585.661252,
+    "ast_hash": "494b34b47a26ab2e318963da7f6f1c0a",
     "semantic_hash": ""
   },
   "cms/src/features/attendance/components/HeaderAttendanceBar.tsx": {
@@ -1920,15 +1920,15 @@
     "semantic_hash": ""
   },
   "cms/src/features/attendance/components/HrmAttendanceModule.tsx": {
-    "mtime": 1795629450.0687413,
-    "seen": 1795629608.064878,
-    "ast_hash": "c05cf7e3021b75032276ec3362f48e50",
+    "mtime": 1795631532.3975718,
+    "seen": 1795631585.661258,
+    "ast_hash": "fda3bc5d2746cafbbf08c6817d4d279e",
     "semantic_hash": ""
   },
   "cms/src/features/attendance/components/MyAttendanceCalendar.tsx": {
-    "mtime": 1795629450.0695167,
-    "seen": 1795629608.0648808,
-    "ast_hash": "de90607ec53fdc8dc276c21db88df7f4",
+    "mtime": 1795631504.247283,
+    "seen": 1795631585.6612659,
+    "ast_hash": "f5569bdd2aa876df7b79fb5a826fecb9",
     "semantic_hash": ""
   },
   "cms/src/features/attendance/index.ts": {
@@ -1992,9 +1992,9 @@
     "semantic_hash": ""
   },
   "cms/src/features/leave/components/LeaveRequests.tsx": {
-    "mtime": 1795629450.0782244,
-    "seen": 1795629608.064907,
-    "ast_hash": "f6fe70fd89005f829a569772a506cc31",
+    "mtime": 1795631504.2657025,
+    "seen": 1795631585.661421,
+    "ast_hash": "8714972416be46eb7d9a72974510e648",
     "semantic_hash": ""
   },
   "cms/src/features/leave/index.ts": {
@@ -2082,15 +2082,15 @@
     "semantic_hash": ""
   },
   "cms/src/features/shifts/components/ShiftHandoverModule.tsx": {
-    "mtime": 1795629450.0854583,
-    "seen": 1795629608.064945,
-    "ast_hash": "f9ed053b47bee7a27b104b0cf1405485",
+    "mtime": 1795631504.2541597,
+    "seen": 1795631585.661526,
+    "ast_hash": "487fbe9be9bc84855a6607680ccbf702",
     "semantic_hash": ""
   },
   "cms/src/features/shifts/components/ShiftScheduleModule.tsx": {
-    "mtime": 1795629450.0861738,
-    "seen": 1795629608.064947,
-    "ast_hash": "955911523ad4bee1db3b8c25713a20c4",
+    "mtime": 1795631532.480308,
+    "seen": 1795631585.661528,
+    "ast_hash": "a131131bf77f7f6a040aa1f81f452727",
     "semantic_hash": ""
   },
   "cms/src/features/shifts/index.ts": {
@@ -2805,6 +2805,72 @@
     "mtime": 1795631370.2334929,
     "seen": 1795631485.474187,
     "ast_hash": "f685a71622250b15cb49caf7daeade07",
+    "semantic_hash": ""
+  },
+  "cms/src/features/attendance/components/HrmHolidaysTab.tsx": {
+    "mtime": 1795631504.261418,
+    "seen": 1795631585.661261,
+    "ast_hash": "9e8238cb7a6426635006440403a7fe83",
+    "semantic_hash": ""
+  },
+  "cms/src/features/attendance/components/MyCalendarSubViews.tsx": {
+    "mtime": 1795631504.2469776,
+    "seen": 1795631585.661269,
+    "ast_hash": "0e5d6b705d23acb5839b20c64a3fdb7b",
+    "semantic_hash": ""
+  },
+  "cms/src/features/attendance/hooks/useAttendanceTimesheet.ts": {
+    "mtime": 1795631532.4259472,
+    "seen": 1795631585.6612852,
+    "ast_hash": "5219f50b1117f643290ed303834cc17b",
+    "semantic_hash": ""
+  },
+  "cms/src/features/attendance/hooks/useHrmAttendance.ts": {
+    "mtime": 1795631532.4252872,
+    "seen": 1795631585.6612868,
+    "ast_hash": "1a4ef4941aa6bae2b714f6e2d3440890",
+    "semantic_hash": ""
+  },
+  "cms/src/features/attendance/myCalendar.constants.ts": {
+    "mtime": 1795631532.4262788,
+    "seen": 1795631585.661292,
+    "ast_hash": "10a77b06ce73c70d8c1a8c8d9a40b6df",
+    "semantic_hash": ""
+  },
+  "cms/src/features/leave/components/CreateLeaveModal.tsx": {
+    "mtime": 1795631532.45323,
+    "seen": 1795631585.661418,
+    "ast_hash": "a8aa82013233eab927751685920c5abd",
+    "semantic_hash": ""
+  },
+  "cms/src/features/leave/components/MyLeaveRequestsPanel.tsx": {
+    "mtime": 1795631532.4536874,
+    "seen": 1795631585.6614232,
+    "ast_hash": "27eaf541bd1ebb0005289c21f55ab020",
+    "semantic_hash": ""
+  },
+  "cms/src/features/leave/leave.constants.tsx": {
+    "mtime": 1795631514.3245265,
+    "seen": 1795631585.661428,
+    "ast_hash": "93bb66f947ab771c7887761583673df8",
+    "semantic_hash": ""
+  },
+  "cms/src/features/shifts/components/ShiftHandoverDetailModal.tsx": {
+    "mtime": 1795631504.2545218,
+    "seen": 1795631585.6615229,
+    "ast_hash": "b1c45fb143e6885d20b323d02f5fa5cb",
+    "semantic_hash": ""
+  },
+  "cms/src/features/shifts/hooks/useShiftHandover.tsx": {
+    "mtime": 1795631504.251946,
+    "seen": 1795631585.66153,
+    "ast_hash": "d3585bb24051b8254ac2c45756bb1a23",
+    "semantic_hash": ""
+  },
+  "cms/src/features/shifts/hooks/useShiftSchedule.ts": {
+    "mtime": 1795631546.6796563,
+    "seen": 1795631585.661532,
+    "ast_hash": "cc009cb4f19d78f0d24981d9fe198703",
     "semantic_hash": ""
   },
   "cms/package-lock.json": {
