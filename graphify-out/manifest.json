@@ -1938,9 +1938,9 @@
     "semantic_hash": ""
   },
   "cms/src/features/catalog/components/BrandModule.tsx": {
-    "mtime": 1795634802.513,
-    "seen": 1795635035.641257,
-    "ast_hash": "469d991112509c27d24f7885c7a8a9c7",
+    "mtime": 1795635242.6317344,
+    "seen": 1795635282.076191,
+    "ast_hash": "c77b2968d3f4a5197e61d2390e661083",
     "semantic_hash": ""
   },
   "cms/src/features/catalog/components/CategoryBrandModule.tsx": {
@@ -1950,9 +1950,9 @@
     "semantic_hash": ""
   },
   "cms/src/features/catalog/components/CategoryModule.tsx": {
-    "mtime": 1795634802.5103154,
-    "seen": 1795635035.6412601,
-    "ast_hash": "b975f194cf96290026d18912e63548bb",
+    "mtime": 1795635245.2987332,
+    "seen": 1795635282.076195,
+    "ast_hash": "fa606b171c1f9ca32ad8260ab7ce280d",
     "semantic_hash": ""
   },
   "cms/src/features/catalog/components/ProductCatalogModule.tsx": {
@@ -2874,9 +2874,9 @@
     "semantic_hash": ""
   },
   "cms/src/features/catalog/components/ProductCatalogTable.tsx": {
-    "mtime": 1795634802.5145726,
-    "seen": 1795635035.641263,
-    "ast_hash": "7cbeaae7cc9cd650d19af11834a20536",
+    "mtime": 1795635244.01599,
+    "seen": 1795635282.0761979,
+    "ast_hash": "6992c7402fc0e0c7e73997d88fad352b",
     "semantic_hash": ""
   },
   "cms/src/features/catalog/components/ProductCatalogVariantSection.tsx": {
@@ -3066,9 +3066,9 @@
     "semantic_hash": ""
   },
   "cms/src/shared/utils/pagination.ts": {
-    "mtime": 1795634583.5731905,
-    "seen": 1795634650.927864,
-    "ast_hash": "72777304597b1a67007c807a5d276e9b",
+    "mtime": 1795635241.4523513,
+    "seen": 1795635282.0764601,
+    "ast_hash": "0b7242b55e9a93f365dc79428a03f641",
     "semantic_hash": ""
   },
   "cms/tests/pagination.test.ts": {

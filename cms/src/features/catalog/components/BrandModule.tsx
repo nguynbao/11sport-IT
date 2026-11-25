@@ -345,7 +345,9 @@ export default function BrandModule() {
                 const count = Number(b.productCount || 0);
                 return (
                   <tr key={b._id} className={`hover:bg-slate-50 ${editing?._id === b._id ? "bg-teal-50" : ""}`}>
-                    <td className="py-3 px-4 text-center font-mono font-bold text-slate-400">{idx + 1}</td>
+                    <td className="py-3 px-4 text-center font-mono font-bold text-slate-400">
+                      {(vm.brandPagination.page - 1) * vm.brandPagination.pageSize + idx + 1}
+                    </td>
                     <td className="py-3 px-4 font-mono font-extrabold text-slate-900">
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 border border-slate-200">
                         {b.code}

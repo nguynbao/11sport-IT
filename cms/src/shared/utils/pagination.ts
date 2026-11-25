@@ -8,6 +8,11 @@ export interface ClientPaginationResult<T> {
   hasPrev: boolean;
 }
 
+export function getRowNumber(page: number, pageSize: number, index: number): number {
+  if (pageSize <= 0) return index + 1;
+  return (Math.max(1, page) - 1) * pageSize + index + 1;
+}
+
 export function getTotalPages(totalItems: number, pageSize: number): number {
   if (pageSize <= 0) return 1;
   return Math.max(1, Math.ceil(Math.max(0, totalItems) / pageSize));

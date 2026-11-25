@@ -111,7 +111,7 @@ export function ProductCatalogTable({ vm }: { vm: ProductCatalogViewModel }) {
                   <React.Fragment key={p._id}>
                     <tr className={`hover:bg-slate-50 ${isExpanded ? "bg-indigo-50/30" : ""}`}>
                       <td className="py-3 px-3 text-center font-mono font-bold text-slate-400 align-top">
-                        {idx + 1}
+                        {(vm.productPagination.page - 1) * vm.productPagination.pageSize + idx + 1}
                       </td>
                       <td className="py-3 px-3 align-top">
                         <div className="font-mono font-extrabold text-slate-900 text-xs">{p.code}</div>

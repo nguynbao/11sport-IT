@@ -296,7 +296,7 @@ export default function CategoryModule() {
                     }`}
                   >
                     <td className="py-3 px-4 text-center font-mono font-bold text-slate-400">
-                      {idx + 1}
+                      {(vm.categoryPagination.page - 1) * vm.categoryPagination.pageSize + idx + 1}
                     </td>
                     <td className="py-3 px-4">
                       <input
