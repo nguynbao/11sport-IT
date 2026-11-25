@@ -1,12 +1,12 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import {
-  postShiftsPreferencesHandler,
-  getShiftsMyScheduleHandler,
-  postShiftsMyScheduleSeenHandler,
-  getShiftsScheduleHandler,
-  putShiftsAssignBulkHandler,
-  putShiftsAssignHandler,
+  registerWeeklyPreferencesHandler,
+  getMyScheduleHandler,
+  markMyScheduleSeenHandler,
+  getWeeklyScheduleHandler,
+  assignWeekBulkHandler,
+  assignSingleShiftHandler,
 } from '../controllers/shifts.controller';
 import {
   getHandoverScheduleConfigHandler,
@@ -22,12 +22,13 @@ export const shiftsRouter = Router();
 
 shiftsRouter.use('/shifts', requireAuth);
 
-shiftsRouter.post('/shifts/preferences', postShiftsPreferencesHandler);
-shiftsRouter.get('/shifts/my-schedule', getShiftsMyScheduleHandler);
-shiftsRouter.post('/shifts/my-schedule/seen', postShiftsMyScheduleSeenHandler);
-shiftsRouter.get('/shifts/schedule', getShiftsScheduleHandler);
-shiftsRouter.put('/shifts/assign/bulk', putShiftsAssignBulkHandler);
-shiftsRouter.put('/shifts/assign', putShiftsAssignHandler);
+shiftsRouter.post('/shifts/preferences', registerWeeklyPreferencesHandler);
+shiftsRouter.get('/shifts/my-schedule', getMyScheduleHandler);
+shiftsRouter.post('/shifts/my-schedule/seen', markMyScheduleSeenHandler);
+shiftsRouter.get('/shifts/schedule', getWeeklyScheduleHandler);
+shiftsRouter.put('/shifts/assign/bulk', assignWeekBulkHandler);
+shiftsRouter.put('/shifts/assign', assignSingleShiftHandler);
+
 shiftsRouter.get('/shifts/handover/schedule-config', getHandoverScheduleConfigHandler);
 shiftsRouter.put('/shifts/handover/schedule-config', putHandoverScheduleConfigHandler);
 shiftsRouter.get('/shifts/handover/daily-check', getHandoverDailyCheckHandler);
