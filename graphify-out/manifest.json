@@ -30,9 +30,9 @@
     "semantic_hash": ""
   },
   "cms/src/app/api/printers/route.ts": {
-    "mtime": 1795329655.3473415,
-    "seen": 1795330125.924532,
-    "ast_hash": "2eaba13f030304a125a77e2e07135a9f",
+    "mtime": 1795630206.7034128,
+    "seen": 1795630274.546655,
+    "ast_hash": "b0036a07164231a46eeb5b8b7974f258",
     "semantic_hash": ""
   },
   "cms/src/app/api/version/route.ts": {
@@ -48,9 +48,9 @@
     "semantic_hash": ""
   },
   "cms/src/app/page.tsx": {
-    "mtime": 1795629422.1651802,
-    "seen": 1795629608.064867,
-    "ast_hash": "bfc6b61703d6f09d6def025be78b3e9a",
+    "mtime": 1795630206.7009897,
+    "seen": 1795630274.5466611,
+    "ast_hash": "3d5151d6e3b782eebd5393cb849f4e88",
     "semantic_hash": ""
   },
   "cms/tailwind.config.js": {
@@ -2409,6 +2409,90 @@
     "mtime": 1795630122.8817322,
     "seen": 1795630199.380569,
     "ast_hash": "1be18f77381bdced4c9859656ed15a15",
+    "semantic_hash": ""
+  },
+  "cms/src/config/menu.ts": {
+    "mtime": 1795630206.7005928,
+    "seen": 1795630274.5466628,
+    "ast_hash": "da9b49034fe9adc4ea539c9910508b14",
+    "semantic_hash": ""
+  },
+  "cms/src/config/roles.ts": {
+    "mtime": 1795630206.700405,
+    "seen": 1795630274.546665,
+    "ast_hash": "d0aa1c9d888e4b771f923b39c80886b0",
+    "semantic_hash": ""
+  },
+  "cms/src/shared/lib/printerServer.ts": {
+    "mtime": 1795630206.702607,
+    "seen": 1795630274.546835,
+    "ast_hash": "0e45fc633fac8b2970c1adb1e94b226e",
+    "semantic_hash": ""
+  },
+  "cms/src/features/attendance/README.md": {
+    "mtime": 1795630242.3452291,
+    "seen": 1795630274.5472908,
+    "ast_hash": "e55ca64d6c5df0c40f798c1321726f2c",
+    "semantic_hash": ""
+  },
+  "cms/src/features/catalog/README.md": {
+    "mtime": 1795630237.621382,
+    "seen": 1795630274.547292,
+    "ast_hash": "57a3b84df3d88d87cd6d36e5248de962",
+    "semantic_hash": ""
+  },
+  "cms/src/features/inventory/README.md": {
+    "mtime": 1795630235.9542274,
+    "seen": 1795630274.547294,
+    "ast_hash": "0dad1ee4f0fb98fe30d0b2b4b1e882dd",
+    "semantic_hash": ""
+  },
+  "cms/src/features/leave/README.md": {
+    "mtime": 1795630245.076249,
+    "seen": 1795630274.547296,
+    "ast_hash": "b5d07f3dbace1d45bea14bf53fae7639",
+    "semantic_hash": ""
+  },
+  "cms/src/features/orders/README.md": {
+    "mtime": 1795630238.7062879,
+    "seen": 1795630274.547297,
+    "ast_hash": "9733439002398d2b86f25e9ecaca9f16",
+    "semantic_hash": ""
+  },
+  "cms/src/features/promotions/README.md": {
+    "mtime": 1795630246.0255415,
+    "seen": 1795630274.5472991,
+    "ast_hash": "7cd54e9b152117ea52facf607967fa5a",
+    "semantic_hash": ""
+  },
+  "cms/src/features/reports/README.md": {
+    "mtime": 1795630239.6659064,
+    "seen": 1795630274.5473,
+    "ast_hash": "a21c59b1348cc15a6e9bc649988570cc",
+    "semantic_hash": ""
+  },
+  "cms/src/features/services/README.md": {
+    "mtime": 1795630247.2908804,
+    "seen": 1795630274.5473018,
+    "ast_hash": "d91722f3b20025f35ee85b78e271e9c7",
+    "semantic_hash": ""
+  },
+  "cms/src/features/shifts/README.md": {
+    "mtime": 1795630243.5045724,
+    "seen": 1795630274.547303,
+    "ast_hash": "045b349a718f289681c087600be40fe2",
+    "semantic_hash": ""
+  },
+  "cms/src/features/staff/README.md": {
+    "mtime": 1795630240.9034605,
+    "seen": 1795630274.5473049,
+    "ast_hash": "1b979209ab681af17fe298501633e648",
+    "semantic_hash": ""
+  },
+  "docs/devops/cms-architecture.md": {
+    "mtime": 1795630248.450957,
+    "seen": 1795630274.547316,
+    "ast_hash": "488a900f5596ba691077f91042261a90",
     "semantic_hash": ""
   },
   "cms/package-lock.json": {
