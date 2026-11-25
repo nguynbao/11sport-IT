@@ -2,6 +2,7 @@ import { apiRequest } from "@/shared/api/client";
 import type { StaffUser,UserRole } from "@/shared/types";
 import type React from "react";
 import { parseMoneyInput,toIsoDateSlice } from "../utils";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 
 export function buildStaffActions(ctx: any) {
   const {
@@ -221,7 +222,7 @@ export function buildStaffActions(ctx: any) {
     try {
       const cleanPerm = editPermanentAddress.trim();
       const cleanCurr = editCurrentAddress.trim();
-      await apiRequest(`/staff/${selectedStaffProfile._id}`, {
+      await apiRequest(API_ENDPOINTS.STAFF.byId(selectedStaffProfile._id), {
         method: "PATCH",
         body: JSON.stringify({
           fullName: editFullName.trim(),
@@ -335,7 +336,7 @@ export function buildStaffActions(ctx: any) {
         payload.bonus = parseMoneyInput(bonus);
         payload.insurance = parseMoneyInput(insurance);
       }
-      await apiRequest("/staff", {
+      await apiRequest(API_ENDPOINTS.STAFF.BASE, {
         method: "POST",
         body: JSON.stringify(payload),
       });
@@ -365,7 +366,7 @@ export function buildStaffActions(ctx: any) {
   ) => {
     setStatusMsg(null);
     try {
-      await apiRequest(`/staff/${staff._id}`, {
+      await apiRequest(API_ENDPOINTS.STAFF.byId(staff._id), {
         method: "PATCH",
         body: JSON.stringify(updates),
       });
@@ -411,7 +412,7 @@ export function buildStaffActions(ctx: any) {
 
     setPwdSaving(true);
     try {
-      await apiRequest(`/staff/${pwdTargetStaff._id}`, {
+      await apiRequest(API_ENDPOINTS.STAFF.byId(pwdTargetStaff._id), {
         method: "PATCH",
         body: JSON.stringify({ password: cleanPwd }),
       });

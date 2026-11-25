@@ -1,5 +1,6 @@
 import { apiRequest } from "@/shared/api/client";
 import type { LeaveRequest, LeaveRequestType, MyLeaveRequest } from "@/shared/types";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 
 export async function fetchLeaveRequests(params?: { status?: string; type?: string; date?: string; staffId?: string }): Promise<LeaveRequest[]> {
   const query = new URLSearchParams();
@@ -13,7 +14,7 @@ export async function fetchLeaveRequests(params?: { status?: string; type?: stri
 }
 
 export async function reviewLeaveRequestApi(id: string, status: "APPROVED" | "REJECTED", reviewNote?: string): Promise<LeaveRequest> {
-  const res = await apiRequest<LeaveRequest>(`/leave-requests/${id}`, {
+  const res = await apiRequest<LeaveRequest>(API_ENDPOINTS.LEAVE_REQUESTS.byId(id), {
     method: "PATCH",
     body: JSON.stringify({ status, reviewNote }),
   });
@@ -29,7 +30,7 @@ export async function createLeaveRequestApi(payload: {
   sourceOffType?: "OFF" | "PAID_LEAVE";
   reason: string;
 }): Promise<MyLeaveRequest> {
-  const res = await apiRequest<MyLeaveRequest>("/leave-requests", {
+  const res = await apiRequest<MyLeaveRequest>(API_ENDPOINTS.LEAVE_REQUESTS.BASE, {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -42,7 +43,7 @@ export async function fetchMyLeaveRequestsApi(): Promise<MyLeaveRequest[]> {
 }
 
 export async function cancelLeaveRequestApi(id: string): Promise<void> {
-  await apiRequest(`/leave-requests/${id}`, { method: "DELETE" });
+  await apiRequest(API_ENDPOINTS.LEAVE_REQUESTS.byId(id), { method: "DELETE" });
 }
 
 

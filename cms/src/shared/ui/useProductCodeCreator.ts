@@ -4,6 +4,7 @@ import { describeApiError } from "@/shared/api/errors";
 import { useDebounce } from "@/shared/lib/search";
 import { Brand,Category,PreviewCodeResult,Product } from "@/shared/types";
 import { useEffect,useMemo,useRef,useState } from "react";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 
 export interface CreatorVariantDraft {
   variantKey?: string;
@@ -322,7 +323,7 @@ export function useProductCodeCreator({
     setSubmitting(true);
     try {
       if (isEditing && editingProduct) {
-        const res = await apiRequest<Product>(`/products/${editingProduct._id}`, {
+        const res = await apiRequest<Product>(API_ENDPOINTS.PRODUCTS.byId(editingProduct._id), {
           method: "PATCH",
           body: JSON.stringify({
             allowRecode: true,
@@ -347,7 +348,7 @@ export function useProductCodeCreator({
         return;
       }
 
-      const res = await apiRequest<Product>("/products", {
+      const res = await apiRequest<Product>(API_ENDPOINTS.PRODUCTS.BASE, {
         method: "POST",
         body: JSON.stringify({
           categoryId,

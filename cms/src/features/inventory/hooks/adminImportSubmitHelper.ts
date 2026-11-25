@@ -3,6 +3,7 @@ import { apiRequest, getStoredUser } from "@/shared/api/client";
 import { resolveVariantColorHexes } from "@/shared/ui/ColorSwatchPicker";
 import type { Product } from "@/shared/types";
 import type { InventoryState } from "./useInventoryState";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 
 export async function submitAdminBatchImport(
   e: React.FormEvent,
@@ -131,7 +132,7 @@ export async function submitAdminBatchImport(
         };
       });
 
-      const createdRes = await apiRequest<any>("/imports", {
+      const createdRes = await apiRequest<any>(API_ENDPOINTS.IMPORTS.BASE, {
         method: "POST",
         body: JSON.stringify({
           note: adminImportNote.trim() || `${actorLabel} nhập kho (${confirmedRows.length} dòng)`,
@@ -187,7 +188,7 @@ export async function submitAdminBatchImport(
     } catch (err: any) {
       // Nếu đã tạo phiếu DRAFT nhưng bước hoàn thành lỗi thì dọn phiếu DRAFT để tránh rác/trùng khi bấm thử lại
       if (createdReceiptId) {
-        await apiRequest(`/imports/${createdReceiptId}`, { method: "DELETE" }).catch(() => {});
+        await apiRequest(API_ENDPOINTS.IMPORTS.byId(createdReceiptId), { method: "DELETE" }).catch(() => {});
       }
       setStatusMsg({
         type: "error",

@@ -3,6 +3,7 @@ import { filterAndRankBySearch } from "@/shared/lib/search";
 import { DebtOrderRow,Order,RevenueDashboardData } from "@/shared/types";
 import { formatVND } from "@/shared/utils/format";
 import { useCallback,useEffect,useMemo,useState } from "react";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 
 export interface DebtManagementModuleProps {
   onOpenInvoice?: (order: Order) => void;
@@ -31,7 +32,7 @@ export function useDebtManagement({ onOpenInvoice }: DebtManagementModuleProps) 
   const loadDebtData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiRequest<RevenueDashboardData>("/reports/revenue-dashboard");
+      const res = await apiRequest<RevenueDashboardData>(API_ENDPOINTS.REPORTS.REVENUE_DASHBOARD);
       if (res.data) {
         setData(res.data);
       }
@@ -73,7 +74,7 @@ export function useDebtManagement({ onOpenInvoice }: DebtManagementModuleProps) 
     setDebtPaySaving(true);
     setDebtPayError("");
     try {
-      const res = await apiRequest(`/orders/${debtPayModalOrder._id}/debt-payment`, {
+      const res = await apiRequest(API_ENDPOINTS.ORDERS.debtPayment(debtPayModalOrder._id), {
         method: "POST",
         body: JSON.stringify({
           amount: amt,
@@ -98,7 +99,7 @@ export function useDebtManagement({ onOpenInvoice }: DebtManagementModuleProps) 
   const handlePrintOrder = async (row: DebtOrderRow) => {
     if (!onOpenInvoice) return;
     try {
-      const res = await apiRequest<Order>(`/orders/${row._id}`);
+      const res = await apiRequest<Order>(API_ENDPOINTS.ORDERS.byId(row._id));
       if (res.data) {
         onOpenInvoice(res.data);
         return;

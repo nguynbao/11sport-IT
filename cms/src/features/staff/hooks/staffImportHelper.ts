@@ -1,6 +1,7 @@
 import { apiRequest } from "@/shared/api/client";
 import { ParsedStaffImportRow } from "@/shared/types";
 import { parseStaffImportFileApi } from "../api";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 
 export function buildStaffImportActions(ctx: any) {
   const {
@@ -279,7 +280,7 @@ export function buildStaffImportActions(ctx: any) {
         continue;
       }
       try {
-        await apiRequest("/staff", {
+        await apiRequest(API_ENDPOINTS.STAFF.BASE, {
           method: "POST",
           body: JSON.stringify({
             username: uname,

@@ -5,6 +5,7 @@ import React,{ useMemo } from "react";
 
 
 import type { InventoryState } from "./useInventoryState";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 
 export interface InventoryTransferDeps {
   state: InventoryState;
@@ -341,7 +342,7 @@ export function useInventoryTransfer(deps: InventoryTransferDeps) {
       transferDirection === "F1_TO_F2" ? "FLOOR_2" : "FLOOR_1";
 
     try {
-      const res = await apiRequest<any>("/inventory/transfers", {
+      const res = await apiRequest<any>(API_ENDPOINTS.INVENTORY.TRANSFERS, {
         method: "POST",
         body: JSON.stringify({
           fromWarehouse,

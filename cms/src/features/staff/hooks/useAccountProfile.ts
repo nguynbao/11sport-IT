@@ -3,6 +3,7 @@ import { apiRequest,getStoredToken,setStoredAuth } from "@/shared/api/client";
 import { StaffUser,UserRole } from "@/shared/types";
 import { cleanPhoneDigits } from "@/shared/utils/format";
 import React,{ useEffect,useState } from "react";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 
 export function getRoleDisplayName(role?: UserRole): string {
   switch (role) {
@@ -117,7 +118,7 @@ export function useAccountProfile({ currentUser, onUserUpdated }: AccountProfile
   // Đồng bộ lại thông tin mới nhất từ server khi mở trang
   useEffect(() => {
     let mounted = true;
-    apiRequest<StaffUser[]>("/staff")
+    apiRequest<StaffUser[]>(API_ENDPOINTS.STAFF.BASE)
       .then((res) => {
         if (!mounted || !Array.isArray(res.data)) return;
         const found = res.data.find(
@@ -201,7 +202,7 @@ export function useAccountProfile({ currentUser, onUserUpdated }: AccountProfile
 
     setSavingProfile(true);
     try {
-      const res = await apiRequest<StaffUser>(`/staff/${currentUser._id}`, {
+      const res = await apiRequest<StaffUser>(API_ENDPOINTS.STAFF.byId(currentUser._id), {
         method: "PATCH",
         body: JSON.stringify({
           fullName: cleanName,

@@ -4,6 +4,7 @@ import { useEffect,useMemo,useState } from "react";
 import { EditableImportRow } from "../utils";
 import { buildStaffActions } from "./staffActionsHelper";
 import { buildStaffImportActions } from "./staffImportHelper";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 
 export interface StaffModuleProps {
   mode?: "ADMIN_LOCK_ONLY" | "HR_FULL";
@@ -131,7 +132,7 @@ export function useStaffModule({ mode = "HR_FULL", currentUser = null }: StaffMo
 
   const loadStaff = async () => {
     try {
-      const res = await apiRequest<StaffUser[]>("/staff");
+      const res = await apiRequest<StaffUser[]>(API_ENDPOINTS.STAFF.BASE);
       setStaffList(Array.isArray(res.data) ? res.data : []);
     } catch {
       // ignore

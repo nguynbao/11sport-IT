@@ -11,6 +11,7 @@ import type {
   StaffPaidLeaveStats,
   StaffUser,
 } from "@/shared/types";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 
 export async function fetchShiftSchedule(weekStart?: string): Promise<{
   assignments: ShiftAssignment[];
@@ -31,7 +32,7 @@ export async function fetchShiftSchedule(weekStart?: string): Promise<{
 }
 
 export async function assignShiftApi(data: { staffId: string; date: string; weekStart?: string; dayOfWeek?: number; shiftCode: "SHIFT_1" | "SHIFT_2" | "OFF" }): Promise<ShiftAssignment> {
-  const res = await apiRequest<ShiftAssignment>("/shifts/assign", {
+  const res = await apiRequest<ShiftAssignment>(API_ENDPOINTS.SHIFTS.ASSIGN, {
     method: "PUT",
     body: JSON.stringify(data),
   });
@@ -44,7 +45,7 @@ export async function saveShiftChangesApi(
   changes: ShiftChange[],
   confirmWeek?: boolean
 ): Promise<{ created: number; updated: number; deleted: number; confirmed?: number; offOverrides?: ShiftOffOverride[] }> {
-  const res = await apiRequest<{ created: number; updated: number; deleted: number; confirmed?: number; offOverrides?: ShiftOffOverride[] }>("/shifts/assign/bulk", {
+  const res = await apiRequest<{ created: number; updated: number; deleted: number; confirmed?: number; offOverrides?: ShiftOffOverride[] }>(API_ENDPOINTS.SHIFTS.ASSIGN_BULK, {
     method: "PUT",
     body: JSON.stringify({ weekStart, changes, confirmWeek }),
   });
@@ -53,7 +54,7 @@ export async function saveShiftChangesApi(
 
 
 export async function fetchHandoverScheduleConfigApi(): Promise<HandoverScheduleConfigData> {
-  const res = await apiRequest<any>("/shifts/handover/schedule-config");
+  const res = await apiRequest<any>(API_ENDPOINTS.SHIFTS.HANDOVER_SCHEDULE_CONFIG);
   const raw = res.data || {};
   const list = Array.isArray(raw.availableCategories)
     ? raw.availableCategories
@@ -70,7 +71,7 @@ export async function fetchHandoverScheduleConfigApi(): Promise<HandoverSchedule
 export async function updateHandoverScheduleConfigApi(
   weeklySchedule: Record<string, string[]>
 ): Promise<{ weeklySchedule: Record<string, string[]>; message?: string }> {
-  const res = await apiRequest<any>("/shifts/handover/schedule-config", {
+  const res = await apiRequest<any>(API_ENDPOINTS.SHIFTS.HANDOVER_SCHEDULE_CONFIG, {
     method: "PUT",
     body: JSON.stringify({ weeklySchedule }),
   });
@@ -135,7 +136,7 @@ export async function confirmShiftHandoverApi(
 }
 
 export async function deleteShiftHandoverApi(id: string): Promise<{ deleted: boolean; id: string }> {
-  const res = await apiRequest<{ deleted: boolean; id: string }>(`/shifts/handover/${id}`, {
+  const res = await apiRequest<{ deleted: boolean; id: string }>(API_ENDPOINTS.SHIFTS.handoverById(id), {
     method: "DELETE",
   });
   return res.data;

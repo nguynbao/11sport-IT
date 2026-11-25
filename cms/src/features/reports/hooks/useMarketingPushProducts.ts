@@ -3,6 +3,7 @@ import { filterAndRankBySearch,useDebounce } from "@/shared/lib/search";
 import { Category,Order,Product,ProductSalesAnalysisRow,ReturnReceipt } from "@/shared/types";
 import { useCallback,useEffect,useMemo,useState } from "react";
 import { parseLocalDateBound } from "../utils";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 
 
 interface PushProductsReportResponse {
@@ -302,10 +303,10 @@ export function useMarketingPushProducts(onNavigateToInventory?: (searchCode?: s
       }
 
       const [catRes, prodRes, ordRes, retRes] = await Promise.all([
-        apiRequest<Category[]>("/categories").catch(() => ({ data: [] })),
-        apiRequest<Product[]>("/products").catch(() => ({ data: [] })),
-        apiRequest<Order[]>("/orders").catch(() => ({ data: [] })),
-        apiRequest<ReturnReceipt[]>("/returns").catch(() => ({ data: [] })),
+        apiRequest<Category[]>(API_ENDPOINTS.CATEGORIES.BASE).catch(() => ({ data: [] })),
+        apiRequest<Product[]>(API_ENDPOINTS.PRODUCTS.BASE).catch(() => ({ data: [] })),
+        apiRequest<Order[]>(API_ENDPOINTS.ORDERS.BASE).catch(() => ({ data: [] })),
+        apiRequest<ReturnReceipt[]>(API_ENDPOINTS.RETURNS.BASE).catch(() => ({ data: [] })),
       ]);
       const catList = Array.isArray(catRes.data) ? catRes.data : [];
       setCategories(catList);

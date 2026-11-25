@@ -8,6 +8,7 @@ import { fetchBrandsApi } from "../api";
 import CategoryModule from "./CategoryModule";
 import BrandModule from "./BrandModule";
 import ProductCatalogModule from "./ProductCatalogModule";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 
 type SubTab = "CATEGORY" | "BRAND" | "PRODUCT_CATALOG";
 
@@ -33,9 +34,9 @@ export default function CategoryBrandModule() {
   useEffect(() => {
     let mounted = true;
     Promise.all([
-      apiRequest<Category[]>("/categories").catch(() => ({ data: [] as Category[] })),
+      apiRequest<Category[]>(API_ENDPOINTS.CATEGORIES.BASE).catch(() => ({ data: [] as Category[] })),
       fetchBrandsApi().catch(() => [] as Brand[]),
-      apiRequest<Product[]>("/products").catch(() => ({ data: [] as Product[] })),
+      apiRequest<Product[]>(API_ENDPOINTS.PRODUCTS.BASE).catch(() => ({ data: [] as Product[] })),
     ]).then(([cRes, bList, pRes]) => {
       if (!mounted) return;
       const cats = Array.isArray(cRes.data) ? cRes.data : [];

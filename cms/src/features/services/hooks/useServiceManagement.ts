@@ -3,6 +3,7 @@ import { useDebounce } from "@/shared/lib/search";
 import { ServiceOrder,ServiceOrdersMeta,ServiceOrderStatus,ServicePaymentMethod,ServiceType,StaffUser } from "@/shared/types";
 import { cleanPhoneDigits,formatPhone,formatVND } from "@/shared/utils/format";
 import React,{ useCallback,useEffect,useState } from "react";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 const STATUS_INFO: Record<
   ServiceOrderStatus,
   { label: string; badgeCls: string }
@@ -216,7 +217,7 @@ export function useServiceManagement({ currentUser }: { currentUser?: StaffUser 
     setSavingType(true);
     try {
       if (editingType) {
-        await apiRequest(`/service-types/${editingType._id}`, {
+        await apiRequest(API_ENDPOINTS.SERVICES.typeById(editingType._id), {
           method: "PATCH",
           body: JSON.stringify({
             name: typeName.trim(),
@@ -227,7 +228,7 @@ export function useServiceManagement({ currentUser }: { currentUser?: StaffUser 
         });
         setSuccessMsg(`Đã cập nhật loại dịch vụ "${typeName.trim()}"`);
       } else {
-        await apiRequest("/service-types", {
+        await apiRequest(API_ENDPOINTS.SERVICES.TYPES, {
           method: "POST",
           body: JSON.stringify({
             code: typeCode.trim() || undefined,
@@ -253,7 +254,7 @@ export function useServiceManagement({ currentUser }: { currentUser?: StaffUser 
     const nextStatus = st.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
     setErrorMsg("");
     try {
-      await apiRequest(`/service-types/${st._id}`, {
+      await apiRequest(API_ENDPOINTS.SERVICES.typeById(st._id), {
         method: "PATCH",
         body: JSON.stringify({ status: nextStatus }),
       });
@@ -277,7 +278,7 @@ export function useServiceManagement({ currentUser }: { currentUser?: StaffUser 
     }
     setErrorMsg("");
     try {
-      await apiRequest(`/service-types/${st._id}`, { method: "DELETE" });
+      await apiRequest(API_ENDPOINTS.SERVICES.typeById(st._id), { method: "DELETE" });
       setSuccessMsg(`Đã xóa loại dịch vụ "${st.name}"`);
       fetchServiceTypes();
     } catch (err: any) {
@@ -305,7 +306,7 @@ export function useServiceManagement({ currentUser }: { currentUser?: StaffUser 
     }
     setErrorMsg("");
     try {
-      await apiRequest(`/service-orders/${order._id}/status`, {
+      await apiRequest(API_ENDPOINTS.SERVICES.orderStatus(order._id), {
         method: "PATCH",
         body: JSON.stringify({ status: nextStatus }),
       });
@@ -339,7 +340,7 @@ export function useServiceManagement({ currentUser }: { currentUser?: StaffUser 
     const pct = useCardFee ? Math.max(0, Number(collectCardFeePercent) || 0) : 0;
     try {
       if (markReturnedOnCollect) {
-        await apiRequest(`/service-orders/${collectOrder._id}/status`, {
+        await apiRequest(API_ENDPOINTS.SERVICES.orderStatus(collectOrder._id), {
           method: "PATCH",
           body: JSON.stringify({
             status: "RETURNED",
@@ -354,7 +355,7 @@ export function useServiceManagement({ currentUser }: { currentUser?: StaffUser 
           `Đã trả đồ & thu tiền cho đơn ${collectOrder.orderCode}`
         );
       } else {
-        await apiRequest(`/service-orders/${collectOrder._id}/payments`, {
+        await apiRequest(API_ENDPOINTS.SERVICES.orderPayments(collectOrder._id), {
           method: "POST",
           body: JSON.stringify({
             amount: collectAmount,
@@ -416,7 +417,7 @@ export function useServiceManagement({ currentUser }: { currentUser?: StaffUser 
 
     setSavingOrderEdit(true);
     try {
-      await apiRequest(`/service-orders/${editingOrder._id}`, {
+      await apiRequest(API_ENDPOINTS.SERVICES.orderById(editingOrder._id), {
         method: "PATCH",
         body: JSON.stringify({
           customerName: editCustomerName.trim(),

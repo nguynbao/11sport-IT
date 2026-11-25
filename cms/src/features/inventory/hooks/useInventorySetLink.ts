@@ -4,6 +4,7 @@ import React from "react";
 
 
 import type { InventoryState } from "./useInventoryState";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 
 export interface InventorySetLinkDeps {
   state: InventoryState;
@@ -86,7 +87,7 @@ export function useInventorySetLink(deps: InventorySetLinkDeps) {
     setUnpackingLoadingId(retailProductId);
     setStatusMsg(null);
     try {
-      const res = await apiRequest<any>("/inventory/unpack-set", {
+      const res = await apiRequest<any>(API_ENDPOINTS.INVENTORY.UNPACK_SET, {
         method: "POST",
         body: JSON.stringify({
           retailProductId,
@@ -128,7 +129,7 @@ export function useInventorySetLink(deps: InventorySetLinkDeps) {
           setSavingSetLink(false);
           return;
         }
-        await apiRequest(`/products/${setLinkModalProduct._id}`, {
+        await apiRequest(API_ENDPOINTS.PRODUCTS.byId(setLinkModalProduct._id), {
           method: "PATCH",
           body: JSON.stringify({
             parentSetProductId: selectedParentSetId,
@@ -149,7 +150,7 @@ export function useInventorySetLink(deps: InventorySetLinkDeps) {
             setSavingSetLink(false);
             return;
           }
-          await apiRequest(`/products/${selectedExistingRetailId}`, {
+          await apiRequest(API_ENDPOINTS.PRODUCTS.byId(selectedExistingRetailId), {
             method: "PATCH",
             body: JSON.stringify({
               parentSetProductId: setLinkModalProduct._id,
@@ -178,7 +179,7 @@ export function useInventorySetLink(deps: InventorySetLinkDeps) {
             Number(setLinkModalProduct.costPrice) > 0
               ? Math.round(Number(setLinkModalProduct.costPrice) / validPack)
               : 0;
-          await apiRequest("/products", {
+          await apiRequest(API_ENDPOINTS.PRODUCTS.BASE, {
             method: "POST",
             body: JSON.stringify({
               name: cleanName,
@@ -214,7 +215,7 @@ export function useInventorySetLink(deps: InventorySetLinkDeps) {
   const handleClearSetLink = async (retailProdId: string) => {
     setSavingSetLink(true);
     try {
-      await apiRequest(`/products/${retailProdId}`, {
+      await apiRequest(API_ENDPOINTS.PRODUCTS.byId(retailProdId), {
         method: "PATCH",
         body: JSON.stringify({
           parentSetProductId: "",

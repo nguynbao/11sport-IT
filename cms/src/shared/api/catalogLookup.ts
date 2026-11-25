@@ -1,5 +1,6 @@
 import { apiRequest } from "./client";
 import type { Brand, PreviewCodeResult, Product, ProductLookupResult } from "@/shared/types";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 
 export async function fetchBrandsApi(
   params: { categoryId?: string; status?: "ACTIVE" | "INACTIVE"; search?: string } = {}
@@ -20,7 +21,7 @@ export async function previewProductCodeApi(body: {
   versionCode?: string;
   variants?: { color: string; colorCode?: string; size: string }[];
 }): Promise<PreviewCodeResult> {
-  const res = await apiRequest<PreviewCodeResult>("/products/preview-code", {
+  const res = await apiRequest<PreviewCodeResult>(API_ENDPOINTS.PRODUCTS.PREVIEW_CODE, {
     method: "POST",
     body: JSON.stringify(body),
   });
@@ -49,7 +50,7 @@ export async function lookupProductByCodeApi(code: string): Promise<ProductLooku
   const c = String(code || "").trim();
   if (!c) return null;
   try {
-    const res = await apiRequest<ProductLookupResult>(`/products/lookup?code=${encodeURIComponent(c)}`);
+    const res = await apiRequest<ProductLookupResult>(`${API_ENDPOINTS.PRODUCTS.LOOKUP}?code=${encodeURIComponent(c)}`);
     return res.data || null;
   } catch (err: any) {
     if (err?.code === "PRODUCT_NOT_FOUND") return null;

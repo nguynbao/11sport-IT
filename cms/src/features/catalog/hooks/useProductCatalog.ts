@@ -11,6 +11,7 @@ import { ProductCodeCreatorResult } from "@/shared/ui/ProductCodeCreatorModal";
 import { resolveVariantCode,variantEffectiveSellingPrice } from "@/shared/utils/productCode";
 import { useCallback,useEffect,useMemo,useState } from "react";
 import { addProductVariantsApi,fetchBrandsApi } from "../api";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 
 export const COMMON_COLORS = [
   "Đỏ",
@@ -110,8 +111,8 @@ export function useProductCatalog() {
     setLoading(true);
     try {
       const [prodRes, catRes, brandList] = await Promise.all([
-        apiRequest<Product[]>("/products"),
-        apiRequest<Category[]>("/categories"),
+        apiRequest<Product[]>(API_ENDPOINTS.PRODUCTS.BASE),
+        apiRequest<Category[]>(API_ENDPOINTS.CATEGORIES.BASE),
         fetchBrandsApi(),
       ]);
       const pList = Array.isArray(prodRes.data) ? prodRes.data : [];
@@ -217,7 +218,7 @@ export function useProductCatalog() {
     setSavingProdId(p._id);
     setStatusMsg(null);
     try {
-      await apiRequest(`/products/${p._id}`, {
+      await apiRequest(API_ENDPOINTS.PRODUCTS.byId(p._id), {
         method: "PATCH",
         body: JSON.stringify({
           name: draft.name.trim(),
@@ -250,7 +251,7 @@ export function useProductCatalog() {
     if (!v.variantKey && !v.variantCode) return;
     setStatusMsg(null);
     try {
-      await apiRequest(`/products/${prod._id}`, {
+      await apiRequest(API_ENDPOINTS.PRODUCTS.byId(prod._id), {
         method: "PATCH",
         body: JSON.stringify({
           variantPrices: [
@@ -336,7 +337,7 @@ export function useProductCatalog() {
     }
     setStatusMsg(null);
     try {
-      await apiRequest(`/products/${prod._id}`, { method: "DELETE" });
+      await apiRequest(API_ENDPOINTS.PRODUCTS.byId(prod._id), { method: "DELETE" });
       setStatusMsg({
         type: "success",
         text: `Đã xóa sản phẩm "${prod.name}" (${prod.code}) khỏi danh mục.`,

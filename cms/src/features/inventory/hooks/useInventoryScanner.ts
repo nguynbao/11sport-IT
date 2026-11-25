@@ -15,6 +15,7 @@ AdminImportRow
 
 
 import type { InventoryState } from "./useInventoryState";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 
 export interface InventoryScannerDeps {
   state: InventoryState;
@@ -93,7 +94,7 @@ export function useInventoryScanner(deps: InventoryScannerDeps) {
           // ignore -> thử tải lại danh mục
         }
         try {
-          const freshRes = await apiRequest<Product[]>("/products");
+          const freshRes = await apiRequest<Product[]>(API_ENDPOINTS.PRODUCTS.BASE);
           const freshPool = Array.isArray(freshRes.data) ? freshRes.data : [];
           if (freshPool.length > 0) {
             setAllCatalogProducts(freshPool);

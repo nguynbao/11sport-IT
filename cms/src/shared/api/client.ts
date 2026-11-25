@@ -1,4 +1,5 @@
 import type { StaffUser } from "@/shared/types";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 
 const RENDER_API_BASE_URL = "https://one1sport-it.onrender.com/api/v1";
 const ENV_API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || RENDER_API_BASE_URL;
@@ -86,7 +87,7 @@ export async function apiRequest<T = any>(
 
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
-    if (res.status === 401 && !endpoint.startsWith("/auth/login") && typeof window !== "undefined") {
+    if (res.status === 401 && !endpoint.startsWith(API_ENDPOINTS.AUTH.LOGIN) && typeof window !== "undefined") {
       if (getStoredToken()) {
         clearStoredAuth();
         window.location.reload();

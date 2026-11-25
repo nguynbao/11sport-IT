@@ -8,6 +8,7 @@ resolveVariantColorHexes
 
 
 import type { InventoryState } from "./useInventoryState";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 
 export interface InventoryVariantActionsDeps {
   state: InventoryState;
@@ -38,7 +39,7 @@ export function useInventoryVariantActions(deps: InventoryVariantActionsDeps) {
     setSavingVariantsProdId(prod._id);
     setStatusMsg(null);
     try {
-      await apiRequest(`/products/${prod._id}`, {
+      await apiRequest(API_ENDPOINTS.PRODUCTS.byId(prod._id), {
         method: "PATCH",
         body: JSON.stringify({
           variants: varsToSave.map((v) => ({
@@ -77,7 +78,7 @@ export function useInventoryVariantActions(deps: InventoryVariantActionsDeps) {
     if (next === Math.max(0, Number(v[field] || 0))) return;
     if (!v.variantKey && !v.variantCode) return;
     try {
-      await apiRequest(`/products/${prod._id}`, {
+      await apiRequest(API_ENDPOINTS.PRODUCTS.byId(prod._id), {
         method: "PATCH",
         body: JSON.stringify({
           variantPrices: [

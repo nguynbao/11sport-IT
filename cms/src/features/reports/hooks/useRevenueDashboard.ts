@@ -3,6 +3,7 @@ import { filterAndRankBySearch,useDebounce } from "@/shared/lib/search";
 import { Category,Order,Product,ReturnReceipt,RevenueDashboardData,ServiceOrder } from "@/shared/types";
 import { useCallback,useEffect,useMemo,useState } from "react";
 import { buildClientFallbackDashboard } from "../fallbackDashboard";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 
 export interface RevenueDashboardProps {
   onNavigateToInventory?: (searchCode?: string) => void;
@@ -117,13 +118,13 @@ export function useRevenueDashboard({ onNavigateToInventory, onNavigateToDebts }
       if (categoryId) q.set("categoryId", categoryId);
       if (paymentMethod) q.set("paymentMethod", paymentMethod);
 
-      const catRes = await apiRequest<Category[]>("/categories").catch(() => ({ data: [] }));
+      const catRes = await apiRequest<Category[]>(API_ENDPOINTS.CATEGORIES.BASE).catch(() => ({ data: [] }));
       const catList = Array.isArray(catRes.data) ? catRes.data : [];
       setCategories(catList);
 
       try {
         const res = await apiRequest<RevenueDashboardData>(
-          `/reports/revenue-dashboard?${q.toString()}`
+          `${API_ENDPOINTS.REPORTS.REVENUE_DASHBOARD}?${q.toString()}`
         );
         if (res.data?.summary) {
           setData(res.data);
@@ -134,10 +135,10 @@ export function useRevenueDashboard({ onNavigateToInventory, onNavigateToDebts }
       }
 
       const [ordRes, retRes, prodRes, svcRes] = await Promise.all([
-        apiRequest<Order[]>("/orders"),
-        apiRequest<ReturnReceipt[]>("/returns"),
-        apiRequest<Product[]>("/products"),
-        apiRequest<ServiceOrder[]>("/service-orders").catch(() => ({ data: [] })),
+        apiRequest<Order[]>(API_ENDPOINTS.ORDERS.BASE),
+        apiRequest<ReturnReceipt[]>(API_ENDPOINTS.RETURNS.BASE),
+        apiRequest<Product[]>(API_ENDPOINTS.PRODUCTS.BASE),
+        apiRequest<ServiceOrder[]>(API_ENDPOINTS.SERVICES.ORDERS).catch(() => ({ data: [] })),
       ]);
       const fallback = buildClientFallbackDashboard(
         Array.isArray(ordRes.data) ? ordRes.data : [],

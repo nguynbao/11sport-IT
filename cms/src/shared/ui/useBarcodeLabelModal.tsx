@@ -13,6 +13,7 @@ SystemPrinterInfo
 } from "./barcodeLabelCode128";
 import { openBrowserPrintDialog } from "./barcodePrintDialog";
 import { BarcodeStickerPreview } from "./BarcodeStickerPreview";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 
 export function useBarcodeLabelModal({
   open,
@@ -88,9 +89,9 @@ export function useBarcodeLabelModal({
       const endpoints = [
         "http://localhost:4000/api/v1/system/printers",
         "http://localhost:4000/api/v1/printers",
-        "/api/printers",
-        "/api/v1/system/printers",
-        "/api/v1/printers"
+        API_ENDPOINTS.PRINTERS.NEXT_API,
+        API_ENDPOINTS.PRINTERS.LOCAL_LIST[0],
+        API_ENDPOINTS.PRINTERS.LOCAL_LIST[1]
       ];
       const { json } = await fetchFirstOkJson<{ data?: { printers?: SystemPrinterInfo[] } }>(
         endpoints,
@@ -275,9 +276,9 @@ export function useBarcodeLabelModal({
       const endpoints = [
         "http://localhost:4000/api/v1/system/printers/print-labels",
         "http://localhost:4000/api/v1/printers/print-labels",
-        "/api/printers",
-        "/api/v1/system/printers/print-labels",
-        "/api/v1/printers/print-labels"
+        API_ENDPOINTS.PRINTERS.NEXT_API,
+        API_ENDPOINTS.PRINTERS.LOCAL_PRINT_LABELS[0],
+        API_ENDPOINTS.PRINTERS.LOCAL_PRINT_LABELS[1]
       ];
 
       const { json, lastError } = await fetchFirstOkJson<any>(

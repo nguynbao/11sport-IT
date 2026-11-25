@@ -2,6 +2,7 @@ import type React from "react";
 import { apiRequest, getStoredUser } from "@/shared/api/client";
 import type { AdminImportRow } from "../types";
 import type { InventoryState } from "./useInventoryState";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 
 export async function parseAndApplyAdminImportFile(
   e: React.ChangeEvent<HTMLInputElement>,
@@ -42,7 +43,7 @@ export async function parseAndApplyAdminImportFile(
         items: any[];
         totalRows: number;
         totalQuantity: number;
-      }>("/imports/parse-file", {
+      }>(API_ENDPOINTS.IMPORTS.PARSE_FILE, {
         method: "POST",
         body: JSON.stringify({
           fileName: file.name,

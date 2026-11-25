@@ -9,6 +9,7 @@ Infinity as InfinityIcon,
 PauseCircle
 } from "lucide-react";
 import React,{ useCallback,useEffect,useMemo,useState } from "react";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 function toDateTimeLocalInput(iso?: string | null): string {
   if (!iso) return "";
   try {
@@ -113,9 +114,9 @@ export function usePromotionModule() {
     setErrorMsg("");
     try {
       const [promoRes, prodRes, catRes] = await Promise.all([
-        apiRequest<Promotion[]>("/promotions"),
-        apiRequest<Product[]>("/products"),
-        apiRequest<Category[]>("/categories"),
+        apiRequest<Promotion[]>(API_ENDPOINTS.PROMOTIONS.BASE),
+        apiRequest<Product[]>(API_ENDPOINTS.PRODUCTS.BASE),
+        apiRequest<Category[]>(API_ENDPOINTS.CATEGORIES.BASE),
       ]);
       setPromotions(Array.isArray(promoRes.data) ? promoRes.data : []);
       setProducts(Array.isArray(prodRes.data) ? prodRes.data : []);
@@ -354,7 +355,7 @@ export function usePromotionModule() {
       };
 
       if (editingPromo) {
-        await apiRequest(`/promotions/${editingPromo._id}`, {
+        await apiRequest(API_ENDPOINTS.PROMOTIONS.byId(editingPromo._id), {
           method: "PATCH",
           body: JSON.stringify(payload),
         });
@@ -362,7 +363,7 @@ export function usePromotionModule() {
           `Đã cập nhật chương trình khuyến mãi "${payload.name}" thành công!`
         );
       } else {
-        await apiRequest("/promotions", {
+        await apiRequest(API_ENDPOINTS.PROMOTIONS.BASE, {
           method: "POST",
           body: JSON.stringify(payload),
         });
@@ -385,7 +386,7 @@ export function usePromotionModule() {
     setSuccessMsg("");
     const nextStatus = promo.status === "ACTIVE" ? "PAUSED" : "ACTIVE";
     try {
-      await apiRequest(`/promotions/${promo._id}`, {
+      await apiRequest(API_ENDPOINTS.PROMOTIONS.byId(promo._id), {
         method: "PATCH",
         body: JSON.stringify({ status: nextStatus }),
       });
@@ -412,7 +413,7 @@ export function usePromotionModule() {
     setErrorMsg("");
     setSuccessMsg("");
     try {
-      await apiRequest(`/promotions/${promo._id}`, {
+      await apiRequest(API_ENDPOINTS.PROMOTIONS.byId(promo._id), {
         method: "DELETE",
       });
       setSuccessMsg(`Đã xóa chương trình khuyến mãi "${promo.name}".`);

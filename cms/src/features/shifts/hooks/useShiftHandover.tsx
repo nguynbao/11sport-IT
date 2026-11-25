@@ -9,6 +9,7 @@ FileEdit
 } from "lucide-react";
 import { useCallback,useEffect,useState } from "react";
 import { confirmShiftHandoverApi,deleteShiftHandoverApi,fetchDailyHandoverCheckApi,fetchHandoverScheduleConfigApi,fetchShiftHandoversApi,updateHandoverScheduleConfigApi } from "../api";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 
 export const WEEKDAY_LABELS: Array<{ key: string; label: string; short: string }> = [
   { key: "1", label: "Thứ 2", short: "T2" },
@@ -86,7 +87,7 @@ export function useShiftHandover({ currentUser }: { currentUser: StaffUser | nul
     try {
       const [cfg, catRes] = await Promise.all([
         fetchHandoverScheduleConfigApi().catch(() => null),
-        apiRequest<Category[]>("/categories").catch(() => null),
+        apiRequest<Category[]>(API_ENDPOINTS.CATEGORIES.BASE).catch(() => null),
       ]);
       const allCats = Array.isArray(catRes?.data) ? catRes.data : [];
 

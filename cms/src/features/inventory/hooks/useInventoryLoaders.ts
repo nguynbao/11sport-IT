@@ -4,6 +4,7 @@ import { fetchBrandsApi } from "@/shared/api/catalogLookup";
 import { resolveVariantCode } from "@/shared/utils/productCode";
 import type { Brand, Category, InventoryReportRow, Product, ProductVariant, StockMovement } from "@/shared/types";
 import type { InventoryState } from "./useInventoryState";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 
 export function useInventoryLoaders(state: InventoryState) {
   const {
@@ -64,10 +65,10 @@ export function useInventoryLoaders(state: InventoryState) {
   const loadCategoriesAndImports = useCallback(async () => {
     try {
       const [catRes, impRes, movRes, allProdRes] = await Promise.all([
-        apiRequest<Category[]>("/categories"),
-        apiRequest<any[]>("/imports"),
+        apiRequest<Category[]>(API_ENDPOINTS.CATEGORIES.BASE),
+        apiRequest<any[]>(API_ENDPOINTS.IMPORTS.BASE),
         apiRequest<StockMovement[]>("/inventory/movements?type=IMPORT"),
-        apiRequest<Product[]>("/products"),
+        apiRequest<Product[]>(API_ENDPOINTS.PRODUCTS.BASE),
       ]);
       const cList = Array.isArray(catRes.data) ? catRes.data : [];
       const iList = Array.isArray(impRes.data) ? impRes.data : [];
@@ -99,7 +100,7 @@ export function useInventoryLoaders(state: InventoryState) {
       if (categoryId) q.set("categoryId", categoryId);
       if (debouncedSearch.trim()) q.set("search", debouncedSearch.trim());
 
-      const prodRes = await apiRequest<Product[]>(`/products?${q.toString()}`);
+      const prodRes = await apiRequest<Product[]>(`${API_ENDPOINTS.PRODUCTS.BASE}?${q.toString()}`);
       const pList = Array.isArray(prodRes.data) ? prodRes.data : [];
       setProducts(pList);
       if (!categoryId && !debouncedSearch.trim()) {
@@ -163,7 +164,7 @@ export function useInventoryLoaders(state: InventoryState) {
       if (fromDate) q.set("from", fromDate);
       if (toDate) q.set("to", toDate);
       if (categoryId) q.set("categoryId", categoryId);
-      const res = await apiRequest<any>(`/inventory/report?${q.toString()}`);
+      const res = await apiRequest<any>(`${API_ENDPOINTS.INVENTORY.REPORT}?${q.toString()}`);
       const list = Array.isArray(res.data)
         ? res.data
         : res.data?.items || res.data?.rows || [];
@@ -183,7 +184,7 @@ export function useInventoryLoaders(state: InventoryState) {
       if (fromDate) q.set("from", fromDate);
       if (toDate) q.set("to", toDate);
       const res = await apiRequest<StockMovement[]>(
-        `/inventory/movements?${q.toString()}`
+        `${API_ENDPOINTS.INVENTORY.MOVEMENTS}?${q.toString()}`
       );
       setMovements(Array.isArray(res.data) ? res.data : []);
     } catch {
@@ -196,7 +197,7 @@ export function useInventoryLoaders(state: InventoryState) {
   const loadImports = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiRequest<any[]>("/imports");
+      const res = await apiRequest<any[]>(API_ENDPOINTS.IMPORTS.BASE);
       setImportsList(Array.isArray(res.data) ? res.data : []);
     } catch {
       setImportsList([]);
@@ -208,7 +209,7 @@ export function useInventoryLoaders(state: InventoryState) {
   const loadTransfers = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiRequest<StockMovement[]>("/inventory/transfers");
+      const res = await apiRequest<StockMovement[]>(API_ENDPOINTS.INVENTORY.TRANSFERS);
       setTransfersList(Array.isArray(res.data) ? res.data : []);
     } catch {
       setTransfersList([]);

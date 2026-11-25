@@ -8,6 +8,7 @@ ActiveWarehouseTab
 
 import type { InventoryState } from "./useInventoryState";
 import { useInventoryVariantActions } from "./useInventoryVariantActions";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 
 export interface InventoryProductActionsDeps {
   state: InventoryState;
@@ -172,7 +173,7 @@ export function useInventoryProductActions(deps: InventoryProductActionsDeps) {
 
     setSavingBatch(true);
     try {
-      await apiRequest(`/products/${prod._id}`, {
+      await apiRequest(API_ENDPOINTS.PRODUCTS.byId(prod._id), {
         method: "PATCH",
         body: JSON.stringify({
           name: newName,
@@ -271,7 +272,7 @@ export function useInventoryProductActions(deps: InventoryProductActionsDeps) {
         const newCost = Number(editingCosts[prod._id] ?? prod.costPrice ?? 0);
         const newPrice = Number(editingPrices[prod._id] ?? prod.sellingPrice ?? 0);
 
-        await apiRequest(`/products/${prod._id}`, {
+        await apiRequest(API_ENDPOINTS.PRODUCTS.byId(prod._id), {
           method: "PATCH",
           body: JSON.stringify({
             name: newName,
@@ -313,7 +314,7 @@ export function useInventoryProductActions(deps: InventoryProductActionsDeps) {
     }
     setStatusMsg(null);
     try {
-      await apiRequest(`/products/${prod._id}`, { method: "DELETE" });
+      await apiRequest(API_ENDPOINTS.PRODUCTS.byId(prod._id), { method: "DELETE" });
       setStatusMsg({
         type: "success",
         text: `Đã xóa sản phẩm "${prod.name}" (${prod.code}) khỏi hệ thống!`,
@@ -337,7 +338,7 @@ export function useInventoryProductActions(deps: InventoryProductActionsDeps) {
     if (!window.confirm(msg)) return;
     setStatusMsg(null);
     try {
-      await apiRequest(`/imports/${imp._id}`, { method: "DELETE" });
+      await apiRequest(API_ENDPOINTS.IMPORTS.byId(imp._id), { method: "DELETE" });
       setStatusMsg({
         type: "success",
         text: `Đã xóa phiếu nhập "${code}" thành công!`,

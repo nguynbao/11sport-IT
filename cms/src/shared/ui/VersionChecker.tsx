@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { RefreshCw, Sparkles, X } from "lucide-react";
 import { fetchWithTimeout } from "@/shared/api/localFetch";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 
 const CLIENT_BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID || "";
 const POLL_INTERVAL_MS = 2 * 60 * 1000; // 2 phút
@@ -21,7 +22,7 @@ export default function VersionChecker() {
     lastCheckAtRef.current = now;
 
     try {
-      const res = await fetchWithTimeout(`/api/version?t=${now}`, {
+      const res = await fetchWithTimeout(`${API_ENDPOINTS.VERSION}?t=${now}`, {
         method: "GET",
         cache: "no-store",
         headers: {

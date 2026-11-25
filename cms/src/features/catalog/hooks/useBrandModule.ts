@@ -4,6 +4,7 @@ import { describeApiError } from "@/shared/api/errors";
 import { filterAndRankBySearch,useDebounce } from "@/shared/lib/search";
 import { Brand,Category } from "@/shared/types";
 import React,{ useEffect,useMemo,useState } from "react";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 
 export const CODE_RE = /^[A-Z0-9]{2,4}$/;
 
@@ -57,7 +58,7 @@ export function useBrandModule() {
       const q = qs.toString();
       const [bRes, cRes] = await Promise.all([
         apiRequest<Brand[]>(`/brands${q ? `?${q}` : ""}`),
-        categories.length ? Promise.resolve({ data: categories }) : apiRequest<Category[]>("/categories"),
+        categories.length ? Promise.resolve({ data: categories }) : apiRequest<Category[]>(API_ENDPOINTS.CATEGORIES.BASE),
       ]);
       setBrands(Array.isArray(bRes.data) ? bRes.data : []);
       if (!categories.length) setCategories(Array.isArray(cRes.data) ? (cRes.data as Category[]) : []);
@@ -162,10 +163,10 @@ export function useBrandModule() {
           body.status = form.status;
           if (code && code !== editing.code) body.code = code;
         }
-        await apiRequest(`/brands/${editing._id}`, { method: "PATCH", body: JSON.stringify(body) });
+        await apiRequest(API_ENDPOINTS.BRANDS.byId(editing._id), { method: "PATCH", body: JSON.stringify(body) });
         setStatusMsg({ type: "success", text: `Đã cập nhật thương hiệu "${name}".` });
       } else {
-        await apiRequest(`/brands`, {
+        await apiRequest(API_ENDPOINTS.BRANDS.BASE, {
           method: "POST",
           body: JSON.stringify({
             ...(code ? { code } : {}),
@@ -194,7 +195,7 @@ export function useBrandModule() {
   const handleToggleStatus = async (b: Brand) => {
     setStatusMsg(null);
     try {
-      await apiRequest(`/brands/${b._id}`, {
+      await apiRequest(API_ENDPOINTS.BRANDS.byId(b._id), {
         method: "PATCH",
         body: JSON.stringify({ status: b.status === "ACTIVE" ? "INACTIVE" : "ACTIVE" }),
       });
@@ -209,7 +210,7 @@ export function useBrandModule() {
     setStatusMsg(null);
     if (typeof window !== "undefined" && !window.confirm(`Xoá thương hiệu "${b.name}" (${b.code})?`)) return;
     try {
-      await apiRequest(`/brands/${b._id}`, { method: "DELETE" });
+      await apiRequest(API_ENDPOINTS.BRANDS.byId(b._id), { method: "DELETE" });
       setStatusMsg({ type: "success", text: `Đã xoá thương hiệu "${b.name}".` });
       if (editing?._id === b._id) resetForm();
       loadAll();

@@ -4,6 +4,7 @@ import { describeApiError } from "@/shared/api/errors";
 import { filterAndRankBySearch,useDebounce } from "@/shared/lib/search";
 import { Category } from "@/shared/types";
 import React,{ useEffect,useMemo,useState } from "react";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 
 
 
@@ -31,7 +32,7 @@ export function useCategoryModule() {
 
   const loadCategories = async () => {
     try {
-      const res = await apiRequest<Category[]>("/categories");
+      const res = await apiRequest<Category[]>(API_ENDPOINTS.CATEGORIES.BASE);
       const list = Array.isArray(res.data) ? res.data : [];
       setCategories(list);
       const codeMap: Record<string, string> = {};
@@ -110,7 +111,7 @@ export function useCategoryModule() {
     setSavingForm(true);
     try {
       if (editingCat) {
-        await apiRequest(`/categories/${editingCat._id}`, {
+        await apiRequest(API_ENDPOINTS.CATEGORIES.byId(editingCat._id), {
           method: "PATCH",
           body: JSON.stringify({
             code: code.trim().toUpperCase(),
@@ -125,7 +126,7 @@ export function useCategoryModule() {
           text: `Đã cập nhật Danh mục "${name.trim()}" (${code.trim().toUpperCase()}) thành công!`,
         });
       } else {
-        await apiRequest("/categories", {
+        await apiRequest(API_ENDPOINTS.CATEGORIES.BASE, {
           method: "POST",
           body: JSON.stringify({
             code: code.trim().toUpperCase(),
@@ -166,7 +167,7 @@ export function useCategoryModule() {
       return;
     }
     try {
-      await apiRequest(`/categories/${cat._id}`, {
+      await apiRequest(API_ENDPOINTS.CATEGORIES.byId(cat._id), {
         method: "PATCH",
         body: JSON.stringify({
           code: nextCode,
@@ -199,7 +200,7 @@ export function useCategoryModule() {
       return;
     }
     try {
-      await apiRequest(`/categories/${cat._id}`, {
+      await apiRequest(API_ENDPOINTS.CATEGORIES.byId(cat._id), {
         method: "DELETE",
       });
       setStatusMsg({

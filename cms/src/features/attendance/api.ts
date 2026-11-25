@@ -7,6 +7,7 @@ import type {
   MyCalendarData,
   TimesheetData,
 } from "@/shared/types";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 
 export async function fetchHolidays(year?: number): Promise<Holiday[]> {
   const q = year ? `?year=${year}` : "";
@@ -23,7 +24,7 @@ export async function syncVietnamHolidaysApi(year: number): Promise<{
     year: number;
     syncedCount: number;
     totalVietnamHolidays: number;
-  }>("/holidays/sync-vn", {
+  }>(API_ENDPOINTS.HOLIDAYS.SYNC_VN, {
     method: "POST",
     body: JSON.stringify({ year }),
   });
@@ -36,7 +37,7 @@ export async function createHolidayApi(data: {
   note?: string;
   isOfficialDayOff?: boolean;
 }): Promise<Holiday> {
-  const res = await apiRequest<Holiday>("/holidays", {
+  const res = await apiRequest<Holiday>(API_ENDPOINTS.HOLIDAYS.BASE, {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -44,7 +45,7 @@ export async function createHolidayApi(data: {
 }
 
 export async function deleteHolidayApi(id: string): Promise<boolean> {
-  const res = await apiRequest<{ success: boolean }>(`/holidays/${id}`, {
+  const res = await apiRequest<{ success: boolean }>(API_ENDPOINTS.HOLIDAYS.byId(id), {
     method: "DELETE",
   });
   return res.data.success;
@@ -71,7 +72,7 @@ export async function fetchAttendanceConfig(): Promise<{
     config: AttendanceConfig;
     detectedClientIp: string;
     isCurrentIpAllowed?: boolean;
-  }>("/attendance/config");
+  }>(API_ENDPOINTS.ATTENDANCE.CONFIG);
   return res.data;
 }
 
@@ -86,7 +87,7 @@ export async function updateAttendanceConfigApi(
     detectedClientIp: string;
     isCurrentIpAllowed?: boolean;
     message?: string;
-  }>("/attendance/config", {
+  }>(API_ENDPOINTS.ATTENDANCE.CONFIG, {
     method: "PUT",
     body: JSON.stringify(payload),
   });
@@ -101,7 +102,7 @@ export async function fetchTimesheetApi(params: {
 }): Promise<TimesheetData> {
   const q = new URLSearchParams({ month: String(params.month), year: String(params.year) });
   if (params.department && params.department !== "ALL") q.set("department", params.department);
-  const res = await apiRequest<TimesheetData>(`/attendance/timesheet?${q.toString()}`);
+  const res = await apiRequest<TimesheetData>(`${API_ENDPOINTS.ATTENDANCE.TIMESHEET}?${q.toString()}`);
   return res.data;
 }
 
@@ -118,7 +119,7 @@ export async function adjustAttendanceApi(
     reason: string;
   }
 ): Promise<AttendanceRecord> {
-  const res = await apiRequest<AttendanceRecord>(`/attendance/${id}`, {
+  const res = await apiRequest<AttendanceRecord>(API_ENDPOINTS.ATTENDANCE.byId(id), {
     method: "PATCH",
     body: JSON.stringify(data),
   });
@@ -137,7 +138,7 @@ export async function createManualAttendanceApi(data: {
   overtimeApprovedMinutes?: number;
   reason: string;
 }): Promise<AttendanceRecord> {
-  const res = await apiRequest<AttendanceRecord>("/attendance/manual", {
+  const res = await apiRequest<AttendanceRecord>(API_ENDPOINTS.ATTENDANCE.MANUAL, {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -147,7 +148,7 @@ export async function createManualAttendanceApi(data: {
 
 export async function fetchMyCalendarApi(month: number, year: number): Promise<MyCalendarData> {
   const res = await apiRequest<MyCalendarData>(
-    `/attendance/my-calendar?month=${month}&year=${year}`
+    `${API_ENDPOINTS.ATTENDANCE.MY_CALENDAR}?month=${month}&year=${year}`
   );
   return res.data;
 }
