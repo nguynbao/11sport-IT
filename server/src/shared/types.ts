@@ -12,4 +12,5 @@ export interface ServiceRequest {
 export interface ServiceResponse<T = any> {
   status: number;
   payload: T;
+  headers?: Record<string, string>;
 }
