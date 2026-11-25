@@ -1,76 +1,23 @@
-import { ServiceRequest, ServiceResponse } from '../shared/types';
-import { categoryRepo, productRepo, promotionRepo } from '../repositories';
-import { resolveVariantPricing } from '../shared/productCode';
-import { ApiError } from '../shared/errors';
-import {
+import { categoryRepo, productRepo, promotionRepo } from "../../repositories";
+import type {
   IPromotionConditionCategory,
   IPromotionConditionProduct,
   IPromotionGiftItem,
   PromotionConditionType,
   PromotionDiscountType,
   PromotionStatus,
-} from '../models/Promotion';
-import { getFloorStocks } from './inventory';
-import { filterAndRankBySearch } from '../shared/search';
-
-
-export type EffectivePromotionStatus =
-  | 'RUNNING_PERMANENT'
-  | 'RUNNING'
-  | 'UPCOMING'
-  | 'EXPIRED'
-  | 'PAUSED';
-
-export function parsePromotionDate(raw: any, isEndOfDayIfDateOnly = false): Date | null {
-  if (!raw) return null;
-  const str = String(raw).trim();
-  if (!str) return null;
-  if (isEndOfDayIfDateOnly && /^\d{4}-\d{2}-\d{2}$/.test(str)) {
-    const d = new Date(`${str}T23:59:59.999`);
-    return isNaN(d.getTime()) ? null : d;
-  }
-  if (!isEndOfDayIfDateOnly && /^\d{4}-\d{2}-\d{2}$/.test(str)) {
-    const d = new Date(`${str}T00:00:00.000`);
-    return isNaN(d.getTime()) ? null : d;
-  }
-  const d = new Date(str);
-  return isNaN(d.getTime()) ? null : d;
-}
-
-export function computePromotionEffectiveState(
-  promo: any,
-  now: Date = new Date()
-): {
-  isCurrentlyActive: boolean;
-  effectiveStatus: EffectivePromotionStatus;
-} {
-  if (promo.status !== 'ACTIVE') {
-    return { isCurrentlyActive: false, effectiveStatus: 'PAUSED' };
-  }
-  if (promo.isPermanent) {
-    return { isCurrentlyActive: true, effectiveStatus: 'RUNNING_PERMANENT' };
-  }
-  const start = promo.startDate ? new Date(promo.startDate) : null;
-  const end = promo.endDate ? new Date(promo.endDate) : null;
-
-  if (start && !isNaN(start.getTime()) && now.getTime() < start.getTime()) {
-    return { isCurrentlyActive: false, effectiveStatus: 'UPCOMING' };
-  }
-  if (end && !isNaN(end.getTime()) && now.getTime() > end.getTime()) {
-    return { isCurrentlyActive: false, effectiveStatus: 'EXPIRED' };
-  }
-  return { isCurrentlyActive: true, effectiveStatus: 'RUNNING' };
-}
-
-function assertAdminRole(req: any) {
-  if (!['ADMIN', 'CEO'].includes(req.user?.role || '')) {
-    throw new ApiError(
-      403,
-      'PROMOTION_FORBIDDEN',
-      'Chỉ Giám đốc (CEO) hoặc Quản lý (ADMIN) mới có quyền tạo, chỉnh sửa hoặc xóa Chương trình khuyến mãi'
-    );
-  }
-}
+} from "../../models/Promotion";
+import { ApiError } from "../../shared/errors";
+import { ServiceContext } from "../../shared/http";
+import { created as createdResult, ok, ServiceResult } from "../../shared/result";
+import { resolveVariantPricing } from "../../shared/productCode";
+import { filterAndRankBySearch } from "../../shared/search";
+import { getFloorStocks } from "../inventory";
+import {
+  assertAdminRole,
+  computePromotionEffectiveState,
+  parsePromotionDate,
+} from "./promotion.rules";
 
 async function enrichPromotions(promos: any[]) {
   const allProducts = await productRepo.find({});
@@ -403,8 +350,8 @@ async function buildAndValidatePromotionPayload(body: any, existingPromo?: any) 
 
 // POST /api/v1/promotions/evaluate
 
-export async function getPromotions(req: ServiceRequest): Promise<ServiceResponse> {
-  const { activeOnly, status, search } = req.query;
+export async function listPromotions(query: any): Promise<ServiceResult> {
+  const { activeOnly, status, search } = query || {};
     const allPromos = await promotionRepo.find({}, { createdAt: -1 });
     const enriched = await enrichPromotions(allPromos);
 
@@ -429,18 +376,15 @@ export async function getPromotions(req: ServiceRequest): Promise<ServiceRespons
         ])
       : filtered;
 
-    return { status: 200, payload: {
-      data: searched,
-      meta: {
+    return ok(searched, {
         total: searched.length,
         activeCount: enriched.filter((x) => x.isCurrentlyActive).length,
-      },
-    } };
+      });
 }
 
-export async function postPromotions(req: ServiceRequest): Promise<ServiceResponse> {
-  assertAdminRole(req);
-    const payload = await buildAndValidatePromotionPayload(req.body || {});
+export async function createPromotion(ctx: ServiceContext, body: any): Promise<ServiceResult> {
+  assertAdminRole(ctx);
+    const payload = await buildAndValidatePromotionPayload(body || {});
 
     const allPromos = await promotionRepo.find({});
     let nextNum = allPromos.length + 1;
@@ -453,57 +397,46 @@ export async function postPromotions(req: ServiceRequest): Promise<ServiceRespon
     const created = await promotionRepo.create({
       code,
       ...payload,
-      createdBy: req.user?.userId || 'ADMIN',
-      createdByName: req.user?.fullName || 'Quản trị viên',
+      createdBy: ctx.user?.userId || 'ADMIN',
+      createdByName: ctx.user?.fullName || 'Quản trị viên',
     });
 
     const [enriched] = await enrichPromotions([created]);
-    return { status: 201, payload: {
-      data: enriched,
-      meta: {},
-    } };
+    return createdResult(enriched, {});
 }
 
-export async function patchPromotions_ById(req: ServiceRequest): Promise<ServiceResponse> {
-  assertAdminRole(req);
-    const { id } = req.params;
-    const existing = await promotionRepo.findById(id);
+export async function updatePromotion(ctx: ServiceContext, id: string, body: any): Promise<ServiceResult> {
+  assertAdminRole(ctx);
+        const existing = await promotionRepo.findById(id);
     if (!existing) {
       throw new ApiError(404, 'PROMOTION_NOT_FOUND', 'Không tìm thấy chương trình khuyến mãi');
     }
 
-    const payload = await buildAndValidatePromotionPayload(req.body || {}, existing);
+    const payload = await buildAndValidatePromotionPayload(body || {}, existing);
     const updated = await promotionRepo.updateById(id, payload);
     const [enriched] = await enrichPromotions([updated]);
 
-    return { status: 200, payload: {
-      data: enriched,
-      meta: {},
-    } };
+    return ok(enriched, {});
 }
 
-export async function deletePromotions_ById(req: ServiceRequest): Promise<ServiceResponse> {
-  assertAdminRole(req);
-    const { id } = req.params;
-    const existing = await promotionRepo.findById(id);
+export async function deletePromotion(ctx: ServiceContext, id: string): Promise<ServiceResult> {
+  assertAdminRole(ctx);
+        const existing = await promotionRepo.findById(id);
     if (!existing) {
       throw new ApiError(404, 'PROMOTION_NOT_FOUND', 'Không tìm thấy chương trình khuyến mãi');
     }
 
     await promotionRepo.deleteById(id);
-    return { status: 200, payload: {
-      data: {
+    return ok({
         deleted: true,
         _id: id,
         code: existing.code,
         name: existing.name,
-      },
-      meta: {},
-    } };
+      }, {});
 }
 
-export async function postPromotionsEvaluate(req: ServiceRequest): Promise<ServiceResponse> {
-  const rawItems = Array.isArray(req.body?.items) ? req.body.items : [];
+export async function evaluatePromotions(body: any): Promise<ServiceResult> {
+  const rawItems = Array.isArray(body?.items) ? body.items : [];
     const allProducts = await productRepo.find({});
     const prodById = new Map(allProducts.map((p) => [String(p._id), p]));
 
@@ -685,13 +618,11 @@ export async function postPromotionsEvaluate(req: ServiceRequest): Promise<Servi
       };
     });
 
-    return { status: 200, payload: {
-      data: {
+    return ok({
         appliedPromotions,
         autoGiftItems,
         itemDiscounts: Array.from(itemDiscountsMap.values()),
         billDiscount: bestBillDiscount,
-      },
-      meta: {},
-    } };
+      }, {});
 }
+

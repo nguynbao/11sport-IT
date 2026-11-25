@@ -1,117 +1,25 @@
-import { ServiceRequest, ServiceResponse } from '../shared/types';
-import { Router, Request } from 'express';
-import { customerRepo, serviceOrderRepo, serviceTypeRepo, staffRepo } from '../repositories';
-import { ApiError } from '../shared/errors';
-import { verifyToken, TokenPayload } from '../shared/auth';
-import { filterAndRankBySearch, normalizePhoneDigits } from '../shared/search';
-import {
+import { customerRepo, serviceOrderRepo, serviceTypeRepo } from "../../repositories";
+import type {
   IServiceOrderItem,
   IServicePaymentRecord,
   ServiceDiscountType,
   ServiceOrderStatus,
   ServicePaymentMethod,
-  ServicePaymentStatus,
-} from '../models/ServiceOrder';
-
-
-const SERVICE_ORDER_ALLOWED_ROLES = ['CEO', 'ADMIN', 'ACCOUNTANT', 'SALES'];
-const SERVICE_ORDER_MUTATE_ROLES = ['CEO', 'ADMIN', 'SALES'];
-const SERVICE_TYPE_MANAGE_ROLES = ['CEO', 'ADMIN'];
-
-async function requireServiceRoles(
-  req: ServiceRequest,
-  allowedRoles: string[]
-): Promise<TokenPayload> {
-  const authHeader = req.headers?.authorization;
-  const userIdHeader = req.headers?.['x-user-id'] as string | undefined;
-
-  const hasBearer = Boolean(authHeader && authHeader.startsWith('Bearer '));
-  const hasUserIdHeader = Boolean(userIdHeader && String(userIdHeader).trim());
-
-  if (!hasBearer && !hasUserIdHeader) {
-    throw new ApiError(401, 'UNAUTHORIZED', 'Vui lòng đăng nhập để thực hiện thao tác này');
-  }
-
-  let resolvedUser: TokenPayload | undefined;
-
-  if (hasBearer) {
-    const token = authHeader!.slice(7).trim();
-    const payload = verifyToken(token);
-    if (!payload) {
-      throw new ApiError(401, 'UNAUTHORIZED', 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn');
-    }
-    resolvedUser = payload;
-  } else if (hasUserIdHeader) {
-    const rawId = String(userIdHeader).trim();
-    const staff =
-      (await staffRepo.findById(rawId)) ||
-      (await staffRepo.findOne({ username: rawId.toLowerCase() })) ||
-      (await staffRepo.findOne({ code: rawId.toUpperCase() }));
-    if (!staff) {
-      throw new ApiError(401, 'UNAUTHORIZED', 'Không tìm thấy thông tin người dùng xác thực');
-    }
-    if (staff.status === 'LOCKED') {
-      throw new ApiError(403, 'ACCOUNT_LOCKED', 'Tài khoản nhân viên đã bị khóa');
-    }
-    resolvedUser = {
-      userId: staff._id,
-      username: staff.username,
-      fullName: staff.fullName,
-      role: staff.role,
-      department: staff.department,
-      code: staff.code,
-    };
-  }
-
-  if (!resolvedUser) {
-    throw new ApiError(401, 'UNAUTHORIZED', 'Vui lòng đăng nhập để thực hiện thao tác này');
-  }
-
-  const dbStaff = await staffRepo.findById(resolvedUser.userId);
-  if (dbStaff && dbStaff.status === 'LOCKED') {
-    throw new ApiError(403, 'ACCOUNT_LOCKED', 'Tài khoản nhân viên đã bị khóa');
-  }
-
-  const effectiveRole = dbStaff?.role || resolvedUser.role;
-  if (!allowedRoles.includes(effectiveRole)) {
-    throw new ApiError(
-      403,
-      'FORBIDDEN',
-      `Tài khoản vai trò "${effectiveRole}" không có quyền thực hiện thao tác này`
-    );
-  }
-
-  const finalUser: TokenPayload = {
-    ...resolvedUser,
-    role: effectiveRole,
-    fullName: dbStaff?.fullName || resolvedUser.fullName,
-  };
-  req.user = finalUser;
-  return finalUser;
-}
-
-function normalizeServiceCode(input: string): string {
-  return String(input || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[đĐ]/g, 'D')
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-}
-
-function parseDateTimeInput(raw: unknown): Date | null {
-  if (!raw) return null;
-  const str = String(raw).trim();
-  if (!str) return null;
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(str);
-  if (m) {
-    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 18, 0, 0, 0);
-  }
-  const dt = new Date(str);
-  if (isNaN(dt.getTime())) return null;
-  return dt;
-}
+} from "../../models/ServiceOrder";
+import { ApiError } from "../../shared/errors";
+import { ServiceContext } from "../../shared/http";
+import { created as createdResult, ok, ServiceResult } from "../../shared/result";
+import { filterAndRankBySearch, normalizePhoneDigits } from "../../shared/search";
+import {
+  computePaymentStatus,
+  enrichServiceOrder,
+  normalizeServiceCode,
+  parseDateTimeInput,
+  SERVICE_ORDER_ALLOWED_ROLES,
+  SERVICE_ORDER_MUTATE_ROLES,
+  SERVICE_TYPE_MANAGE_ROLES,
+} from "./serviceOrder.rules";
+import { requireServiceRoles } from "./serviceType.service";
 
 async function generateNextServiceOrderCode(): Promise<string> {
   const all = await serviceOrderRepo.find({});
@@ -126,22 +34,6 @@ async function generateNextServiceOrderCode(): Promise<string> {
   return `DV-${String(maxNum + 1).padStart(4, '0')}`;
 }
 
-function enrichServiceOrder(order: any, nowMs = Date.now()) {
-  const dueMs = order.dueAt ? new Date(order.dueAt).getTime() : 0;
-  const activeStatuses: ServiceOrderStatus[] = ['RECEIVED', 'IN_PROGRESS', 'READY'];
-  const isOverdue =
-    activeStatuses.includes(order.status) && dueMs > 0 && nowMs > dueMs;
-  return {
-    ...order,
-    isOverdue,
-  };
-}
-
-function computePaymentStatus(totalAmount: number, paidAmount: number): ServicePaymentStatus {
-  if (totalAmount <= 0 || paidAmount >= totalAmount) return 'PAID';
-  if (paidAmount > 0) return 'PARTIAL';
-  return 'UNPAID';
-}
 
 async function upsertCustomerFromServiceOrder(
   customerPhone: string,
@@ -326,175 +218,9 @@ async function normalizeAndPriceServiceItems(
 
 // POST /api/v1/service-orders/:id/payments
 
-export async function getServiceTypes(req: ServiceRequest): Promise<ServiceResponse> {
-  await requireServiceRoles(req, SERVICE_ORDER_ALLOWED_ROLES);
-    const { status, search } = req.query;
-    const filter: Record<string, any> = {};
-    if (status) {
-      filter.status = String(status).toUpperCase();
-    }
 
-    const types = await serviceTypeRepo.find(filter, { createdAt: 1 });
-    const allOrders = await serviceOrderRepo.find({});
-
-    const mapped = types.map((st) => {
-      const orderCount = allOrders.filter((ord) =>
-        (ord.items || []).some(
-          (it: any) =>
-            String(it.serviceTypeId) === String(st._id) ||
-            String(it.serviceCode) === String(st.code)
-        )
-      ).length;
-      return {
-        ...st,
-        orderCount,
-      };
-    });
-
-    const data = search
-      ? filterAndRankBySearch(mapped, String(search), (st) => [
-          { text: st.code, weight: 1.5 },
-          { text: st.name, weight: 1.4 },
-          { text: st.description || '', weight: 0.9 },
-        ])
-      : mapped;
-
-    return { status: 200, payload: {
-      data,
-      meta: { total: data.length },
-    } };
-}
-
-export async function postServiceTypes(req: ServiceRequest): Promise<ServiceResponse> {
-  await requireServiceRoles(req, SERVICE_TYPE_MANAGE_ROLES);
-    const { code, name, defaultPrice, unit, description, status } = req.body || {};
-    if (!name || !String(name).trim()) {
-      throw new ApiError(400, 'VALIDATION_ERROR', 'Tên loại dịch vụ là bắt buộc', {
-        name: 'Bắt buộc',
-      });
-    }
-
-    const rawCode = code && String(code).trim() ? String(code).trim() : `DV_${String(name).trim()}`;
-    const normalizedCode = normalizeServiceCode(rawCode);
-    if (!normalizedCode) {
-      throw new ApiError(400, 'INVALID_SERVICE_CODE', 'Mã loại dịch vụ không hợp lệ');
-    }
-
-    const existing = await serviceTypeRepo.findOne({ code: normalizedCode });
-    if (existing) {
-      throw new ApiError(
-        400,
-        'DUPLICATE_SERVICE_CODE',
-        `Mã loại dịch vụ "${normalizedCode}" đã tồn tại`,
-        { code: 'Mã đã tồn tại' }
-      );
-    }
-
-    const parsedPrice = Math.max(0, Math.round(Number(defaultPrice) || 0));
-
-    const created = await serviceTypeRepo.create({
-      code: normalizedCode,
-      name: String(name).trim(),
-      defaultPrice: parsedPrice,
-      unit: unit && String(unit).trim() ? String(unit).trim() : 'Cây',
-      description: description ? String(description).trim() : '',
-      status: status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE',
-    });
-
-    return { status: 201, payload: {
-      data: { ...created, orderCount: 0 },
-      meta: {},
-    } };
-}
-
-export async function patchServiceTypes_ById(req: ServiceRequest): Promise<ServiceResponse> {
-  await requireServiceRoles(req, SERVICE_TYPE_MANAGE_ROLES);
-    const { id } = req.params;
-    const serviceType = await serviceTypeRepo.findById(id);
-    if (!serviceType) {
-      throw new ApiError(404, 'SERVICE_TYPE_NOT_FOUND', 'Không tìm thấy loại dịch vụ');
-    }
-
-    const { name, defaultPrice, unit, description, status } = req.body || {};
-    const updateData: Record<string, any> = {};
-
-    if (name !== undefined) {
-      if (!String(name).trim()) {
-        throw new ApiError(400, 'VALIDATION_ERROR', 'Tên loại dịch vụ không được để trống');
-      }
-      updateData.name = String(name).trim();
-    }
-    if (defaultPrice !== undefined) {
-      const parsed = Math.round(Number(defaultPrice));
-      if (isNaN(parsed) || parsed < 0) {
-        throw new ApiError(400, 'INVALID_PRICE', 'Giá dịch vụ phải là số nguyên >= 0');
-      }
-      updateData.defaultPrice = parsed;
-    }
-    if (unit !== undefined) {
-      updateData.unit = String(unit).trim() || 'Cây';
-    }
-    if (description !== undefined) {
-      updateData.description = String(description).trim();
-    }
-    if (status !== undefined) {
-      if (!['ACTIVE', 'INACTIVE'].includes(status)) {
-        throw new ApiError(400, 'INVALID_STATUS', 'Trạng thái phải là ACTIVE hoặc INACTIVE');
-      }
-      updateData.status = status;
-    }
-
-    const updated = await serviceTypeRepo.updateById(id, updateData);
-    const allOrders = await serviceOrderRepo.find({});
-    const orderCount = allOrders.filter((ord) =>
-      (ord.items || []).some(
-        (it: any) =>
-          String(it.serviceTypeId) === String(id) ||
-          String(it.serviceCode) === String(serviceType.code)
-      )
-    ).length;
-
-    return { status: 200, payload: {
-      data: { ...updated, orderCount },
-      meta: {},
-    } };
-}
-
-export async function deleteServiceTypes_ById(req: ServiceRequest): Promise<ServiceResponse> {
-  await requireServiceRoles(req, SERVICE_TYPE_MANAGE_ROLES);
-    const { id } = req.params;
-    const serviceType = await serviceTypeRepo.findById(id);
-    if (!serviceType) {
-      throw new ApiError(404, 'SERVICE_TYPE_NOT_FOUND', 'Không tìm thấy loại dịch vụ');
-    }
-
-    const allOrders = await serviceOrderRepo.find({});
-    const orderCount = allOrders.filter((ord) =>
-      (ord.items || []).some(
-        (it: any) =>
-          String(it.serviceTypeId) === String(id) ||
-          String(it.serviceCode) === String(serviceType.code)
-      )
-    ).length;
-
-    if (orderCount > 0) {
-      throw new ApiError(
-        400,
-        'SERVICE_TYPE_IN_USE',
-        'Không thể xóa loại dịch vụ đã phát sinh đơn; chỉ được chuyển sang Ngừng sử dụng',
-        { serviceTypeId: `Đang có ${orderCount} đơn dịch vụ` }
-      );
-    }
-
-    await serviceTypeRepo.deleteById(id);
-    return { status: 200, payload: {
-      data: { deleted: true, _id: id, code: serviceType.code, name: serviceType.name },
-      meta: {},
-    } };
-}
-
-export async function getServiceOrders(req: ServiceRequest): Promise<ServiceResponse> {
-  await requireServiceRoles(req, SERVICE_ORDER_ALLOWED_ROLES);
+export async function listServiceOrders(ctx: ServiceContext, query: any): Promise<ServiceResult> {
+  await requireServiceRoles(ctx, SERVICE_ORDER_ALLOWED_ROLES);
     const {
       status,
       paymentStatus,
@@ -504,7 +230,7 @@ export async function getServiceOrders(req: ServiceRequest): Promise<ServiceResp
       to,
       dueFrom,
       dueTo,
-    } = req.query;
+    } = query || {};
 
     const allOrdersRaw = await serviceOrderRepo.find({}, { createdAt: -1 });
     const nowMs = Date.now();
@@ -587,26 +313,20 @@ export async function getServiceOrders(req: ServiceRequest): Promise<ServiceResp
       ]);
     }
 
-    return { status: 200, payload: {
-      data: filtered,
-      meta,
-    } };
+    return ok(filtered, meta);
 }
 
-export async function getServiceOrders_ById(req: ServiceRequest): Promise<ServiceResponse> {
-  await requireServiceRoles(req, SERVICE_ORDER_ALLOWED_ROLES);
-    const order = await serviceOrderRepo.findById(req.params.id);
+export async function getServiceOrderById(ctx: ServiceContext, id: string): Promise<ServiceResult> {
+  await requireServiceRoles(ctx, SERVICE_ORDER_ALLOWED_ROLES);
+    const order = await serviceOrderRepo.findById(id);
     if (!order) {
       throw new ApiError(404, 'SERVICE_ORDER_NOT_FOUND', 'Không tìm thấy đơn dịch vụ');
     }
-    return { status: 200, payload: {
-      data: enrichServiceOrder(order),
-      meta: {},
-    } };
+    return ok(enrichServiceOrder(order));
 }
 
-export async function postServiceOrders(req: ServiceRequest): Promise<ServiceResponse> {
-  const actor = await requireServiceRoles(req, SERVICE_ORDER_MUTATE_ROLES);
+export async function createServiceOrder(ctx: ServiceContext, body: any): Promise<ServiceResult> {
+  const actor = await requireServiceRoles(ctx, SERVICE_ORDER_MUTATE_ROLES);
     const {
       customerName,
       customerPhone,
@@ -620,7 +340,7 @@ export async function postServiceOrders(req: ServiceRequest): Promise<ServiceRes
       paidAmount,
       paymentMethod,
       note,
-    } = req.body || {};
+    } = body || {};
 
     const cleanName = String(customerName || '').trim();
     const cleanPhone = normalizePhoneDigits(String(customerPhone || '')) || String(customerPhone || '').trim();
@@ -743,16 +463,12 @@ export async function postServiceOrders(req: ServiceRequest): Promise<ServiceRes
       updatedByName: actorName,
     });
 
-    return { status: 201, payload: {
-      data: enrichServiceOrder(created),
-      meta: {},
-    } };
+    return createdResult(enrichServiceOrder(created), {});
 }
 
-export async function patchServiceOrders_ById(req: ServiceRequest): Promise<ServiceResponse> {
-  const actor = await requireServiceRoles(req, SERVICE_TYPE_MANAGE_ROLES);
-    const { id } = req.params;
-    const existing = await serviceOrderRepo.findById(id);
+export async function updateServiceOrder(ctx: ServiceContext, id: string, body: any): Promise<ServiceResult> {
+  const actor = await requireServiceRoles(ctx, SERVICE_TYPE_MANAGE_ROLES);
+        const existing = await serviceOrderRepo.findById(id);
     if (!existing) {
       throw new ApiError(404, 'SERVICE_ORDER_NOT_FOUND', 'Không tìm thấy đơn dịch vụ');
     }
@@ -770,7 +486,7 @@ export async function patchServiceOrders_ById(req: ServiceRequest): Promise<Serv
       paymentMethod,
       note,
       status,
-    } = req.body || {};
+    } = body || {};
 
     const updateData: Record<string, any> = {};
 
@@ -894,16 +610,12 @@ export async function patchServiceOrders_ById(req: ServiceRequest): Promise<Serv
     updateData.updatedByName = actor.fullName;
 
     const updated = await serviceOrderRepo.updateById(id, updateData);
-    return { status: 200, payload: {
-      data: enrichServiceOrder(updated),
-      meta: {},
-    } };
+    return ok(enrichServiceOrder(updated), {});
 }
 
-export async function patchServiceOrders_ByIdStatus(req: ServiceRequest): Promise<ServiceResponse> {
-  const actor = await requireServiceRoles(req, SERVICE_ORDER_MUTATE_ROLES);
-    const { id } = req.params;
-    const existing = await serviceOrderRepo.findById(id);
+export async function updateServiceOrderStatus(ctx: ServiceContext, id: string, body: any): Promise<ServiceResult> {
+  const actor = await requireServiceRoles(ctx, SERVICE_ORDER_MUTATE_ROLES);
+        const existing = await serviceOrderRepo.findById(id);
     if (!existing) {
       throw new ApiError(404, 'SERVICE_ORDER_NOT_FOUND', 'Không tìm thấy đơn dịch vụ');
     }
@@ -915,7 +627,7 @@ export async function patchServiceOrders_ByIdStatus(req: ServiceRequest): Promis
       hasCardFee,
       cardFeePercent,
       paymentNote,
-    } = req.body || {};
+    } = body || {};
     const validStatuses: ServiceOrderStatus[] = [
       'RECEIVED',
       'IN_PROGRESS',
@@ -1007,21 +719,17 @@ export async function patchServiceOrders_ByIdStatus(req: ServiceRequest): Promis
     }
 
     const updated = await serviceOrderRepo.updateById(id, updateData);
-    return { status: 200, payload: {
-      data: enrichServiceOrder(updated),
-      meta: {},
-    } };
+    return ok(enrichServiceOrder(updated), {});
 }
 
-export async function postServiceOrders_ByIdPayments(req: ServiceRequest): Promise<ServiceResponse> {
-  const actor = await requireServiceRoles(req, SERVICE_ORDER_MUTATE_ROLES);
-    const { id } = req.params;
-    const existing = await serviceOrderRepo.findById(id);
+export async function recordServiceOrderPayment(ctx: ServiceContext, id: string, body: any): Promise<ServiceResult> {
+  const actor = await requireServiceRoles(ctx, SERVICE_ORDER_MUTATE_ROLES);
+        const existing = await serviceOrderRepo.findById(id);
     if (!existing) {
       throw new ApiError(404, 'SERVICE_ORDER_NOT_FOUND', 'Không tìm thấy đơn dịch vụ');
     }
 
-    const { amount, method, hasCardFee, cardFeePercent, markReturned, note } = req.body || {};
+    const { amount, method, hasCardFee, cardFeePercent, markReturned, note } = body || {};
     const parsedAmount = Math.round(Number(amount) || 0);
     if (parsedAmount <= 0) {
       throw new ApiError(400, 'INVALID_PAYMENT_AMOUNT', 'Số tiền thu phải lớn hơn 0');
@@ -1091,8 +799,6 @@ export async function postServiceOrders_ByIdPayments(req: ServiceRequest): Promi
 
     const updated = await serviceOrderRepo.updateById(id, patchFields);
 
-    return { status: 200, payload: {
-      data: enrichServiceOrder(updated),
-      meta: {},
-    } };
+    return ok(enrichServiceOrder(updated), {});
 }
+
