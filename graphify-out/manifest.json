@@ -228,27 +228,27 @@
     "semantic_hash": ""
   },
   "cms/src/components/VersionChecker.tsx": {
-    "mtime": 1795329655.3994308,
-    "seen": 1795330125.924586,
-    "ast_hash": "931edac03a05ffbf1a258617755dcae6",
+    "mtime": 1795629180.899465,
+    "seen": 1795629181.752039,
+    "ast_hash": "955910ea603ebf994760e4fd54e8b10c",
     "semantic_hash": ""
   },
   "cms/src/lib/api.ts": {
-    "mtime": 1795618152.6797996,
-    "seen": 1795623501.892672,
-    "ast_hash": "0cd442813230fde2e9d09124ce5f381c",
+    "mtime": 1795629033.0168114,
+    "seen": 1795629181.752052,
+    "ast_hash": "d7cbf69c87c214664f76712740fb5f22",
     "semantic_hash": ""
   },
   "cms/src/lib/barcodeScanner.ts": {
-    "mtime": 1795329655.4013138,
-    "seen": 1795330125.92459,
-    "ast_hash": "4fd19efbc9a84349bd3fa73920627404",
+    "mtime": 1795629033.0132885,
+    "seen": 1795629181.752055,
+    "ast_hash": "082b8b1e4b94a3bd85c9fc7c1753e550",
     "semantic_hash": ""
   },
   "cms/src/lib/excel.ts": {
-    "mtime": 1795064452.6015782,
-    "seen": 1795330125.924592,
-    "ast_hash": "bf3edeb6e322ede5d6ffd129a1c533b7",
+    "mtime": 1795629033.0121374,
+    "seen": 1795629181.7520561,
+    "ast_hash": "c5779649d71602e87015ae764b373d9b",
     "semantic_hash": ""
   },
   "cms/src/lib/exports.ts": {
@@ -258,9 +258,9 @@
     "semantic_hash": ""
   },
   "cms/src/lib/search.ts": {
-    "mtime": 1793843314.176979,
-    "seen": 1795330125.924596,
-    "ast_hash": "68920705f3417d804a2907c11d782a74",
+    "mtime": 1795629033.0128415,
+    "seen": 1795629181.75206,
+    "ast_hash": "797d212ce97bd9d8cb08d271ef8ebdbb",
     "semantic_hash": ""
   },
   "cms/tailwind.config.js": {
@@ -2001,6 +2001,84 @@
     "mtime": 1795628941.1466205,
     "seen": 1795629029.076034,
     "ast_hash": "aa86a0b384be52d445f2eb00978edec4",
+    "semantic_hash": ""
+  },
+  "cms/src/features/attendance/api.ts": {
+    "mtime": 1795629084.517709,
+    "seen": 1795629181.752042,
+    "ast_hash": "2b5c3da26e13ccad7383bdecd28c5be7",
+    "semantic_hash": ""
+  },
+  "cms/src/features/catalog/api.ts": {
+    "mtime": 1795629033.0163355,
+    "seen": 1795629181.752044,
+    "ast_hash": "472d508f94b763c02061f7608608988d",
+    "semantic_hash": ""
+  },
+  "cms/src/features/leave/api.ts": {
+    "mtime": 1795629086.083846,
+    "seen": 1795629181.752047,
+    "ast_hash": "1c7b12778434e7bf83a6601d8aa5d944",
+    "semantic_hash": ""
+  },
+  "cms/src/features/shifts/api.ts": {
+    "mtime": 1795629087.5626087,
+    "seen": 1795629181.752049,
+    "ast_hash": "3cf9a34ba9af51015f6b94af8801eac2",
+    "semantic_hash": ""
+  },
+  "cms/src/features/staff/api.ts": {
+    "mtime": 1795629033.016148,
+    "seen": 1795629181.75205,
+    "ast_hash": "2ba18f8b04bb5d83d053c9edd1940a94",
+    "semantic_hash": ""
+  },
+  "cms/src/shared/api/client.ts": {
+    "mtime": 1795629033.0143192,
+    "seen": 1795629181.7520618,
+    "ast_hash": "35df99734e1d6b1cdd8a269fca259cd7",
+    "semantic_hash": ""
+  },
+  "cms/src/shared/api/errors.ts": {
+    "mtime": 1795629033.0145407,
+    "seen": 1795629181.752064,
+    "ast_hash": "8ec56a98e96a16eabd4ded2a20dd8e52",
+    "semantic_hash": ""
+  },
+  "cms/src/shared/lib/barcodeScanner.ts": {
+    "mtime": 1795629033.0116863,
+    "seen": 1795629181.7520661,
+    "ast_hash": "17bfaf9aaf7d68222329972f5a4dcefb",
+    "semantic_hash": ""
+  },
+  "cms/src/shared/lib/excel.ts": {
+    "mtime": 1795629033.0100987,
+    "seen": 1795629181.7520761,
+    "ast_hash": "bf3edeb6e322ede5d6ffd129a1c533b7",
+    "semantic_hash": ""
+  },
+  "cms/src/shared/lib/search.ts": {
+    "mtime": 1795629033.011033,
+    "seen": 1795629181.752077,
+    "ast_hash": "68920705f3417d804a2907c11d782a74",
+    "semantic_hash": ""
+  },
+  "cms/src/shared/types/index.ts": {
+    "mtime": 1795629083.1050014,
+    "seen": 1795629181.752079,
+    "ast_hash": "ba992b3ef7f46ba724cb6ad96859a125",
+    "semantic_hash": ""
+  },
+  "cms/src/shared/utils/format.ts": {
+    "mtime": 1795629033.0147295,
+    "seen": 1795629181.75208,
+    "ast_hash": "a1f28476fc8f4d54ab64af47f67a435f",
+    "semantic_hash": ""
+  },
+  "cms/src/shared/utils/productCode.ts": {
+    "mtime": 1795629056.202876,
+    "seen": 1795629181.7520819,
+    "ast_hash": "c1adcfa295fafe64c8cae9102a7097c2",
     "semantic_hash": ""
   },
   "cms/package-lock.json": {
