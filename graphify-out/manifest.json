@@ -630,9 +630,9 @@
     "semantic_hash": ""
   },
   "server/tests/hrm-attendance.test.ts": {
-    "mtime": 1795622315.2504866,
-    "seen": 1795623501.892883,
-    "ast_hash": "2fa24bacd8a2c827f84e7f92d7ec4555",
+    "mtime": 1795626676.5660267,
+    "seen": 1795626789.060838,
+    "ast_hash": "3fff1c678de676145d6d618507c005e0",
     "semantic_hash": ""
   },
   "server/tests/ocr-speed.test.ts": {
@@ -1391,12 +1391,6 @@
     "ast_hash": "dfc60734d64590e523039ac59efa8375",
     "semantic_hash": ""
   },
-  "server/src/shared/types.ts": {
-    "mtime": 1795623125.3746102,
-    "seen": 1795623501.892874,
-    "ast_hash": "854687999507d9283d611865855ea42f",
-    "semantic_hash": ""
-  },
   "docs/devops/server-architecture.md": {
     "mtime": 1795626611.5154324,
     "seen": 1795626620.231553,
@@ -1500,9 +1494,9 @@
     "semantic_hash": ""
   },
   "server/src/services/handover/handover.rules.ts": {
-    "mtime": 1795625300.7373722,
-    "seen": 1795626492.7835698,
-    "ast_hash": "674ac37323ff3eb2e713ea1433e62ee5",
+    "mtime": 1795626732.0228484,
+    "seen": 1795626789.060708,
+    "ast_hash": "c0fce0c3dc9f2531461ebd5c2818513e",
     "semantic_hash": ""
   },
   "server/src/services/handover/handover.service.ts": {

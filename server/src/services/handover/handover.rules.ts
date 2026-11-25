@@ -85,11 +85,9 @@ export function resolvePendingIncomingHandoverForSales(params: {
     todayLocal = toLocalDateStr(),
     receivingShiftCode = null,
   } = params;
-  const todayUtc = new Date().toISOString().slice(0, 10);
-  const todaySet = new Set([todayLocal, todayUtc]);
+  const todaySet = new Set([todayLocal]);
   const yesterdayLocal = addDaysToDateStr(todayLocal, -1);
-  const yesterdayUtc = addDaysToDateStr(todayUtc, -1);
-  const yesterdaySet = new Set([yesterdayLocal, yesterdayUtc]);
+  const yesterdaySet = new Set([yesterdayLocal]);
 
   const submittedHandoversToday = allHandovers.filter(
     (h) => h.status !== 'DRAFT' && todaySet.has(String(h.date))
