@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app';
-import { connectDatabase, clearDatabase, staffRepo, shiftAssignmentRepo, attendanceRepo, leaveRequestRepo } from '../src/config/db';
+import { connectDatabase, clearDatabase, staffRepo, shiftAssignmentRepo, shiftHandoverRepo, attendanceRepo, leaveRequestRepo } from '../src/config/db';
 import { seedDatabaseIfNeeded } from '../src/config/seed';
 
 describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
@@ -308,7 +308,11 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
     const checkoutSuccess = await request(app)
       .post('/api/v1/attendance/check-out')
       .set('Authorization', `Bearer ${salesToken}`)
-      .send({ forceEarly: true, earlyReason: 'Đã lập phiếu bàn giao xong cho ca 2' });
+      .send({
+        forceEarly: true,
+        earlyReason: 'Đã lập phiếu bàn giao xong cho ca 2',
+        lateCheckoutReason: 'Đã lập phiếu bàn giao xong cho ca 2',
+      });
     expect(checkoutSuccess.status).toBe(200);
     expect(checkoutSuccess.body.data.attendance.checkOutTime).toBeDefined();
 
@@ -354,7 +358,11 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
     const sales2CheckoutAfterConfirm = await request(app)
       .post('/api/v1/attendance/check-out')
       .set('Authorization', `Bearer ${sales2Token}`)
-      .send({ forceEarly: true, earlyReason: 'Đã xác nhận bàn giao Ca 1 và lập phiếu kết ca tối' });
+      .send({
+        forceEarly: true,
+        earlyReason: 'Đã xác nhận bàn giao Ca 1 và lập phiếu kết ca tối',
+        lateCheckoutReason: 'Đã xác nhận bàn giao Ca 1 và lập phiếu kết ca tối',
+      });
     expect(sales2CheckoutAfterConfirm.status).toBe(200);
     expect(sales2CheckoutAfterConfirm.body.data.attendance.checkOutTime).toBeDefined();
 
@@ -1489,7 +1497,9 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
     await attendanceRepo.updateById(String((s1AttBefore as any)._id), {
       workStartTime: new Date(y, m - 1, d, 8, 30, 0, 0),
       pendingCheckOutTime: exact1730,
+      lateCheckoutMinutes: 0,
     });
+    await shiftHandoverRepo.updateById(handoverId, { lateCheckoutMinutes: 0 });
 
     // Khi Ca 2 chưa xác nhận và Web gọi check-out với requireConfirmation: true -> Ca 1 ở trạng thái chờ xác nhận, chưa ghi checkOutTime nhưng đã khóa pendingCheckOutTime = 17:30
     const waitConfirmRes = await request(app)

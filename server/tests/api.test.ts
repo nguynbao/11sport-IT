@@ -430,22 +430,8 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
       sellableProd.sellingPrice + Math.round(sellableProd.sellingPrice * 0.04)
     );
 
-    // 4. BR-14: Chặn trả vượt số lượng đã mua
-    const exceedReturnRes = await request(app)
-      .post('/api/v1/returns')
-      .send({
-        orderId: noFeeOrderRes.body.data._id,
-        type: 'RETURN',
-        refundMethod: 'CASH',
-        returnItems: [
-          { productId: sellableProd._id, quantity: 5, condition: 'GOOD' },
-        ],
-      });
-    expect(exceedReturnRes.status).toBe(400);
-    expect(exceedReturnRes.body.code).toBe('EXCEED_RETURNABLE_QUANTITY');
-
-    // 5. BR-16: Trả toàn bộ số lượng đã mua -> trạng thái đơn gốc chuyển thành FULLY_RETURNED
-    const fullReturnRes = await request(app)
+    // 4. Tính năng RETURN thuần đã ngừng hỗ trợ (RETURN_DISABLED); đổi hàng (EXCHANGE) vẫn kiểm tra BR-14 chặn vượt số lượng
+    const disabledReturnRes = await request(app)
       .post('/api/v1/returns')
       .send({
         orderId: noFeeOrderRes.body.data._id,
@@ -455,11 +441,44 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
           { productId: sellableProd._id, quantity: 1, condition: 'GOOD' },
         ],
       });
+    expect(disabledReturnRes.status).toBe(400);
+    expect(disabledReturnRes.body.code).toBe('RETURN_DISABLED');
+
+    const exceedReturnRes = await request(app)
+      .post('/api/v1/returns')
+      .send({
+        orderId: noFeeOrderRes.body.data._id,
+        type: 'EXCHANGE',
+        refundMethod: 'CASH',
+        returnItems: [
+          { productId: sellableProd._id, quantity: 5, condition: 'GOOD' },
+        ],
+        exchangeItems: [
+          { productId: sellableProd._id, quantity: 1 },
+        ],
+      });
+    expect(exceedReturnRes.status).toBe(400);
+    expect(exceedReturnRes.body.code).toBe('EXCEED_RETURNABLE_QUANTITY');
+
+    // 5. BR-16: Đổi toàn bộ số lượng đã mua -> trạng thái đơn gốc chuyển thành FULLY_RETURNED & hoàn lại phí thẻ vào returnTotal
+    const fullReturnRes = await request(app)
+      .post('/api/v1/returns')
+      .send({
+        orderId: noFeeOrderRes.body.data._id,
+        type: 'EXCHANGE',
+        refundMethod: 'CASH',
+        returnItems: [
+          { productId: sellableProd._id, quantity: 1, condition: 'GOOD' },
+        ],
+        exchangeItems: [
+          { productId: sellableProd._id, quantity: 1 },
+        ],
+      });
     const expectedCardFeeRefund4 = Math.round(sellableProd.sellingPrice * 0.04);
     expect(fullReturnRes.status).toBe(201);
     expect(fullReturnRes.body.data.order.status).toBe('FULLY_RETURNED');
     expect(fullReturnRes.body.data.returnExchange.refundedCardFee).toBe(expectedCardFeeRefund4);
-    expect(fullReturnRes.body.data.returnExchange.refundAmount).toBe(
+    expect(fullReturnRes.body.data.returnExchange.returnTotal).toBe(
       sellableProd.sellingPrice + expectedCardFeeRefund4
     );
   });
