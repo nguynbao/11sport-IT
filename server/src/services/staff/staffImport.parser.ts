@@ -1,5 +1,5 @@
-import { parseCsvTextToMatrix, parseXlsxBufferToMatrix } from '../shared/fileImportParser';
-import { ContractType, StaffDepartment, StaffRole } from '../models/Staff';
+import { parseCsvTextToMatrix, parseXlsxBufferToMatrix } from '../../shared/fileImportParser';
+import { ContractType, StaffDepartment, StaffRole } from '../../models/Staff';
 
 export interface ParsedStaffImportRow {
   rowIndex: number;

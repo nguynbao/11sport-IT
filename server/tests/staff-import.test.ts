@@ -3,7 +3,7 @@ import request from 'supertest';
 import { createApp } from '../src/app';
 import { connectDatabase, clearDatabase } from '../src/config/db';
 import { seedDatabaseIfNeeded } from '../src/config/seed';
-import { parseExcelDateToIso, parseStaffImportMatrix } from '../src/services/staffImportParser.service';
+import { parseExcelDateToIso, parseStaffImportMatrix } from '../src/services/staff';
 
 describe('HR Quick Excel/CSV Import & Extended Staff Profile Fields', () => {
   const app = createApp();

@@ -1,207 +1,23 @@
-import { ServiceRequest, ServiceResponse } from '../shared/types';
-import { staffRepo } from '../repositories';
-import { hashPassword, verifyPassword, signToken } from '../shared/auth';
-import { invalidateStaffAuthCache } from '../middleware/auth';
-import { ApiError } from '../shared/errors';
-import { filterAndRankBySearch } from '../shared/search';
-import { parseStaffImportFile } from './staffImportParser.service';
+import { staffRepo } from "../../repositories";
+import { hashPassword } from "../../shared/auth";
+import { invalidateStaffAuthCache } from "../../middleware/auth";
+import { ApiError } from "../../shared/errors";
+import { ServiceContext } from "../../shared/http";
+import { created as createdResult, ok, ServiceResult } from "../../shared/result";
+import { filterAndRankBySearch } from "../../shared/search";
+import { parseStaffImportFile } from "./staffImport.parser";
+import {
+  VALID_CONTRACT_TYPES,
+  parseNonNegativeFloat,
+  parseNullableDate,
+  parseOptionalDate,
+  parseSalaryField,
+} from "./staff.rules";
 
-/** Loại hợp đồng được phép chọn khi tạo/cập nhật: Thực tập, Thử việc, Chính thức */
-const VALID_CONTRACT_TYPES = ['INTERN', 'PROBATION', 'FULLTIME'];
-
-
-// POST /api/v1/auth/login
-
-// POST /api/v1/auth/change-password
-
-// GET /api/v1/staff
-
-function parseSalaryField(val: any, fieldLabel: string): number {
-  const num = Number(val);
-  if (!Number.isFinite(num) || num < 0) {
-    throw new ApiError(400, 'VALIDATION_ERROR', `${fieldLabel} phải là số không âm`);
-  }
-  return Math.round(num);
-}
-
-function parseNonNegativeFloat(val: any, fieldLabel: string): number {
-  const num = Number(val);
-  if (!Number.isFinite(num) || num < 0) {
-    throw new ApiError(400, 'VALIDATION_ERROR', `${fieldLabel} phải là số không âm`);
-  }
-  return Number(num.toFixed(2));
-}
-
-function parseOptionalDate(val: any): Date | undefined {
-  if (val === undefined || val === null || String(val).trim() === '') return undefined;
-  const d = new Date(val);
-  return Number.isNaN(d.getTime()) ? undefined : d;
-}
-
-function parseNullableDate(val: any): Date | null {
-  if (val === null || String(val).trim() === '') return null;
-  const d = new Date(val);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
-// POST /api/v1/staff/parse-import-file
-
-// POST /api/v1/staff
-
-// PATCH /api/v1/staff/:id
-
-export async function postAuthLogin(req: ServiceRequest): Promise<ServiceResponse> {
-  const { username, password } = req.body || {};
-    if (!username || !password) {
-      throw new ApiError(400, 'VALIDATION_ERROR', 'Vui lòng nhập tên đăng nhập và mật khẩu', {
-        username: !username ? 'Bắt buộc' : '',
-        password: !password ? 'Bắt buộc' : '',
-      });
-    }
-
-    const staff = await staffRepo.findOne({ username: String(username).trim().toLowerCase() });
-    if (!staff || !verifyPassword(String(password), staff.passwordHash)) {
-      throw new ApiError(401, 'INVALID_CREDENTIALS', 'Tên đăng nhập hoặc mật khẩu không đúng');
-    }
-
-    if (staff.status === 'LOCKED') {
-      throw new ApiError(403, 'ACCOUNT_LOCKED', 'Tài khoản nhân viên đã bị khóa');
-    }
-
-    const token = signToken({
-      userId: staff._id,
-      username: staff.username,
-      fullName: staff.fullName,
-      role: staff.role,
-      department: staff.department || (['CEO', 'HR', 'ACCOUNTANT', 'MARKETING', 'ADMIN'].includes(staff.role) ? 'OFFICE' : 'SALES'),
-      code: staff.code,
-    });
-
-    return { status: 200, payload: {
-      data: {
-        token,
-        user: {
-          _id: staff._id,
-          code: staff.code,
-          username: staff.username,
-          fullName: staff.fullName,
-          phone: staff.phone || '',
-          email: staff.email || '',
-          companyEmail: staff.companyEmail || '',
-          role: staff.role,
-          department: staff.department || (['CEO', 'HR', 'ACCOUNTANT', 'MARKETING', 'ADMIN'].includes(staff.role) ? 'OFFICE' : 'SALES'),
-          positionTitle: (staff as any).positionTitle || '',
-          contractType: staff.contractType || 'PROBATION',
-          dateOfBirth: (staff as any).dateOfBirth,
-          gender: (staff as any).gender || '',
-          nationality: (staff as any).nationality || '',
-          citizenId: staff.citizenId || '',
-          citizenIssueDate: (staff as any).citizenIssueDate,
-          citizenIssuePlace: (staff as any).citizenIssuePlace || '',
-          address: staff.address || (staff as any).permanentAddress || (staff as any).currentAddress || '',
-          permanentAddress: (staff as any).permanentAddress || staff.address || '',
-          currentAddress: (staff as any).currentAddress || '',
-          school: (staff as any).school || '',
-          major: (staff as any).major || '',
-          bankAccount: (staff as any).bankAccount || '',
-          contractStartDate: staff.contractStartDate,
-          contractEndDate: staff.contractEndDate,
-          internContractNumber: (staff as any).internContractNumber || '',
-          probationContractNumber: (staff as any).probationContractNumber || '',
-          officialContractNumber: (staff as any).officialContractNumber || '',
-          probationStartDate: (staff as any).probationStartDate,
-          probationMonths: Number((staff as any).probationMonths ?? (staff.contractType === 'PROBATION' ? 2 : 0)),
-          fulltimeStartDate: (staff as any).fulltimeStartDate,
-          contractFileUrl: staff.contractFileUrl || '',
-          contractFileName: staff.contractFileName || '',
-          bhxhStartDate: (staff as any).bhxhStartDate,
-          bhxhEndDate: (staff as any).bhxhEndDate,
-          recordedLeaveDays: Number((staff as any).recordedLeaveDays || 0),
-          baseSalary: Number(staff.baseSalary || 0),
-          allowance: Number(staff.allowance || 0),
-          bonus: Number(staff.bonus || 0),
-          insurance: Number(staff.insurance || 0),
-          mustChangePassword: Boolean(staff.mustChangePassword),
-          status: staff.status,
-        },
-      },
-      meta: {},
-    } };
-}
-
-export async function postAuthChangePassword(req: ServiceRequest): Promise<ServiceResponse> {
-  const { currentPassword, newPassword, username } = req.body || {};
-    if (!currentPassword || !newPassword) {
-      throw new ApiError(
-        400,
-        'VALIDATION_ERROR',
-        'Vui lòng nhập đầy đủ mật khẩu hiện tại và mật khẩu mới',
-        {
-          currentPassword: !currentPassword ? 'Bắt buộc' : '',
-          newPassword: !newPassword ? 'Bắt buộc' : '',
-        }
-      );
-    }
-
-    const cleanNewPassword = String(newPassword).trim();
-    if (cleanNewPassword.length < 4) {
-      throw new ApiError(
-        400,
-        'VALIDATION_ERROR',
-        'Mật khẩu mới phải có ít nhất 4 ký tự',
-        { newPassword: 'Tối thiểu 4 ký tự' }
-      );
-    }
-
-    let staff = null;
-    if (req.user?.userId) {
-      staff = await staffRepo.findById(req.user.userId);
-    }
-    if (!staff && username) {
-      staff = await staffRepo.findOne({
-        username: String(username).trim().toLowerCase(),
-      });
-    }
-    if (!staff && req.user?.username) {
-      staff = await staffRepo.findOne({
-        username: String(req.user.username).trim().toLowerCase(),
-      });
-    }
-
-    if (!staff) {
-      throw new ApiError(404, 'STAFF_NOT_FOUND', 'Không tìm thấy tài khoản cần đổi mật khẩu');
-    }
-
-    if (!verifyPassword(String(currentPassword), staff.passwordHash)) {
-      throw new ApiError(
-        400,
-        'INVALID_CURRENT_PASSWORD',
-        'Mật khẩu hiện tại không chính xác',
-        { currentPassword: 'Không chính xác' }
-      );
-    }
-
-    await staffRepo.updateById(staff._id, {
-      passwordHash: hashPassword(cleanNewPassword),
-      mustChangePassword: false,
-    });
-    invalidateStaffAuthCache(String(staff._id));
-
-    return { status: 200, payload: {
-      data: {
-        changed: true,
-        _id: staff._id,
-        username: staff.username,
-        fullName: staff.fullName,
-      },
-      meta: {},
-    } };
-}
-
-export async function getStaff(req: ServiceRequest): Promise<ServiceResponse> {
-  const { role, department, contractType, status, search, sortBy, sortOrder } = req.query;
+export async function listStaff(ctx: ServiceContext, query: any): Promise<ServiceResult> {
+  const { role, department, contractType, status, search, sortBy, sortOrder } = query || {};
     const allStaff = await staffRepo.find({}, { createdAt: 1 });
-    const authedUser = req.user && !req.isFallbackUser ? req.user : undefined;
+    const authedUser = ctx.user && !ctx.isFallbackUser ? ctx.user : undefined;
     // Kế toán (ACCOUNTANT) không có quyền của HR: không xem được lương/hồ sơ nhạy cảm của nhân viên khác
     const canViewAllSalaries =
       !!authedUser && ['CEO', 'HR', 'ADMIN'].includes(authedUser.role);
@@ -287,14 +103,11 @@ export async function getStaff(req: ServiceRequest): Promise<ServiceResponse> {
       });
     }
 
-    return { status: 200, payload: {
-      data: result,
-      meta: { total: result.length },
-    } };
+    return ok(result, { total: result.length });
 }
 
-export async function postStaffParseImportFile(req: ServiceRequest): Promise<ServiceResponse> {
-  if (!req.user || !['CEO', 'HR', 'ADMIN'].includes(req.user.role)) {
+export async function parseStaffImport(ctx: ServiceContext, body: any): Promise<ServiceResult> {
+  if (!ctx.user || !['CEO', 'HR', 'ADMIN'].includes(ctx.user.role)) {
       throw new ApiError(
         403,
         'FORBIDDEN',
@@ -302,7 +115,7 @@ export async function postStaffParseImportFile(req: ServiceRequest): Promise<Ser
       );
     }
 
-    const { fileName, fileBase64, csvText } = req.body || {};
+    const { fileName, fileBase64, csvText } = body || {};
     if (!fileBase64 && !csvText) {
       throw new ApiError(
         400,
@@ -328,14 +141,11 @@ export async function postStaffParseImportFile(req: ServiceRequest): Promise<Ser
       );
     }
 
-    return { status: 200, payload: {
-      data: { rows },
-      meta: { total: rows.length },
-    } };
+    return ok({ rows }, { total: rows.length });
 }
 
-export async function postStaff(req: ServiceRequest): Promise<ServiceResponse> {
-  if (req.user && !req.isFallbackUser && !['CEO', 'ADMIN', 'HR'].includes(req.user.role)) {
+export async function createStaff(ctx: ServiceContext, body: any): Promise<ServiceResult> {
+  if (ctx.user && !ctx.isFallbackUser && !['CEO', 'ADMIN', 'HR'].includes(ctx.user.role)) {
       throw new ApiError(
         403,
         'FORBIDDEN',
@@ -383,7 +193,7 @@ export async function postStaff(req: ServiceRequest): Promise<ServiceResponse> {
       allowance,
       bonus,
       insurance,
-    } = req.body || {};
+    } = body || {};
 
     if (!username || !password) {
       throw new ApiError(400, 'VALIDATION_ERROR', 'Thiếu thông tin bắt buộc của nhân viên', {
@@ -472,7 +282,7 @@ export async function postStaff(req: ServiceRequest): Promise<ServiceResponse> {
     const staffRole = validRoles.includes(role) ? role : 'SALES';
     if (
       staffRole === 'CEO' &&
-      (!req.user || req.isFallbackUser || !['CEO', 'ADMIN'].includes(req.user.role))
+      (!ctx.user || ctx.isFallbackUser || !['CEO', 'ADMIN'].includes(ctx.user.role))
     ) {
       throw new ApiError(
         403,
@@ -480,7 +290,7 @@ export async function postStaff(req: ServiceRequest): Promise<ServiceResponse> {
         'Chỉ Giám đốc (CEO) hoặc Quản trị viên (ADMIN) đã xác thực mới được phép tạo tài khoản có quyền CEO'
       );
     }
-    if (staffRole === 'ADMIN' && req.user && !['ADMIN', 'CEO'].includes(req.user.role)) {
+    if (staffRole === 'ADMIN' && ctx.user && !['ADMIN', 'CEO'].includes(ctx.user.role)) {
       throw new ApiError(
         403,
         'FORBIDDEN',
@@ -493,7 +303,7 @@ export async function postStaff(req: ServiceRequest): Promise<ServiceResponse> {
       allowance !== undefined ||
       bonus !== undefined ||
       insurance !== undefined;
-    if (hasSalaryFields && req.user && !['HR', 'CEO'].includes(req.user.role)) {
+    if (hasSalaryFields && ctx.user && !['HR', 'CEO'].includes(ctx.user.role)) {
       throw new ApiError(
         403,
         'FORBIDDEN',
@@ -557,14 +367,10 @@ export async function postStaff(req: ServiceRequest): Promise<ServiceResponse> {
     });
 
     const { passwordHash, ...safeStaff } = created;
-    return { status: 201, payload: {
-      data: safeStaff,
-      meta: {},
-    } };
+    return createdResult(safeStaff, {});
 }
 
-export async function patchStaff_ById(req: ServiceRequest): Promise<ServiceResponse> {
-  const { id } = req.params;
+export async function updateStaff(ctx: ServiceContext, id: string, body: any): Promise<ServiceResult> {
     const staff = await staffRepo.findById(id);
     if (!staff) {
       throw new ApiError(404, 'STAFF_NOT_FOUND', 'Không tìm thấy nhân viên');
@@ -610,14 +416,14 @@ export async function patchStaff_ById(req: ServiceRequest): Promise<ServiceRespo
       insurance,
       status,
       password,
-    } = req.body || {};
+    } = body || {};
     const updateData: Record<string, any> = {};
 
     // Nhân viên thường (kể cả ACCOUNTANT, MARKETING, SALES) không được phép chỉnh sửa hồ sơ của nhân viên khác
     if (
-      req.user &&
-      !['CEO', 'HR', 'ADMIN'].includes(req.user.role) &&
-      String(req.user.userId) !== String(id)
+      ctx.user &&
+      !['CEO', 'HR', 'ADMIN'].includes(ctx.user.role) &&
+      String(ctx.user.userId) !== String(id)
     ) {
       throw new ApiError(
         403,
@@ -644,7 +450,7 @@ export async function patchStaff_ById(req: ServiceRequest): Promise<ServiceRespo
       bhxhEndDate !== undefined ||
       recordedLeaveDays !== undefined;
 
-    if (hasHrAdminOnlyFields && req.user && !['CEO', 'HR', 'ADMIN'].includes(req.user.role)) {
+    if (hasHrAdminOnlyFields && ctx.user && !['CEO', 'HR', 'ADMIN'].includes(ctx.user.role)) {
       throw new ApiError(
         403,
         'FORBIDDEN',
@@ -670,7 +476,7 @@ export async function patchStaff_ById(req: ServiceRequest): Promise<ServiceRespo
       bonus !== undefined ||
       insurance !== undefined;
     if (hasSalaryFields) {
-      if (!req.user || !['HR', 'CEO'].includes(req.user.role)) {
+      if (!ctx.user || !['HR', 'CEO'].includes(ctx.user.role)) {
         throw new ApiError(
           403,
           'FORBIDDEN',
@@ -689,7 +495,7 @@ export async function patchStaff_ById(req: ServiceRequest): Promise<ServiceRespo
     // - HR không được sửa role của ADMIN hoặc nâng quyền lên ADMIN (nhưng HR được phép cập nhật thông tin hồ sơ của ADMIN và CEO).
     if (role !== undefined && role !== staff.role) {
       if (role === 'CEO' || staff.role === 'CEO') {
-        if (!req.user || req.isFallbackUser || req.user.role !== 'CEO') {
+        if (!ctx.user || ctx.isFallbackUser || ctx.user.role !== 'CEO') {
           throw new ApiError(
             403,
             'FORBIDDEN',
@@ -699,7 +505,7 @@ export async function patchStaff_ById(req: ServiceRequest): Promise<ServiceRespo
           );
         }
       }
-      if (req.user && !['ADMIN', 'CEO'].includes(req.user.role)) {
+      if (ctx.user && !['ADMIN', 'CEO'].includes(ctx.user.role)) {
         if (staff.role === 'ADMIN') {
           throw new ApiError(
             403,
@@ -861,7 +667,7 @@ export async function patchStaff_ById(req: ServiceRequest): Promise<ServiceRespo
       updateData.fulltimeStartDate = parseNullableDate(contractStartDate);
     }
     if (contractFileUrl !== undefined || contractFileName !== undefined) {
-      if (req.user && !['CEO', 'HR', 'ADMIN'].includes(req.user.role)) {
+      if (ctx.user && !['CEO', 'HR', 'ADMIN'].includes(ctx.user.role)) {
         throw new ApiError(
           403,
           'FORBIDDEN',
@@ -872,28 +678,28 @@ export async function patchStaff_ById(req: ServiceRequest): Promise<ServiceRespo
       if (contractFileName !== undefined) updateData.contractFileName = String(contractFileName).trim();
     }
     if (status !== undefined) {
-      if (req.user && !['CEO', 'ADMIN', 'HR'].includes(req.user.role)) {
+      if (ctx.user && !['CEO', 'ADMIN', 'HR'].includes(ctx.user.role)) {
         throw new ApiError(
           403,
           'FORBIDDEN',
           'Chỉ Giám đốc (CEO), Quản trị viên (ADMIN) hoặc Nhân sự (HR) mới được phép khóa hoặc mở khóa tài khoản'
         );
       }
-      if (req.user?.role === 'HR' && ['ADMIN', 'CEO'].includes(staff.role)) {
+      if (ctx.user?.role === 'HR' && ['ADMIN', 'CEO'].includes(staff.role)) {
         throw new ApiError(
           403,
           'FORBIDDEN',
           'HR không được phép khóa hoặc mở khóa tài khoản Quản trị viên (ADMIN) và Giám đốc (CEO)'
         );
       }
-      if (req.user?.role === 'ADMIN' && staff.role === 'CEO') {
+      if (ctx.user?.role === 'ADMIN' && staff.role === 'CEO') {
         throw new ApiError(
           403,
           'FORBIDDEN',
           'Quản trị viên (ADMIN) không được phép khóa hoặc mở khóa tài khoản Giám đốc (CEO)'
         );
       }
-      if (staff.role === 'CEO' && (!req.user || req.isFallbackUser || req.user.role !== 'CEO')) {
+      if (staff.role === 'CEO' && (!ctx.user || ctx.isFallbackUser || ctx.user.role !== 'CEO')) {
         throw new ApiError(
           403,
           'FORBIDDEN',
@@ -907,9 +713,9 @@ export async function patchStaff_ById(req: ServiceRequest): Promise<ServiceRespo
     }
     if (password) {
       if (
-        req.user &&
-        String(req.user.userId) !== String(id) &&
-        !['CEO', 'ADMIN', 'HR'].includes(req.user.role)
+        ctx.user &&
+        String(ctx.user.userId) !== String(id) &&
+        !['CEO', 'ADMIN', 'HR'].includes(ctx.user.role)
       ) {
         throw new ApiError(
           403,
@@ -917,21 +723,21 @@ export async function patchStaff_ById(req: ServiceRequest): Promise<ServiceRespo
           'Bạn không có quyền thay đổi mật khẩu của tài khoản khác'
         );
       }
-      if (req.user?.role === 'HR' && ['ADMIN', 'CEO'].includes(staff.role)) {
+      if (ctx.user?.role === 'HR' && ['ADMIN', 'CEO'].includes(staff.role)) {
         throw new ApiError(
           403,
           'FORBIDDEN',
           'HR không được phép thay đổi mật khẩu của Quản trị viên (ADMIN) và Giám đốc (CEO)'
         );
       }
-      if (req.user?.role === 'ADMIN' && staff.role === 'CEO') {
+      if (ctx.user?.role === 'ADMIN' && staff.role === 'CEO') {
         throw new ApiError(
           403,
           'FORBIDDEN',
           'Quản trị viên (ADMIN) không được phép thay đổi mật khẩu của Giám đốc (CEO)'
         );
       }
-      if (staff.role === 'CEO' && (!req.user || req.isFallbackUser || req.user.role !== 'CEO')) {
+      if (staff.role === 'CEO' && (!ctx.user || ctx.isFallbackUser || ctx.user.role !== 'CEO')) {
         throw new ApiError(
           403,
           'FORBIDDEN',
@@ -945,8 +751,6 @@ export async function patchStaff_ById(req: ServiceRequest): Promise<ServiceRespo
     const updated = await staffRepo.updateById(id, updateData);
     invalidateStaffAuthCache(String(id));
     const { passwordHash, ...safeStaff } = updated!;
-    return { status: 200, payload: {
-      data: safeStaff,
-      meta: {},
-    } };
+    return ok(safeStaff, {});
 }
+
