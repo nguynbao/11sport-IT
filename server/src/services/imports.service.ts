@@ -26,7 +26,7 @@ import {
   resolveExplicitImportSchemeItem,
   findCodeConflictsInList,
   createProductFromImportProposal,
-} from './productScheme.service';
+} from './catalog';
 import {
   matchTagToItems,
   isScannedCodeMatchServer,

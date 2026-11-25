@@ -23,7 +23,7 @@ import {
   resolveCategoryAndBrand,
   resolveVersionCode,
   syncProductReferencesAfterRecode,
-} from "../productScheme.service";
+} from "../catalog";
 import {
   applyFloorDelta,
   buildStaffRoleMap,

@@ -1,9 +1,10 @@
-import { ServiceRequest, ServiceResponse } from '../shared/types';
-import { categoryRepo, productRepo } from '../repositories';
-import { isValidSkuPart, normalizeToUpperCode, suggestCategorySkuCode } from '../shared/productCode';
+import { ServiceContext } from '../../shared/http';
+import { created as createdResult, ok, ServiceResult } from '../../shared/result';
+import { categoryRepo, productRepo } from '../../repositories';
+import { isValidSkuPart, normalizeToUpperCode, suggestCategorySkuCode } from '../../shared/productCode';
 import { syncProductReferencesAfterRecode } from './productScheme.service';
-import { ApiError } from '../shared/errors';
-import { filterAndRankBySearch } from '../shared/search';
+import { ApiError } from '../../shared/errors';
+import { filterAndRankBySearch } from '../../shared/search';
 
 
 async function validateSkuCode(raw: any, exceptId?: string): Promise<string> {
@@ -40,8 +41,8 @@ function requireCategoryManager(role?: string) {
 
 // DELETE /api/v1/categories/:id
 
-export async function getCategories(req: ServiceRequest): Promise<ServiceResponse> {
-  const { status, search } = req.query;
+export async function listCategories(query: any): Promise<ServiceResult> {
+  const { status, search } = query || {};
     const filter: Record<string, any> = {};
     if (status) {
       filter.status = String(status).toUpperCase();
@@ -67,15 +68,12 @@ export async function getCategories(req: ServiceRequest): Promise<ServiceRespons
         ])
       : mapped;
 
-    return { status: 200, payload: {
-      data,
-      meta: { total: data.length },
-    } };
+    return ok(data, { total: data.length });
 }
 
-export async function postCategories(req: ServiceRequest): Promise<ServiceResponse> {
-  requireCategoryManager(req.user?.role);
-    const { code, name, status, skuCode } = req.body || {};
+export async function createCategory(ctx: ServiceContext, body: any): Promise<ServiceResult> {
+  requireCategoryManager(ctx.user?.role);
+    const { code, name, status, skuCode } = body || {};
     if (!code || !name) {
       throw new ApiError(400, 'VALIDATION_ERROR', 'Mã và tên category là bắt buộc', {
         code: !code ? 'Bắt buộc' : '',
@@ -114,21 +112,17 @@ export async function postCategories(req: ServiceRequest): Promise<ServiceRespon
       status: status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE',
     });
 
-    return { status: 201, payload: {
-      data: { ...created, productCount: 0 },
-      meta: {},
-    } };
+    return createdResult({ ...created, productCount: 0 }, {});
 }
 
-export async function patchCategories_ById(req: ServiceRequest): Promise<ServiceResponse> {
-  requireCategoryManager(req.user?.role);
-    const { id } = req.params;
+export async function updateCategory(ctx: ServiceContext, id: string, body: any): Promise<ServiceResult> {
+  requireCategoryManager(ctx.user?.role);
     const category = await categoryRepo.findById(id);
     if (!category) {
       throw new ApiError(404, 'CATEGORY_NOT_FOUND', 'Không tìm thấy category');
     }
 
-    const { code, name, status, skuCode, allowRecode } = req.body || {};
+    const { code, name, status, skuCode, allowRecode } = body || {};
     const updateData: Record<string, any> = {};
 
     if (code !== undefined) {
@@ -223,15 +217,11 @@ export async function patchCategories_ById(req: ServiceRequest): Promise<Service
 
     const productCount = await productRepo.countDocuments({ categoryId: id });
 
-    return { status: 200, payload: {
-      data: { ...updated, productCount },
-      meta: {},
-    } };
+    return ok({ ...updated, productCount }, {});
 }
 
-export async function deleteCategories_ById(req: ServiceRequest): Promise<ServiceResponse> {
-  requireCategoryManager(req.user?.role);
-    const { id } = req.params;
+export async function deleteCategory(ctx: ServiceContext, id: string): Promise<ServiceResult> {
+  requireCategoryManager(ctx.user?.role);
     const category = await categoryRepo.findById(id);
     if (!category) {
       throw new ApiError(404, 'CATEGORY_NOT_FOUND', 'Không tìm thấy category');
@@ -248,9 +238,6 @@ export async function deleteCategories_ById(req: ServiceRequest): Promise<Servic
     }
 
     await categoryRepo.deleteById(id);
-    return { status: 200, payload: {
-      data: { deleted: true, _id: id },
-      meta: {},
-    } };
+    return ok({ deleted: true, _id: id });
 }
 

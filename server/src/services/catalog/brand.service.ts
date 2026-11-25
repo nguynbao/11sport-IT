@@ -1,13 +1,14 @@
-import { ServiceRequest, ServiceResponse } from '../shared/types';
-import { brandRepo, categoryRepo, productRepo } from '../repositories';
-import { ApiError } from '../shared/errors';
-import { filterAndRankBySearch } from '../shared/search';
+import { ServiceContext } from '../../shared/http';
+import { created as createdResult, ok, ServiceResult } from '../../shared/result';
+import { brandRepo, categoryRepo, productRepo } from '../../repositories';
+import { ApiError } from '../../shared/errors';
+import { filterAndRankBySearch } from '../../shared/search';
 import {
   NO_BRAND_CODE,
   isValidSkuPart,
   normalizeToCompactUpperCode,
   suggestBrandCode,
-} from '../shared/productCode';
+} from '../../shared/productCode';
 import { syncProductReferencesAfterRecode } from './productScheme.service';
 import { ensureSystemBrand } from './catalogDefaults.service';
 
@@ -92,9 +93,9 @@ async function assertUniqueName(name: string, exceptId?: string) {
 
 // DELETE /api/v1/brands/:id
 
-export async function getBrands(req: ServiceRequest): Promise<ServiceResponse> {
+export async function listBrands(query: any): Promise<ServiceResult> {
   await ensureSystemBrand();
-    const { categoryId, status, search } = req.query;
+    const { categoryId, status, search } = query || {};
     let brands = await brandRepo.find({}, { name: 1 });
     if (status) {
       const st = String(status).toUpperCase();
@@ -116,12 +117,12 @@ export async function getBrands(req: ServiceRequest): Promise<ServiceResponse> {
           ...(b.aliases || []).map((a: string) => ({ text: a, weight: 1.1 })),
         ])
       : mapped;
-    return { status: 200, payload: { data, meta: { total: data.length } } };
+    return ok(data, { total: data.length });
 }
 
-export async function postBrands(req: ServiceRequest): Promise<ServiceResponse> {
-  requireBrandManager(req.user?.role);
-    const { code, name, categoryIds, aliases, status } = req.body || {};
+export async function createBrand(ctx: ServiceContext, body: any): Promise<ServiceResult> {
+  requireBrandManager(ctx.user?.role);
+    const { code, name, categoryIds, aliases, status } = body || {};
     const cleanName = String(name || '').trim();
     const catIds = await validateCategoryIds(categoryIds);
     if (!cleanName || catIds.length === 0) {
@@ -152,14 +153,14 @@ export async function postBrands(req: ServiceRequest): Promise<ServiceResponse> 
       categoryIds: catIds,
       isSystem: false,
     });
-    return { status: 201, payload: { data: { ...created, productCount: 0 }, meta: {} } };
+    return createdResult({ ...created, productCount: 0 }, {});
 }
 
-export async function patchBrands_ById(req: ServiceRequest): Promise<ServiceResponse> {
-  requireBrandManager(req.user?.role);
-    const brand = await brandRepo.findById(req.params.id);
+export async function updateBrand(ctx: ServiceContext, id: string, body: any): Promise<ServiceResult> {
+  requireBrandManager(ctx.user?.role);
+    const brand = await brandRepo.findById(id);
     if (!brand) throw new ApiError(404, 'BRAND_NOT_FOUND', 'Không tìm thấy thương hiệu');
-    const { code, name, categoryIds, aliases, status, allowRecode } = req.body || {};
+    const { code, name, categoryIds, aliases, status, allowRecode } = body || {};
     const counts = await countProductsByBrand();
     const usage = brandUsage(brand, counts);
     const update: Record<string, any> = {};
@@ -278,12 +279,12 @@ export async function patchBrands_ById(req: ServiceRequest): Promise<ServiceResp
         }
       }
     }
-    return { status: 200, payload: { data: { ...updated, productCount: usage.count }, meta: {} } };
+    return ok({ ...updated, productCount: usage.count }, {});
 }
 
-export async function deleteBrands_ById(req: ServiceRequest): Promise<ServiceResponse> {
-  requireBrandManager(req.user?.role);
-    const brand = await brandRepo.findById(req.params.id);
+export async function deleteBrand(ctx: ServiceContext, id: string): Promise<ServiceResult> {
+  requireBrandManager(ctx.user?.role);
+    const brand = await brandRepo.findById(id);
     if (!brand) throw new ApiError(404, 'BRAND_NOT_FOUND', 'Không tìm thấy thương hiệu');
     if (brand.isSystem) {
       throw new ApiError(400, 'BRAND_SYSTEM_LOCKED', 'Không được xoá thương hiệu hệ thống NN');
@@ -298,7 +299,7 @@ export async function deleteBrands_ById(req: ServiceRequest): Promise<ServiceRes
       );
     }
     await brandRepo.deleteById(String(brand._id));
-    return { status: 200, payload: { data: { _id: brand._id, deleted: true }, meta: {} } };
+    return ok({ _id: brand._id, deleted: true }, {});
 }
 
 /**

@@ -1,5 +1,5 @@
 /** CLI: npm run recode:products [-- --dry-run | -- --apply <file>] — xem src/scripts/recodeProducts.ts */
-import { runRecodeCli } from '../services/recodeProducts.service';
+import { runRecodeCli } from '../services/catalog';
 
 runRecodeCli().catch((err) => {
   console.error('✖ recodeProducts lỗi:', err?.message || err);

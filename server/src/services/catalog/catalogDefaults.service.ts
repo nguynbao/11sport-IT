@@ -1,6 +1,6 @@
-import { brandRepo, categoryRepo } from '../repositories';
-import { NO_BRAND_CODE, suggestCategorySkuCode } from '../shared/productCode';
-import { SYSTEM_BRAND_ALIASES, SYSTEM_BRAND_NAME } from '../shared/brandVersion';
+import { brandRepo, categoryRepo } from '../../repositories';
+import { NO_BRAND_CODE, suggestCategorySkuCode } from '../../shared/productCode';
+import { SYSTEM_BRAND_ALIASES, SYSTEM_BRAND_NAME } from '../../shared/brandVersion';
 
 /** v5.0: lấy (hoặc gán lần đầu) CateCode của category — dùng trong mã sản phẩm mới */
 export async function ensureCategorySkuCode(category: any): Promise<string> {

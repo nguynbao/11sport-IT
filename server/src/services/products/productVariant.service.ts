@@ -1,5 +1,5 @@
 import { productRepo, stockMovementRepo } from "../../repositories";
-import { findCodeConflicts, prepareSchemeVariants } from "../productScheme.service";
+import { findCodeConflicts, prepareSchemeVariants } from "../catalog";
 import { ApiError } from "../../shared/errors";
 import { ServiceContext } from "../../shared/http";
 import { created, ok, ServiceResult } from "../../shared/result";

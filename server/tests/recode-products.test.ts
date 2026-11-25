@@ -13,7 +13,7 @@ import {
   readReviewFile,
   writeReviewCsv,
   ReviewRow,
-} from '../src/services/recodeProducts.service';
+} from '../src/services/catalog';
 import { toCompactBarcode128 } from '../src/shared/productCode';
 import { createApp } from '../src/app';
 
