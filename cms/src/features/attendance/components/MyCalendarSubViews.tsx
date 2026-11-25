@@ -1,33 +1,27 @@
 "use client";
 
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { createLeaveRequestApi,LEAVE_REASON_MAX } from "@/features/leave";
+import { LeaveRequestType,MyCalendarCell,MyCalendarDay } from "@/shared/types";
 import {
-  ChevronLeft,
-  ChevronRight,
-  RefreshCw,
-  Clock,
-  AlertTriangle,
-  CheckCircle2,
-  X,
-  Send,
-  FileText,
-  Timer,
-  Hourglass,
-  Info,
+AlertTriangle,
+CheckCircle2,
+Clock,
+FileText,
+Info,
+RefreshCw,
+Send,
+Timer,
+X
 } from "lucide-react";
-import { StaffUser, MyCalendarData, MyCalendarCell, MyCalendarCellCode, MyCalendarDay, LeaveRequestType } from "@/shared/types";
-import { fetchMyCalendarApi } from "../api";
-import { createLeaveRequestApi } from "@/features/leave";
-import { CreateLeaveModal, MyLeaveRequestsPanel, LEAVE_REASON_MAX } from "@/features/leave";
+import React,{ useState } from "react";
 import {
-  WEEK_HEADERS,
-  LEAVE_TYPE_LABEL,
-  CONTRACT_LABEL,
-  isPaidLeaveEligible,
-  LEAVE_STATUS,
-  STATUS,
-  fmtMinutes,
+fmtMinutes,
+isPaidLeaveEligible,
+LEAVE_STATUS,
+LEAVE_TYPE_LABEL,
+STATUS,
+WEEK_HEADERS
 } from "../myCalendar.constants";
 
 export function StatCard({

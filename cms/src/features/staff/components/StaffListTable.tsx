@@ -1,42 +1,22 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
-import { StaffUser, UserRole, ContractType, ParsedStaffImportRow } from "@/shared/types";
-import { apiRequest } from "@/shared/api/client";
-import { CONTRACT_TYPE_OPTIONS, contractTypeLabel, formatVND } from "@/shared/utils/format";
-import { parseStaffImportFileApi } from "../api";
+import { ContractType,UserRole } from "@/shared/types";
 import ExportExcelButton from "@/shared/ui/ExportExcelButton";
-import { exportStaff, downloadStaffImportTemplate } from "../exports";
+import { contractTypeLabel } from "@/shared/utils/format";
 import {
-  Users,
-  UserPlus,
-  Lock,
-  Unlock,
-  CheckCircle2,
-  AlertCircle,
-  KeyRound,
-  X,
-  Save,
-  Upload,
-  FileText,
-  Trash2,
-  Eye,
-  Search,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
-  RotateCcw,
-  FileSpreadsheet,
-  Download,
-  ChevronDown,
-  ChevronUp,
-  CheckSquare,
-  Square,
-  Loader2,
+ArrowDown,
+ArrowUp,
+ArrowUpDown,
+KeyRound,
+Lock,
+RotateCcw,
+Search,
+Unlock,
+Users
 } from "lucide-react";
-import ContractFilePreviewModal from "@/shared/ui/ContractFilePreviewModal";
-import { formatMoneyInput, parseMoneyInput, toIsoDateSlice } from "../utils";
+import { exportStaff } from "../exports";
 import { StaffViewModel } from "../hooks/useStaffModule";
+import { toIsoDateSlice } from "../utils";
 
 export function StaffListTable({ vm }: { vm: StaffViewModel }) {
   const {

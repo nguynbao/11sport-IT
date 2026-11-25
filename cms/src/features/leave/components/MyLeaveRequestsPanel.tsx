@@ -1,25 +1,17 @@
 "use client";
 
 
-import React, { useCallback, useEffect, useState } from "react";
+import { MyLeaveRequest } from "@/shared/types";
 import {
-  Send,
-  X,
-  FileText,
-  Trash2,
-  Home,
-  CalendarOff,
-  Clock,
-  LogOut,
-  ChevronDown,
-  Palmtree,
-  Plus,
-  CalendarDays,
-  ArrowLeftRight,
+ArrowLeftRight,
+ChevronDown,
+FileText,
+Send,
+Trash2
 } from "lucide-react";
-import { LeaveRequestType, LeaveRequestStatus, MyLeaveRequest, ContractType } from "@/shared/types";
-import { createLeaveRequestApi, fetchMyLeaveRequestsApi, cancelLeaveRequestApi } from "../api";
-import { LEAVE_REASON_MAX, LEAVE_TYPE_META, STATUS_META, fmtDate, todayIso, addDaysIso } from "../leave.constants";
+import { useCallback,useEffect,useState } from "react";
+import { cancelLeaveRequestApi,fetchMyLeaveRequestsApi } from "../api";
+import { LEAVE_TYPE_META,STATUS_META,fmtDate } from "../leave.constants";
 
 type LeaveFilter = "ALL" | "PENDING" | "APPROVED" | "REJECTED";
 

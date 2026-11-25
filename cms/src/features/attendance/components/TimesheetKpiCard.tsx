@@ -1,28 +1,5 @@
 "use client";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { TimesheetData, TimesheetRow, TimesheetCell, TimesheetCellCode, TimesheetDay, Department } from "@/shared/types";
-import { fetchTimesheetApi, adjustAttendanceApi, createManualAttendanceApi } from "../api";
-import { buildSheet, downloadExcel, excelFileName, ExcelColumn } from "@/shared/lib/excel";
-import ExportExcelButton from "@/shared/ui/ExportExcelButton";
-import {
-  Clock,
-  ChevronLeft,
-  ChevronRight,
-  ChevronDown,
-  Search,
-  Users,
-  AlertTriangle,
-  UserX,
-  LogOut,
-  Activity,
-  CheckCircle2,
-  X,
-  Pencil,
-  Plus,
-  LayoutGrid,
-  ListChecks,
-  RefreshCw,
-} from "lucide-react";
+import React from "react";
 
 export function KpiCard({
   icon,

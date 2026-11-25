@@ -1,64 +1,19 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import ExportExcelButton from "@/shared/ui/ExportExcelButton";
-import BarcodeLabelModal, { BarcodeLabelItem } from "@/shared/ui/BarcodeLabelModal";
-import ProductCodeCreatorModal, { ProductCodeCreatorResult } from "@/shared/ui/ProductCodeCreatorModal";
+import { formatVND } from "@/shared/utils/format";
+import { findVariantByColorSize,variantEffectiveSellingPrice } from "@/shared/utils/productCode";
 import {
-  ColorInputWithPicker,
-  ColorSwatchBadge,
-  getColorBoxBorderStyle,
-  resolveVariantColorHexes,
-} from "@/shared/ui/ColorSwatchPicker";
-import {
-  cleanBarcodeCode,
-  findProductAndVariantByScannedBarcode,
-  findProductByScannedBarcode,
-  isScannedCodeMatch,
-  playScannerBeep,
-  useHardwareBarcodeScanner,
-} from "@/shared/lib/barcodeScanner";
-import { exportProducts, exportInventoryReport, exportMovements, exportImports } from "../exports";
-import { Product, ProductVariant, Category, StockMovement, InventoryReportRow, WarehouseFloor, Brand } from "@/shared/types";
-import { apiRequest, getStoredUser } from "@/shared/api/client";
-import { formatVND, formatNumberDots, parseNumberDots, formatDateTime, formatVariantLabel } from "@/shared/utils/format";
-import { resolveVariantCode, findVariantByColorSize, variantEffectiveSellingPrice, variantEffectiveCostPrice, extractVariantFromText } from "@/shared/utils/productCode";
-import { lookupProductByCodeApi, fetchBrandsApi } from "@/shared/api/catalogLookup";
-import { describeApiError } from "@/shared/api/errors";
-import { useDebounce, filterAndRankBySearch } from "@/shared/lib/search";
-import {
-  Package,
-  BarChart3,
-  BookOpen,
-  ClipboardList,
-  Save,
-  Pencil,
-  Plus,
-  CheckCircle2,
-  AlertCircle,
-  Search,
-  ChevronDown,
-  ChevronUp,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
-  Trash2,
-  ArrowLeftRight,
-  Eye,
-  History,
-  UserCheck,
-  X,
-  RotateCcw,
-  Printer,
-  Upload,
-  Download,
-  CopyPlus,
-  CheckSquare,
-  ScanBarcode,
+CheckCircle2,
+CheckSquare,
+CopyPlus,
+Download,
+Plus,
+Printer,
+Upload,
+X
 } from "lucide-react";
 import { InventoryViewModel } from "../hooks/useInventoryModule";
-import { COMMON_COLORS, COMMON_SIZES } from "../types";
+import { COMMON_COLORS,COMMON_SIZES } from "../types";
 
 import { AdminBatchImportTable } from "./AdminBatchImportTable";
 

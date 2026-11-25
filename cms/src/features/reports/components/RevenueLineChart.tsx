@@ -1,42 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
-import ExportExcelButton from "@/shared/ui/ExportExcelButton";
-import { exportRevenueDashboard } from "../exports";
-import { parseLocalDateBound, extractClientOrderDebtMeta } from "@/features/reports/utils";
-import { RevenueDashboardData, ProductSalesAnalysisRow, DebtOrderRow, DebtCustomerSummary, Category, Order, ServiceOrder, ReturnReceipt, Product } from "@/shared/types";
-import { apiRequest } from "@/shared/api/client";
-import { formatVND, formatDateTime, formatPhone, formatNumberDots, parseNumberDots } from "@/shared/utils/format";
-import { useDebounce, filterAndRankBySearch } from "@/shared/lib/search";
-import {
-  TrendingUp,
-  Flame,
-  Rocket,
-  DollarSign,
-  ShoppingBag,
-  PackageCheck,
-  AlertTriangle,
-  Search,
-  Calendar,
-  CreditCard,
-  Layers,
-  ArrowUpRight,
-  ChevronLeft,
-  ChevronRight,
-  BarChart3,
-  PieChart,
-  LineChart,
-  RefreshCw,
-  CheckCircle2,
-  Clock,
-  Users,
-  Wallet,
-  Wrench,
-  X,
-  FileText,
-} from "lucide-react";
+import { formatVND } from "@/shared/utils/format";
 import { RevenueDashboardViewModel } from "../hooks/useRevenueDashboard";
-import { CHART_COLORS, formatShortVND, AnimatedNumber, SvgDonutChart } from "./RevenueCharts";
+import { formatShortVND } from "./RevenueCharts";
 
 export function RevenueLineChart({ vm }: { vm: RevenueDashboardViewModel }) {
   const {

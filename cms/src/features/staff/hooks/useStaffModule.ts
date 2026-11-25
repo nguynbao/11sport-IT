@@ -1,41 +1,9 @@
-import React, { useState, useEffect, useMemo } from "react";
-import { StaffUser, UserRole, ContractType, ParsedStaffImportRow } from "@/shared/types";
 import { apiRequest } from "@/shared/api/client";
-import { CONTRACT_TYPE_OPTIONS, contractTypeLabel, formatVND } from "@/shared/utils/format";
-import { parseStaffImportFileApi } from "../api";
-import ExportExcelButton from "@/shared/ui/ExportExcelButton";
-import { exportStaff, downloadStaffImportTemplate } from "../exports";
-import {
-  Users,
-  UserPlus,
-  Lock,
-  Unlock,
-  CheckCircle2,
-  AlertCircle,
-  KeyRound,
-  X,
-  Save,
-  Upload,
-  FileText,
-  Trash2,
-  Eye,
-  Search,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
-  RotateCcw,
-  FileSpreadsheet,
-  Download,
-  ChevronDown,
-  ChevronUp,
-  CheckSquare,
-  Square,
-  Loader2,
-} from "lucide-react";
-import ContractFilePreviewModal from "@/shared/ui/ContractFilePreviewModal";
-import { formatMoneyInput, parseMoneyInput, toIsoDateSlice, EditableImportRow } from "../utils";
-import { buildStaffImportActions } from "./staffImportHelper";
+import { ContractType,StaffUser,UserRole } from "@/shared/types";
+import { useEffect,useMemo,useState } from "react";
+import { EditableImportRow } from "../utils";
 import { buildStaffActions } from "./staffActionsHelper";
+import { buildStaffImportActions } from "./staffImportHelper";
 
 export interface StaffModuleProps {
   mode?: "ADMIN_LOCK_ONLY" | "HR_FULL";

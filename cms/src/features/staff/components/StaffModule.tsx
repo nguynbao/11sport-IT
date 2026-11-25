@@ -1,46 +1,16 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
-import { StaffUser, UserRole, ContractType, ParsedStaffImportRow } from "@/shared/types";
-import { apiRequest } from "@/shared/api/client";
-import { CONTRACT_TYPE_OPTIONS, contractTypeLabel, formatVND } from "@/shared/utils/format";
-import { parseStaffImportFileApi } from "../api";
-import ExportExcelButton from "@/shared/ui/ExportExcelButton";
-import { exportStaff, downloadStaffImportTemplate } from "../exports";
-import {
-  Users,
-  UserPlus,
-  Lock,
-  Unlock,
-  CheckCircle2,
-  AlertCircle,
-  KeyRound,
-  X,
-  Save,
-  Upload,
-  FileText,
-  Trash2,
-  Eye,
-  Search,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
-  RotateCcw,
-  FileSpreadsheet,
-  Download,
-  ChevronDown,
-  ChevronUp,
-  CheckSquare,
-  Square,
-  Loader2,
-} from "lucide-react";
 import ContractFilePreviewModal from "@/shared/ui/ContractFilePreviewModal";
-import { StaffModuleProps, useStaffModule } from "../hooks/useStaffModule";
+import {
+AlertCircle,
+CheckCircle2
+} from "lucide-react";
+import { StaffModuleProps,useStaffModule } from "../hooks/useStaffModule";
 import { StaffCreateForm } from "./StaffCreateForm";
-import { StaffListTable } from "./StaffListTable";
-import { StaffImportPreviewModal } from "./StaffImportPreviewModal";
-import { StaffPasswordModal } from "./StaffPasswordModal";
 import { StaffEditProfileModal } from "./StaffEditProfileModal";
+import { StaffImportPreviewModal } from "./StaffImportPreviewModal";
+import { StaffListTable } from "./StaffListTable";
+import { StaffPasswordModal } from "./StaffPasswordModal";
 
 export default function StaffModule(props: StaffModuleProps) {
   const vm = useStaffModule(props);

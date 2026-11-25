@@ -1,32 +1,8 @@
 
-import React, { useState, useEffect } from "react";
-import { StaffUser, UserRole } from "@/shared/types";
-import { apiRequest, getStoredToken, setStoredAuth } from "@/shared/api/client";
-import { cleanPhoneDigits, formatPhone } from "@/shared/utils/format";
-import {
-  User,
-  Phone,
-  BadgeCheck,
-  Save,
-  ArrowLeft,
-  CheckCircle2,
-  AlertCircle,
-  Hash,
-  AtSign,
-  FileText,
-  Eye,
-  Mail,
-  Building2,
-  MapPin,
-  CreditCard,
-  Briefcase,
-  Calendar,
-  Wallet,
-  Info,
-  GraduationCap,
-  Landmark,
-} from "lucide-react";
-import ContractFilePreviewModal from "@/shared/ui/ContractFilePreviewModal";
+import { apiRequest,getStoredToken,setStoredAuth } from "@/shared/api/client";
+import { StaffUser,UserRole } from "@/shared/types";
+import { cleanPhoneDigits } from "@/shared/utils/format";
+import React,{ useEffect,useState } from "react";
 
 export function getRoleDisplayName(role?: UserRole): string {
   switch (role) {

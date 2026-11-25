@@ -1,28 +1,14 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { Promotion, PromotionConditionType, PromotionDiscountType, Product, Category } from "@/shared/types";
 import { apiRequest } from "@/shared/api/client";
-import { formatVND, formatNumberDots, parseNumberDots, formatDateTime } from "@/shared/utils/format";
 import { filterAndRankBySearch } from "@/shared/lib/search";
+import { Category,Product,Promotion,PromotionConditionType,PromotionDiscountType } from "@/shared/types";
 import {
-  Gift,
-  Plus,
-  Search,
-  Calendar,
-  Infinity as InfinityIcon,
-  Tag,
-  CheckCircle2,
-  AlertCircle,
-  PauseCircle,
-  PlayCircle,
-  Pencil,
-  Trash2,
-  X,
-  Layers,
-  ShoppingBag,
-  Sparkles,
-  Clock,
-  Check,
+Calendar,
+CheckCircle2,
+Clock,
+Infinity as InfinityIcon,
+PauseCircle
 } from "lucide-react";
+import React,{ useCallback,useEffect,useMemo,useState } from "react";
 function toDateTimeLocalInput(iso?: string | null): string {
   if (!iso) return "";
   try {

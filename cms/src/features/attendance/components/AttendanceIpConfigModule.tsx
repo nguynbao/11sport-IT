@@ -1,24 +1,21 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
-import { StaffUser, AttendanceConfig } from "@/shared/types";
-import { fetchAttendanceConfig, updateAttendanceConfigApi } from "../api";
+import { StaffUser } from "@/shared/types";
 import {
-  Wifi,
-  Building2,
-  CheckCircle2,
-  AlertTriangle,
-  Save,
-  RefreshCw,
-  Copy,
-  Plus,
-  Trash2,
-  Globe,
-  ShieldCheck,
-  Info,
-  X,
-  Radio,
+AlertTriangle,
+Building2,
+CheckCircle2,
+Copy,
+Globe,
+Info,
+Plus,
+RefreshCw,
+Save,
+Wifi,
+X
 } from "lucide-react";
+import React,{ useCallback,useEffect,useState } from "react";
+import { fetchAttendanceConfig,updateAttendanceConfigApi } from "../api";
 
 interface Props {
   currentUser: StaffUser | null;

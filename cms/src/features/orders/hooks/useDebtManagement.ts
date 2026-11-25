@@ -1,20 +1,8 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { RevenueDashboardData, DebtOrderRow, Order } from "@/shared/types";
 import { apiRequest } from "@/shared/api/client";
-import { formatVND, formatDateTime, formatPhone, formatNumberDots, parseNumberDots } from "@/shared/utils/format";
 import { filterAndRankBySearch } from "@/shared/lib/search";
-import {
-  Wallet,
-  AlertTriangle,
-  Clock,
-  CheckCircle2,
-  Search,
-  RefreshCw,
-  FileText,
-  Users,
-  Printer,
-  X,
-} from "lucide-react";
+import { DebtOrderRow,Order,RevenueDashboardData } from "@/shared/types";
+import { formatVND } from "@/shared/utils/format";
+import { useCallback,useEffect,useMemo,useState } from "react";
 
 export interface DebtManagementModuleProps {
   onOpenInvoice?: (order: Order) => void;

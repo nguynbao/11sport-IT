@@ -1,35 +1,23 @@
 "use client";
 
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { CreateLeaveModal,MyLeaveRequestsPanel } from "@/features/leave";
+import { LeaveRequestType,MyCalendarCell,MyCalendarData,MyCalendarDay,StaffUser } from "@/shared/types";
 import {
-  ChevronLeft,
-  ChevronRight,
-  RefreshCw,
-  Clock,
-  AlertTriangle,
-  CheckCircle2,
-  X,
-  Send,
-  FileText,
-  Timer,
-  Hourglass,
-  Info,
+ChevronLeft,
+ChevronRight,
+Hourglass,
+RefreshCw,
+Send
 } from "lucide-react";
-import { StaffUser, MyCalendarData, MyCalendarCell, MyCalendarCellCode, MyCalendarDay, LeaveRequestType } from "@/shared/types";
+import { useCallback,useEffect,useMemo,useState } from "react";
 import { fetchMyCalendarApi } from "../api";
-import { createLeaveRequestApi } from "@/features/leave";
-import { CreateLeaveModal, MyLeaveRequestsPanel, LEAVE_REASON_MAX } from "@/features/leave";
 import {
-  WEEK_HEADERS,
-  LEAVE_TYPE_LABEL,
-  CONTRACT_LABEL,
-  isPaidLeaveEligible,
-  LEAVE_STATUS,
-  STATUS,
-  fmtMinutes,
+CONTRACT_LABEL,
+fmtMinutes,
+WEEK_HEADERS
 } from "../myCalendar.constants";
-import { StatCard, DayCell, DayDetailModal } from "./MyCalendarSubViews";
+import { DayCell,DayDetailModal,StatCard } from "./MyCalendarSubViews";
 
 export default function MyAttendanceCalendar({
   currentUser,

@@ -1,30 +1,23 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { Promotion, PromotionConditionType, PromotionDiscountType, Product, Category } from "@/shared/types";
-import { apiRequest } from "@/shared/api/client";
-import { formatVND, formatNumberDots, parseNumberDots, formatDateTime } from "@/shared/utils/format";
-import { filterAndRankBySearch } from "@/shared/lib/search";
+import { formatDateTime,formatVND } from "@/shared/utils/format";
 import {
-  Gift,
-  Plus,
-  Search,
-  Calendar,
-  Infinity as InfinityIcon,
-  Tag,
-  CheckCircle2,
-  AlertCircle,
-  PauseCircle,
-  PlayCircle,
-  Pencil,
-  Trash2,
-  X,
-  Layers,
-  ShoppingBag,
-  Sparkles,
-  Clock,
-  Check,
+AlertCircle,
+Calendar,
+CheckCircle2,
+Gift,
+Infinity as InfinityIcon,
+PauseCircle,
+Pencil,
+PlayCircle,
+Plus,
+Search,
+ShoppingBag,
+Sparkles,
+Trash2
 } from "lucide-react";
+import { usePromotionModule } from "../hooks/usePromotionModule";
+import { PromotionFormModal } from "./PromotionFormModal";
 function toDateTimeLocalInput(iso?: string | null): string {
   if (!iso) return "";
   try {
@@ -38,8 +31,6 @@ function toDateTimeLocalInput(iso?: string | null): string {
     return "";
   }
 }
-import { usePromotionModule } from "../hooks/usePromotionModule";
-import { PromotionFormModal } from "./PromotionFormModal";
 
 export default function PromotionModule() {
   const vm = usePromotionModule();

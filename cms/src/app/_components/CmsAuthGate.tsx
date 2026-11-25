@@ -1,55 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import ThemeToggle from "@/shared/ui/ThemeToggle";
-import { StaffUser, Order } from "@/shared/types";
-import { apiRequest, getStoredUser, getStoredToken, setStoredAuth, clearStoredAuth } from "@/shared/api/client";
-import { InventoryModule } from "@/features/inventory";
-import { RevenueDashboardModule } from "@/features/reports";
-import { CategoryBrandModule } from "@/features/catalog";
-import { OrdersReturnsModule } from "@/features/orders";
-import { StaffModule } from "@/features/staff";
-import { StaffActivityModule } from "@/features/reports";
-import { PromotionModule } from "@/features/promotions";
-import { DebtManagementModule } from "@/features/orders";
-import { HrmAttendanceModule } from "@/features/attendance";
-import { ShiftHandoverModule } from "@/features/shifts";
-import { MarketingPushProductsModule } from "@/features/reports";
-import { AccountProfileModule } from "@/features/staff";
-import { ServiceManagementModule } from "@/features/services";
-import { MyAttendanceCalendar } from "@/features/attendance";
-import { HeaderAttendanceBar } from "@/features/attendance";
-import InvoicePdfModal from "@/shared/ui/InvoicePdfModal";
-import { AttendanceIpConfigModule } from "@/features/attendance";
+import { StaffUser } from "@/shared/types";
 import {
-  Boxes,
-  TrendingUp,
-  FolderKanban,
-  ShoppingBag,
-  Users,
-  ShieldCheck,
-  ExternalLink,
-  LogOut,
-  LogIn,
-  User,
-  KeyRound,
-  AlertCircle,
-  CheckCircle2,
-  Activity,
-  Gift,
-  Wallet,
-  Wifi,
-  Menu,
-  ChevronRight,
-  X,
-  CalendarCheck,
-  CalendarDays,
-  ClipboardCheck,
-  Rocket,
-  Wrench,
+AlertCircle,
+KeyRound,
+LogIn,
+User
 } from "lucide-react";
-import { CMS_MENU_ITEMS } from "@/config/menu";
-import { CmsModuleType, ROLE_ALLOWED_MODULES } from "@/config/roles";
+import React from "react";
 
 export interface CmsAuthGateProps {
   checkingAuth: boolean;

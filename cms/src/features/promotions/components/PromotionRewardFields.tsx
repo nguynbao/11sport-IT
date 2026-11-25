@@ -1,30 +1,17 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { Promotion, PromotionConditionType, PromotionDiscountType, Product, Category } from "@/shared/types";
-import { apiRequest } from "@/shared/api/client";
-import { formatVND, formatNumberDots, parseNumberDots, formatDateTime } from "@/shared/utils/format";
-import { filterAndRankBySearch } from "@/shared/lib/search";
+import { PromotionDiscountType } from "@/shared/types";
+import { formatNumberDots,formatVND,parseNumberDots } from "@/shared/utils/format";
 import {
-  Gift,
-  Plus,
-  Search,
-  Calendar,
-  Infinity as InfinityIcon,
-  Tag,
-  CheckCircle2,
-  AlertCircle,
-  PauseCircle,
-  PlayCircle,
-  Pencil,
-  Trash2,
-  X,
-  Layers,
-  ShoppingBag,
-  Sparkles,
-  Clock,
-  Check,
+Gift,
+Layers,
+Plus,
+Search,
+Sparkles,
+Tag,
+Trash2
 } from "lucide-react";
+import { PromotionModuleViewModel } from "../hooks/usePromotionModule";
 function toDateTimeLocalInput(iso?: string | null): string {
   if (!iso) return "";
   try {
@@ -38,7 +25,6 @@ function toDateTimeLocalInput(iso?: string | null): string {
     return "";
   }
 }
-import { PromotionModuleViewModel } from "../hooks/usePromotionModule";
 
 export function PromotionRewardFields({ vm }: { vm: PromotionModuleViewModel }) {
   const {

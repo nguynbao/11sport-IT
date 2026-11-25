@@ -1,30 +1,18 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
-import { StaffUser, ServiceType, ServiceOrder, ServiceOrderStatus, ServicePaymentMethod, ServiceOrdersMeta } from "@/shared/types";
-import { apiRequest } from "@/shared/api/client";
-import { formatVND, formatNumberDots, parseNumberDots, formatPhone, cleanPhoneDigits } from "@/shared/utils/format";
-import { useDebounce } from "@/shared/lib/search";
+import { ServiceOrderStatus } from "@/shared/types";
+import { formatPhone,formatVND } from "@/shared/utils/format";
 import {
-  Wrench,
-  Plus,
-  Edit3,
-  Trash2,
-  Search,
-  RefreshCw,
-  AlertTriangle,
-  CheckCircle2,
-  AlertCircle,
-  Calendar,
-  Clock,
-  Wallet,
-  PackageCheck,
-  Play,
-  X,
-  Power,
-  ListChecks,
-  Layers,
+AlertTriangle,
+CheckCircle2,
+Edit3,
+PackageCheck,
+Play,
+RefreshCw,
+Search,
+Wallet
 } from "lucide-react";
+import { ServiceManagementViewModel } from "../hooks/useServiceManagement";
 const STATUS_INFO: Record<
   ServiceOrderStatus,
   { label: string; badgeCls: string }
@@ -71,7 +59,6 @@ function toInputDate(raw?: string | null): string {
   const d = String(dt.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
-import { ServiceManagementViewModel } from "../hooks/useServiceManagement";
 
 export function ServiceOrdersTab({ vm }: { vm: ServiceManagementViewModel }) {
   const {

@@ -1,34 +1,20 @@
 "use client";
 
 
-import React, { useState, useEffect } from "react";
-import { StaffUser, UserRole } from "@/shared/types";
-import { apiRequest, getStoredToken, setStoredAuth } from "@/shared/api/client";
-import { cleanPhoneDigits, formatPhone } from "@/shared/utils/format";
+import { cleanPhoneDigits,formatPhone } from "@/shared/utils/format";
 import {
-  User,
-  Phone,
-  BadgeCheck,
-  Save,
-  ArrowLeft,
-  CheckCircle2,
-  AlertCircle,
-  Hash,
-  AtSign,
-  FileText,
-  Eye,
-  Mail,
-  Building2,
-  MapPin,
-  CreditCard,
-  Briefcase,
-  Calendar,
-  Wallet,
-  Info,
-  GraduationCap,
-  Landmark,
+AlertCircle,
+AtSign,
+CheckCircle2,
+CreditCard,
+GraduationCap,
+Landmark,
+Mail,
+MapPin,
+Phone,
+Save,
+User
 } from "lucide-react";
-import ContractFilePreviewModal from "@/shared/ui/ContractFilePreviewModal";
 import { AccountProfileViewModel } from "../hooks/useAccountProfile";
 
 export function ProfilePersonalCard({ vm }: { vm: AccountProfileViewModel }) {

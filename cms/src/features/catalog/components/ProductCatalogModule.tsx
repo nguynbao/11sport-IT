@@ -1,43 +1,20 @@
 "use client";
 
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Brand, Category, Product, ProductVariant } from "@/shared/types";
-import { addProductVariantsApi, fetchBrandsApi } from "../api";
-import { apiRequest, getStoredUser } from "@/shared/api/client";
-import { describeApiError } from "@/shared/api/errors";
-import { filterAndRankBySearch, useDebounce } from "@/shared/lib/search";
-import { formatNumberDots, formatVND, parseNumberDots } from "@/shared/utils/format";
-import { resolveVariantCode, variantEffectiveCostPrice, variantEffectiveSellingPrice } from "@/shared/utils/productCode";
-import ProductCodeCreatorModal, { ProductCodeCreatorResult } from "@/shared/ui/ProductCodeCreatorModal";
-import BarcodeLabelModal, { BarcodeLabelItem } from "@/shared/ui/BarcodeLabelModal";
-import ExportExcelButton from "@/shared/ui/ExportExcelButton";
 import { exportProducts } from "@/features/inventory";
+import BarcodeLabelModal from "@/shared/ui/BarcodeLabelModal";
+import ExportExcelButton from "@/shared/ui/ExportExcelButton";
+import ProductCodeCreatorModal from "@/shared/ui/ProductCodeCreatorModal";
 import {
-  ColorInputWithPicker,
-  ColorSwatchBadge,
-  getColorBoxBorderStyle,
-  resolveVariantColorHexes,
-} from "@/shared/ui/ColorSwatchPicker";
-import {
-  AlertCircle,
-  CheckCircle2,
-  ChevronDown,
-  ChevronUp,
-  FileText,
-  Loader2,
-  Package,
-  Pencil,
-  Plus,
-  Printer,
-  RotateCcw,
-  Save,
-  Search,
-  Sparkles,
-  Trash2,
-  X,
+AlertCircle,
+CheckCircle2,
+Package,
+Plus,
+Search,
+Sparkles,
+X
 } from "lucide-react";
-import { useProductCatalog, COMMON_COLORS, COMMON_SIZES, StockStatusFilter } from "../hooks/useProductCatalog";
+import { COMMON_COLORS,COMMON_SIZES,StockStatusFilter,useProductCatalog } from "../hooks/useProductCatalog";
 import { ProductCatalogTable } from "./ProductCatalogTable";
 
 export default function ProductCatalogModule() {

@@ -1,32 +1,20 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { fetchFirstOkJson } from "@/shared/api/localFetch";
-import { Product } from "@/shared/types";
-import { apiRequest } from "@/shared/api/client";
-import { formatNumberDots, parseNumberDots } from "@/shared/utils/format";
-import { generateVariantProductCode, toCompactBarcode128 } from "@/shared/utils/productCode";
 import {
-  Printer,
-  X,
-  Plus,
-  Minus,
-  CheckCircle2,
-  Sparkles,
-  RefreshCw,
-  AlertTriangle,
-  Usb,
-  Layers,
-  MonitorCheck
+AlertTriangle,
+CheckCircle2,
+Layers,
+MonitorCheck,
+Printer,
+Sparkles,
+X
 } from "lucide-react";
 import {
-  BarcodeLabelItem,
-  BarcodeLabelModalProps,
-  FIXED_LABEL_CONFIG,
-  renderCode128SvgString,
+BarcodeLabelItem,
+BarcodeLabelModalProps
 } from "./barcodeLabelCode128";
-import { useBarcodeLabelModal } from "./useBarcodeLabelModal";
 import { BarcodeLabelLeftColumn } from "./BarcodeLabelLeftColumn";
+import { useBarcodeLabelModal } from "./useBarcodeLabelModal";
 
 export type { BarcodeLabelItem };
 

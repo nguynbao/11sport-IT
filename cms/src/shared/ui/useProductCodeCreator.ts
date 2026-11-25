@@ -1,24 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Brand, Category, PreviewCodeResult, Product } from "@/shared/types";
-import { addProductVariantsApi, fetchBrandsApi, previewProductCodeApi } from "@/shared/api/catalogLookup";
+import { addProductVariantsApi,fetchBrandsApi,previewProductCodeApi } from "@/shared/api/catalogLookup";
 import { apiRequest } from "@/shared/api/client";
 import { describeApiError } from "@/shared/api/errors";
-import { formatNumberDots, parseNumberDots } from "@/shared/utils/format";
 import { useDebounce } from "@/shared/lib/search";
-import {
-  AlertCircle,
-  AlertTriangle,
-  CheckCircle2,
-  CopyPlus,
-  FileText,
-  Loader2,
-  Pencil,
-  Plus,
-  Save,
-  Sparkles,
-  Trash2,
-  X,
-} from "lucide-react";
+import { Brand,Category,PreviewCodeResult,Product } from "@/shared/types";
+import { useEffect,useMemo,useRef,useState } from "react";
 
 export interface CreatorVariantDraft {
   variantKey?: string;

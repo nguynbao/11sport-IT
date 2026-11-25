@@ -1,7 +1,6 @@
-import { useEffect, useMemo } from "react";
 import { filterAndRankBySearch } from "@/shared/lib/search";
-import { variantEffectiveCostPrice, variantEffectiveSellingPrice } from "@/shared/utils/productCode";
 import type { Product } from "@/shared/types";
+import { useEffect,useMemo } from "react";
 import type { InventoryState } from "./useInventoryState";
 
 export function useInventoryDerived(deps: {

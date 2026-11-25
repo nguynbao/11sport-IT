@@ -1,5 +1,4 @@
-import { useEffect, useRef } from "react";
-import { cleanBarcodeCode } from "./barcodeMatcher";
+import { useEffect,useRef } from "react";
 
 export function playScannerBeep(kind: "success" | "warning" | "error" = "success") {
   if (typeof window === "undefined") return;

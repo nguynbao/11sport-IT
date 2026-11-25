@@ -1,27 +1,22 @@
 "use client";
 
 
-import React, { useState, useEffect, useMemo } from "react";
-import { Category } from "@/shared/types";
-import { apiRequest } from "@/shared/api/client";
-import { describeApiError } from "@/shared/api/errors";
-import { filterAndRankBySearch, useDebounce } from "@/shared/lib/search";
 import ExportExcelButton from "@/shared/ui/ExportExcelButton";
-import { exportCategories } from "../exports";
 import {
-  FolderKanban,
-  Plus,
-  Trash2,
-  Power,
-  CheckCircle2,
-  AlertCircle,
-  ShieldAlert,
-  Pencil,
-  Save,
-  X,
-  Search,
-  RotateCcw,
+AlertCircle,
+CheckCircle2,
+FolderKanban,
+Pencil,
+Plus,
+Power,
+RotateCcw,
+Save,
+Search,
+ShieldAlert,
+Trash2,
+X,
 } from "lucide-react";
+import { exportCategories } from "../exports";
 import { useCategoryModule } from "../hooks/useCategoryModule";
 
 

@@ -1,43 +1,14 @@
 "use client";
 
 
-import React, { useState, useEffect, useMemo } from "react";
-import { StaffUser, UserRole, ContractType, ParsedStaffImportRow } from "@/shared/types";
-import { apiRequest } from "@/shared/api/client";
-import { CONTRACT_TYPE_OPTIONS, contractTypeLabel, formatVND } from "@/shared/utils/format";
-import { parseStaffImportFileApi } from "../api";
-import ExportExcelButton from "@/shared/ui/ExportExcelButton";
-import { exportStaff, downloadStaffImportTemplate } from "../exports";
+import { ContractType } from "@/shared/types";
+import { CONTRACT_TYPE_OPTIONS } from "@/shared/utils/format";
 import {
-  Users,
-  UserPlus,
-  Lock,
-  Unlock,
-  CheckCircle2,
-  AlertCircle,
-  KeyRound,
-  X,
-  Save,
-  Upload,
-  FileText,
-  Trash2,
-  Eye,
-  Search,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
-  RotateCcw,
-  FileSpreadsheet,
-  Download,
-  ChevronDown,
-  ChevronUp,
-  CheckSquare,
-  Square,
-  Loader2,
+ChevronDown,
+ChevronUp
 } from "lucide-react";
-import ContractFilePreviewModal from "@/shared/ui/ContractFilePreviewModal";
-import { formatMoneyInput, parseMoneyInput, toIsoDateSlice } from "../utils";
 import { StaffViewModel } from "../hooks/useStaffModule";
+import { formatMoneyInput,parseMoneyInput } from "../utils";
 
 export function StaffCreateHrFields({ vm }: { vm: StaffViewModel }) {
   const {

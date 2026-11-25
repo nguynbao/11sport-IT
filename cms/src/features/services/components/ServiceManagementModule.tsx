@@ -1,30 +1,19 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
-import { StaffUser, ServiceType, ServiceOrder, ServiceOrderStatus, ServicePaymentMethod, ServiceOrdersMeta } from "@/shared/types";
-import { apiRequest } from "@/shared/api/client";
-import { formatVND, formatNumberDots, parseNumberDots, formatPhone, cleanPhoneDigits } from "@/shared/utils/format";
-import { useDebounce } from "@/shared/lib/search";
+import { ServiceOrderStatus,StaffUser } from "@/shared/types";
 import {
-  Wrench,
-  Plus,
-  Edit3,
-  Trash2,
-  Search,
-  RefreshCw,
-  AlertTriangle,
-  CheckCircle2,
-  AlertCircle,
-  Calendar,
-  Clock,
-  Wallet,
-  PackageCheck,
-  Play,
-  X,
-  Power,
-  ListChecks,
-  Layers,
+AlertCircle,
+CheckCircle2,
+Layers,
+ListChecks,
+Wrench,
+X
 } from "lucide-react";
+import { useServiceManagement } from "../hooks/useServiceManagement";
+import { ServiceEditModal } from "./ServiceEditModal";
+import { ServiceOrdersTab } from "./ServiceOrdersTab";
+import { ServicePaymentModal } from "./ServicePaymentModal";
+import { ServiceTypesTab } from "./ServiceTypesTab";
 const STATUS_INFO: Record<
   ServiceOrderStatus,
   { label: string; badgeCls: string }
@@ -71,11 +60,6 @@ function toInputDate(raw?: string | null): string {
   const d = String(dt.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
-import { useServiceManagement } from "../hooks/useServiceManagement";
-import { ServiceOrdersTab } from "./ServiceOrdersTab";
-import { ServiceTypesTab } from "./ServiceTypesTab";
-import { ServicePaymentModal } from "./ServicePaymentModal";
-import { ServiceEditModal } from "./ServiceEditModal";
 
 export default function ServiceManagementModule({ currentUser }: { currentUser?: StaffUser | null }) {
   const vm = useServiceManagement({ currentUser });

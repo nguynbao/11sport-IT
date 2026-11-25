@@ -1,25 +1,21 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
 import ExportExcelButton from "@/shared/ui/ExportExcelButton";
-import { exportPushProducts } from "../exports";
-import { ProductSalesAnalysisRow, Category, Product, Order, ReturnReceipt } from "@/shared/types";
-import { apiRequest } from "@/shared/api/client";
 import { formatVND } from "@/shared/utils/format";
-import { useDebounce, filterAndRankBySearch } from "@/shared/lib/search";
 import {
-  Rocket,
-  Search,
-  Calendar,
-  RefreshCw,
-  ChevronLeft,
-  ChevronRight,
-  AlertTriangle,
-  Boxes,
-  DollarSign,
-  TrendingDown,
-  Tag,
+AlertTriangle,
+Boxes,
+Calendar,
+ChevronLeft,
+ChevronRight,
+DollarSign,
+RefreshCw,
+Rocket,
+Search,
+Tag,
+TrendingDown,
 } from "lucide-react";
+import { exportPushProducts } from "../exports";
 import { useMarketingPushProducts } from "../hooks/useMarketingPushProducts";
 
 export default function MarketingPushProductsModule({

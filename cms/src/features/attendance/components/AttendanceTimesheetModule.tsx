@@ -1,47 +1,32 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { TimesheetData, TimesheetRow, TimesheetCell, TimesheetCellCode, TimesheetDay, Department } from "@/shared/types";
-import { fetchTimesheetApi, adjustAttendanceApi, createManualAttendanceApi } from "../api";
-import { buildSheet, downloadExcel, excelFileName, ExcelColumn } from "@/shared/lib/excel";
 import ExportExcelButton from "@/shared/ui/ExportExcelButton";
 import {
-  Clock,
-  ChevronLeft,
-  ChevronRight,
-  ChevronDown,
-  Search,
-  Users,
-  AlertTriangle,
-  UserX,
-  LogOut,
-  Activity,
-  CheckCircle2,
-  X,
-  Pencil,
-  Plus,
-  LayoutGrid,
-  ListChecks,
-  RefreshCw,
+Activity,
+AlertTriangle,
+CheckCircle2,
+ChevronDown,
+ChevronLeft,
+ChevronRight,
+Clock,
+LayoutGrid,
+ListChecks,
+LogOut,
+Plus,
+RefreshCw,
+Search,
+Users,
+UserX
 } from "lucide-react";
+import { useAttendanceTimesheet } from "../hooks/useAttendanceTimesheet";
 import {
-  CELL_STYLE,
-  WEEKDAY_SHORT,
-  ViewMode,
-  IssueFilter,
-  EditTarget,
-  formatMinutes,
-  hasIssue,
-  SHIFT_DEFAULT_TIMES,
-  HOURS_24,
-  MINUTES_60,
+formatMinutes
 } from "../timesheet.constants";
+import { ManualAttendanceModal } from "./ManualAttendanceModal";
+import { CellDetailModal } from "./TimesheetCellDetailModal";
 import { KpiCard } from "./TimesheetKpiCard";
 import { MatrixView } from "./TimesheetMatrixView";
 import { SummaryView } from "./TimesheetSummaryView";
-import { CellDetailModal } from "./TimesheetCellDetailModal";
-import { ManualAttendanceModal } from "./ManualAttendanceModal";
-import { useAttendanceTimesheet } from "../hooks/useAttendanceTimesheet";
 
 
 export default function AttendanceTimesheetModule() {

@@ -1,27 +1,14 @@
 
-import React, { useState, useEffect, useCallback } from "react";
-import { Category, StaffUser, ShiftHandoverRecord, DailyHandoverCheckData, HandoverScheduleConfigData } from "@/shared/types";
 import { apiRequest } from "@/shared/api/client";
-import { fetchShiftHandoversApi, fetchDailyHandoverCheckApi, fetchHandoverScheduleConfigApi, updateHandoverScheduleConfigApi, confirmShiftHandoverApi, deleteShiftHandoverApi } from "../api";
+import { Category,DailyHandoverCheckData,HandoverScheduleConfigData,ShiftHandoverRecord,StaffUser } from "@/shared/types";
 import {
-  ClipboardCheck,
-  Search,
-  RefreshCw,
-  CheckCircle2,
-  AlertTriangle,
-  Clock,
-  Coins,
-  Boxes,
-  Shuffle,
-  Eye,
-  Trash2,
-  X,
-  Calendar,
-  ArrowRight,
-  Settings,
-  Save,
-  FileEdit,
+AlertTriangle,
+CheckCircle2,
+Clock,
+FileEdit
 } from "lucide-react";
+import { useCallback,useEffect,useState } from "react";
+import { confirmShiftHandoverApi,deleteShiftHandoverApi,fetchDailyHandoverCheckApi,fetchHandoverScheduleConfigApi,fetchShiftHandoversApi,updateHandoverScheduleConfigApi } from "../api";
 
 export const WEEKDAY_LABELS: Array<{ key: string; label: string; short: string }> = [
   { key: "1", label: "Thứ 2", short: "T2" },

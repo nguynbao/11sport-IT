@@ -1,17 +1,16 @@
 "use client";
 
-import React from "react";
-import { Product, ProductVariant } from "@/shared/types";
-import { formatNumberDots, formatVND, parseNumberDots } from "@/shared/utils/format";
-import { resolveVariantCode, variantEffectiveCostPrice, variantEffectiveSellingPrice } from "@/shared/utils/productCode";
+import { Product,ProductVariant } from "@/shared/types";
 import {
-  ColorInputWithPicker,
-  ColorSwatchBadge,
-  getColorBoxBorderStyle,
-  resolveVariantColorHexes,
+ColorInputWithPicker,
+ColorSwatchBadge,
+getColorBoxBorderStyle,
+resolveVariantColorHexes,
 } from "@/shared/ui/ColorSwatchPicker";
-import { Plus, Pencil, Printer } from "lucide-react";
-import { ProductCatalogViewModel, COMMON_COLORS, COMMON_SIZES } from "../hooks/useProductCatalog";
+import { formatNumberDots,formatVND,parseNumberDots } from "@/shared/utils/format";
+import { resolveVariantCode,variantEffectiveCostPrice,variantEffectiveSellingPrice } from "@/shared/utils/productCode";
+import { Pencil,Plus,Printer } from "lucide-react";
+import { ProductCatalogViewModel } from "../hooks/useProductCatalog";
 
 export function ProductCatalogVariantSection({
   vm,

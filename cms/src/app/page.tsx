@@ -1,58 +1,30 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import ThemeToggle from "@/shared/ui/ThemeToggle";
-import { StaffUser, Order } from "@/shared/types";
-import { apiRequest, getStoredUser, getStoredToken, setStoredAuth, clearStoredAuth } from "@/shared/api/client";
-import { InventoryModule } from "@/features/inventory";
-import { RevenueDashboardModule } from "@/features/reports";
-import { CategoryBrandModule } from "@/features/catalog";
-import { OrdersReturnsModule } from "@/features/orders";
-import { StaffModule } from "@/features/staff";
-import { StaffActivityModule } from "@/features/reports";
-import { PromotionModule } from "@/features/promotions";
-import { DebtManagementModule } from "@/features/orders";
-import { HrmAttendanceModule } from "@/features/attendance";
-import { ShiftHandoverModule } from "@/features/shifts";
-import { MarketingPushProductsModule } from "@/features/reports";
-import { AccountProfileModule } from "@/features/staff";
-import { ServiceManagementModule } from "@/features/services";
-import { MyAttendanceCalendar } from "@/features/attendance";
-import { HeaderAttendanceBar } from "@/features/attendance";
-import InvoicePdfModal from "@/shared/ui/InvoicePdfModal";
-import { AttendanceIpConfigModule } from "@/features/attendance";
-import {
-  Boxes,
-  TrendingUp,
-  FolderKanban,
-  ShoppingBag,
-  Users,
-  ShieldCheck,
-  ExternalLink,
-  LogOut,
-  LogIn,
-  User,
-  KeyRound,
-  AlertCircle,
-  CheckCircle2,
-  Activity,
-  Gift,
-  Wallet,
-  Wifi,
-  Menu,
-  ChevronRight,
-  X,
-  CalendarCheck,
-  CalendarDays,
-  ClipboardCheck,
-  Rocket,
-  Wrench,
-} from "lucide-react";
 import { CMS_MENU_ITEMS } from "@/config/menu";
-import { CmsModuleType, ROLE_ALLOWED_MODULES } from "@/config/roles";
+import { CmsModuleType,ROLE_ALLOWED_MODULES } from "@/config/roles";
+import { AttendanceIpConfigModule,HeaderAttendanceBar,HrmAttendanceModule,MyAttendanceCalendar } from "@/features/attendance";
+import { CategoryBrandModule } from "@/features/catalog";
+import { InventoryModule } from "@/features/inventory";
+import { DebtManagementModule,OrdersReturnsModule } from "@/features/orders";
+import { PromotionModule } from "@/features/promotions";
+import { MarketingPushProductsModule,RevenueDashboardModule,StaffActivityModule } from "@/features/reports";
+import { ServiceManagementModule } from "@/features/services";
+import { ShiftHandoverModule } from "@/features/shifts";
+import { AccountProfileModule,StaffModule } from "@/features/staff";
+import { apiRequest,clearStoredAuth,getStoredToken,getStoredUser,setStoredAuth } from "@/shared/api/client";
+import { Order,StaffUser } from "@/shared/types";
+import InvoicePdfModal from "@/shared/ui/InvoicePdfModal";
+import {
+CalendarDays,
+ChevronRight,
+Menu,
+ShieldCheck,
+User
+} from "lucide-react";
+import React,{ useEffect,useState } from "react";
 import { CmsAuthGate } from "./_components/CmsAuthGate";
-import { CmsDrawers } from "./_components/CmsDrawers";
 import { CmsChangePasswordModal } from "./_components/CmsChangePasswordModal";
+import { CmsDrawers } from "./_components/CmsDrawers";
 
 export default function CmsDashboardPage() {
   const [activeModule, setActiveModule] = useState<CmsModuleType>("REVENUE");

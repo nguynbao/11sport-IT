@@ -1,36 +1,30 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Brand, Category, PreviewCodeResult, Product } from "@/shared/types";
-import { addProductVariantsApi, fetchBrandsApi, previewProductCodeApi } from "@/shared/api/catalogLookup";
-import { apiRequest } from "@/shared/api/client";
-import { describeApiError } from "@/shared/api/errors";
-import { formatNumberDots, parseNumberDots } from "@/shared/utils/format";
-import { useDebounce } from "@/shared/lib/search";
+import { formatNumberDots,parseNumberDots } from "@/shared/utils/format";
 import {
-  AlertCircle,
-  AlertTriangle,
-  CheckCircle2,
-  CopyPlus,
-  FileText,
-  Loader2,
-  Pencil,
-  Plus,
-  Save,
-  Sparkles,
-  Trash2,
-  X,
+AlertCircle,
+AlertTriangle,
+CheckCircle2,
+CopyPlus,
+FileText,
+Loader2,
+Pencil,
+Plus,
+Save,
+Sparkles,
+Trash2,
+X,
 } from "lucide-react";
 import {
-  CreatorVariantDraft,
-  EMPTY_VARIANT,
-  ProductCodeCreatorProps,
-  ProductCodeCreatorResult,
-  toCode,
-  useProductCodeCreator,
+CreatorVariantDraft,
+EMPTY_VARIANT,
+ProductCodeCreatorProps,
+ProductCodeCreatorResult,
+toCode,
+useProductCodeCreator,
 } from "./useProductCodeCreator";
 
-export type { CreatorVariantDraft, ProductCodeCreatorResult };
+export type { CreatorVariantDraft,ProductCodeCreatorResult };
 
 export default function ProductCodeCreatorModal(props: ProductCodeCreatorProps) {
   const {

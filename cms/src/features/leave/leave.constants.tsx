@@ -1,6 +1,6 @@
+import type { LeaveRequestStatus,LeaveRequestType } from "@/shared/types";
+import { ArrowLeftRight,CalendarOff,Clock,Home,LogOut,Palmtree } from "lucide-react";
 import React from "react";
-import type { LeaveRequestStatus, LeaveRequestType } from "@/shared/types";
-import { ArrowLeftRight, Calendar, CalendarOff, Clock, Home, LogOut, Palmtree, RefreshCw } from "lucide-react";
 
 export const LEAVE_REASON_MAX = 100;
 

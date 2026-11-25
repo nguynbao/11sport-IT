@@ -1,5 +1,5 @@
-import { generateVariantProductCode, isCompactBarcodeMatchVariant } from "@/shared/utils/productCode";
-import { cleanBarcodeCode, getBarcodeCandidates, isScannedCodeMatch, parseVariantSuffix } from "./barcodeMatcher";
+import { generateVariantProductCode } from "@/shared/utils/productCode";
+import { cleanBarcodeCode,getBarcodeCandidates,isScannedCodeMatch,parseVariantSuffix } from "./barcodeMatcher";
 export * from "./barcodeMatcher";
 export * from "./useBarcodeScanner";
 

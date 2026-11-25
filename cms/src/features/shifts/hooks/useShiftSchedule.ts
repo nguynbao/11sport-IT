@@ -1,20 +1,7 @@
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ShiftAssignment, StaffUser, ShiftChange, StaffMonthlyOffStats, StaffPaidLeaveStats, StaffOffRequestItem } from "@/shared/types";
-import { fetchShiftSchedule, saveShiftChangesApi } from "../api";
-import {
-  Users,
-  ChevronLeft,
-  ChevronRight,
-  Pencil,
-  Save,
-  X,
-  Plus,
-  Copy,
-  CheckCircle2,
-  AlertTriangle,
-  Lock,
-} from "lucide-react";
+import { ShiftAssignment,ShiftChange,StaffMonthlyOffStats,StaffOffRequestItem,StaffPaidLeaveStats,StaffUser } from "@/shared/types";
+import { useCallback,useEffect,useMemo,useState } from "react";
+import { fetchShiftSchedule,saveShiftChangesApi } from "../api";
 
 type ShiftCode = "SHIFT_1" | "SHIFT_2" | "BOTH" | "OFF";
 type RowShiftCode = "SHIFT_1" | "SHIFT_2" | "OFF";

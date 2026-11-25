@@ -1,30 +1,14 @@
 "use client";
 
 
-import React, { useState, useEffect, useCallback } from "react";
-import { Category, StaffUser, ShiftHandoverRecord, DailyHandoverCheckData, HandoverScheduleConfigData } from "@/shared/types";
-import { apiRequest } from "@/shared/api/client";
-import { fetchShiftHandoversApi, fetchDailyHandoverCheckApi, fetchHandoverScheduleConfigApi, updateHandoverScheduleConfigApi, confirmShiftHandoverApi, deleteShiftHandoverApi } from "../api";
 import {
-  ClipboardCheck,
-  Search,
-  RefreshCw,
-  CheckCircle2,
-  AlertTriangle,
-  Clock,
-  Coins,
-  Boxes,
-  Shuffle,
-  Eye,
-  Trash2,
-  X,
-  Calendar,
-  ArrowRight,
-  Settings,
-  Save,
-  FileEdit,
+Boxes,
+CheckCircle2,
+Coins,
+Trash2,
+X
 } from "lucide-react";
-import { ShiftHandoverViewModel, shiftLabel } from "../hooks/useShiftHandover";
+import { ShiftHandoverViewModel,shiftLabel } from "../hooks/useShiftHandover";
 
 export function ShiftHandoverDetailModal({ vm }: { vm: ShiftHandoverViewModel }) {
   const {

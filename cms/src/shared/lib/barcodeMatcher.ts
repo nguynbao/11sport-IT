@@ -1,10 +1,8 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import {
-  generateVariantProductCode,
-  isCompactBarcodeMatchVariant,
-  toCompactBarcode128,
+isCompactBarcodeMatchVariant,
+toCompactBarcode128
 } from "@/shared/utils/productCode";
 
 /**

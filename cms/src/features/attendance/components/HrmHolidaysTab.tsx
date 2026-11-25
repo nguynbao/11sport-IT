@@ -1,32 +1,13 @@
 "use client";
 
 
-import React, { useState, useEffect } from "react";
-import { Holiday, LeaveRequest, StaffUser } from "@/shared/types";
-import { fetchHolidays, syncVietnamHolidaysApi, createHolidayApi, deleteHolidayApi } from "../api";
-import { fetchLeaveRequests, reviewLeaveRequestApi } from "@/features/leave";
-import { fetchShiftSchedule } from "@/features/shifts";
-import { StaffModule } from "@/features/staff";
-import AttendanceTimesheetModule from "./AttendanceTimesheetModule";
-import { ShiftScheduleModule } from "@/features/shifts";
 import {
-  Calendar as CalendarIcon,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  Users,
-  FileText,
-  Plus,
-  Trash2,
-  Search,
-  Filter,
-  AlertTriangle,
-  Home,
-  Check,
-  X,
-  ChevronLeft,
-  ChevronRight,
-  UserPlus,
+Calendar as CalendarIcon,
+ChevronLeft,
+ChevronRight,
+Plus,
+Trash2,
+X
 } from "lucide-react";
 import { HrmAttendanceViewModel } from "../hooks/useHrmAttendance";
 

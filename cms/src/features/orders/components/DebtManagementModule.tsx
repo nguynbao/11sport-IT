@@ -1,24 +1,20 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { RevenueDashboardData, DebtOrderRow, Order } from "@/shared/types";
-import { apiRequest } from "@/shared/api/client";
-import { formatVND, formatDateTime, formatPhone, formatNumberDots, parseNumberDots } from "@/shared/utils/format";
-import { filterAndRankBySearch } from "@/shared/lib/search";
+import { formatDateTime,formatPhone,formatVND } from "@/shared/utils/format";
 import {
-  Wallet,
-  AlertTriangle,
-  Clock,
-  CheckCircle2,
-  Search,
-  RefreshCw,
-  FileText,
-  Users,
-  Printer,
-  X,
+AlertTriangle,
+CheckCircle2,
+Clock,
+FileText,
+Printer,
+RefreshCw,
+Search,
+Users,
+Wallet
 } from "lucide-react";
+import React from "react";
 
-import { DebtManagementModuleProps, useDebtManagement } from "../hooks/useDebtManagement";
+import { DebtManagementModuleProps,useDebtManagement } from "../hooks/useDebtManagement";
 import { DebtPaymentModal } from "./DebtPaymentModal";
 
 export default function DebtManagementModule(props: DebtManagementModuleProps) {

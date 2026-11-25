@@ -1,33 +1,15 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { apiRequest } from "@/shared/api/client";
 import { fetchFirstOkJson } from "@/shared/api/localFetch";
 import { Product } from "@/shared/types";
-import { apiRequest } from "@/shared/api/client";
-import { formatNumberDots, parseNumberDots } from "@/shared/utils/format";
-import { generateVariantProductCode, toCompactBarcode128 } from "@/shared/utils/productCode";
+import { generateVariantProductCode,toCompactBarcode128 } from "@/shared/utils/productCode";
+import { useEffect,useMemo,useRef,useState } from "react";
 import {
-  Printer,
-  X,
-  Plus,
-  Minus,
-  CheckCircle2,
-  Sparkles,
-  RefreshCw,
-  AlertTriangle,
-  Usb,
-  Layers,
-  MonitorCheck
-} from "lucide-react";
-import {
-  BarcodeLabelItem,
-  BarcodeLabelModalProps,
-  NormalizedLabelItem,
-  SystemPrinterInfo,
-  FIXED_LABEL_CONFIG,
-  PRINTER_STORAGE_KEY,
-  renderCode128PrintSvgFor203Dpi,
-  renderCode128SvgString,
-  sanitizeAscii,
-  escapeHtml,
+BarcodeLabelModalProps,
+FIXED_LABEL_CONFIG,
+NormalizedLabelItem,
+PRINTER_STORAGE_KEY,
+sanitizeAscii,
+SystemPrinterInfo
 } from "./barcodeLabelCode128";
 import { openBrowserPrintDialog } from "./barcodePrintDialog";
 import { BarcodeStickerPreview } from "./BarcodeStickerPreview";
