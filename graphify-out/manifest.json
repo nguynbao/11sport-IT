@@ -72,9 +72,9 @@
     "semantic_hash": ""
   },
   "cms/src/components/BarcodeLabelModal.tsx": {
-    "mtime": 1795329655.3599122,
-    "seen": 1795330125.924544,
-    "ast_hash": "4df7e154ea96cf58fce6e8c790b0fce6",
+    "mtime": 1795629198.3756287,
+    "seen": 1795629328.873794,
+    "ast_hash": "1dd562102027d5af293a82ef47060f4d",
     "semantic_hash": ""
   },
   "cms/src/components/BrandModule.tsx": {
@@ -186,9 +186,9 @@
     "semantic_hash": ""
   },
   "cms/src/components/RevenueDashboardModule.tsx": {
-    "mtime": 1795618152.674786,
-    "seen": 1795623501.892658,
-    "ast_hash": "3f0b5c8118c04c8984e3fec09a697f9b",
+    "mtime": 1795629208.25139,
+    "seen": 1795629328.873834,
+    "ast_hash": "c5993c3510300120f6785d5bd577c24a",
     "semantic_hash": ""
   },
   "cms/src/components/ServiceManagementModule.tsx": {
@@ -2079,6 +2079,36 @@
     "mtime": 1795629056.202876,
     "seen": 1795629181.7520819,
     "ast_hash": "c1adcfa295fafe64c8cae9102a7097c2",
+    "semantic_hash": ""
+  },
+  "cms/src/features/reports/utils.ts": {
+    "mtime": 1795629178.1903064,
+    "seen": 1795629328.873857,
+    "ast_hash": "ac6b21538aa5fb2dff2d7a720be51dfd",
+    "semantic_hash": ""
+  },
+  "cms/src/shared/api/localFetch.ts": {
+    "mtime": 1795629177.1768072,
+    "seen": 1795629328.873878,
+    "ast_hash": "7f100904c12a230077fb8b394a8d345a",
+    "semantic_hash": ""
+  },
+  "cms/tests/format.test.ts": {
+    "mtime": 1795629252.2168784,
+    "seen": 1795629328.873897,
+    "ast_hash": "4bf4a5e1a858ebd16602c6294b39cd6b",
+    "semantic_hash": ""
+  },
+  "cms/tests/productCode.test.ts": {
+    "mtime": 1795629232.3040648,
+    "seen": 1795629328.873899,
+    "ast_hash": "83f1b204794afa7dae89323b2af47193",
+    "semantic_hash": ""
+  },
+  "cms/tests/reportsUtils.test.ts": {
+    "mtime": 1795629201.8331113,
+    "seen": 1795629328.8739011,
+    "ast_hash": "37f72656c0ef8c58dc8bfa06553f33f7",
     "semantic_hash": ""
   },
   "cms/package-lock.json": {

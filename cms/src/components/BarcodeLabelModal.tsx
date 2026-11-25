@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { fetchFirstOkJson } from "@/shared/api/localFetch";
 import {
   Product,
   apiRequest,
@@ -359,22 +360,13 @@ export default function BarcodeLabelModal({
         "/api/v1/system/printers",
         "/api/v1/printers"
       ];
-      let list: SystemPrinterInfo[] = [];
-
-      for (const ep of endpoints) {
-        try {
-          const res = await fetch(ep, { cache: "no-store" });
-          if (res.ok) {
-            const json = await res.json();
-            if (Array.isArray(json?.data?.printers)) {
-              list = json.data.printers;
-              break;
-            }
-          }
-        } catch {
-          // try next endpoint
-        }
-      }
+      const { json } = await fetchFirstOkJson<{ data?: { printers?: SystemPrinterInfo[] } }>(
+        endpoints,
+        { cache: "no-store" },
+        (data) => Array.isArray(data?.data?.printers),
+        4000
+      );
+      const list: SystemPrinterInfo[] = json?.data?.printers || [];
 
       setPrinters(list);
 
@@ -556,31 +548,21 @@ export default function BarcodeLabelModal({
         "/api/v1/printers/print-labels"
       ];
 
-      let lastErr = "Không kết nối được dịch vụ máy in.";
-      let printedOk = false;
-      let successMsg = "";
-
-      for (const ep of endpoints) {
-        try {
-          const res = await fetch(ep, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: bodyPayload
-          });
-          const json = await res.json();
-          if (res.ok && (json?.success || json?.data?.printedPages !== undefined)) {
-            printedOk = true;
-            successMsg =
-              json.message ||
-              `Đã in ${totalLabels} tem (${totalRows} hàng 70×20mm) ra máy in "${selectedPrinter}"!`;
-            break;
-          } else if (json?.message || json?.error?.message) {
-            lastErr = json?.message || json?.error?.message;
-          }
-        } catch (e: any) {
-          lastErr = e?.message || lastErr;
-        }
-      }
+      const { json, lastError } = await fetchFirstOkJson<any>(
+        endpoints,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: bodyPayload,
+        },
+        (data) => Boolean(data?.success || data?.data?.printedPages !== undefined),
+        8000
+      );
+      const lastErr = lastError || "Không kết nối được dịch vụ máy in.";
+      const printedOk = Boolean(json);
+      const successMsg =
+        json?.message ||
+        `Đã in ${totalLabels} tem (${totalRows} hàng 70×20mm) ra máy in "${selectedPrinter}"!`;
 
       if (!printedOk) {
         throw new Error(lastErr);
