@@ -3,6 +3,7 @@ import { ApiError } from "../../shared/errors";
 import { TokenPayload, verifyToken } from "../../shared/auth";
 import { ServiceContext } from "../../shared/http";
 import { created as createdResult, ok, ServiceResult } from "../../shared/result";
+import { withPagination } from "../../shared/pagination";
 import { filterAndRankBySearch } from "../../shared/search";
 import {
   normalizeServiceCode,
@@ -116,7 +117,7 @@ export async function listServiceTypes(ctx: ServiceContext, query: any): Promise
         ])
       : mapped;
 
-    return ok(data, { total: data.length });
+    return withPagination(data, query);
 }
 
 export async function createServiceType(ctx: ServiceContext, body: any): Promise<ServiceResult> {

@@ -4,6 +4,7 @@ import { invalidateStaffAuthCache } from "../../middleware/auth";
 import { ApiError } from "../../shared/errors";
 import { ServiceContext } from "../../shared/http";
 import { created as createdResult, ok, ServiceResult } from "../../shared/result";
+import { withPagination } from "../../shared/pagination";
 import { filterAndRankBySearch } from "../../shared/search";
 import { parseStaffImportFile } from "./staffImport.parser";
 import {
@@ -95,15 +96,15 @@ export async function listStaff(ctx: ServiceContext, query: any): Promise<Servic
           return (Number(a[field] || 0) - Number(b[field] || 0)) * dir;
         }
         if (field === 'createdAt') {
-          return (
-            (new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime()) * dir
-          );
+          const cmp = (new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime()) * dir;
+          return cmp !== 0 ? cmp : String(a._id || '').localeCompare(String(b._id || ''));
         }
-        return String(a[field] || '').localeCompare(String(b[field] || ''), 'vi') * dir;
+        const cmp = String(a[field] || '').localeCompare(String(b[field] || ''), 'vi') * dir;
+        return cmp !== 0 ? cmp : String(a._id || '').localeCompare(String(b._id || ''));
       });
     }
 
-    return ok(result, { total: result.length });
+    return withPagination(result, query);
 }
 
 export async function parseStaffImport(ctx: ServiceContext, body: any): Promise<ServiceResult> {

@@ -8,6 +8,7 @@ import type { DebtStatus, IDebtAdjustmentRecord, PaymentMethod } from "../../mod
 import { ApiError } from "../../shared/errors";
 import { ServiceContext } from "../../shared/http";
 import { created, ok, ServiceResult } from "../../shared/result";
+import { withPagination } from "../../shared/pagination";
 import { filterAndRankBySearch } from "../../shared/search";
 import { deepCloneSnapshot, withOrderLock } from "../../shared/orderLock";
 import {
@@ -52,7 +53,7 @@ export async function listReturns(query: any): Promise<ServiceResult> {
         ])
       : baseFiltered;
 
-    return ok(filtered, { total: filtered.length });
+    return withPagination(filtered, query);
 }
 
 

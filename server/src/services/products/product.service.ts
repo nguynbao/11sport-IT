@@ -3,6 +3,7 @@ import { ensureStandardProductCodesMigrated } from "../../config/seed";
 import { ApiError } from "../../shared/errors";
 import { ServiceContext } from "../../shared/http";
 import { created as createdResult, ok, ServiceResult } from "../../shared/result";
+import { withPagination } from "../../shared/pagination";
 import { filterAndRankBySearch } from "../../shared/search";
 import {
   buildVariantKey,
@@ -538,11 +539,29 @@ export async function listProducts(ctx: ServiceContext, query: any): Promise<Ser
 
     const totalProducts = filtered.length;
     const totalStock = filtered.reduce((sum, p) => sum + (Number(p.stock) || 0), 0);
+    const totalFloor1Qty = filtered.reduce((sum, p) => sum + (Number(p.stockFloor1) || 0), 0);
+    const totalFloor2Qty = filtered.reduce((sum, p) => sum + (Number(p.stockFloor2) || 0), 0);
+    const totalCostInventoryValue = hideCost
+      ? 0
+      : filtered.reduce((sum, p) => sum + (Number(p.stock) || 0) * (Number(p.costPrice) || 0), 0);
+    const totalSellInventoryValue = filtered.reduce(
+      (sum, p) => sum + (Number(p.stock) || 0) * (Number(p.sellingPrice) || 0),
+      0
+    );
 
-    return ok(filtered, {
+    return withPagination(filtered, query, {
+      totalProducts,
+      totalStock,
+      summary: {
         totalProducts,
         totalStock,
-      });
+        totalFloor1Qty,
+        totalFloor2Qty,
+        totalCostInventoryValue,
+        totalSellInventoryValue,
+        totalExpectedMargin: totalSellInventoryValue - totalCostInventoryValue,
+      },
+    });
 }
 
 export async function createProduct(ctx: ServiceContext, body: any): Promise<ServiceResult> {

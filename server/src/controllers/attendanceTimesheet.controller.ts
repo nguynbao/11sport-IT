@@ -1,5 +1,6 @@
 import { handle } from '../shared/http';
 import { created, ok } from '../shared/result';
+import { paginate, parsePagination } from '../shared/pagination';
 import {
   getTimesheetReport,
   getMyAttendanceCalendar,
@@ -9,7 +10,15 @@ import {
 
 export const getTimesheetHandler = handle(async (req, ctx) => {
   const data = await getTimesheetReport(ctx.user, req.query);
-  return ok(data, { total: data.rows.length });
+  const parsed = parsePagination(req.query);
+  if (!parsed.enabled) {
+    return ok(data, { total: data.rows.length });
+  }
+  const paged = paginate(data.rows, parsed);
+  return ok(
+    { ...data, rows: paged.data },
+    { total: paged.pagination.total, pagination: paged.pagination }
+  );
 });
 
 export const getMyCalendarHandler = handle(async (req, ctx) => {

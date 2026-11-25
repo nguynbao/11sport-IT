@@ -10,6 +10,7 @@ import {
 } from "../../repositories";
 import { ApiError } from "../../shared/errors";
 import { ServiceContext } from "../../shared/http";
+import { paginate, parsePagination } from "../../shared/pagination";
 import { ok, ServiceResult } from "../../shared/result";
 import { floorLabel, getFloorStocks } from "../inventory";
 import { normalizePhoneDigits } from "../../shared/search";
@@ -275,9 +276,18 @@ export async function getReportsStaffActivity(ctx: ServiceContext, query: Record
     const byTimeDesc = (a: { at: Date }, b: { at: Date }) =>
       new Date(b.at).getTime() - new Date(a.at).getTime();
 
+    const parsed = parsePagination(query);
+    if (!parsed.enabled) {
+      return ok({
+          staff: staffRows,
+          sales: salesOut.sort(byTimeDesc),
+          warehouse: warehouseOut.sort(byTimeDesc),
+        }, { from: from || null, to: to || null });
+    }
+    const paged = paginate(staffRows, parsed);
     return ok({
-        staff: staffRows,
+        staff: paged.data,
         sales: salesOut.sort(byTimeDesc),
         warehouse: warehouseOut.sort(byTimeDesc),
-      }, { from: from || null, to: to || null });
+      }, { from: from || null, to: to || null, pagination: paged.pagination });
 }

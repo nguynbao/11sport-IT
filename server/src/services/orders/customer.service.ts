@@ -1,6 +1,7 @@
 import { customerRepo, orderRepo, returnExchangeRepo } from "../../repositories";
 import { ApiError } from "../../shared/errors";
 import { ok, ServiceResult } from "../../shared/result";
+import { withPagination } from "../../shared/pagination";
 import { filterAndRankBySearch, normalizePhoneDigits } from "../../shared/search";
 
 export async function lookupCustomer(query: any): Promise<ServiceResult> {
@@ -84,6 +85,6 @@ export async function listCustomers(query: any): Promise<ServiceResult> {
         ])
       : allCustomers;
 
-    return ok(filtered, { total: filtered.length });
+    return withPagination(filtered, query);
 }
 

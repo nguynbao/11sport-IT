@@ -1,5 +1,6 @@
 import { ServiceContext } from '../../shared/http';
 import { created as createdResult, ok, ServiceResult } from '../../shared/result';
+import { withPagination } from '../../shared/pagination';
 import { categoryRepo, productRepo } from '../../repositories';
 import { isValidSkuPart, normalizeToUpperCode, suggestCategorySkuCode } from '../../shared/productCode';
 import { syncProductReferencesAfterRecode } from './productScheme.service';
@@ -68,7 +69,7 @@ export async function listCategories(query: any): Promise<ServiceResult> {
         ])
       : mapped;
 
-    return ok(data, { total: data.length });
+    return withPagination(data, query);
 }
 
 export async function createCategory(ctx: ServiceContext, body: any): Promise<ServiceResult> {

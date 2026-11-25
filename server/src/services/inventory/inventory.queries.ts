@@ -1,6 +1,7 @@
 import { productRepo, staffRepo, stockMovementRepo } from "../../repositories";
 import { ServiceContext } from "../../shared/http";
 import { ok, ServiceResult } from "../../shared/result";
+import { withPagination } from "../../shared/pagination";
 import { filterAndRankBySearch } from "../../shared/search";
 import { floorLabel, getFloorStocks } from "./warehouseFloor.rules";
 
@@ -110,7 +111,7 @@ export async function getInventoryMovements(ctx: ServiceContext, query: any): Pr
         ])
       : baseMovements;
 
-    return ok(filtered, { total: filtered.length });
+    return withPagination(filtered, query);
 }
 
 export async function getInventoryReport(ctx: ServiceContext, query: any): Promise<ServiceResult> {
@@ -210,7 +211,7 @@ export async function getInventoryReport(ctx: ServiceContext, query: any): Promi
       }
     );
 
-    return ok(reportRows, {
+    return withPagination(reportRows, query, {
         from: from || null,
         to: to || null,
         summary,
@@ -220,6 +221,6 @@ export async function getInventoryReport(ctx: ServiceContext, query: any): Promi
 
 export async function getInventoryTransfers(query: any): Promise<ServiceResult> {
   const movements = await stockMovementRepo.find({ type: 'TRANSFER' }, { createdAt: -1 });
-    return ok(movements, { total: movements.length });
+    return withPagination(movements, query);
 }
 

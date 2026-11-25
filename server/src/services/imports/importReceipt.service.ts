@@ -4,6 +4,7 @@ import { loadImportSchemeContext } from "../catalog";
 import { ApiError } from "../../shared/errors";
 import { ServiceContext } from "../../shared/http";
 import { created as createdResult, ok, ServiceResult } from "../../shared/result";
+import { withPagination } from "../../shared/pagination";
 import { filterAndRankBySearch } from "../../shared/search";
 import { applyFloorDelta, normalizeFloor } from "../inventory";
 import {
@@ -102,7 +103,7 @@ export async function listImports(query: any): Promise<ServiceResult> {
         ])
       : baseFiltered;
 
-    return ok(filtered, { total: filtered.length });
+    return withPagination(filtered, query);
 }
 
 export async function getImportById(id: string): Promise<ServiceResult> {

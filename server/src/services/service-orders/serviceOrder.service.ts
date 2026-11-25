@@ -9,6 +9,7 @@ import type {
 import { ApiError } from "../../shared/errors";
 import { ServiceContext } from "../../shared/http";
 import { created as createdResult, ok, ServiceResult } from "../../shared/result";
+import { withPagination } from "../../shared/pagination";
 import { filterAndRankBySearch, normalizePhoneDigits } from "../../shared/search";
 import {
   computePaymentStatus,
@@ -313,7 +314,7 @@ export async function listServiceOrders(ctx: ServiceContext, query: any): Promis
       ]);
     }
 
-    return ok(filtered, meta);
+    return withPagination(filtered, query, meta);
 }
 
 export async function getServiceOrderById(ctx: ServiceContext, id: string): Promise<ServiceResult> {

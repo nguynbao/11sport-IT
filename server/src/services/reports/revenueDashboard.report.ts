@@ -10,6 +10,7 @@ import {
 } from "../../repositories";
 import { ApiError } from "../../shared/errors";
 import { ServiceContext } from "../../shared/http";
+import { paginate, parsePagination } from "../../shared/pagination";
 import { ok, ServiceResult } from "../../shared/result";
 import { floorLabel, getFloorStocks } from "../inventory";
 import { normalizePhoneDigits } from "../../shared/search";
@@ -1340,6 +1341,19 @@ export async function getReportsRevenueDashboard(ctx: ServiceContext, query: Rec
       a.hour.localeCompare(b.hour)
     );
 
+    const topParsed = parsePagination(query, {
+      pageKey: 'topPage',
+      pageSizeKey: 'topPageSize',
+      defaultPageSize: 10,
+    });
+    const dailyParsed = parsePagination(query, {
+      pageKey: 'dailyPage',
+      pageSizeKey: 'dailyPageSize',
+      defaultPageSize: 15,
+    });
+    const topPaged = topParsed.enabled ? paginate(topSellingProducts, topParsed) : null;
+    const dailyPaged = dailyParsed.enabled ? paginate(dailyTrend, dailyParsed) : null;
+
     return ok({
         summary: {
           grossRevenue,
@@ -1420,9 +1434,9 @@ export async function getReportsRevenueDashboard(ctx: ServiceContext, query: Rec
         },
         byPaymentMethod,
         byCategory,
-        dailyTrend,
+        dailyTrend: dailyPaged ? dailyPaged.data : dailyTrend,
         hourlyTrend,
-        topSellingProducts,
+        topSellingProducts: topPaged ? topPaged.data : topSellingProducts,
         needsPushProducts,
         debtManagement: {
           summary: {
@@ -1447,5 +1461,7 @@ export async function getReportsRevenueDashboard(ctx: ServiceContext, query: Rec
         to: to || null,
         categoryId: categoryId || null,
         paymentMethod: paymentMethod || null,
+        ...(topPaged ? { topPagination: topPaged.pagination } : {}),
+        ...(dailyPaged ? { dailyPagination: dailyPaged.pagination } : {}),
       });
 }
