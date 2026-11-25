@@ -48,9 +48,9 @@
     "semantic_hash": ""
   },
   "cms/src/app/page.tsx": {
-    "mtime": 1795632175.2261662,
-    "seen": 1795632322.1992059,
-    "ast_hash": "b0d8b3de1505528b109821723b439415",
+    "mtime": 1795632403.2814147,
+    "seen": 1795632558.218484,
+    "ast_hash": "71da3f7c9628854ccd455c3bcc2d7e33",
     "semantic_hash": ""
   },
   "cms/tailwind.config.js": {
@@ -2967,6 +2967,12 @@
     "mtime": 1795631937.9164488,
     "seen": 1795632114.900639,
     "ast_hash": "0b6a8fab96cbe0525b6eca6552df4c40",
+    "semantic_hash": ""
+  },
+  "cms/src/app/_components/CmsHeader.tsx": {
+    "mtime": 1795632378.7332232,
+    "seen": 1795632558.2184708,
+    "ast_hash": "2108e0c1304ff0210d100af213f482d0",
     "semantic_hash": ""
   },
   "cms/package-lock.json": {
