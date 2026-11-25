@@ -2046,9 +2046,9 @@
     "semantic_hash": ""
   },
   "cms/src/features/reports/components/RevenueDashboardModule.tsx": {
-    "mtime": 1795629450.083234,
-    "seen": 1795629608.064924,
-    "ast_hash": "444931ba624427cb7c13b6b2c8631601",
+    "mtime": 1795629761.8173192,
+    "seen": 1795629997.8677702,
+    "ast_hash": "4e9c4a4f8b2e721a43ee9911979de4db",
     "semantic_hash": ""
   },
   "cms/src/features/reports/components/StaffActivityModule.tsx": {
@@ -2241,6 +2241,48 @@
     "mtime": 1795629628.3453753,
     "seen": 1795629724.164341,
     "ast_hash": "329a4ac7ce33578c8a039754521b6bcd",
+    "semantic_hash": ""
+  },
+  "cms/src/features/reports/components/RevenueCharts.tsx": {
+    "mtime": 1795629739.2866597,
+    "seen": 1795629997.867768,
+    "ast_hash": "baeb9766b4c7a6ee55f3e43e5ab50102",
+    "semantic_hash": ""
+  },
+  "cms/src/features/reports/components/RevenueDebtTab.tsx": {
+    "mtime": 1795629739.2940936,
+    "seen": 1795629997.8677719,
+    "ast_hash": "1059fadbb0b3bd0d7c33827e14b4b330",
+    "semantic_hash": ""
+  },
+  "cms/src/features/reports/components/RevenueOverviewTab.tsx": {
+    "mtime": 1795629739.2963715,
+    "seen": 1795629997.8677728,
+    "ast_hash": "0bc48dcffccb2c97a29f199304cf8e0e",
+    "semantic_hash": ""
+  },
+  "cms/src/features/reports/components/RevenueProductsTab.tsx": {
+    "mtime": 1795629739.2971456,
+    "seen": 1795629997.867775,
+    "ast_hash": "6d785f4c5c6a05d53f56e1755ea16551",
+    "semantic_hash": ""
+  },
+  "cms/src/features/reports/components/RevenueServiceTab.tsx": {
+    "mtime": 1795629739.2931166,
+    "seen": 1795629997.867776,
+    "ast_hash": "10b36acfde33538ef50c4edeb191d64b",
+    "semantic_hash": ""
+  },
+  "cms/src/features/reports/fallbackDashboard.ts": {
+    "mtime": 1795629739.2859435,
+    "seen": 1795629997.8677812,
+    "ast_hash": "c20c29a727d38bdd1ec92c2eec928880",
+    "semantic_hash": ""
+  },
+  "cms/src/features/reports/hooks/useRevenueDashboard.ts": {
+    "mtime": 1795629739.2923472,
+    "seen": 1795629997.8677819,
+    "ast_hash": "ff5327ddb164f4f8dce7e8b4a97456bf",
     "semantic_hash": ""
   },
   "cms/package-lock.json": {
