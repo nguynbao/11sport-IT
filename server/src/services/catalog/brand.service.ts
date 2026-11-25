@@ -1,5 +1,6 @@
 import { ServiceContext } from '../../shared/http';
 import { created as createdResult, ok, ServiceResult } from '../../shared/result';
+import { withPagination } from '../../shared/pagination';
 import { brandRepo, categoryRepo, productRepo } from '../../repositories';
 import { ApiError } from '../../shared/errors';
 import { filterAndRankBySearch } from '../../shared/search';
@@ -117,7 +118,7 @@ export async function listBrands(query: any): Promise<ServiceResult> {
           ...(b.aliases || []).map((a: string) => ({ text: a, weight: 1.1 })),
         ])
       : mapped;
-    return ok(data, { total: data.length });
+    return withPagination(data, query);
 }
 
 export async function createBrand(ctx: ServiceContext, body: any): Promise<ServiceResult> {

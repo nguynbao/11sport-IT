@@ -10,6 +10,7 @@ import type {
 import { ApiError } from "../../shared/errors";
 import { ServiceContext } from "../../shared/http";
 import { created as createdResult, ok, ServiceResult } from "../../shared/result";
+import { withPagination } from "../../shared/pagination";
 import { resolveVariantPricing } from "../../shared/productCode";
 import { filterAndRankBySearch } from "../../shared/search";
 import { getFloorStocks } from "../inventory";
@@ -376,8 +377,7 @@ export async function listPromotions(query: any): Promise<ServiceResult> {
         ])
       : filtered;
 
-    return ok(searched, {
-        total: searched.length,
+    return withPagination(searched, query, {
         activeCount: enriched.filter((x) => x.isCurrentlyActive).length,
       });
 }

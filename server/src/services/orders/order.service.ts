@@ -19,6 +19,7 @@ import type {
 import { ApiError } from "../../shared/errors";
 import { ServiceContext } from "../../shared/http";
 import { created, ok, ServiceResult } from "../../shared/result";
+import { withPagination } from "../../shared/pagination";
 import { filterAndRankBySearch, normalizePhoneDigits } from "../../shared/search";
 import { buildVariantKey, resolveVariantPricing } from "../../shared/productCode";
 import { withOrderLock } from "../../shared/orderLock";
@@ -807,9 +808,22 @@ export async function listOrders(ctx: ServiceContext, query: any): Promise<Servi
         ])
       : baseFiltered;
 
-    return ok(filtered, {
-        total: filtered.length,
-      });
+    const totalRevenue = filtered.reduce(
+      (s, o) => s + (String(o.status) === 'CANCELLED' ? 0 : Number(o.totalAmount) || 0),
+      0
+    );
+    const totalDebtRemaining = filtered.reduce(
+      (s, o) => s + Math.max(0, Number(o.debtAmount) || 0),
+      0
+    );
+
+    return withPagination(filtered, query, {
+      summary: {
+        totalOrders: filtered.length,
+        totalRevenue,
+        totalDebtRemaining,
+      },
+    });
 }
 
 export async function getOrderByCode(ctx: ServiceContext, code: string): Promise<ServiceResult> {

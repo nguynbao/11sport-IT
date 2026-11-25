@@ -1,5 +1,6 @@
 import { handle } from '../shared/http';
 import { created, ok } from '../shared/result';
+import { withPagination } from '../shared/pagination';
 import {
   createLeaveRequest,
   listLeaveRequests,
@@ -14,7 +15,7 @@ export const createLeaveRequestHandler = handle(async (req, ctx) => {
 
 export const getLeaveRequestsHandler = handle(async (req, ctx) => {
   const list = await listLeaveRequests(ctx.user, req.query);
-  return ok(list, { total: list.length });
+  return withPagination(list, req.query);
 });
 
 export const deleteLeaveRequestHandler = handle(async (req, ctx) => {

@@ -9,6 +9,7 @@ import { ShiftCode } from "../../models/Attendance";
 import { ApiError } from "../../shared/errors";
 import { ServiceContext } from "../../shared/http";
 import { created, ok, ServiceResult } from "../../shared/result";
+import { withPagination } from "../../shared/pagination";
 import {
   expireStalePendingHandovers,
   isSalesStaffUser,
@@ -496,7 +497,10 @@ export async function getAttendanceHistory(ctx: ServiceContext, query: any): Pro
       const prefix = month ? `${y}-${String(Number(month)).padStart(2, '0')}-` : `${y}-`;
       records = records.filter((r: any) => String(r.date || '').startsWith(prefix));
     }
-    records.sort((a: any, b: any) => String(b.date).localeCompare(String(a.date)));
-    return ok(records, { total: records.length });
+    records.sort((a: any, b: any) => {
+      const cmp = String(b.date).localeCompare(String(a.date));
+      return cmp !== 0 ? cmp : String(b._id || '').localeCompare(String(a._id || ''));
+    });
+    return withPagination(records, query);
 }
 

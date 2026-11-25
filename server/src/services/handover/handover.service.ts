@@ -9,6 +9,7 @@ import { addDaysToDateStr, toLocalDateStr } from '../../shared/date';
 import { ApiError } from '../../shared/errors';
 import { ServiceContext } from '../../shared/http';
 import { created, ok, ServiceResult } from '../../shared/result';
+import { withPagination } from '../../shared/pagination';
 import {
   HANDOVER_SCHEDULE_CONFIG_KEY,
   computeDailyHandoverCheck,
@@ -396,8 +397,7 @@ export async function listHandovers(ctx: ServiceContext, query: any): Promise<Se
         h.categoryCounts.some((c: any) => Number(c.actualTotalQty) !== Number(c.expectedTotalQty)))
   ).length;
 
-  return ok(filtered, {
-    total: filtered.length,
+  return withPagination(filtered, query, {
     draftCount,
     pendingCount,
     acceptedCount,

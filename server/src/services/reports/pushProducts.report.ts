@@ -10,6 +10,7 @@ import {
 } from "../../repositories";
 import { ApiError } from "../../shared/errors";
 import { ServiceContext } from "../../shared/http";
+import { paginate, parsePagination } from "../../shared/pagination";
 import { ok, ServiceResult } from "../../shared/result";
 import { floorLabel, getFloorStocks } from "../inventory";
 import { normalizePhoneDigits } from "../../shared/search";
@@ -296,13 +297,27 @@ export async function getReportsPushProducts(ctx: ServiceContext, query: Record<
       totalPushCapitalValue: needsPushProducts.reduce((s, p) => s + p.inventoryCostValue, 0),
     };
 
+    const parsed = parsePagination(query);
+    if (!parsed.enabled) {
+      return ok({
+          summary,
+          needsPushProducts,
+          categories,
+        }, {
+          from: from || null,
+          to: to || null,
+          categoryId: categoryId || null,
+        });
+    }
+    const paged = paginate(needsPushProducts, parsed);
     return ok({
         summary,
-        needsPushProducts,
+        needsPushProducts: paged.data,
         categories,
       }, {
         from: from || null,
         to: to || null,
         categoryId: categoryId || null,
+        pagination: paged.pagination,
       });
 }
