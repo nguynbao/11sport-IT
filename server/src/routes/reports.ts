@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireAuth } from '../middleware/auth';
 import {
   getReportsStaffActivityHandler,
   getReportsRevenueDashboardHandler,
@@ -6,6 +7,8 @@ import {
 } from '../controllers/reports.controller';
 
 export const reportsRouter = Router();
+
+reportsRouter.use('/reports', requireAuth);
 
 reportsRouter.get('/reports/staff-activity', getReportsStaffActivityHandler);
 reportsRouter.get('/reports/revenue-dashboard', getReportsRevenueDashboardHandler);

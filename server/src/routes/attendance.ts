@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireAuth } from '../middleware/auth';
 import {
   postAttendanceCheckInHandler,
   postAttendanceCheckOutHandler,
@@ -9,6 +10,8 @@ import {
 } from '../controllers/attendance.controller';
 
 export const attendanceRouter = Router();
+
+attendanceRouter.use('/attendance', requireAuth);
 
 attendanceRouter.post('/attendance/check-in', postAttendanceCheckInHandler);
 attendanceRouter.post('/attendance/check-out', postAttendanceCheckOutHandler);

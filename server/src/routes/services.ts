@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireAuth } from '../middleware/auth';
 import {
   getServiceTypesHandler,
   postServiceTypesHandler,
@@ -13,6 +14,8 @@ import {
 } from '../controllers/services.controller';
 
 export const servicesRouter = Router();
+
+servicesRouter.use(requireAuth);
 
 servicesRouter.get('/service-types', getServiceTypesHandler);
 servicesRouter.post('/service-types', postServiceTypesHandler);

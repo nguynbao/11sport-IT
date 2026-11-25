@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireAuth } from '../middleware/auth';
 import {
   postAuthLoginHandler,
   postAuthChangePasswordHandler,
@@ -11,7 +12,8 @@ import {
 export const authStaffRouter = Router();
 
 authStaffRouter.post('/auth/login', postAuthLoginHandler);
-authStaffRouter.post('/auth/change-password', postAuthChangePasswordHandler);
+authStaffRouter.post('/auth/change-password', requireAuth, postAuthChangePasswordHandler);
+authStaffRouter.use('/staff', requireAuth);
 authStaffRouter.get('/staff', getStaffHandler);
 authStaffRouter.post('/staff/parse-import-file', postStaffParseImportFileHandler);
 authStaffRouter.post('/staff', postStaffHandler);

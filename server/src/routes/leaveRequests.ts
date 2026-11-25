@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireAuth } from '../middleware/auth';
 import {
   createLeaveRequestHandler,
   getLeaveRequestsHandler,
@@ -7,6 +8,8 @@ import {
 } from '../controllers/leaveRequests.controller';
 
 export const leaveRequestsRouter = Router();
+
+leaveRequestsRouter.use('/leave-requests', requireAuth);
 
 leaveRequestsRouter.post('/leave-requests', createLeaveRequestHandler);
 leaveRequestsRouter.get('/leave-requests', getLeaveRequestsHandler);

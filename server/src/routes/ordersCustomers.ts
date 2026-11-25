@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireAuth } from '../middleware/auth';
 import {
   getCustomersLookupHandler,
   getCustomersHandler,
@@ -14,6 +15,8 @@ import {
 } from '../controllers/ordersCustomers.controller';
 
 export const ordersCustomersRouter = Router();
+
+ordersCustomersRouter.use(requireAuth);
 
 ordersCustomersRouter.get('/customers/lookup', getCustomersLookupHandler);
 ordersCustomersRouter.get('/customers', getCustomersHandler);

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireAuth } from '../middleware/auth';
 import {
   getPromotionsHandler,
   postPromotionsHandler,
@@ -10,7 +11,7 @@ import {
 export const promotionsRouter = Router();
 
 promotionsRouter.get('/promotions', getPromotionsHandler);
-promotionsRouter.post('/promotions', postPromotionsHandler);
-promotionsRouter.patch('/promotions/:id', patchPromotions_ByIdHandler);
-promotionsRouter.delete('/promotions/:id', deletePromotions_ByIdHandler);
+promotionsRouter.post('/promotions', requireAuth, postPromotionsHandler);
+promotionsRouter.patch('/promotions/:id', requireAuth, patchPromotions_ByIdHandler);
+promotionsRouter.delete('/promotions/:id', requireAuth, deletePromotions_ByIdHandler);
 promotionsRouter.post('/promotions/evaluate', postPromotionsEvaluateHandler);

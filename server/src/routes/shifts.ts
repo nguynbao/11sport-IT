@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireAuth } from '../middleware/auth';
 import {
   postShiftsPreferencesHandler,
   getShiftsMyScheduleHandler,
@@ -16,6 +17,8 @@ import {
 } from '../controllers/shifts.controller';
 
 export const shiftsRouter = Router();
+
+shiftsRouter.use('/shifts', requireAuth);
 
 shiftsRouter.post('/shifts/preferences', postShiftsPreferencesHandler);
 shiftsRouter.get('/shifts/my-schedule', getShiftsMyScheduleHandler);

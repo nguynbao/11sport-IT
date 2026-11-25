@@ -13,7 +13,7 @@ import { ensureSystemBrand } from './catalogDefaults.service';
 
 
 function requireBrandManager(role?: string) {
-  if (role && role !== 'CEO' && role !== 'ADMIN' && role !== 'ACCOUNTANT') {
+  if (!role || (role !== 'CEO' && role !== 'ADMIN' && role !== 'ACCOUNTANT')) {
     throw new ApiError(
       403,
       'FORBIDDEN',
