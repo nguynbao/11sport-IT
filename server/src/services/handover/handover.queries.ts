@@ -1,7 +1,7 @@
 import { attendanceConfigRepo, categoryRepo, productRepo } from "../../repositories";
 import { toLocalDateStr } from "../../shared/date";
 import { generateVariantProductCode } from "../../shared/productCode";
-import { getFloorStocks } from "../warehouseFloor.service";
+import { getFloorStocks } from "../inventory";
 import { isRacketCategory, pickDailyCompanionIndex, stripVnAccents } from "./handover.rules";
 import { HandoverCategorySummary } from "./handover.types";
 

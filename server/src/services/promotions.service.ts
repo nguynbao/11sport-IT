@@ -10,7 +10,7 @@ import {
   PromotionDiscountType,
   PromotionStatus,
 } from '../models/Promotion';
-import { getFloorStocks } from './warehouseFloor.service';
+import { getFloorStocks } from './inventory';
 import { filterAndRankBySearch } from '../shared/search';
 
 

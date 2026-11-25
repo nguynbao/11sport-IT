@@ -1,123 +1,57 @@
-import { Request, Response, NextFunction } from 'express';
+import { handle } from '../shared/http';
 import {
-  postProductsGenerateCode,
-  postProductsPreviewCode,
-  getProductsLookup,
-  getProducts,
-  postProducts,
-  postProducts_ByIdVariants,
-  patchProducts_ByIdVariants,
-  patchProducts_ById,
-  deleteProducts_ById,
+  generateCode,
+  previewCode,
+  lookupProducts,
+  listProducts,
+  createProduct,
+  updateProduct,
+  deleteProduct,
+  addProductVariant,
+  updateProductVariant,
+} from '../services/products';
+import {
   getInventoryMovements,
   getInventoryReport,
-  postInventoryAdjustments,
-  postInventoryUnpackSet,
   getInventoryTransfers,
-  postInventoryTransfers,
-} from '../services/productsInventory.service';
+  adjustStock,
+  unpackSet,
+  transferStock,
+} from '../services/inventory';
 
-export async function postProductsGenerateCodeHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await postProductsGenerateCode({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
+export const postProductsGenerateCodeHandler = handle((req) => generateCode(req.body));
+export const postProductsPreviewCodeHandler = handle((req) => previewCode(req.body));
+export const getProductsLookupHandler = handle((req, ctx) => lookupProducts(ctx, req.query));
+export const getProductsHandler = handle((req, ctx) => listProducts(ctx, req.query));
+export const postProductsHandler = handle((req, ctx) => createProduct(ctx, req.body));
+export const postProducts_ByIdVariantsHandler = handle((req, ctx) =>
+  addProductVariant(ctx, req.params.id, req.body)
+);
+export const patchProducts_ByIdVariantsHandler = handle((req, ctx) =>
+  updateProductVariant(ctx, req.params.id, req.body)
+);
+export const patchProducts_ByIdHandler = handle((req, ctx) =>
+  updateProduct(ctx, req.params.id, req.body)
+);
+export const deleteProducts_ByIdHandler = handle((req, ctx) =>
+  deleteProduct(ctx, req.params.id)
+);
 
-export async function postProductsPreviewCodeHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await postProductsPreviewCode({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function getProductsLookupHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await getProductsLookup({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function getProductsHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await getProducts({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function postProductsHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await postProducts({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function postProducts_ByIdVariantsHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await postProducts_ByIdVariants({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function patchProducts_ByIdVariantsHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await patchProducts_ByIdVariants({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function patchProducts_ByIdHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await patchProducts_ById({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function deleteProducts_ByIdHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await deleteProducts_ById({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function getInventoryMovementsHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await getInventoryMovements({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function getInventoryReportHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await getInventoryReport({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function postInventoryAdjustmentsHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await postInventoryAdjustments({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function postInventoryUnpackSetHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await postInventoryUnpackSet({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function getInventoryTransfersHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await getInventoryTransfers({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function postInventoryTransfersHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await postInventoryTransfers({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
+export const getInventoryMovementsHandler = handle((req, ctx) =>
+  getInventoryMovements(ctx, req.query)
+);
+export const getInventoryReportHandler = handle((req, ctx) =>
+  getInventoryReport(ctx, req.query)
+);
+export const postInventoryAdjustmentsHandler = handle((req, ctx) =>
+  adjustStock(ctx, req.body)
+);
+export const postInventoryUnpackSetHandler = handle((req, ctx) =>
+  unpackSet(ctx, req.body)
+);
+export const getInventoryTransfersHandler = handle((req) =>
+  getInventoryTransfers(req.query)
+);
+export const postInventoryTransfersHandler = handle((req, ctx) =>
+  transferStock(ctx, req.body)
+);

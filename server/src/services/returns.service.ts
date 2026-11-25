@@ -15,8 +15,8 @@ import {
   getFloorStocks,
   getVariantFloorStocks,
   formatProductWithVariant,
-} from './warehouseFloor.service';
-import { executeUnpackSetToRetail } from './unpackSet.service';
+} from './inventory';
+import { executeUnpackSetToRetail } from './inventory';
 import { buildVariantKey, resolveVariantPricing } from '../shared/productCode';
 import { filterAndRankBySearch } from '../shared/search';
 import { withOrderLock, deepCloneSnapshot } from '../shared/orderLock';

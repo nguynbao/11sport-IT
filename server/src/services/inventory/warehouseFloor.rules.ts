@@ -1,4 +1,4 @@
-import { WarehouseFloor, IProductVariant } from '../models/Product';
+import type { WarehouseFloor, IProductVariant } from '../../models/Product';
 import {
   buildVariantKey,
   generateVariantProductCode,
@@ -7,7 +7,7 @@ import {
   isNewSchemeProduct,
   normalizeToCompactUpperCode,
   suggestColorCode,
-} from '../shared/productCode';
+} from '../../shared/productCode';
 
 export interface NormalizeVariantOptions {
   /**

@@ -42,7 +42,7 @@ import {
   getFloorStocks,
   formatProductWithVariant,
   sanitizeColorHexes,
-} from './warehouseFloor.service';
+} from './inventory';
 import { filterAndRankBySearch } from '../shared/search';
 import {
   OcrTableRow,

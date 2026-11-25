@@ -18,7 +18,7 @@ import {
   isStandardSixDigitProductCode,
   normalizeToCompactUpperCode,
 } from '../shared/productCode';
-import { normalizeVariants } from '../services/warehouseFloor.service';
+import { normalizeVariants } from '../services/inventory';
 
 let codeMigrationPromise: Promise<void> | null = null;
 

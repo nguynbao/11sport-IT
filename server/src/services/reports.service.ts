@@ -10,7 +10,7 @@ import {
   serviceOrderRepo,
 } from '../repositories';
 import { ApiError } from '../shared/errors';
-import { floorLabel, getFloorStocks } from './warehouseFloor.service';
+import { floorLabel, getFloorStocks } from './inventory';
 import { normalizePhoneDigits } from '../shared/search';
 
 
