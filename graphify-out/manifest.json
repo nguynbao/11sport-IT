@@ -1974,8 +1974,8 @@
     "semantic_hash": ""
   },
   "cms/src/features/inventory/components/InventoryModule.tsx": {
-    "mtime": 1795629643.4148388,
-    "seen": 1795629724.1643252,
+    "mtime": 1795630941.5619047,
+    "seen": 1795631234.827989,
     "ast_hash": "6e4714a6069dcb8ac04798eb90c5749a",
     "semantic_hash": ""
   },
@@ -2184,57 +2184,57 @@
     "semantic_hash": ""
   },
   "cms/src/features/inventory/components/AdminBatchImportModal.tsx": {
-    "mtime": 1795629628.396866,
-    "seen": 1795629724.164317,
-    "ast_hash": "4a7d58742c7ead72400717ad68ff2dcf",
+    "mtime": 1795630941.5286596,
+    "seen": 1795631234.82797,
+    "ast_hash": "167506273a7ee4bdb3c17dc8faa6d45c",
     "semantic_hash": ""
   },
   "cms/src/features/inventory/components/CmsRoleBadge.tsx": {
-    "mtime": 1795629628.3456712,
-    "seen": 1795629724.164319,
+    "mtime": 1795630941.530858,
+    "seen": 1795631234.827976,
     "ast_hash": "b8b316ba03bba6dfa3343a688ecda72f",
     "semantic_hash": ""
   },
   "cms/src/features/inventory/components/ImportReceiptDetailModal.tsx": {
-    "mtime": 1795629628.3928576,
-    "seen": 1795629724.164321,
+    "mtime": 1795630941.5604665,
+    "seen": 1795631234.8279848,
     "ast_hash": "b7164db516b8e85a25e982608946614f",
     "semantic_hash": ""
   },
   "cms/src/features/inventory/components/InventoryHistoryTab.tsx": {
-    "mtime": 1795629628.3860266,
-    "seen": 1795629724.164323,
-    "ast_hash": "e16ab1d8087a70eec84ca685d5253f16",
+    "mtime": 1795630941.560874,
+    "seen": 1795631234.827987,
+    "ast_hash": "c0ae08f6961a5df1e01241feae7754d7",
     "semantic_hash": ""
   },
   "cms/src/features/inventory/components/InventoryProductsTab.tsx": {
-    "mtime": 1795629655.9913573,
-    "seen": 1795629724.164327,
-    "ast_hash": "878185bbfd8f6a8b737913034ada3793",
+    "mtime": 1795630941.562549,
+    "seen": 1795631234.827994,
+    "ast_hash": "c15215a0f182042bde5259462deb63d7",
     "semantic_hash": ""
   },
   "cms/src/features/inventory/components/InventoryReportTab.tsx": {
-    "mtime": 1795629628.3815053,
-    "seen": 1795629724.164329,
+    "mtime": 1795630941.5636995,
+    "seen": 1795631234.827998,
     "ast_hash": "a748f14610e508ee01e8dc860e4487ef",
     "semantic_hash": ""
   },
   "cms/src/features/inventory/components/InventoryTransferTab.tsx": {
-    "mtime": 1795629628.3904042,
-    "seen": 1795629724.164331,
-    "ast_hash": "1eff95ef6567209459ea4b2dc62f15af",
+    "mtime": 1795630941.5648592,
+    "seen": 1795631234.8280041,
+    "ast_hash": "89376d97abea5b170e5b046e7a015934",
     "semantic_hash": ""
   },
   "cms/src/features/inventory/components/SetLinkModal.tsx": {
-    "mtime": 1795629628.3993778,
-    "seen": 1795629724.164332,
+    "mtime": 1795630941.5673296,
+    "seen": 1795631234.828008,
     "ast_hash": "a0d869f9a3a648c87ccd9f3803155703",
     "semantic_hash": ""
   },
   "cms/src/features/inventory/hooks/useInventoryModule.tsx": {
-    "mtime": 1795629628.373446,
-    "seen": 1795629724.164337,
-    "ast_hash": "ec86e8705ac5f42c90670a3eb7ddfb76",
+    "mtime": 1795631187.6798298,
+    "seen": 1795631234.828026,
+    "ast_hash": "00a56b01d259a9a3116d8b4bd6497819",
     "semantic_hash": ""
   },
   "cms/src/features/inventory/types.ts": {
@@ -2613,6 +2613,138 @@
     "mtime": 1795630616.1948678,
     "seen": 1795630871.001687,
     "ast_hash": "a3b6fe50a7466479dbad1c8493ff2556",
+    "semantic_hash": ""
+  },
+  "cms/src/features/inventory/components/AdminBatchImportTable.tsx": {
+    "mtime": 1795630941.5298638,
+    "seen": 1795631234.8279731,
+    "ast_hash": "d5ef71fb6bd2493479e3b99d6abe4997",
+    "semantic_hash": ""
+  },
+  "cms/src/features/inventory/components/HistoryImportsView.tsx": {
+    "mtime": 1795630941.5315363,
+    "seen": 1795631234.827978,
+    "ast_hash": "0b827936dc451a2c4e7357553baee1c9",
+    "semantic_hash": ""
+  },
+  "cms/src/features/inventory/components/HistoryMovementsView.tsx": {
+    "mtime": 1795630941.5588148,
+    "seen": 1795631234.82798,
+    "ast_hash": "e72edda0a0644e44d361f7d7fb6dbcd5",
+    "semantic_hash": ""
+  },
+  "cms/src/features/inventory/components/HistoryTransfersView.tsx": {
+    "mtime": 1795630941.5595946,
+    "seen": 1795631234.8279822,
+    "ast_hash": "d969e4cdcd12439473600e77e9d1f85a",
+    "semantic_hash": ""
+  },
+  "cms/src/features/inventory/components/InventoryPaginationBar.tsx": {
+    "mtime": 1795630992.9253306,
+    "seen": 1795631234.827991,
+    "ast_hash": "0f34aaea372dc7c6137fb4cb1d429c70",
+    "semantic_hash": ""
+  },
+  "cms/src/features/inventory/components/InventoryProductsTable.tsx": {
+    "mtime": 1795631169.449997,
+    "seen": 1795631234.827996,
+    "ast_hash": "30e4f5e10b5cc9c101f2a8f4acb03fb4",
+    "semantic_hash": ""
+  },
+  "cms/src/features/inventory/components/InventoryScannerPanel.tsx": {
+    "mtime": 1795630941.5641658,
+    "seen": 1795631234.828,
+    "ast_hash": "1cd95ab5d340ec67fdc51e0c6cd89953",
+    "semantic_hash": ""
+  },
+  "cms/src/features/inventory/components/InventoryTableFooter.tsx": {
+    "mtime": 1795631169.4495552,
+    "seen": 1795631234.828002,
+    "ast_hash": "ee55d85352c3db625e4277c874ef026b",
+    "semantic_hash": ""
+  },
+  "cms/src/features/inventory/components/InventoryVariantsPanel.tsx": {
+    "mtime": 1795630941.5693116,
+    "seen": 1795631234.8280058,
+    "ast_hash": "ed51d5dbd4fc1bae35775acf8d48210a",
+    "semantic_hash": ""
+  },
+  "cms/src/features/inventory/components/TransferProductPicker.tsx": {
+    "mtime": 1795630941.5684,
+    "seen": 1795631234.82801,
+    "ast_hash": "783c0637ef5c7ecb4edc26ec4f5d3d9b",
+    "semantic_hash": ""
+  },
+  "cms/src/features/inventory/hooks/adminImportFileParser.ts": {
+    "mtime": 1795631110.854968,
+    "seen": 1795631234.8280141,
+    "ast_hash": "e7f9d2c2765d10cea7b91a2a8ef321c1",
+    "semantic_hash": ""
+  },
+  "cms/src/features/inventory/hooks/adminImportSampleCsv.ts": {
+    "mtime": 1795630992.9255836,
+    "seen": 1795631234.828017,
+    "ast_hash": "8f77092233c45a68323477ef479e07df",
+    "semantic_hash": ""
+  },
+  "cms/src/features/inventory/hooks/adminImportSubmitHelper.ts": {
+    "mtime": 1795631184.3764071,
+    "seen": 1795631234.828018,
+    "ast_hash": "a19e7519aadb23680cb1c23162b9e5e2",
+    "semantic_hash": ""
+  },
+  "cms/src/features/inventory/hooks/inventoryDerived.ts": {
+    "mtime": 1795631186.4818752,
+    "seen": 1795631234.8280199,
+    "ast_hash": "3f375878c24a07bfe099857a7074d06f",
+    "semantic_hash": ""
+  },
+  "cms/src/features/inventory/hooks/useInventoryAdminImport.ts": {
+    "mtime": 1795631185.3627167,
+    "seen": 1795631234.828022,
+    "ast_hash": "6877d82a234fc4f1ec96bbf75697e6d4",
+    "semantic_hash": ""
+  },
+  "cms/src/features/inventory/hooks/useInventoryLoaders.ts": {
+    "mtime": 1795631146.2000353,
+    "seen": 1795631234.8280241,
+    "ast_hash": "220a9b075e053ec4bc98cd08e1f37ad3",
+    "semantic_hash": ""
+  },
+  "cms/src/features/inventory/hooks/useInventoryProductActions.ts": {
+    "mtime": 1795631132.6164281,
+    "seen": 1795631234.828028,
+    "ast_hash": "084269a9a23f1dc471e38fcda50970a5",
+    "semantic_hash": ""
+  },
+  "cms/src/features/inventory/hooks/useInventoryScanner.ts": {
+    "mtime": 1795631078.9323442,
+    "seen": 1795631234.828031,
+    "ast_hash": "85330f7444ecedf0ac5b280825644667",
+    "semantic_hash": ""
+  },
+  "cms/src/features/inventory/hooks/useInventorySetLink.ts": {
+    "mtime": 1795631047.1625845,
+    "seen": 1795631234.828032,
+    "ast_hash": "fe8ecfc1dfb88199eb3945384cac186c",
+    "semantic_hash": ""
+  },
+  "cms/src/features/inventory/hooks/useInventoryState.ts": {
+    "mtime": 1795630992.9265604,
+    "seen": 1795631234.8280342,
+    "ast_hash": "46343e6a94566fa50be85a655504b117",
+    "semantic_hash": ""
+  },
+  "cms/src/features/inventory/hooks/useInventoryTransfer.ts": {
+    "mtime": 1795630992.9373157,
+    "seen": 1795631234.828036,
+    "ast_hash": "e6cb2f1a62ed689b2f5802acf4efac0c",
+    "semantic_hash": ""
+  },
+  "cms/src/features/inventory/hooks/useInventoryVariantActions.ts": {
+    "mtime": 1795631147.237187,
+    "seen": 1795631234.828038,
+    "ast_hash": "284ef76ea109c93d5eddf0f7998c50a5",
     "semantic_hash": ""
   },
   "cms/package-lock.json": {
