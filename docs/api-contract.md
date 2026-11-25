@@ -24,6 +24,36 @@
     "fields": {}
   }
   ```
+- **Quy ước phân trang & sắp xếp opt-in (`v5.1`)**:
+  - Phân trang chỉ kích hoạt khi query có `page` hoặc `pageSize` (để tương thích ngược với `web/` và các luồng export lấy toàn bộ). Nếu **không truyền** `page` và `pageSize`, server trả về toàn bộ danh sách như cũ.
+  - **Query params**:
+    - `page` (integer ≥ 1, mặc định `1`): số trang hiện tại. Nếu vượt quá `totalPages`, server tự kẹp về trang cuối (`totalPages`) thay vì báo lỗi.
+    - `pageSize` (integer `1..200`, mặc định `20`): số phần tử mỗi trang (tự kẹp vào `[1, 200]`).
+    - `sortBy` (string, tùy chọn) & `sortOrder` (`asc` | `desc`, tùy chọn): sắp xếp phía server (luôn có tie-breaker theo `_id` / `createdAt` để trang ổn định).
+  - **Response `meta.pagination` & `meta.summary`**:
+    ```json
+    {
+      "data": [],
+      "meta": {
+        "pagination": {
+          "page": 1,
+          "pageSize": 20,
+          "total": 134,
+          "totalPages": 7,
+          "hasNext": true,
+          "hasPrev": false
+        },
+        "summary": {}
+      }
+    }
+    ```
+  - **Các endpoint danh sách hỗ trợ phân trang opt-in**:
+    - Nhân sự & Ca: `GET /staff`, `GET /leave-requests`, `GET /attendance/history`, `GET /attendance/timesheet` (phân trang trên `data.rows`), `GET /shifts/handover`
+    - Danh mục & Hàng hóa: `GET /categories`, `GET /brands`, `GET /products` (`meta.summary.totalProducts`)
+    - Kho: `GET /inventory/report` (`meta.summary`: `totalFloor1Qty`, `totalFloor2Qty`, `totalStockQty`, `totalCostInventoryValue`, `totalSellInventoryValue`, `totalExpectedMargin`), `GET /inventory/movements`, `GET /inventory/transfers`, `GET /imports`
+    - Bán hàng & Công nợ: `GET /orders` (`meta.summary`: `totalOrders`, `totalRevenue`, `totalDebtRemaining`), `GET /returns`, `GET /customers`
+    - Khuyến mãi & Dịch vụ: `GET /promotions`, `GET /service-types`, `GET /service-orders` (`meta.summary`: `totalRevenue`, `totalRemaining`)
+    - Báo cáo: `GET /reports/push-products`, `GET /reports/revenue-dashboard` (`topPage`/`topPageSize`, `dailyPage`/`dailyPageSize` cho 2 bảng, KPI/biểu đồ giữ nguyên toàn kỳ), `GET /reports/staff-activity` (`staffPage`/`staffPageSize` hoặc `page`/`pageSize` cho bảng nhân viên)
 
 ---
 
