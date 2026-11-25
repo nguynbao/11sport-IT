@@ -1,0 +1,40 @@
+import { Router } from 'express';
+import { authStaffRouter } from './authStaff';
+import { categoriesRouter } from './categories';
+import { brandsRouter } from './brands';
+import { productsInventoryRouter } from './productsInventory';
+import { importsRouter } from './imports';
+import { ordersCustomersRouter } from './ordersCustomers';
+import { returnsRouter } from './returns';
+import { reportsRouter } from './reports';
+import { wiseRouter } from './wise';
+import { promotionsRouter } from './promotions';
+import { printersRouter } from './printers';
+import { attendanceRouter } from './attendance';
+import { attendanceTimesheetRouter } from './attendanceTimesheet';
+import { leaveRequestsRouter } from './leaveRequests';
+import { shiftsRouter } from './shifts';
+import { holidaysRouter } from './holidays';
+import { servicesRouter } from './services';
+
+export function createApiRouter(): Router {
+  const router = Router();
+  router.use(authStaffRouter);
+  router.use(categoriesRouter);
+  router.use(brandsRouter);
+  router.use(productsInventoryRouter);
+  router.use(importsRouter);
+  router.use(ordersCustomersRouter);
+  router.use(returnsRouter);
+  router.use(reportsRouter);
+  router.use(wiseRouter);
+  router.use(promotionsRouter);
+  router.use(printersRouter);
+  router.use(attendanceRouter);
+  router.use(attendanceTimesheetRouter);
+  router.use(leaveRequestsRouter);
+  router.use(shiftsRouter);
+  router.use(holidaysRouter);
+  router.use(servicesRouter);
+  return router;
+}

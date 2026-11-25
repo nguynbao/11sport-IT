@@ -4,12 +4,13 @@ import dotenv from 'dotenv';
 dotenv.config({ override: true });
 
 import { createApp } from './app';
-import { connectDatabase } from './config/db';
+import { env } from './config/env';
+import { connectDatabase } from './config/database';
 import { seedDatabaseIfNeeded } from './config/seed';
 import { startKeepAlive } from './utils/keepAlive';
 import { assertSecurityEnvironment } from './utils/auth';
 
-const PORT = Number(process.env.PORT || 4000);
+const PORT = env.port;
 
 async function bootstrap() {
   assertSecurityEnvironment();

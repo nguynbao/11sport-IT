@@ -2,77 +2,36 @@
 process.env.TZ = process.env.TZ || 'Asia/Ho_Chi_Minh';
 
 import express from 'express';
-import cors from 'cors';
-import { getDbMode } from './config/db';
+import { env } from './config/env';
+import { createCorsMiddleware, privateNetworkAccessMiddleware } from './config/cors';
+import { getDbMode } from './config/database';
 import { attachUserContext, errorHandler } from './middleware/auth';
 import { securityHeaders, createRateLimiter } from './middleware/security';
-import { authStaffRouter } from './routes/authStaff';
-import { categoriesRouter } from './routes/categories';
-import { brandsRouter } from './routes/brands';
-import { productsInventoryRouter } from './routes/productsInventory';
-import { importsRouter } from './routes/imports';
-import { ordersCustomersRouter } from './routes/ordersCustomers';
-import { returnsRouter } from './routes/returns';
-import { reportsRouter } from './routes/reports';
-import { wiseRouter } from './routes/wise';
-import { promotionsRouter } from './routes/promotions';
-import { printersRouter } from './routes/printers';
-import { attendanceRouter } from './routes/attendance';
-import { attendanceTimesheetRouter } from './routes/attendanceTimesheet';
-import { leaveRequestsRouter } from './routes/leaveRequests';
-import { shiftsRouter } from './routes/shifts';
-import { holidaysRouter } from './routes/holidays';
-import { servicesRouter } from './routes/services';
+import { createApiRouter } from './routes';
+
+function buildHealthPayload() {
+  const now = new Date();
+  return {
+    data: {
+      status: 'ok',
+      service: '11sport-server',
+      dbMode: getDbMode(),
+      apiBase: '/api/v1',
+      timezone: env.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+      localTime: now.toLocaleString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }),
+      timestamp: now.toISOString(),
+    },
+    meta: {},
+  };
+}
 
 export function createApp() {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', true);
   app.use(securityHeaders);
-
-  const defaultOrigins = [
-    'https://11sport-it.vercel.app',
-    'https://11sport-it-m1ei.vercel.app',
-    'http://localhost:3000',
-    'http://localhost:3001',
-    'http://127.0.0.1:3000',
-    'http://127.0.0.1:3001',
-  ];
-  const envOrigins = (process.env.CORS_ORIGINS || '')
-    .split(',')
-    .map((o) => o.trim().replace(/\/+$/, ''))
-    .filter(Boolean);
-  const allowedOrigins = Array.from(new Set([...defaultOrigins, ...envOrigins]));
-
-  // Hỗ trợ Chrome/Edge Private Network Access khi gọi từ HTTPS (Vercel) về localhost:4000
-  app.use((req, res, next) => {
-    if (req.headers['access-control-request-private-network']) {
-      res.setHeader('Access-Control-Allow-Private-Network', 'true');
-    }
-    next();
-  });
-
-  app.use(
-    cors({
-      origin: (origin, callback) => {
-        if (!origin) return callback(null, true);
-        const normalized = origin.replace(/\/+$/, '');
-        const isPrivateLanOrigin =
-          /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$/i.test(
-            normalized
-          );
-        if (
-          allowedOrigins.includes(normalized) ||
-          normalized.endsWith('.vercel.app') ||
-          isPrivateLanOrigin
-        ) {
-          return callback(null, true);
-        }
-        return callback(null, false);
-      },
-      credentials: true,
-    })
-  );
+  app.use(privateNetworkAccessMiddleware);
+  app.use(createCorsMiddleware());
 
   const heavyBodyJson = express.json({ limit: '16mb' });
   const defaultBodyJson = express.json({ limit: '2mb' });
@@ -108,57 +67,11 @@ export function createApp() {
   app.use(attachUserContext);
 
   // Root & Health check (hỗ trợ Render default health check tại / và /api/v1/health)
-  app.get('/', (_req, res) => {
-    const now = new Date();
-    res.json({
-      data: {
-        status: 'ok',
-        service: '11sport-server',
-        dbMode: getDbMode(),
-        apiBase: '/api/v1',
-        timezone: process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone,
-        localTime: now.toLocaleString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }),
-        timestamp: now.toISOString(),
-      },
-      meta: {},
-    });
-  });
+  app.get('/', (_req, res) => res.json(buildHealthPayload()));
+  app.get('/api/v1/health', (_req, res) => res.json(buildHealthPayload()));
 
-  app.get('/api/v1/health', (_req, res) => {
-    const now = new Date();
-    res.json({
-      data: {
-        status: 'ok',
-        service: '11sport-server',
-        dbMode: getDbMode(),
-        timezone: process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone,
-        localTime: now.toLocaleString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }),
-        timestamp: now.toISOString(),
-      },
-      meta: {},
-    });
-  });
+  app.use('/api/v1', createApiRouter());
 
-  // Mount API v1 routers
-  app.use('/api/v1', authStaffRouter);
-  app.use('/api/v1', categoriesRouter);
-  app.use('/api/v1', brandsRouter);
-  app.use('/api/v1', productsInventoryRouter);
-  app.use('/api/v1', importsRouter);
-  app.use('/api/v1', ordersCustomersRouter);
-  app.use('/api/v1', returnsRouter);
-  app.use('/api/v1', reportsRouter);
-  app.use('/api/v1', wiseRouter);
-  app.use('/api/v1', promotionsRouter);
-  app.use('/api/v1', printersRouter);
-  app.use('/api/v1', attendanceRouter);
-  app.use('/api/v1', attendanceTimesheetRouter);
-  app.use('/api/v1', leaveRequestsRouter);
-  app.use('/api/v1', shiftsRouter);
-  app.use('/api/v1', holidaysRouter);
-  app.use('/api/v1', servicesRouter);
-
-  // 404 Not Found
   app.use((req, res) => {
     res.status(404).json({
       code: 'ENDPOINT_NOT_FOUND',
@@ -167,8 +80,6 @@ export function createApp() {
     });
   });
 
-  // Global Error Handler
   app.use(errorHandler);
-
   return app;
 }
