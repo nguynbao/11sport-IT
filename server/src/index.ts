@@ -8,6 +8,7 @@ import { connectDatabase } from './config/db';
 import { seedDatabaseIfNeeded } from './config/seed';
 import { startKeepAlive } from './utils/keepAlive';
 import { assertSecurityEnvironment } from './utils/auth';
+import { releaseExpiredQrOrders } from './services/webStockAndPricing';
 
 const PORT = Number(process.env.PORT || 4000);
 
@@ -20,6 +21,11 @@ async function bootstrap() {
   app.listen(PORT, () => {
     console.log(`[11Sport Server] Listening on http://localhost:${PORT}/api/v1`);
     startKeepAlive();
+    setInterval(() => {
+      releaseExpiredQrOrders().catch((err) => {
+        console.error('[QR Expiration Job Error]', err);
+      });
+    }, 60 * 1000).unref();
   });
 }
 

@@ -290,6 +290,8 @@ export interface Product {
   linkedRetailProducts?: LinkedRetailProductSummary[];
   /** Ghi chú sản phẩm */
   note?: string;
+  images?: { url: string; alt?: string; isPrimary?: boolean; sortOrder?: number }[];
+  isPublishedOnline?: boolean;
 }
 
 export interface StockMovement {

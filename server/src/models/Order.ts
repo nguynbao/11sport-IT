@@ -6,6 +6,27 @@ export type DiscountType = 'NONE' | 'PERCENT' | 'AMOUNT' | 'GIFT';
 export type DebtStatus = 'NONE' | 'UNPAID' | 'PARTIAL' | 'SETTLED';
 export type SplitMethod = 'CASH' | 'BANKING' | 'CARD' | 'DEBT';
 export type OrderShiftCode = 'SHIFT_1' | 'SHIFT_2' | 'BOTH';
+export type OrderChannel = 'POS' | 'ONLINE';
+export type OrderFulfillmentStatus =
+  | 'PENDING'
+  | 'CONFIRMED'
+  | 'PACKING'
+  | 'SHIPPING'
+  | 'DELIVERED'
+  | 'CANCELLED';
+export type OrderOnlinePaymentStatus = 'UNPAID' | 'PAID' | 'EXPIRED' | 'REFUNDED';
+export type OrderPaymentGateway = 'COD' | 'PAYOS' | 'VIETQR';
+
+export interface IShippingAddress {
+  fullName: string;
+  phone: string;
+  email?: string;
+  province: string;
+  district: string;
+  ward: string;
+  addressLine: string;
+  note?: string;
+}
 
 export interface ISplitPaymentItem {
   method: SplitMethod;
@@ -90,6 +111,18 @@ export interface IOrder extends Document {
   confirmedBy?: string;
   confirmedByName?: string;
   confirmedAt?: Date | null;
+  /** v6.0: Kênh bán hàng & vận hành đơn hàng Online */
+  channel?: OrderChannel;
+  fulfillmentStatus?: OrderFulfillmentStatus;
+  paymentStatus?: OrderOnlinePaymentStatus;
+  paymentGateway?: OrderPaymentGateway;
+  paymentTransactionId?: string;
+  payosOrderCode?: number;
+  reservedUntil?: Date | null;
+  shippingAddress?: IShippingAddress;
+  shippingFee?: number;
+  trackingCode?: string;
+  couponCode?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -203,6 +236,46 @@ const OrderSchema = new Schema<IOrder>(
     confirmedBy: { type: String, default: '' },
     confirmedByName: { type: String, default: '' },
     confirmedAt: { type: Date, default: null },
+    channel: {
+      type: String,
+      enum: ['POS', 'ONLINE'],
+      default: 'POS',
+    },
+    fulfillmentStatus: {
+      type: String,
+      enum: ['PENDING', 'CONFIRMED', 'PACKING', 'SHIPPING', 'DELIVERED', 'CANCELLED'],
+      default: undefined,
+    },
+    paymentStatus: {
+      type: String,
+      enum: ['UNPAID', 'PAID', 'EXPIRED', 'REFUNDED'],
+      default: undefined,
+    },
+    paymentGateway: {
+      type: String,
+      enum: ['COD', 'PAYOS', 'VIETQR'],
+      default: undefined,
+    },
+    paymentTransactionId: { type: String, trim: true },
+    payosOrderCode: { type: Number, index: true, sparse: true },
+    reservedUntil: { type: Date, default: null },
+    shippingAddress: {
+      type: {
+        fullName: { type: String, default: '', trim: true },
+        phone: { type: String, default: '', trim: true },
+        email: { type: String, default: '', trim: true, lowercase: true },
+        province: { type: String, default: '', trim: true },
+        district: { type: String, default: '', trim: true },
+        ward: { type: String, default: '', trim: true },
+        addressLine: { type: String, default: '', trim: true },
+        note: { type: String, default: '', trim: true },
+      },
+      _id: false,
+      default: undefined,
+    },
+    shippingFee: { type: Number, default: 0, min: 0 },
+    trackingCode: { type: String, default: '', trim: true },
+    couponCode: { type: String, default: '', trim: true, uppercase: true },
   },
   { timestamps: true }
 );
@@ -212,5 +285,9 @@ OrderSchema.index({ status: 1, createdAt: -1 });
 OrderSchema.index({ paymentMethod: 1, createdAt: -1 });
 OrderSchema.index({ shiftDate: -1, status: 1 });
 OrderSchema.index({ 'debtPayments.paidAt': 1 });
+OrderSchema.index({ channel: 1, createdAt: -1 });
+OrderSchema.index({ channel: 1, fulfillmentStatus: 1, createdAt: -1 });
+OrderSchema.index({ paymentStatus: 1, reservedUntil: 1 });
+OrderSchema.index({ paymentTransactionId: 1 }, { sparse: true });
 
 export const OrderModel = mongoose.model<IOrder>('Order', OrderSchema);

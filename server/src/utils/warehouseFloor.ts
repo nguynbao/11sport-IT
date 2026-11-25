@@ -99,14 +99,20 @@ export function normalizeVariants(
     return suggested;
   };
 
+  const imageByColorKey = new Map<string, string>();
+
   for (const raw of rawVariants) {
     if (!raw || typeof raw !== 'object') continue;
     const color = String(raw.color || '').trim();
     const size = String(raw.size || '').trim();
     const colorHexes = sanitizeColorHexes(raw.colorHexes);
     const colorKey = color.toLowerCase();
+    const rawImageUrl = typeof raw.imageUrl === 'string' ? raw.imageUrl.trim() : '';
     if (colorKey && colorHexes.length > 0) {
       colorHexByColorKey.set(colorKey, colorHexes);
+    }
+    if (colorKey && rawImageUrl && !imageByColorKey.has(colorKey)) {
+      imageByColorKey.set(colorKey, rawImageUrl);
     }
     const variantKey = buildVariantKey(color, size);
     const f1 = Math.max(0, Math.round(Number(raw.stockFloor1) || 0));
@@ -139,6 +145,9 @@ export function normalizeVariants(
       if (colorHexes.length > 0) {
         existing.colorHexes = colorHexes;
       }
+      if (!existing.imageUrl && rawImageUrl) {
+        existing.imageUrl = rawImageUrl;
+      }
       if (!existing.sellingPrice && vSelling) existing.sellingPrice = vSelling;
       if (!existing.costPrice && vCost) existing.costPrice = vCost;
       if (!existing.legacyVariantCode && legacyVariantCode) existing.legacyVariantCode = legacyVariantCode;
@@ -155,6 +164,7 @@ export function normalizeVariants(
         size,
         variantCode: computedVariantCode,
         barcode: computedVariantCode,
+        imageUrl: rawImageUrl || '',
         stockFloor1: finalF1,
         stockFloor2: finalF2,
         stock: finalF1 + finalF2,
@@ -168,12 +178,15 @@ export function normalizeVariants(
     }
   }
 
-  // Đồng bộ colorHexes cho các size cùng màu nếu có ít nhất 1 biến thể cùng màu đã chọn màu
+  // Đồng bộ colorHexes và imageUrl cho các size cùng màu nếu có ít nhất 1 biến thể cùng màu đã có dữ liệu
   const list = Array.from(map.values());
   for (const v of list) {
     const colorKey = (v.color || '').trim().toLowerCase();
     if ((!v.colorHexes || v.colorHexes.length === 0) && colorKey && colorHexByColorKey.has(colorKey)) {
       v.colorHexes = colorHexByColorKey.get(colorKey);
+    }
+    if (!v.imageUrl && colorKey && imageByColorKey.has(colorKey)) {
+      v.imageUrl = imageByColorKey.get(colorKey);
     }
   }
 

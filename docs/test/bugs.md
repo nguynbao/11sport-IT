@@ -1,8 +1,8 @@
 # Báo cáo Lỗi (Bug Report) - 11Sport (v1.0)
 
 > **Người lập**: QA/Tester Agent (`tester`)
-> **Ngày cập nhật**: 2026-10-28
-> **Trạng thái hiện tại**: **0 lỗi Chặn / Nghiêm trọng / Trung bình còn mở** (Tất cả lỗi phát hiện trong quá trình kiểm thử tích hợp đã được xử lý và kiểm thử hồi quy đạt 100%).
+> **Ngày cập nhật**: 2026-11-20
+> **Trạng thái hiện tại**: **0 lỗi Chặn / Nghiêm trọng / Trung bình còn mở** (`BUG-05`, `BUG-06` đã được `frontend-dev` xử lý và kiểm thử hồi quy `AC-02` đạt trên mức code/build; các mục live staging như Playwright/Lighthouse ghi nhận riêng ở trạng thái `CHƯA KIỂM`).
 
 ---
 
@@ -11,10 +11,10 @@
 | Mức độ | Tổng phát hiện | Đã xử lý (Fixed & Verified) | Còn mở (Open) |
 | --- | :---: | :---: | :---: |
 | **Chặn (Blocker)** | 0 | 0 | **0** |
-| **Nghiêm trọng (Critical)** | 0 | 0 | **0** |
+| **Nghiêm trọng (Critical)** | 2 | 2 | **0** |
 | **Trung bình (Medium)** | 3 | 3 | **0** |
 | **Nhẹ (Low)** | 1 | 1 | **0** |
-| **Tổng cộng** | **4** | **4** | **0** |
+| **Tổng cộng** | **6** | **6** | **0** |
 
 ---
 
@@ -74,3 +74,30 @@
   - Chặn tuyệt đối sửa mã sản phẩm (`PRODUCT_CODE_IMMUTABLE`) và sửa tay tồn kho (`STOCK_DIRECT_EDIT_FORBIDDEN`).
   - Mọi giá trị tiền tệ (`sellingPrice`, `subtotal`, `cardFee`, `totalAmount`, `refundAmount`) đều được làm tròn số nguyên `VND` (`Math.round`), không xảy ra sai số dấu phẩy động.
   - Chặn bán vượt tồn kho (`INSUFFICIENT_STOCK`) và chặn trả vượt số lượng đã mua (`EXCEED_RETURNABLE_QUANTITY`).
+
+
+---
+
+## 4. Danh sách Lỗi Đợt kiểm thử WEB-24 (Đã Xử lý & Xác minh Hồi quy)
+
+### BUG-05: `shop/src/middleware.ts` chưa kết nối API `GET /api/v1/public/redirects` để xử lý 301 Redirect động từ CMS
+- **Mức độ**: Nghiêm trọng (Critical) — Vi phạm trực tiếp `AC-02`
+- **Thành phần**: `shop/src/middleware.ts`
+- **Các bước tái hiện**:
+  1. ADMIN đổi slug sản phẩm từ `/san-pham/sp-cu` sang `/san-pham/sp-moi` và tạo bản ghi `WebRedirect` (`301`, `isActive: true`) trong CMS (`POST /api/v1/cms/web/redirects`).
+  2. Người dùng hoặc Googlebot truy cập `/san-pham/sp-cu` trên `shop/`.
+- **Kết quả thực tế trước khi sửa**: `shop/src/middleware.ts` chỉ tra cứu trong biến `const STATIC_REDIRECTS: Record<string, string> = {};` rỗng (chưa gọi `GET /api/v1/public/redirects` của `server/`), dẫn đến trả về `404` thay vì `301`.
+- **Kết quả mong đợi**: `middleware.ts` fetch (có cache ngắn hạn, ví dụ 60s hoặc revalidate tag) danh sách redirect từ `GET /api/v1/public/redirects` và trả về HTTP `301` (hoặc `statusCode` cấu hình) chuyển hướng về `toPath`.
+- **Trạng thái**: **ĐÃ SỬA & ĐÃ KIỂM THỬ HỒI QUY (FIXED & VERIFIED)** — `shop/src/middleware.ts` đã fetch `GET /api/v1/public/redirects` (cache 60s, timeout 1.5s, chuẩn hóa trailing slash, trả 301/302 khớp `publicStorefront.ts`), `shop/` pass `tsc --noEmit`, `npm run lint`, `npm run build`.
+
+---
+
+### BUG-06: `shop/src/app/sitemap.ts` chỉ trả về 5 route tĩnh hardcode, chưa lấy dữ liệu động từ `GET /api/v1/public/sitemap-data`
+- **Mức độ**: Nghiêm trọng (Critical) — Vi phạm trực tiếp `AC-02`
+- **Thành phần**: `shop/src/app/sitemap.ts`
+- **Các bước tái hiện**:
+  1. CMS xuất bản sản phẩm, danh mục, thương hiệu, bài viết mới hoặc đổi slug sản phẩm (`AC-02`).
+  2. Truy cập `/sitemap.xml` trên `shop/`.
+- **Kết quả thực tế trước khi sửa**: `shop/src/app/sitemap.ts` chỉ trả về 5 URL tĩnh hardcode (`/`, `/danh-muc/vot-pickleball`, `/danh-muc/giay-the-thao`, `/tin-tuc`, `/lien-he`) kèm comment `// TODO: Khi backend hoàn thiện /api/v1/public/sitemap...`, mặc dù `server/src/routes/publicStorefront.ts` đã có sẵn endpoint `GET /api/v1/public/sitemap-data`.
+- **Kết quả mong đợi**: `sitemap.ts` gọi `GET /api/v1/public/sitemap-data` (với `next: { revalidate: ... }`), xuất đầy đủ URL của `categories`, `brands`, `products`, `articles`, `pages` đang active và tự động cập nhật khi đổi slug.
+- **Trạng thái**: **ĐÃ SỬA & ĐÃ KIỂM THỬ HỒI QUY (FIXED & VERIFIED)** — `shop/src/app/sitemap.ts` đã gọi `GET /api/v1/public/sitemap-data` (`revalidate: 300, tags: ["sitemap"]`), map đủ 5 nhóm (`categories`, `brands`, `products`, `articles`, `pages`) khớp `publicStorefront.ts` và fallback an toàn, `shop/` pass `tsc --noEmit`, `npm run lint`, `npm run build`.

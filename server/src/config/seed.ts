@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import {
   staffRepo,
   categoryRepo,
+  brandRepo,
   productRepo,
   importReceiptRepo,
   stockMovementRepo,
@@ -473,6 +474,94 @@ export async function seedDatabaseIfNeeded(): Promise<void> {
       for (const h of defaultHolidays) {
         await holidayRepo.create(h);
       }
+    }
+
+    const categoryCount = await categoryRepo.countDocuments({});
+    if (categoryCount === 0) {
+      const catVot = await categoryRepo.create({
+        code: 'VOT',
+        skuCode: 'VOT',
+        name: 'Vợt Pickleball',
+        slug: 'vot-pickleball',
+        status: 'ACTIVE',
+        isPublishedOnline: true,
+        sortOrder: 1,
+      });
+      const catBong = await categoryRepo.create({
+        code: 'BONG',
+        skuCode: 'BONG',
+        name: 'Bóng Pickleball',
+        slug: 'bong-pickleball',
+        status: 'ACTIVE',
+        isPublishedOnline: true,
+        sortOrder: 2,
+      });
+      const catGiay = await categoryRepo.create({
+        code: 'GIAY',
+        skuCode: 'GIAY',
+        name: 'Giày Thể Thao',
+        slug: 'giay-the-thao',
+        status: 'ACTIVE',
+        isPublishedOnline: true,
+        sortOrder: 3,
+      });
+      const catPK = await categoryRepo.create({
+        code: 'PK',
+        skuCode: 'PK',
+        name: 'Phụ Kiện Thể Thao',
+        slug: 'phu-kien',
+        status: 'ACTIVE',
+        isPublishedOnline: true,
+        sortOrder: 4,
+      });
+
+      const allCatIds = [String(catVot._id), String(catBong._id), String(catGiay._id), String(catPK._id)];
+
+      const brandNN = await brandRepo.findOne({ code: 'NN' });
+      if (!brandNN) {
+        await brandRepo.create({
+          code: 'NN',
+          name: 'Không thương hiệu',
+          status: 'ACTIVE',
+          isSystem: true,
+          aliases: ['NO BRAND', 'KHONG THUONG HIEU'],
+          categoryIds: allCatIds,
+        });
+      }
+      const brandJoola = await brandRepo.findOne({ code: 'JOOLA' });
+      if (!brandJoola) {
+        await brandRepo.create({
+          code: 'JOOLA',
+          name: 'Joola',
+          status: 'ACTIVE',
+          isSystem: false,
+          slug: 'joola',
+          categoryIds: allCatIds,
+        });
+      }
+      const brandFaco = await brandRepo.findOne({ code: 'FACO' });
+      if (!brandFaco) {
+        await brandRepo.create({
+          code: 'FACO',
+          name: 'Facolos',
+          status: 'ACTIVE',
+          isSystem: false,
+          slug: 'facolos',
+          categoryIds: allCatIds,
+        });
+      }
+      const brandSelk = await brandRepo.findOne({ code: 'SELK' });
+      if (!brandSelk) {
+        await brandRepo.create({
+          code: 'SELK',
+          name: 'Selkirk',
+          status: 'ACTIVE',
+          isSystem: false,
+          slug: 'selkirk',
+          categoryIds: allCatIds,
+        });
+      }
+      console.log('[Seed] Khởi tạo thành công 4 danh mục và 4 thương hiệu mẫu!');
     }
   }
 }

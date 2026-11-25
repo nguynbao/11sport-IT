@@ -1,0 +1,187 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Synced 1:1 with Figma file "pickleball" (DS · System -> design-kit.md) */
+:root {
+  --color-brand-primary: #224e40;
+  --color-brand-primary-hover: #186746;
+  --color-brand-primary-light: #306f5b;
+  --color-brand-primary-dark: #173e32;
+  --color-brand-tint: #e3f8e7;
+  --color-brand-border: #9cdeb5;
+
+  --store-brand-forest: #224e40;
+  --store-brand-forest-hover: #186746;
+  --store-brand-forest-dark: #173e32;
+  --store-accent-cream: #f8eee9;
+  --store-accent-cream-pill: #f1e4d6;
+  --store-accent-mint-bg: #e3f8e7;
+  --store-accent-mint-border: #9cdeb5;
+  --store-accent-mint-ink: #164a38;
+  --store-surface-sage: #f4f7f5;
+  --store-border-sage: #dee3dd;
+  --store-border-card: #e7e3dc;
+  --store-price-sale: #b80411;
+  --store-accent-gold: #b26000;
+  --store-gold-divider: #e6a938;
+  --store-footer-hairline: #ffffff29;
+  --store-form-bg: #f3f5f4;
+  --store-footer-bottom-bg: #4d5350;
+  --store-news-banner-bg: #5e739b;
+  --store-blog-note-accent: #4a7c48;
+
+  --color-accent-volt: #e3f8e7;
+  --color-accent-hot: #b80411;
+  --color-accent-hot-tint: #fff2f0;
+
+  --color-bg-page: #ffffff;
+  --color-bg-subtle: #f4f7f5;
+  --color-bg-muted: #f3f5f4;
+  --color-border: #dee3dd;
+
+  --color-text-primary: #0a0a0a;
+  --color-text-secondary: #1e2c26;
+  --color-text-muted: #525e58;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    color: var(--color-text-primary);
+    background-color: var(--color-bg-page);
+  }
+
+  body {
+    font-family: var(--font-sans), "Inter", system-ui, sans-serif;
+    color: var(--color-text-primary);
+    background-color: var(--color-bg-page);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  .font-mono {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@keyframes mipikSoftShine {
+  0% {
+    transform: translateX(-120%) skewX(-18deg);
+  }
+  100% {
+    transform: translateX(220%) skewX(-18deg);
+  }
+}
+
+@keyframes mipikHotlinePulse {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.75;
+  }
+  70% {
+    transform: scale(1.45);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.45);
+    opacity: 0;
+  }
+}
+
+@keyframes mipikZaloPulse {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.7;
+  }
+  70% {
+    transform: scale(1.55);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.55);
+    opacity: 0;
+  }
+}
+
+@keyframes mipikZaloZoom {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .mipik-mint-pill {
+    position: relative;
+    overflow: hidden;
+  }
+  .mipik-mint-pill::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.55) 50%,
+      transparent 100%
+    );
+    transform: translateX(-120%) skewX(-18deg);
+    pointer-events: none;
+  }
+  .mipik-mint-pill:hover::after {
+    animation: mipikSoftShine 0.95s ease-out forwards;
+  }
+
+  .mipik-card-lift {
+    transition:
+      transform 200ms cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 200ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .mipik-card-lift:hover {
+    transform: translateY(-3px);
+  }
+
+  .mipik-pulse-red::before {
+    content: "";
+    position: absolute;
+    inset: -4px;
+    border-radius: 9999px;
+    border: 2px solid rgba(230, 8, 8, 0.55);
+    background: rgba(230, 8, 8, 0.16);
+    animation: mipikHotlinePulse 1.8s infinite cubic-bezier(0.215, 0.61, 0.355, 1);
+    pointer-events: none;
+  }
+
+  .mipik-pulse-blue::before {
+    content: "";
+    position: absolute;
+    inset: -4px;
+    border-radius: 9999px;
+    border: 2px solid rgba(0, 104, 255, 0.45);
+    background: rgba(0, 104, 255, 0.16);
+    animation: mipikZaloPulse 2s infinite cubic-bezier(0.215, 0.61, 0.355, 1);
+    pointer-events: none;
+  }
+
+  .mipik-zalo-zoom {
+    animation: mipikZaloZoom 2.2s infinite ease-in-out;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

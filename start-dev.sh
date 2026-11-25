@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 # 11Sport - Script Khởi Chạy Nhanh Môi Trường Phát Triển (macOS / Linux)
-# Khởi động đồng thời: server (4000), web POS & Kho (3000), cms Quản trị (3001)
+# Khởi động đồng thời: server (4000), web POS & Kho (3000), cms Quản trị (3001), shop Storefront (3002)
 # =============================================================================
 
 set -e
@@ -51,8 +51,21 @@ EOF
   echo "-> Đã tạo cms/.env.local trỏ về http://localhost:4000/api/v1"
 fi
 
+if [ ! -f "$ROOT_DIR/shop/.env.local" ]; then
+  if [ -f "$ROOT_DIR/shop/.env.example" ]; then
+    cp "$ROOT_DIR/shop/.env.example" "$ROOT_DIR/shop/.env.local"
+  else
+    cat > "$ROOT_DIR/shop/.env.local" <<EOF
+NEXT_PUBLIC_API_URL=http://localhost:4000/api/v1
+NEXT_PUBLIC_SITE_URL=http://localhost:3002
+REVALIDATE_SECRET=change-me-in-production
+EOF
+  fi
+  echo "-> Đã tạo shop/.env.local trỏ về http://localhost:4000/api/v1"
+fi
+
 # 3. Kiểm tra & cài đặt node_modules nếu chưa có
-for dir in server web cms; do
+for dir in server web cms shop; do
   if [ ! -d "$ROOT_DIR/$dir/node_modules" ]; then
     echo "-> Đang cài đặt thư viện cho $dir..."
     (cd "$ROOT_DIR/$dir" && npm install)
@@ -89,11 +102,15 @@ echo "-> Khởi động 11Sport Web POS & Kho (Port 3000)..."
 echo "-> Khởi động 11Sport CMS Quản trị (Port 3001)..."
 (cd "$ROOT_DIR/cms" && npm run dev) &
 
+echo "-> Khởi động 11Sport Shop Storefront (Port 3002)..."
+(cd "$ROOT_DIR/shop" && npm run dev) &
+
 echo ""
 echo "=== Đã khởi động toàn bộ hệ thống 11Sport (Nhấn Ctrl+C để dừng tất cả) ==="
-echo "- Server API : http://localhost:4000/api/v1"
-echo "- Web POS/Kho: http://localhost:3000"
-echo "- CMS Admin  : http://localhost:3001"
+echo "- Server API      : http://localhost:4000/api/v1"
+echo "- Web POS/Kho     : http://localhost:3000"
+echo "- CMS Admin       : http://localhost:3001"
+echo "- Shop Storefront : http://localhost:3002"
 echo ""
 
 wait

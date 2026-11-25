@@ -21,20 +21,24 @@ import {
   CheckCircle2,
   CopyPlus,
   FileText,
+  Image as ImageIcon,
   Loader2,
   Pencil,
   Plus,
   Save,
   Sparkles,
   Trash2,
+  UploadCloud,
   X,
 } from "lucide-react";
+import { resolveWebMediaUrl, uploadWebImageFile } from "@/lib/webApi";
 
 export interface CreatorVariantDraft {
   variantKey?: string;
   color: string;
   colorCode: string;
   size: string;
+  imageUrl?: string;
   sellingPrice: number;
   costPrice: number;
   stockFloor1?: number;
@@ -69,12 +73,118 @@ const EMPTY_VARIANT: CreatorVariantDraft = {
   color: "",
   colorCode: "",
   size: "",
+  imageUrl: "",
   sellingPrice: 0,
   costPrice: 0,
   stockFloor1: 0,
   stockFloor2: 0,
   stock: 0,
 };
+
+function VariantImageCell({
+  imageUrl,
+  colorName,
+  onChange,
+  onSyncColor,
+}: {
+  imageUrl?: string;
+  colorName: string;
+  onChange: (url: string) => void;
+  onSyncColor?: (url: string) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const url = await uploadWebImageFile(file);
+      if (url) {
+        onChange(url);
+        if (onSyncColor && colorName.trim()) {
+          onSyncColor(url);
+        }
+      }
+    } catch (err: any) {
+      alert("Tải ảnh thất bại: " + (err?.message || "Lỗi không xác định"));
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const isCloudinary = Boolean(
+    imageUrl && (imageUrl.includes("res.cloudinary.com") || imageUrl.includes("cloudinary"))
+  );
+  const displayUrl = imageUrl ? resolveWebMediaUrl(imageUrl) : "";
+
+  return (
+    <div className="flex items-center justify-center">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+      {imageUrl ? (
+        <div className="relative group w-8 h-8 rounded-lg border border-slate-300 overflow-hidden bg-slate-50 flex items-center justify-center shrink-0">
+          <img
+            src={displayUrl}
+            alt={colorName || "Ảnh màu"}
+            className="w-full h-full object-contain p-0.5"
+          />
+          {isCloudinary && (
+            <span className="absolute bottom-0 inset-x-0 bg-emerald-600/90 text-[7px] font-bold text-white text-center leading-tight">
+              CDN
+            </span>
+          )}
+          {uploading ? (
+            <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            </div>
+          ) : (
+            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-0.5">
+              <button
+                type="button"
+                title="Đổi ảnh"
+                onClick={() => fileInputRef.current?.click()}
+                className="p-1 rounded bg-white text-slate-800 hover:bg-slate-100 cursor-pointer"
+              >
+                <Pencil className="w-2.5 h-2.5" />
+              </button>
+              <button
+                type="button"
+                title="Gỡ ảnh màu này"
+                onClick={() => onChange("")}
+                className="p-1 rounded bg-red-600 text-white hover:bg-red-700 cursor-pointer"
+              >
+                <X className="w-2.5 h-2.5" />
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <button
+          type="button"
+          disabled={uploading}
+          onClick={() => fileInputRef.current?.click()}
+          title={colorName ? `Tải ảnh cho màu ${colorName}` : "Tải ảnh màu lên Cloudinary"}
+          className="px-1.5 py-1 text-[11px] font-medium rounded border border-dashed border-slate-300 hover:border-amber-500 hover:bg-amber-50 text-slate-500 hover:text-amber-700 flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
+        >
+          {uploading ? (
+            <Loader2 className="w-3 h-3 animate-spin text-amber-600" />
+          ) : (
+            <UploadCloud className="w-3 h-3 text-slate-400 group-hover:text-amber-600" />
+          )}
+          <span>+ Ảnh</span>
+        </button>
+      )}
+    </div>
+  );
+}
 
 const toCode = (v: string, max: number) => v.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, max);
 
@@ -166,6 +276,7 @@ export default function ProductCodeCreatorModal({
             color: v.color || "",
             colorCode: v.colorCode || "",
             size: v.size || "",
+            imageUrl: (v as any).imageUrl || "",
             sellingPrice: Number(v.sellingPrice || 0),
             costPrice: Number(v.costPrice || 0),
             stockFloor1: Number(v.stockFloor1 || 0),
@@ -304,6 +415,21 @@ export default function ProductCodeCreatorModal({
   const updateVariant = (idx: number, patch: Partial<CreatorVariantDraft>) =>
     setVariants((prev) => prev.map((v, i) => (i === idx ? { ...v, ...patch } : v)));
 
+  const updateVariantImage = (idx: number, url: string, syncEmptySameColor: boolean = true) => {
+    setVariants((prev) => {
+      const target = prev[idx];
+      const targetColor = target?.color?.trim().toLowerCase();
+      return prev.map((v, i) => {
+        if (i === idx) return { ...v, imageUrl: url };
+        // Tự động gợi ý điền cho các phiên bản cùng màu mà CHƯA có ảnh riêng
+        if (syncEmptySameColor && targetColor && v.color.trim().toLowerCase() === targetColor && !v.imageUrl) {
+          return { ...v, imageUrl: url };
+        }
+        return v;
+      });
+    });
+  };
+
   const validate = (): string => {
     if (!categoryId) return "Chọn danh mục.";
     if (!brandId) return "Chọn thương hiệu.";
@@ -328,6 +454,7 @@ export default function ProductCodeCreatorModal({
       color: v.color.trim(),
       ...(v.colorCode ? { colorCode: v.colorCode } : {}),
       size: v.size.trim().toUpperCase(),
+      ...(v.imageUrl ? { imageUrl: v.imageUrl.trim() } : {}),
       ...(canSetSellingPrice && v.sellingPrice > 0 ? { sellingPrice: v.sellingPrice } : {}),
       ...(canSeeCost && v.costPrice > 0 ? { costPrice: v.costPrice } : {}),
       ...(isEditing
@@ -351,6 +478,19 @@ export default function ProductCodeCreatorModal({
     }
     setSubmitting(true);
     try {
+      const payloadVariants = variantPayload();
+      const collectedImages = Array.from(
+        new Set(
+          payloadVariants
+            .map((v) => v.imageUrl)
+            .filter((url): url is string => Boolean(url && url.trim()))
+        )
+      ).map((url, idx) => ({
+        url,
+        isPrimary: idx === 0,
+        sortOrder: idx,
+      }));
+
       if (isEditing && editingProduct) {
         const res = await apiRequest<Product>(`/products/${editingProduct._id}`, {
           method: "PATCH",
@@ -368,10 +508,11 @@ export default function ProductCodeCreatorModal({
             note: note.trim(),
             ...(canSetSellingPrice ? { sellingPrice: Math.max(0, sellingPrice) } : {}),
             ...(canSeeCost ? { costPrice: Math.max(0, costPrice) } : {}),
-            variants: variantPayload(),
+            images: collectedImages,
+            variants: payloadVariants,
           }),
         });
-        onDone({ product: res.data, variants: variantPayload(), mode: "UPDATED" });
+        onDone({ product: res.data, variants: payloadVariants, mode: "UPDATED" });
         reset();
         onClose();
         return;
@@ -390,10 +531,11 @@ export default function ProductCodeCreatorModal({
           ...(canSetSellingPrice ? { sellingPrice: Math.max(0, sellingPrice) } : {}),
           ...(canSeeCost ? { costPrice: Math.max(0, costPrice) } : {}),
           quantity: 0,
-          variants: variantPayload(),
+          images: collectedImages,
+          variants: payloadVariants,
         }),
       });
-      onDone({ product: res.data, variants: variantPayload(), mode: "CREATED" });
+      onDone({ product: res.data, variants: payloadVariants, mode: "CREATED" });
       reset();
       onClose();
     } catch (err: any) {
@@ -665,9 +807,14 @@ export default function ProductCodeCreatorModal({
 
           <div>
             <div className="flex items-center justify-between mb-2">
-              <h3 className="font-bold uppercase text-slate-700">
-                4. Biến thể (Màu + Size) — giá riêng tuỳ chọn, trống = dùng giá mặc định
-              </h3>
+              <div>
+                <h3 className="font-bold uppercase text-slate-700">
+                  4. Biến thể (Màu + Size / Phiên bản)
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  Tải ảnh riêng cho từng màu hoặc từng phiên bản. Ảnh biến thể đầu tiên sẽ tự làm ảnh đại diện chính của sản phẩm trên Website (/shop).
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() =>
@@ -677,6 +824,7 @@ export default function ProductCodeCreatorModal({
                       ...EMPTY_VARIANT,
                       color: prev[prev.length - 1]?.color || "",
                       colorCode: prev[prev.length - 1]?.colorCode || "",
+                      imageUrl: prev[prev.length - 1]?.imageUrl || "",
                     },
                   ])
                 }
@@ -701,7 +849,8 @@ export default function ProductCodeCreatorModal({
                   <tr>
                     <th className="py-2 px-2 text-left">Màu *</th>
                     <th className="py-2 px-2 text-left">Mã màu (2–3)</th>
-                    <th className="py-2 px-2 text-left">Size</th>
+                    <th className="py-2 px-2 text-left">Size / Phiên bản</th>
+                    <th className="py-2 px-2 text-center">Ảnh biến thể</th>
                     {canSetSellingPrice && <th className="py-2 px-2 text-right">Giá niêm yết riêng</th>}
                     {canSeeCost && <th className="py-2 px-2 text-right">Giá vốn riêng</th>}
                     {isEditing && <th className="py-2 px-2 text-center">Tồn hiện tại</th>}
@@ -741,8 +890,16 @@ export default function ProductCodeCreatorModal({
                             list="pcc-sizes"
                             value={v.size}
                             onChange={(e) => updateVariant(idx, { size: e.target.value.toUpperCase() })}
-                            placeholder="VD: 40"
-                            className="w-20 px-2 py-1.5 rounded border border-slate-300 font-bold"
+                            placeholder="VD: 16mm, 40..."
+                            className="w-28 px-2 py-1.5 rounded border border-slate-300 font-bold"
+                          />
+                        </td>
+                        <td className="py-1.5 px-2 text-center">
+                          <VariantImageCell
+                            imageUrl={v.imageUrl}
+                            colorName={`${v.color} ${v.size}`.trim()}
+                            onChange={(url) => updateVariantImage(idx, url, false)}
+                            onSyncColor={(url) => updateVariantImage(idx, url, true)}
                           />
                         </td>
                         {canSetSellingPrice && (

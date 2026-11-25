@@ -1378,3 +1378,353 @@
 #### L. Chuyển đổi dữ liệu cũ (chỉ DB local)
 - Migration `20261117000001-seed-brands-and-category-skucodes` (chạy cả prod, chỉ thêm dữ liệu): đặt `skuCode` cho Category, tạo Brand từ `KNOWN_BRANDS` + brand đang có trong sản phẩm, Brand hệ thống `NN`.
 - Script `npm run recode:products -- --dry-run` / `-- --apply <file.csv>` (`server/src/scripts/recodeProducts.ts`): **từ chối chạy** nếu `MONGODB_URI` không phải `127.0.0.1`/`localhost` hoặc là `mongodb+srv`.
+
+
+---
+
+## 3. Hợp đồng API Website Bán Hàng (`shop/`) & CMS Quản Lý Website (`cms/`) *(v6.0)*
+
+> **Nguồn yêu cầu:** `docs/requirements/web-storefront-v1.md` (`WEB-01`), `docs/design/storefront-v1.md` (`WEB-03`).
+> **Quy ước chung v6.0:**
+> 1. **Bảo mật Public API (`/api/v1/public/*`):** Tuyệt đối **không** trả về `costPrice` (cả gốc và biến thể), `supplier`, thông tin nhân viên (`createdBy`, `confirmedBy`, lương/thưởng), ghi chú nội bộ, hay PII của khách hàng khác.
+> 2. **Tiền tệ:** Mọi giá trị tiền tệ đều lưu và trả về dạng **số nguyên VND** (`number`).
+> 3. **Tồn kho & Trừ kho Atomic:** Mặc định đọc/trừ tồn từ `stockFloor1` (hoặc tổng `stockFloor1 + stockFloor2` nếu `WebSiteSetting.onlineStockMode === 'ALL'`). Mọi thao tác giữ chỗ / trừ kho khi tạo đơn phải dùng cập nhật nguyên tử (`findOneAndUpdate` với điều kiện `>= qty` hoặc MongoDB Transaction) để chống âm kho.
+> 4. **Phân quyền CMS Web (`/api/v1/cms/web/*`):** Chỉ `ADMIN` và `CEO` được truy cập (`SALES`, `ACCOUNTANT`, `HR`, `MARKETING` trả `403 FORBIDDEN`). Các thao tác cấu hình kỹ thuật (payment keys, webhook secret, chế độ kho, GA4/GTM, CRUD 301 Redirect hệ thống) chỉ dành cho **`ADMIN`** (`CEO` bị chặn `403 FORBIDDEN`). Mọi thao tác ghi trên `/api/v1/cms/web/*` đều tự động ghi `WebAuditLog`.
+> 5. **Định dạng lỗi chuẩn:** `{ "error": { "code": "ERROR_CODE", "message": "Mô tả tiếng Việt", "fields"?: {} } }`.
+
+---
+
+### 3.1 Public Storefront API (`/api/v1/public/*`)
+
+#### A. Trang chủ, Menu & Cấu hình Site
+- **`GET /api/v1/public/home`**
+  - Trả về dữ liệu tổng hợp cho Trang chủ `shop/` (cache-friendly):
+    ```json
+    {
+      "data": {
+        "banners": [
+          {
+            "_id": "...",
+            "title": "Flash Sale Cuối Tuần",
+            "position": "HERO | INLINE_1 | INLINE_2",
+            "desktopImageUrl": "https://...",
+            "mobileImageUrl": "https://...",
+            "linkUrl": "/danh-muc/vot-pickleball",
+            "altText": "Banner khuyến mãi vợt pickleball 11 Sport",
+            "sortOrder": 1
+          }
+        ],
+        "homeSections": [
+          {
+            "_id": "...",
+            "type": "HERO | CATEGORY_GRID | CATEGORY_CAROUSEL | FLASH_SALE | USP | BRANDS | BLOG | CUSTOM_BANNER",
+            "title": "Vợt Pickleball Chính Hãng",
+            "subtitle": "...",
+            "viewAllUrl": "/danh-muc/vot-pickleball",
+            "configJson": {},
+            "sortOrder": 2
+          }
+        ],
+        "flashSale": {
+          "promotionId": "...",
+          "title": "Flash Sale",
+          "endAt": "2026-11-25T23:59:59.000Z",
+          "products": []
+        },
+        "featuredProducts": [],
+        "categoryBlocks": [
+          {
+            "category": { "_id": "...", "name": "Vợt Pickleball", "slug": "vot-pickleball", "imageUrl": "..." },
+            "products": []
+          }
+        ],
+        "brands": [
+          { "_id": "...", "code": "JLA", "name": "Joola", "slug": "joola", "logoUrl": "..." }
+        ],
+        "articles": [
+          { "_id": "...", "title": "...", "slug": "...", "excerpt": "...", "thumbnailUrl": "...", "publishedAt": "...", "category": { "name": "...", "slug": "..." } }
+        ],
+        "usp": [
+          { "icon": "shield-check", "title": "Chính hãng 100%", "description": "Cam kết hàng chính hãng có tem bảo hành" }
+        ],
+        "settings": {
+          "siteName": "11 Sport",
+          "logoUrl": "...",
+          "hotline": "0900000000",
+          "zaloUrl": "...",
+          "messengerUrl": "...",
+          "freeShipThreshold": 500000
+        }
+      }
+    }
+    ```
+- **`GET /api/v1/public/menu`**
+  - Trả về cây Mega Menu 2–3 cấp (`isActive: true`, sắp xếp theo `sortOrder`):
+    - Response: `{ "data": [{ "_id": "...", "label": "Vợt Pickleball", "url": "/danh-muc/vot-pickleball", "icon": "...", "badge": "HOT | NEW | null", "children": [...] }] }`.
+- **`GET /api/v1/public/settings`**
+  - Trả về cấu hình hiển thị công khai (tuyệt đối **không** trả `payosClientId`, `payosApiKey`, `payosChecksumKey`, `webhookSecret`, `revalidateSecret`):
+    - Response: `{ "data": { "siteName", "logoUrl", "faviconUrl", "topBarText", "hotline", "email", "zaloUrl", "messengerUrl", "facebookUrl", "tiktokUrl", "youtubeUrl", "showrooms": [{ "name", "address", "phone", "hours", "mapUrl", "embedUrl" }], "uspItems": [...], "shipping": { "defaultFee": 30000, "freeShipThreshold": 500000 }, "analytics": { "ga4Id", "gtmId" }, "defaultSeo": { "title", "description", "ogImage" } } }`.
+
+#### B. Danh mục, Thương hiệu & Sản phẩm
+- **`GET /api/v1/public/categories/:slug`**
+  - Trả về thông tin chi tiết danh mục (`isPublishedOnline: true`), kèm `seo`, `descriptionHtml`, `imageUrl`, và danh sách `brands` có sản phẩm trong danh mục này.
+  - Lỗi: `404 CATEGORY_NOT_FOUND`.
+- **`GET /api/v1/public/brands`**
+  - Danh sách thương hiệu `status: 'ACTIVE'` & `isSystem: false` (hoặc có sản phẩm online). Query tuỳ chọn: `?categorySlug=`.
+- **`GET /api/v1/public/brands/:slug`**
+  - Chi tiết thương hiệu theo `slug` (`_id`, `code`, `name`, `slug`, `logoUrl`, `descriptionHtml`, `seo`).
+  - Lỗi: `404 BRAND_NOT_FOUND`.
+- **`GET /api/v1/public/products`**
+  - Danh sách sản phẩm công khai (`status: 'ACTIVE'` và `isPublishedOnline: true`).
+  - Query:
+    - `category` (slug hoặc id)
+    - `brand` (slug hoặc id, hỗ trợ nhiều giá trị cách nhau bởi dấu phẩy)
+    - `priceMin`, `priceMax` (số nguyên VND)
+    - `color`, `size`
+    - `inStock` (`true | false`)
+    - `q` (tìm theo tên, mã, brandName, versionName)
+    - `sort`: `featured | newest | price_asc | price_desc | bestseller` (mặc định `featured`, đẩy sản phẩm hết hàng xuống cuối khi sort mặc định)
+    - `page` (default `1`), `limit` (default `20`, max `60`)
+  - Response:
+    ```json
+    {
+      "data": [
+        {
+          "_id": "...",
+          "code": "VPBJLA01",
+          "name": "Vợt Pickleball Joola Perseus 16mm",
+          "slug": "vot-pickleball-joola-perseus-16mm",
+          "brand": { "_id": "...", "name": "Joola", "slug": "joola" },
+          "category": { "_id": "...", "name": "Vợt Pickleball", "slug": "vot-pickleball" },
+          "sellingPrice": 4290000,
+          "compareAtPrice": 5100000,
+          "thumbnailUrl": "https://...",
+          "images": [{ "url": "...", "alt": "...", "isPrimary": true, "sortOrder": 0 }],
+          "inStock": true,
+          "stockAvailable": 12,
+          "isFeatured": true,
+          "ratingAvg": 4.9,
+          "ratingCount": 28,
+          "colors": [{ "color": "Đen/Đỏ", "colorHexes": ["#111827", "#DC2626"], "imageUrl": "..." }]
+        }
+      ],
+      "meta": { "total": 48, "page": 1, "limit": 20, "totalPages": 3 },
+      "facets": {
+        "brands": [{ "name": "Joola", "slug": "joola", "count": 18 }],
+        "colors": ["Đen/Đỏ", "Xanh"],
+        "sizes": ["14mm", "16mm"],
+        "priceRange": { "min": 500000, "max": 6500000 }
+      }
+    }
+    ```
+- **`GET /api/v1/public/products/:slug`**
+  - Chi tiết sản phẩm (PDP). Chỉ trả `status: 'ACTIVE'` & `isPublishedOnline: true` (`404 PRODUCT_NOT_FOUND` nếu ẩn/không tồn tại).
+  - Tuyệt đối không trả `costPrice` gốc hay `variants[].costPrice`.
+  - Response `data` gồm: thông tin cơ bản, `images[]`, `shortDescription`, `descriptionHtml`, `specs[]`, `seo`, `ratingAvg`, `ratingCount`, `variants[]` (`variantKey`, `variantCode`, `color`, `colorHexes`, `size`, `imageUrl`, `effectiveSellingPrice`, `compareAtPrice`, `stockAvailable`, `inStock`), `promotions` (`tierPricing[]`, `giftPromotions[]`).
+- **`GET /api/v1/public/products/:slug/related`**
+  - Trả về tối đa 8 sản phẩm tương tự (cùng `categoryId` hoặc `brandId`, đang `isPublishedOnline: true`).
+- **`GET /api/v1/public/search/suggest?q=`**
+  - Live Search (Debounce 250ms trên UI, áp dụng Rate-limit).
+  - Response: `{ "data": { "products": [{ "_id", "name", "slug", "thumbnailUrl", "sellingPrice", "compareAtPrice" }], "articles": [{ "_id", "title", "slug", "thumbnailUrl" }] } }`.
+
+#### C. Blog, Trang tĩnh, Đánh giá & Liên hệ
+- **`GET /api/v1/public/articles`**
+  - Query: `category` (slug), `tag`, `q`, `page` (default `1`), `limit` (default `12`). Chỉ trả `status: 'PUBLISHED'`.
+- **`GET /api/v1/public/articles/:slug`**
+  - Chi tiết bài viết `PUBLISHED` (kèm `contentHtml`, `category`, `authorName`, `publishedAt`, `seo`, `relatedProductIds`, `relatedProducts[]`).
+  - Lỗi: `404 ARTICLE_NOT_FOUND`.
+- **`GET /api/v1/public/pages/:slug`**
+  - Chi tiết trang tĩnh `PUBLISHED` (VD: `chinh-sach-doi-tra`, `gioi-thieu`, `lien-he`).
+  - Lỗi: `404 PAGE_NOT_FOUND`.
+- **`GET /api/v1/public/reviews?productId=&rating=&hasImages=&page=&limit=`**
+  - Danh sách đánh giá `status: 'APPROVED'` của sản phẩm.
+  - Response: `{ "data": [...], "summary": { "ratingAvg": 4.9, "ratingCount": 28, "breakdown": { "5": 25, "4": 2, "3": 1, "2": 0, "1": 0 } }, "meta": { "total", "page", "limit" } }`.
+- **`POST /api/v1/public/reviews`** *(Rate-limit, Customer JWT tuỳ chọn hoặc bắt buộc tuỳ cấu hình; mặc định `status: 'PENDING'`)*
+  - Body: `{ "productId": "...", "rating": 5, "comment": "...", "customerName"?: "...", "images"?: ["https://..."] }`.
+  - Nếu có Customer JWT: server tự kiểm tra đơn `PAID`/`DELIVERED` của khách để gán `isVerifiedPurchase = true` và `orderId`.
+  - Response `201`: `{ "data": { "_id", "status": "PENDING" }, "message": "Đánh giá của bạn đã được ghi nhận và đang chờ duyệt." }`.
+- **`POST /api/v1/public/contact`** *(Rate-limit)*
+  - Gửi form liên hệ / tư vấn nhanh: `{ "name": "...", "phone": "...", "email"?: "...", "message": "...", "sourceUrl"?: "..." }`.
+  - Response `201`: `{ "message": "Cảm ơn bạn đã liên hệ. 11 Sport sẽ phản hồi trong thời gian sớm nhất." }`.
+
+#### D. Giỏ hàng, Checkout, Thanh toán PayOS/VietQR & Tra cứu đơn
+- **`POST /api/v1/public/cart/price`**
+  - Server tính lại toàn bộ giá giỏ hàng, tier pricing, coupon, quà tặng và phí ship (BR-03).
+  - Body:
+    ```json
+    {
+      "items": [{ "productId": "...", "variantKey": "DO_40", "quantity": 2 }],
+      "couponCode": "SALE11",
+      "selectedGiftProductId": "...",
+      "province": "Hồ Chí Minh"
+    }
+    ```
+  - Response `200`:
+    ```json
+    {
+      "data": {
+        "items": [
+          {
+            "productId": "...",
+            "productCode": "...",
+            "name": "...",
+            "slug": "...",
+            "variantKey": "DO_40",
+            "color": "Đỏ",
+            "size": "40",
+            "imageUrl": "...",
+            "unitPrice": 1200000,
+            "tierDiscountAmount": 120000,
+            "lineTotal": 2280000,
+            "quantity": 2,
+            "stockAvailable": 5,
+            "inStock": true
+          }
+        ],
+        "rawSubtotal": 2400000,
+        "tierDiscountTotal": 120000,
+        "couponDiscount": 100000,
+        "couponApplied": { "code": "SALE11", "name": "Giảm 100k" },
+        "couponError": null,
+        "eligibleGifts": [{ "productId": "...", "productName": "...", "imageUrl": "...", "quantity": 1 }],
+        "shippingFee": 0,
+        "freeShipThreshold": 500000,
+        "totalAmount": 2180000
+      }
+    }
+    ```
+- **`POST /api/v1/public/orders`** *(Rate-limit; hỗ trợ cả Guest và Customer JWT)*
+  - Body:
+    ```json
+    {
+      "items": [{ "productId": "...", "variantKey": "DO_40", "quantity": 1 }],
+      "shippingAddress": {
+        "fullName": "Nguyễn Văn A",
+        "phone": "0901234567",
+        "email": "a@example.com",
+        "province": "Hồ Chí Minh",
+        "district": "Quận 1",
+        "ward": "Phường Bến Nghé",
+        "addressLine": "123 Lê Lợi",
+        "note": "Giao giờ hành chính"
+      },
+      "paymentGateway": "COD | PAYOS | VIETQR",
+      "couponCode": "SALE11",
+      "selectedGiftProductId": "..."
+    }
+    ```
+  - Xử lý:
+    1. Tính lại toàn bộ giá từ DB (không tin giá client).
+    2. Thực hiện trừ/giữ chỗ tồn kho **atomic** (`stockFloor1 >= qty`, hoặc tổng kho nếu cấu hình `ALL`). Nếu bất kỳ biến thể nào hết hàng -> rollback các item đã giữ và trả **`409 INSUFFICIENT_STOCK`** kèm `fields.unavailableItems`.
+    3. Nếu `COD`: tạo `Order` với `channel: 'ONLINE'`, `paymentGateway: 'COD'`, `paymentMethod: 'CASH'`, `paymentStatus: 'UNPAID'`, `fulfillmentStatus: 'PENDING'`, `status: 'PAID'` (hoặc giữ `DRAFT` chờ xác nhận tuỳ luồng, ghi `StockMovement`).
+    4. Nếu `PAYOS` / `VIETQR`: tạo `Order` với `channel: 'ONLINE'`, `status: 'DRAFT'`, `paymentStatus: 'UNPAID'`, `fulfillmentStatus: 'PENDING'`, `reservedUntil = now + 15 phút`, gọi PayOS tạo link/QR thanh toán.
+  - Response `201`:
+    ```json
+    {
+      "data": {
+        "orderCode": "ONL-20261120-0001",
+        "totalAmount": 2180000,
+        "paymentGateway": "PAYOS",
+        "paymentStatus": "UNPAID",
+        "fulfillmentStatus": "PENDING",
+        "paymentUrl": "https://pay.payos.vn/web/...",
+        "qrCode": "000201010212...",
+        "payosOrderCode": 1732456789,
+        "reservedUntil": "2026-11-20T04:05:00.000Z"
+      }
+    }
+    ```
+- **`GET /api/v1/public/orders/lookup?code=&phone=`**
+  - Tra cứu trạng thái đơn hàng công khai (yêu cầu khớp cả `orderCode` và `customerPhone` — hoặc `shippingAddress.phone`).
+  - Lỗi: `404 ORDER_NOT_FOUND`.
+- **`GET /api/v1/public/orders/:code/payment-status`**
+  - Dùng cho màn hình chờ thanh toán QR polling mỗi 3 giây: trả `{ "data": { "orderCode", "paymentStatus", "fulfillmentStatus", "reservedUntil" } }`.
+- **`POST /api/v1/public/payments/payos/webhook`**
+  - Webhook nhận kết quả thanh toán từ PayOS/VietQR.
+  - Xác thực chữ ký HMAC-SHA256 (`401 INVALID_SIGNATURE` nếu sai).
+  - Idempotency: nếu `paymentTransactionId` đã xử lý hoặc đơn đã `paymentStatus === 'PAID'` -> trả `200 OK` không trừ kho/cộng tiền lần 2.
+  - Kiểm tra `amount >= order.totalAmount`. Nếu đơn đã hết hạn `EXPIRED`/`CANCELLED` nhưng nhận tiền muộn -> ghi log cảnh báo CMS để ADMIN xử lý hoàn tiền.
+  - Thành công: cập nhật `paymentStatus: 'PAID'`, `status: 'PAID'`, `fulfillmentStatus: 'CONFIRMED'`, `paymentTransactionId`, ghi `StockMovement`, cập nhật `Customer`.
+
+#### E. SEO Sitemap & Redirects
+- **`GET /api/v1/public/sitemap-data`**
+  - Trả về danh sách `{ slug, updatedAt }` của `categories`, `brands`, `products` (`isPublishedOnline: true`), `articles` (`PUBLISHED`), `pages` (`PUBLISHED`).
+- **`GET /api/v1/public/redirects`**
+  - Trả về danh sách `{ fromPath, toPath, statusCode }` của `WebRedirect` đang `isActive: true`.
+
+---
+
+### 3.2 Customer Authentication & Account (`/api/v1/public/customers/*`)
+
+> Sử dụng **Customer JWT** riêng (tách biệt hoàn toàn với Staff JWT, không có quyền truy cập `/api/v1/cms/*` hay POS).
+
+- **`POST /api/v1/public/customers/request-otp`** *(Rate-limit)*
+  - Body: `{ "identifier": "khach@example.com", "channel"?: "EMAIL | SMS" }` (MVP mặc định `EMAIL`).
+  - Tạo `CustomerOtp` (lưu mã OTP 6 số đã hash, `expiresAt = now + 5 phút`, `attempts = 0`), gửi email.
+  - Response `200`: `{ "message": "Mã OTP đã được gửi", "expiresInSeconds": 300 }`.
+- **`POST /api/v1/public/customers/verify-otp`** *(Rate-limit)*
+  - Body: `{ "identifier": "khach@example.com", "otp": "123456" }`.
+  - Tối đa 5 lần nhập sai (`400 OTP_INVALID`, `400 OTP_EXPIRED`, `429 OTP_TOO_MANY_ATTEMPTS`).
+  - Tìm hoặc tạo mới `Customer`, đánh dấu `isVerified = true`, trả Customer JWT + thông tin customer.
+  - Response `200`: `{ "data": { "token": "...", "customer": { "_id", "name", "phone", "email", "addresses" } } }`.
+- **`GET /api/v1/public/customers/me`** *(Customer JWT)*
+  - Lấy thông tin cá nhân & sổ địa chỉ `addresses[]`.
+- **`PUT /api/v1/public/customers/me`** *(Customer JWT)*
+  - Cập nhật `name`, `phone`, `email`, `addresses[]` (mỗi địa chỉ có `{ id, label, fullName, phone, province, district, ward, addressLine, isDefault }`).
+- **`GET /api/v1/public/customers/me/orders`** *(Customer JWT)*
+  - Query: `page`, `limit`, `fulfillmentStatus?`. Trả danh sách đơn hàng `channel: 'ONLINE'` của khách hàng này.
+
+---
+
+### 3.3 CMS Web Management (`/api/v1/cms/web/*`)
+
+> **Middleware chung:** `authenticateStaff` + `requireRoles(['ADMIN', 'CEO'])`.
+> Mọi role khác (`SALES`, `ACCOUNTANT`, `HR`, `MARKETING`) nhận `403 FORBIDDEN`.
+> Các endpoint có ghi chú **`[ADMIN ONLY]`** sẽ chặn `CEO` với `403 FORBIDDEN`.
+
+| Nhóm | Endpoint | Quyền | Mô tả |
+|---|---|---|---|
+| **Dashboard CEO** | `GET /api/v1/cms/web/dashboard` | `ADMIN`, `CEO` | KPI doanh thu Online (tháng/30 ngày), số đơn QR vs COD, tỷ lệ thành công QR, top 10 SP bán chạy Online, review chờ duyệt, 5 audit log mới nhất. Query: `?from=&to=`. |
+| **Audit Log** | `GET /api/v1/cms/web/audit-logs` | `ADMIN`, `CEO` | Nhật ký thao tác trên tab Quản lý Website. Query: `actorId`, `entityType`, `action`, `page`, `limit`. |
+| **Revalidate** | `POST /api/v1/cms/web/revalidate` | `ADMIN`, `CEO` | Kích hoạt On-demand Revalidate sang `shop/api/revalidate`. Body: `{ "paths"?: ["/"], "tags"?: ["home", "menu"] }`. |
+| **Upload** | `POST /api/v1/cms/web/upload` | `ADMIN`, `CEO` | Upload ảnh banner/sản phẩm/bài viết (dataUrl/dataBase64). Tự động đẩy lên Cloudinary CDN theo cấu hình `WebSiteSetting` (hoặc `server/.env`), fallback local `/uploads/web/`. Trả về `{ "data": { "url": "https://res.cloudinary.com/...", "publicId", "provider": "cloudinary", "size", "mimeType" } }`. |
+| **Cloudinary Test** | `POST /api/v1/cms/web/cloudinary/test-connection` | **`ADMIN ONLY`** | Kiểm tra kết nối tài khoản Cloudinary (gửi `{ cloudName, apiKey, apiSecret, folder }` hoặc dùng key đã lưu). Trả về `{ "data": { "connected": true, "cloudName", "message" } }`. |
+| **Banners** | `GET /api/v1/cms/web/banners` | `ADMIN`, `CEO` | Danh sách banner/slider. |
+| | `POST /api/v1/cms/web/banners` | `ADMIN`, `CEO` | Tạo banner (bắt buộc `desktopImageUrl` & `mobileImageUrl`, `position`, `startDate`, `endDate`, `status`, `sortOrder`). |
+| | `PATCH /api/v1/cms/web/banners/:id` | `ADMIN`, `CEO` | Cập nhật / bật tắt / duyệt xuất bản banner. |
+| | `DELETE /api/v1/cms/web/banners/:id` | `ADMIN`, `CEO` | Xóa banner. |
+| **Home Sections** | `GET /api/v1/cms/web/home-sections` | `ADMIN`, `CEO` | Danh sách các khối trang chủ theo `sortOrder`. |
+| | `POST /api/v1/cms/web/home-sections` | `ADMIN`, `CEO` | Tạo khối trang chủ mới. |
+| | `PUT /api/v1/cms/web/home-sections/reorder` | `ADMIN`, `CEO` | Lưu thứ tự kéo thả `[{ id, sortOrder, isActive }]`. |
+| | `PATCH /api/v1/cms/web/home-sections/:id` | `ADMIN`, `CEO` | Cập nhật cấu hình khối trang chủ. |
+| | `DELETE /api/v1/cms/web/home-sections/:id` | `ADMIN`, `CEO` | Xóa khối trang chủ. |
+| **Menus** | `GET /api/v1/cms/web/menus` | `ADMIN`, `CEO` | Lấy cây Mega Menu đầy đủ. |
+| | `POST /api/v1/cms/web/menus` | `ADMIN`, `CEO` | Thêm mục menu (`label`, `url`, `parentId`, `icon`, `badge`, `sortOrder`, `isActive`). |
+| | `PUT /api/v1/cms/web/menus/reorder` | `ADMIN`, `CEO` | Cập nhật thứ tự / cấu trúc cha-con hàng loạt. |
+| | `PATCH /api/v1/cms/web/menus/:id` | `ADMIN`, `CEO` | Sửa mục menu. |
+| | `DELETE /api/v1/cms/web/menus/:id` | `ADMIN`, `CEO` | Xóa mục menu (và mục con nếu có). |
+| **Categories Web** | `GET /api/v1/cms/web/categories` | `ADMIN`, `CEO` | Danh sách Category kèm thông tin web (`slug`, `imageUrl`, `isPublishedOnline`, `sortOrder`, `seo`). |
+| | `PATCH /api/v1/cms/web/categories/:id` | `ADMIN`, `CEO` | Cập nhật thông tin web & SEO cho Category (gợi ý tạo 301 Redirect nếu đổi `slug`). |
+| **Brands Web** | `GET /api/v1/cms/web/brands` | `ADMIN`, `CEO` | Danh sách Brand kèm thông tin web (`slug`, `logoUrl`, `isPublishedOnline`, `sortOrder`, `seo`). |
+| | `PATCH /api/v1/cms/web/brands/:id` | `ADMIN`, `CEO` | Cập nhật thông tin web & SEO cho Brand. |
+| **Products Web** | `GET /api/v1/cms/web/products` | `ADMIN`, `CEO` | Danh sách sản phẩm kèm `stockFloor1`, `isPublishedOnline`, `isFeatured`, `slug`, `seo`. |
+| | `PATCH /api/v1/cms/web/products/:id/web` | `ADMIN`, `CEO` | Cập nhật thông tin web của SP: `slug`, `isPublishedOnline`, `isFeatured`, `images[]`, `variantImages` (`{ variantKey, imageUrl }`), `shortDescription`, `descriptionHtml`, `specs[]`, `seo`. (Nếu đổi `slug` -> tuỳ chọn `createRedirect: true`). |
+| **Articles & Cats** | `GET /api/v1/cms/web/article-categories` | `ADMIN`, `CEO` | CRUD chuyên mục bài viết (`GET`, `POST`, `PATCH /:id`, `DELETE /:id`). |
+| | `GET /api/v1/cms/web/articles` | `ADMIN`, `CEO` | Danh sách bài viết (lọc `status`: `DRAFT | PENDING_REVIEW | PUBLISHED`). |
+| | `POST /api/v1/cms/web/articles` | `ADMIN`, `CEO` | Tạo bài viết (`status: 'DRAFT' | 'PENDING_REVIEW' | 'PUBLISHED'`). |
+| | `PATCH /api/v1/cms/web/articles/:id` | `ADMIN`, `CEO` | Sửa nội dung hoặc duyệt/xuất bản (`status: 'PUBLISHED'`). |
+| | `DELETE /api/v1/cms/web/articles/:id` | `ADMIN`, `CEO` | Xóa bài viết. |
+| **Static Pages** | `GET /api/v1/cms/web/pages` | `ADMIN`, `CEO` | CRUD trang tĩnh (`GET`, `POST`, `PATCH /:id`, `DELETE /:id`). |
+| **Promotions Online** | `GET /api/v1/cms/web/promotions` | `ADMIN`, `CEO` | Danh sách khuyến mãi áp dụng Online (`applyChannels` chứa `'ONLINE'`, Coupon, Tier Pricing, Flash Sale, Quà tặng). |
+| | `POST /api/v1/cms/web/promotions` | `ADMIN`, `CEO` | Tạo khuyến mãi Online mới. |
+| | `PATCH /api/v1/cms/web/promotions/:id` | `ADMIN`, `CEO` | Sửa / tạm dừng / kích hoạt khuyến mãi Online. |
+| **Reviews** | `GET /api/v1/cms/web/reviews` | `ADMIN`, `CEO` | Danh sách đánh giá (lọc `status`: `PENDING | APPROVED | REJECTED`). |
+| | `PATCH /api/v1/cms/web/reviews/:id/moderate` | `ADMIN`, `CEO` | Duyệt hoặc từ chối đánh giá: `{ "status": "APPROVED | REJECTED", "adminReply"?: "..." }`. Tự động cập nhật `ratingAvg` & `ratingCount` trên `Product`. |
+| **301 Redirects** | `GET /api/v1/cms/web/redirects` | `ADMIN`, `CEO` | Xem danh sách 301/302 Redirect. |
+| | `POST /api/v1/cms/web/redirects` | **`ADMIN ONLY`** | Tạo Redirect mới (`CEO` -> `403 FORBIDDEN`). |
+| | `PATCH /api/v1/cms/web/redirects/:id` | **`ADMIN ONLY`** | Sửa / bật tắt Redirect (`CEO` -> `403 FORBIDDEN`). |
+| | `DELETE /api/v1/cms/web/redirects/:id` | **`ADMIN ONLY`** | Xóa Redirect (`CEO` -> `403 FORBIDDEN`). |
+| **Site Settings** | `GET /api/v1/cms/web/settings` | `ADMIN`, `CEO` | Lấy cấu hình site (che/mask các key nhạy cảm nếu role là `CEO`). |
+| | `PUT /api/v1/cms/web/settings` | `ADMIN`, `CEO` | Cập nhật thông tin hiển thị (logo, hotline, showroom, USP, footer, phí ship). **Nếu payload chứa trường kỹ thuật (`payosClientId`, `payosApiKey`, `payosChecksumKey`, `cloudinaryCloudName`, `cloudinaryApiKey`, `cloudinaryApiSecret`, `cloudinaryFolder`, `webhookSecret`, `onlineStockMode`, `ga4Id`, `gtmId`, `revalidateSecret`) và role là `CEO` -> chặn `403 TECHNICAL_SETTINGS_ADMIN_ONLY`.** |
+| **Online Orders** | `GET /api/v1/cms/web/orders` | `ADMIN`, `CEO` | Danh sách đơn hàng `channel: 'ONLINE'` (lọc `paymentStatus`, `fulfillmentStatus`, `paymentGateway`, `q`, `from`, `to`). |
+| | `PATCH /api/v1/cms/web/orders/:id/fulfillment` | `ADMIN`, `CEO` | Cập nhật trạng thái giao hàng (`CONFIRMED`, `PACKING`, `SHIPPING`, `DELIVERED`, `CANCELLED`), `trackingCode`. Nếu hủy đơn đã trừ kho -> hoàn kho atomic + ghi `StockMovement`. |

@@ -3,6 +3,7 @@ process.env.TZ = process.env.TZ || 'Asia/Ho_Chi_Minh';
 
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
 import { getDbMode } from './config/db';
 import { attachUserContext, errorHandler } from './middleware/auth';
 import { securityHeaders, createRateLimiter } from './middleware/security';
@@ -23,6 +24,8 @@ import { leaveRequestsRouter } from './routes/leaveRequests';
 import { shiftsRouter } from './routes/shifts';
 import { holidaysRouter } from './routes/holidays';
 import { servicesRouter } from './routes/services';
+import { publicStorefrontRouter } from './routes/publicStorefront';
+import { cmsWebRouter } from './routes/cmsWeb';
 
 export function createApp() {
   const app = express();
@@ -81,7 +84,8 @@ export function createApp() {
     if (
       p.startsWith('/api/v1/imports') ||
       p === '/api/v1/staff/parse-import-file' ||
-      p.startsWith('/api/v1/products')
+      p.startsWith('/api/v1/products') ||
+      p.startsWith('/api/v1/cms/web/upload')
     ) {
       heavyBodyJson(req, res, next);
       return;
@@ -104,7 +108,13 @@ export function createApp() {
 
   app.use('/api/v1/auth/login', authRateLimiter);
   app.use('/api/v1/auth/change-password', authRateLimiter);
+  app.use('/api/v1/public/customers/request-otp', authRateLimiter);
+  app.use('/api/v1/public/customers/verify-otp', authRateLimiter);
+  app.use('/api/v1/public/orders', authRateLimiter);
+  app.use('/api/v1/public/reviews', authRateLimiter);
+  app.use('/api/v1/public/contact', authRateLimiter);
   app.use('/api/v1', apiRateLimiter);
+  app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads')));
   app.use(attachUserContext);
 
   // Root & Health check (hỗ trợ Render default health check tại / và /api/v1/health)
@@ -157,6 +167,8 @@ export function createApp() {
   app.use('/api/v1', shiftsRouter);
   app.use('/api/v1', holidaysRouter);
   app.use('/api/v1', servicesRouter);
+  app.use('/api/v1/public', publicStorefrontRouter);
+  app.use('/api/v1/cms/web', cmsWebRouter);
 
   // 404 Not Found
   app.use((req, res) => {

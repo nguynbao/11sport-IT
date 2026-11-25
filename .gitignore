@@ -40,6 +40,8 @@ pids/
 
 # Local Database & Backups
 data/
+!shop/src/data/
+!shop/src/data/**
 backups/
 *.dump
 *.archive

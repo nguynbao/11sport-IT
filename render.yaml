@@ -20,8 +20,30 @@ services:
         value: https://11sport-it.vercel.app
       - key: CMS_URL
         value: https://11sport-it-m1ei.vercel.app
+      - key: SHOP_URL
+        value: https://11sport-shop.onrender.com
       - key: CORS_ORIGINS
-        value: https://11sport-it.vercel.app,https://11sport-it-m1ei.vercel.app,http://localhost:3000,http://localhost:3001
+        value: https://11sport-it.vercel.app,https://11sport-it-m1ei.vercel.app,https://11sport-shop.onrender.com,http://localhost:3000,http://localhost:3001,http://localhost:3002
+      - key: REVALIDATE_SECRET
+        sync: false
+      - key: PAYOS_CLIENT_ID
+        sync: false
+      - key: PAYOS_API_KEY
+        sync: false
+      - key: PAYOS_CHECKSUM_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: CLOUDINARY_FOLDER
+        value: 11sport-web
       - key: MONGODB_URI
         sync: false
       - key: GEMINI_API_KEY
@@ -34,3 +56,24 @@ services:
         value: 4800
       - key: KEEP_ALIVE_INTERVAL_MIN
         value: 8
+
+  - type: web
+    name: 11sport-shop
+    runtime: node
+    rootDir: shop
+    # Khuyến nghị dùng plan starter trở lên cho Production để tránh sleep (SEO/Googlebot)
+    plan: free
+    buildCommand: npm install --include=dev && npm run build
+    startCommand: npm run start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3002
+      - key: NEXT_PUBLIC_API_URL
+        value: https://one1sport-it.onrender.com/api/v1
+      - key: NEXT_PUBLIC_SITE_URL
+        value: https://11sport-shop.onrender.com
+      - key: REVALIDATE_SECRET
+        sync: false

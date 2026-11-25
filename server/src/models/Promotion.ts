@@ -3,6 +3,13 @@ import mongoose, { Schema, Document } from 'mongoose';
 export type PromotionStatus = 'ACTIVE' | 'PAUSED';
 export type PromotionConditionType = 'BUY_PRODUCTS' | 'BUY_CATEGORY' | 'ALL_PRODUCTS';
 export type PromotionDiscountType = 'NONE' | 'PERCENT' | 'AMOUNT';
+export type PromotionChannel = 'POS' | 'ONLINE';
+
+export interface IPromotionTierPricing {
+  minQty: number;
+  discountType: 'PERCENT' | 'AMOUNT';
+  discountValue: number;
+}
 
 export interface IPromotionConditionProduct {
   productId: string;
@@ -52,6 +59,14 @@ export interface IPromotion extends Document {
   itemDiscountValue: number;
   billDiscountType: PromotionDiscountType;
   billDiscountValue: number;
+  /** v6.0: Kênh áp dụng, Coupon & Tier Pricing / Flash Sale */
+  applyChannels?: PromotionChannel[];
+  isCouponRequired?: boolean;
+  couponCode?: string;
+  usageLimit?: number;
+  usedCount?: number;
+  tierPricing?: IPromotionTierPricing[];
+  isFlashSale?: boolean;
   createdBy: string;
   createdByName: string;
   createdAt: Date;
@@ -124,10 +139,34 @@ const PromotionSchema = new Schema<IPromotion>(
       default: 'NONE',
     },
     billDiscountValue: { type: Number, default: 0, min: 0 },
+    applyChannels: {
+      type: [String],
+      enum: ['POS', 'ONLINE'],
+      default: ['POS'],
+    },
+    isCouponRequired: { type: Boolean, default: false },
+    couponCode: { type: String, trim: true, uppercase: true },
+    usageLimit: { type: Number, min: 0 },
+    usedCount: { type: Number, default: 0, min: 0 },
+    tierPricing: {
+      type: [
+        {
+          minQty: { type: Number, required: true, min: 1 },
+          discountType: { type: String, enum: ['PERCENT', 'AMOUNT'], required: true },
+          discountValue: { type: Number, required: true, min: 0 },
+        },
+      ],
+      default: [],
+      _id: false,
+    },
+    isFlashSale: { type: Boolean, default: false },
     createdBy: { type: String, default: '' },
     createdByName: { type: String, default: '' },
   },
   { timestamps: true }
 );
+
+PromotionSchema.index({ couponCode: 1 }, { unique: true, sparse: true });
+PromotionSchema.index({ applyChannels: 1, status: 1, isFlashSale: 1 });
 
 export const PromotionModel = mongoose.model<IPromotion>('Promotion', PromotionSchema);

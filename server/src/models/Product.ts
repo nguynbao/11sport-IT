@@ -21,9 +21,31 @@ export interface IProductVariant {
   /** v5.0: Mã con cũ trước chuẩn hoá (tra cứu/quét tem cũ) */
   legacyVariantCode?: string;
   legacyVariantCodes?: string[];
+  /** v6.0: Ảnh riêng của biến thể (swatch màu trên storefront) */
+  imageUrl?: string;
   stockFloor1: number;
   stockFloor2: number;
   stock: number;
+}
+
+export interface IProductImage {
+  url: string;
+  alt?: string;
+  isPrimary?: boolean;
+  sortOrder?: number;
+}
+
+export interface IProductSpec {
+  label: string;
+  value: string;
+}
+
+export interface ISeoMeta {
+  title?: string;
+  description?: string;
+  canonical?: string;
+  ogImage?: string;
+  noIndex?: boolean;
 }
 
 export interface IProduct extends Document {
@@ -64,6 +86,18 @@ export interface IProduct extends Document {
   packSize?: number;
   /** Ghi chú sản phẩm */
   note?: string;
+  /** v6.0: Thông tin hiển thị Storefront & SEO */
+  slug?: string;
+  isPublishedOnline?: boolean;
+  isFeatured?: boolean;
+  compareAtPrice?: number;
+  images?: IProductImage[];
+  shortDescription?: string;
+  descriptionHtml?: string;
+  specs?: IProductSpec[];
+  seo?: ISeoMeta;
+  ratingAvg?: number;
+  ratingCount?: number;
   status: 'ACTIVE' | 'INACTIVE';
   createdAt: Date;
   updatedAt: Date;
@@ -82,9 +116,39 @@ const ProductVariantSchema = new Schema<IProductVariant>(
     costPrice: { type: Number, min: 0 },
     legacyVariantCode: { type: String, trim: true, uppercase: true },
     legacyVariantCodes: { type: [String], default: undefined },
+    imageUrl: { type: String, default: '', trim: true },
     stockFloor1: { type: Number, default: 0, min: 0 },
     stockFloor2: { type: Number, default: 0, min: 0 },
     stock: { type: Number, default: 0, min: 0 },
+  },
+  { _id: false }
+);
+
+const ProductImageSchema = new Schema<IProductImage>(
+  {
+    url: { type: String, required: true, trim: true },
+    alt: { type: String, default: '', trim: true },
+    isPrimary: { type: Boolean, default: false },
+    sortOrder: { type: Number, default: 0 },
+  },
+  { _id: false }
+);
+
+const ProductSpecSchema = new Schema<IProductSpec>(
+  {
+    label: { type: String, required: true, trim: true },
+    value: { type: String, required: true, trim: true },
+  },
+  { _id: false }
+);
+
+const SeoMetaSchema = new Schema<ISeoMeta>(
+  {
+    title: { type: String, default: '', trim: true },
+    description: { type: String, default: '', trim: true },
+    canonical: { type: String, default: '', trim: true },
+    ogImage: { type: String, default: '', trim: true },
+    noIndex: { type: Boolean, default: false },
   },
   { _id: false }
 );
@@ -116,6 +180,17 @@ const ProductSchema = new Schema<IProduct>(
     parentSetProductId: { type: String, default: '', trim: true },
     packSize: { type: Number, default: 0, min: 0 },
     note: { type: String, default: '', trim: true },
+    slug: { type: String, trim: true, lowercase: true },
+    isPublishedOnline: { type: Boolean, default: false },
+    isFeatured: { type: Boolean, default: false },
+    compareAtPrice: { type: Number, min: 0 },
+    images: { type: [ProductImageSchema], default: [] },
+    shortDescription: { type: String, default: '', trim: true },
+    descriptionHtml: { type: String, default: '' },
+    specs: { type: [ProductSpecSchema], default: [] },
+    seo: { type: SeoMetaSchema, default: undefined },
+    ratingAvg: { type: Number, default: 0, min: 0, max: 5 },
+    ratingCount: { type: Number, default: 0, min: 0 },
     status: { type: String, enum: ['ACTIVE', 'INACTIVE'], default: 'ACTIVE' },
   },
   { timestamps: true }
@@ -126,5 +201,9 @@ ProductSchema.index(
   { categoryId: 1, brandId: 1, versionCode: 1 },
   { unique: true, partialFilterExpression: { versionCode: { $type: 'string' } } }
 );
+ProductSchema.index({ slug: 1 }, { unique: true, sparse: true });
+ProductSchema.index({ isPublishedOnline: 1, status: 1, isFeatured: -1, createdAt: -1 });
+ProductSchema.index({ isPublishedOnline: 1, categoryId: 1, status: 1 });
+ProductSchema.index({ isPublishedOnline: 1, brandId: 1, status: 1 });
 
 export const ProductModel = mongoose.model<IProduct>('Product', ProductSchema);

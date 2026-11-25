@@ -886,6 +886,7 @@ async function createNewSchemeProduct(req: any) {
       size: v.size,
       variantCode: v.variantCode,
       barcode: v.variantCode,
+      imageUrl: v.imageUrl ? String(v.imageUrl).trim() : '',
       ...(vSelling !== undefined ? { sellingPrice: vSelling } : {}),
       ...(vCost !== undefined ? { costPrice: vCost } : {}),
       stockFloor1: f1,
@@ -930,6 +931,16 @@ async function createNewSchemeProduct(req: any) {
   const name = String(body.name || '').trim() || `${brand.isSystem ? '' : brand.name + ' '}${version.versionName}`.trim();
   const unit = body.unit ? String(body.unit).trim() : 'Cái';
 
+  const rawImages = Array.isArray(body.images) ? body.images : [];
+  const images = rawImages
+    .map((img: any, idx: number) => ({
+      url: typeof img === 'string' ? img.trim() : String(img?.url || '').trim(),
+      alt: typeof img === 'object' && img?.alt ? String(img.alt).trim() : name,
+      isPrimary: typeof img === 'object' && typeof img?.isPrimary === 'boolean' ? img.isPrimary : idx === 0,
+      sortOrder: typeof img === 'object' && typeof img?.sortOrder === 'number' ? img.sortOrder : idx,
+    }))
+    .filter((img: any) => Boolean(img.url));
+
   let created: any;
   try {
     created = await productRepo.create({
@@ -956,6 +967,8 @@ async function createNewSchemeProduct(req: any) {
       parentSetProductId: cleanParentSetId,
       packSize: cleanParentSetId ? Math.max(0, Math.round(Number(body.packSize) || 0)) : 0,
       note: body.note !== undefined ? String(body.note).trim() : '',
+      isPublishedOnline: images.length > 0 || Boolean(body.isPublishedOnline),
+      images,
       status: 'ACTIVE',
     } as any);
   } catch (e: any) {
@@ -1316,6 +1329,11 @@ async function buildPatchedVariantsForProduct(
         ? sanitizeColorHexes(rv.colorHexes)
         : prev?.colorHexes || [];
 
+    const imageUrl =
+      rv?.imageUrl !== undefined
+        ? String(rv.imageUrl || '').trim()
+        : String(prev?.imageUrl || '').trim();
+
     return {
       color: nextColor,
       size: nextSize,
@@ -1323,6 +1341,7 @@ async function buildPatchedVariantsForProduct(
       _hasExplicitCC: hasExplicitCC,
       _prevVariantCode: prev?.variantCode || '',
       colorHexes,
+      imageUrl: imageUrl || '',
       ...(vSelling !== undefined ? { sellingPrice: vSelling } : {}),
       ...(vCost !== undefined ? { costPrice: vCost } : {}),
       ...(prev?.legacyVariantCode ? { legacyVariantCode: prev.legacyVariantCode } : {}),
@@ -1868,6 +1887,23 @@ productsInventoryRouter.patch('/products/:id', async (req, res, next) => {
           ? updateData.parentSetProductId
           : String(product.parentSetProductId || '').trim();
       updateData.packSize = effectiveParentId ? parsedPack : 0;
+    }
+
+    if (Array.isArray(req.body?.images)) {
+      updateData.images = req.body.images
+        .map((img: any, idx: number) => ({
+          url: typeof img === 'string' ? img.trim() : String(img?.url || '').trim(),
+          alt: typeof img === 'object' && img?.alt ? String(img.alt).trim() : (updateData.name || product.name),
+          isPrimary: typeof img === 'object' && typeof img?.isPrimary === 'boolean' ? img.isPrimary : idx === 0,
+          sortOrder: typeof img === 'object' && typeof img?.sortOrder === 'number' ? img.sortOrder : idx,
+        }))
+        .filter((img: any) => Boolean(img.url));
+      if (updateData.images.length > 0 && product.isPublishedOnline === undefined && req.body?.isPublishedOnline === undefined) {
+        updateData.isPublishedOnline = true;
+      }
+    }
+    if (req.body?.isPublishedOnline !== undefined) {
+      updateData.isPublishedOnline = Boolean(req.body.isPublishedOnline);
     }
 
     const updated = await productRepo.updateById(id, updateData);

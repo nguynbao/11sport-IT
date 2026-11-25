@@ -33,7 +33,9 @@ services:
       PORT: 4000
       MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017/11sport}
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
-      CORS_ORIGINS: ${CORS_ORIGINS:-https://11sport-it.vercel.app,https://11sport-it-m1ei.vercel.app,http://localhost:3000,http://localhost:3001}
+      SHOP_URL: ${SHOP_URL:-http://localhost:3002}
+      REVALIDATE_SECRET: ${REVALIDATE_SECRET:-change-me-in-production}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://11sport-it.vercel.app,https://11sport-it-m1ei.vercel.app,http://localhost:3000,http://localhost:3001,http://localhost:3002}
     volumes:
       - ./server:/app
       - server_node_modules:/app/node_modules
@@ -104,12 +106,42 @@ services:
     networks:
       - 11sport-net
 
+  shop:
+    image: node:20-alpine
+    container_name: 11sport-shop
+    working_dir: /app
+    restart: unless-stopped
+    ports:
+      - "${SHOP_PORT:-3002}:3002"
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3002
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000/api/v1}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3002}
+      REVALIDATE_SECRET: ${REVALIDATE_SECRET:-change-me-in-production}
+    volumes:
+      - ./shop:/app
+      - shop_node_modules:/app/node_modules
+    command: sh -c "npm install && npm run dev -- -p 3002"
+    depends_on:
+      server:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3002 || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - 11sport-net
+
 volumes:
   mongodb_data:
   mongodb_config:
   server_node_modules:
   web_node_modules:
   cms_node_modules:
+  shop_node_modules:
 
 networks:
   11sport-net:

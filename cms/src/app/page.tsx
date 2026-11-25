@@ -28,6 +28,7 @@ import MyAttendanceCalendar from "@/components/MyAttendanceCalendar";
 import HeaderAttendanceBar from "@/components/HeaderAttendanceBar";
 import InvoicePdfModal from "@/components/InvoicePdfModal";
 import AttendanceIpConfigModule from "@/components/AttendanceIpConfigModule";
+import WebManagementModule from "@/components/WebManagementModule";
 import {
   Boxes,
   TrendingUp,
@@ -54,6 +55,7 @@ import {
   ClipboardCheck,
   Rocket,
   Wrench,
+  Globe,
 } from "lucide-react";
 
 type CmsModuleType =
@@ -70,6 +72,7 @@ type CmsModuleType =
   | "HRM"
   | "MY_ATTENDANCE"
   | "PUSH_PRODUCTS"
+  | "WEB_MANAGEMENT"
   | "PROFILE";
 
 const CMS_MENU_ITEMS: {
@@ -151,6 +154,13 @@ const CMS_MENU_ITEMS: {
       desc: "Theo dõi khách mua trước trả sau, cảnh báo quá hạn & tất toán",
       icon: Wallet,
     },
+    {
+      id: "WEB_MANAGEMENT",
+      label: "Quản lý Website",
+      desc: "Điều phối giao diện, banner, Mega Menu, bài viết SEO & đơn hàng Online",
+      icon: Globe,
+      accent: "teal",
+    },
   ];
 
 const ROLE_ALLOWED_MODULES: Record<string, CmsModuleType[]> = {
@@ -167,6 +177,7 @@ const ROLE_ALLOWED_MODULES: Record<string, CmsModuleType[]> = {
     "ACTIVITY",
     "PROMOTIONS",
     "DEBTS",
+    "WEB_MANAGEMENT",
     "PROFILE",
   ],
   ADMIN: [
@@ -181,6 +192,7 @@ const ROLE_ALLOWED_MODULES: Record<string, CmsModuleType[]> = {
     "ACTIVITY",
     "PROMOTIONS",
     "DEBTS",
+    "WEB_MANAGEMENT",
     "PROFILE",
   ],
   ACCOUNTANT: [
@@ -846,6 +858,10 @@ export default function CmsDashboardPage() {
                     ids: ["REVENUE", "PUSH_PRODUCTS", "PROMOTIONS"] as CmsModuleType[],
                   },
                   {
+                    title: "Website & Bán hàng Online",
+                    ids: ["WEB_MANAGEMENT"] as CmsModuleType[],
+                  },
+                  {
                     title: "Kho & Sản phẩm",
                     ids: ["INVENTORY", "CATEGORIES"] as CmsModuleType[],
                   },
@@ -949,6 +965,9 @@ export default function CmsDashboardPage() {
           <DebtManagementModule onOpenInvoice={(ord) => setInvoiceOrder(ord)} />
         )}
         {effectiveModule === "PUSH_PRODUCTS" && <MarketingPushProductsModule />}
+        {effectiveModule === "WEB_MANAGEMENT" && (
+          <WebManagementModule currentUser={adminUser} />
+        )}
         {effectiveModule === "PROFILE" && (
           <AccountProfileModule
             currentUser={adminUser}

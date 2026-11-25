@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600">
+  <rect width="600" height="600" fill="#FFFFFF"/>
+  <rect x="210" y="95" width="180" height="250" rx="46" fill="#224E40" stroke="#9CDEB5" stroke-width="10"/>
+       <rect x="280" y="345" width="40" height="125" rx="10" fill="#ECE6E0" stroke="#D9D3CE" stroke-width="3"/>
+  <text x="300" y="515" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-weight="800" font-size="22" fill="#164A38">FACOLOS PRO</text>
+  <text x="300" y="548" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-weight="500" font-size="15" fill="#164A38" fill-opacity="0.82">Elite Series · 16mm</text>
+</svg>
