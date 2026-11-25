@@ -1,4 +1,7 @@
 import { parseLocalDateBound, extractClientOrderDebtMeta } from "./utils";
+import { computeFallbackServiceStats } from "./fallbackServiceStats";
+import { computeFallbackDebtStats } from "./fallbackDebtStats";
+import { computeFallbackProductAndCategoryStats } from "./fallbackProductCategoryStats";
 import type {
   RevenueDashboardData,
   ProductSalesAnalysisRow,
@@ -10,6 +13,7 @@ import type {
   ReturnReceipt,
   Product,
 } from "@/shared/types";
+
 
 export function buildClientFallbackDashboard(
   orders: Order[],
@@ -645,159 +649,41 @@ export function buildClientFallbackDashboard(
   const productNetRevenue = productOrderRevenue - returnGoodsTotal + exchangeGoodsTotal;
   const productOrdersCount = filteredOrders.length;
 
-  let serviceOrdersCount = 0;
-  let activeServiceOrdersCount = 0;
-  let completedServiceOrdersCount = 0;
-  let cancelledServiceOrdersCount = 0;
-  let totalServiceUnits = 0;
-  let serviceGrossRevenue = 0;
-  let serviceDiscountTotal = 0;
-  let serviceRevenue = 0;
-  let serviceCardFeeCollected = 0;
-  let serviceCashCollected = 0;
-  let servicePendingCollection = 0;
-  const serviceTypeStatsMap = new Map<
-    string,
-    {
-      serviceCode: string;
-      serviceName: string;
-      unit: string;
-      quantity: number;
-      revenue: number;
-      orderIds: Set<string>;
-    }
-  >();
 
-  if (!isProductOnlyCatFilter) {
-    for (const so of serviceOrders) {
-      const matchesServicePayFilter =
-        !filterPayMethod || (filterPayMethod !== "DEBT" && so.paymentMethod === filterPayMethod);
-      if (!matchesServicePayFilter) continue;
-
-      const soItems = so.items || [];
-      const calcRaw = soItems.reduce(
-        (s, it) => s + Math.max(0, Number(it.unitPrice) || 0) * Math.max(1, Number(it.quantity) || 1),
-        0
-      );
-      const calcItemDisc = soItems.reduce(
-        (s, it) => s + Math.max(0, Number(it.discountAmount) || 0),
-        0
-      );
-      const soGross = Math.max(0, Number(so.rawSubtotal ?? calcRaw) || 0);
-      const soItemDisc = Math.max(0, Number(so.itemDiscountTotal ?? calcItemDisc) || 0);
-      const soSub = Math.max(0, Number(so.subtotal ?? Math.max(0, soGross - soItemDisc)) || 0);
-      const soBillDisc = Math.min(soSub, Math.max(0, Math.round(Number(so.billDiscountAmount) || 0)));
-      const soAfterBill = Math.max(0, soSub - soBillDisc);
-      const soCardFee = Math.max(0, Math.round(Number(so.cardFee) || 0));
-      const soTotal = Math.max(0, Number(so.totalAmount) || soAfterBill + soCardFee);
-      const soNetAmt = soAfterBill > 0 ? soAfterBill : Math.max(0, soTotal - soCardFee);
-      const soUnits = soItems.reduce((s, it) => s + Math.max(0, Number(it.quantity) || 0), 0);
-
-      if (inRange(so.createdAt)) {
-        if (so.status === "CANCELLED") {
-          cancelledServiceOrdersCount += 1;
-        } else {
-          serviceOrdersCount += 1;
-          if (so.status === "RETURNED") {
-            completedServiceOrdersCount += 1;
-          } else {
-            activeServiceOrdersCount += 1;
-            servicePendingCollection += soNetAmt;
-          }
-          totalServiceUnits += soUnits;
-          serviceGrossRevenue += soGross;
-          serviceDiscountTotal += soItemDisc + soBillDisc;
-          serviceRevenue += soAfterBill;
-          serviceCardFeeCollected += soCardFee;
-
-          grossRevenue += soGross;
-          itemDiscountTotal += soItemDisc;
-          billDiscountTotal += soBillDisc;
-          orderRevenue += soAfterBill;
-          cardFeeCollected += soCardFee;
-
-          const day = ensureDay(so.createdAt);
-          const hr = ensureHour(so.createdAt);
-          day.orders += 1;
-          day.grossRevenue += soGross;
-          day.discountTotal += soItemDisc + soBillDisc;
-          day.orderRevenue += soAfterBill;
-          day.netRevenue += soAfterBill;
-          day.grossProfit = day.netRevenue - day.cogs;
-
-          hr.orders += 1;
-          hr.grossRevenue += soGross;
-          hr.discountTotal += soItemDisc + soBillDisc;
-          hr.orderRevenue += soAfterBill;
-          hr.netRevenue += soAfterBill;
-          hr.grossProfit = hr.netRevenue - hr.cogs;
-
-          const pm = paymentStats[so.paymentMethod] || paymentStats.CASH;
-          pm.orders += 1;
-          pm.revenue += soAfterBill;
-
-          let allocatedSvcBillDisc = 0;
-          for (let idx = 0; idx < soItems.length; idx++) {
-            const it = soItems[idx];
-            const lineTotal = Math.max(0, Number(it.lineTotal) || 0);
-            let bShare = 0;
-            if (soSub > 0 && soBillDisc > 0 && lineTotal > 0) {
-              if (idx === soItems.length - 1) {
-                bShare = Math.max(0, soBillDisc - allocatedSvcBillDisc);
-              } else {
-                bShare = Math.min(
-                  Math.max(0, soBillDisc - allocatedSvcBillDisc),
-                  Math.round((lineTotal / soSub) * soBillDisc)
-                );
-              }
-              allocatedSvcBillDisc += bShare;
-            }
-            const netSvcLineRev = Math.max(0, lineTotal - bShare);
-            const codeKey = String(it.serviceCode || it.serviceName || "SERVICE").toUpperCase();
-            if (!serviceTypeStatsMap.has(codeKey)) {
-              serviceTypeStatsMap.set(codeKey, {
-                serviceCode: codeKey,
-                serviceName: it.serviceName || codeKey,
-                unit: it.unit || "Cây",
-                quantity: 0,
-                revenue: 0,
-                orderIds: new Set<string>(),
-              });
-            }
-            const stRow = serviceTypeStatsMap.get(codeKey)!;
-            stRow.quantity += Math.max(0, Number(it.quantity) || 0);
-            stRow.revenue += netSvcLineRev;
-            stRow.orderIds.add(String(so._id));
-          }
-        }
-      }
-
-      if (so.status === "RETURNED") {
-        const completedAt = so.returnedAt || so.updatedAt || so.createdAt;
-        if (inRange(completedAt)) {
-          const collectedAmt = soNetAmt;
-          serviceCashCollected += collectedAmt;
-          const cDay = ensureDay(completedAt);
-          const cHr = ensureHour(completedAt);
-          cDay.cashCollected += collectedAmt;
-          cHr.cashCollected += collectedAmt;
-        }
-      }
-    }
-  }
-
-  const byServiceType = Array.from(serviceTypeStatsMap.values())
-    .map((st) => ({
-      serviceCode: st.serviceCode,
-      serviceName: st.serviceName,
-      unit: st.unit,
-      orderCount: st.orderIds.size,
-      quantity: st.quantity,
-      revenue: st.revenue,
-      sharePercent:
-        serviceRevenue > 0 ? Math.round((st.revenue / serviceRevenue) * 1000) / 10 : 0,
-    }))
-    .sort((a, b) => b.revenue - a.revenue);
+  const {
+    serviceOrdersCount,
+    activeServiceOrdersCount,
+    completedServiceOrdersCount,
+    cancelledServiceOrdersCount,
+    totalServiceUnits,
+    serviceGrossRevenue,
+    serviceDiscountTotal,
+    serviceRevenue,
+    serviceCardFeeCollected,
+    serviceCashCollected,
+    servicePendingCollection,
+    byServiceType,
+    grossRevenueDelta,
+    orderRevenueDelta,
+    cardFeeCollectedDelta,
+    cashAtPurchaseDelta,
+    itemDiscountDelta,
+    billDiscountDelta,
+  } = computeFallbackServiceStats({
+    serviceOrders,
+    isProductOnlyCatFilter,
+    filterPayMethod,
+    inRange,
+    ensureDay,
+    ensureHour,
+    paymentStats,
+  });
+  grossRevenue += grossRevenueDelta;
+  orderRevenue += orderRevenueDelta;
+  cardFeeCollected += cardFeeCollectedDelta;
+  cashAtPurchase += cashAtPurchaseDelta;
+  itemDiscountTotal += itemDiscountDelta;
+  billDiscountTotal += billDiscountDelta;
 
   const netRevenue = orderRevenue - returnGoodsTotal + exchangeGoodsTotal;
   const cardFeeNet = cardFeeCollected - cardFeeRefunded;
@@ -813,374 +699,62 @@ export function buildClientFallbackDashboard(
   ).length;
   const avgOrderValue = totalOrders > 0 ? Math.round(orderRevenue / totalOrders) : 0;
 
-  let totalOutstandingDebt = 0;
-  let totalInitialDebt = 0;
-  let totalCollectedDebt = 0;
-  let totalReducedByReturn = 0;
-  let activeDebtOrdersCount = 0;
-  let settledDebtOrdersCount = 0;
-  let overdueDebtAmount = 0;
-  let overdueOrdersCount = 0;
-  let debtCollectedInPeriod = 0;
 
-  const debtOrders: DebtOrderRow[] = [];
-  const customerDebtMap = new Map<string, DebtCustomerSummary>();
-
-  for (const o of orders) {
-    if (o.status === "DRAFT") continue;
-    const dm = extractClientOrderDebtMeta(o, refundedCashByOrderId.get(String(o._id)) || 0);
-
-    const matchesPaymentFilter =
-      !filterPayMethod ||
-      (filterPayMethod === "DEBT"
-        ? dm.initialDebtAmount > 0 || dm.debtAmount > 0
-        : o.paymentMethod === filterPayMethod);
-
-    if (!filterCatId && matchesPaymentFilter) {
-      for (const dp of dm.debtPayments) {
-        if (inRange(dp.paidAt)) {
-          const dpAmt = Math.max(0, Number(dp.amount) || 0);
-          debtCollectedInPeriod += dpAmt;
-          const dDay = ensureDay(dp.paidAt);
-          const dHr = ensureHour(dp.paidAt);
-          dDay.cashCollected += dpAmt;
-          dHr.cashCollected += dpAmt;
-        }
-      }
-    }
-
-    if (dm.initialDebtAmount <= 0 && dm.debtAmount <= 0) continue;
-
-    totalOutstandingDebt += dm.debtAmount;
-    totalInitialDebt += dm.initialDebtAmount;
-    totalCollectedDebt += dm.collectedDebtAmount;
-    totalReducedByReturn += dm.reducedByReturnAmount;
-
-    if (dm.debtAmount > 0) {
-      activeDebtOrdersCount += 1;
-      if (dm.isOverdue) {
-        overdueOrdersCount += 1;
-        overdueDebtAmount += dm.debtAmount;
-      }
-    } else {
-      settledDebtOrdersCount += 1;
-    }
-
-    const row: DebtOrderRow = {
-      _id: String(o._id),
-      orderCode: o.orderCode,
-      customerName: o.customerName || "Khách hàng",
-      customerPhone: o.customerPhone || "",
-      paymentMethod: o.paymentMethod,
-      paymentMethodDetail: o.paymentMethodDetail || "",
-      totalAmount: dm.totalAmount,
-      paidAmount: dm.paidAmount,
-      debtAmount: dm.debtAmount,
-      initialDebtAmount: dm.initialDebtAmount,
-      collectedDebtAmount: dm.collectedDebtAmount,
-      reducedByReturnAmount: dm.reducedByReturnAmount,
-      debtStatus: dm.debtStatus,
-      debtDueDate: dm.debtDueDate,
-      isOverdue: dm.isOverdue,
-      daysOverdue: dm.daysOverdue,
-      debtPayments: dm.debtPayments,
-      debtAdjustments: dm.debtAdjustments,
-      createdByName: o.createdByName || "",
-      confirmedByName: o.confirmedByName || o.createdByName || "",
-      createdAt: o.createdAt ? new Date(o.createdAt).toISOString() : new Date().toISOString(),
-      items: o.items || [],
-      note: o.note || "",
-    };
-    debtOrders.push(row);
-
-    const normPhone = String(o.customerPhone || "").replace(/\D/g, "") || o.customerPhone || o.customerName || String(o._id);
-    if (!customerDebtMap.has(normPhone)) {
-      customerDebtMap.set(normPhone, {
-        phone: o.customerPhone || normPhone,
-        customerName: o.customerName || "Khách hàng",
-        totalOrders: 0,
-        activeDebtOrders: 0,
-        settledDebtOrders: 0,
-        overdueOrders: 0,
-        totalOrderAmount: 0,
-        totalInitialDebt: 0,
-        totalPaidAmount: 0,
-        totalCollectedDebt: 0,
-        totalReducedByReturn: 0,
-        totalDebtAmount: 0,
-        nearestDueDate: null,
-        lastOrderAt: null,
-        orders: [],
-        paymentHistory: [],
-        debtAdjustments: [],
-      });
-    }
-    const cGroup = customerDebtMap.get(normPhone)!;
-    if (o.customerName) cGroup.customerName = o.customerName;
-    cGroup.totalOrders += 1;
-    if (dm.debtAmount > 0) {
-      cGroup.activeDebtOrders += 1;
-      if (dm.isOverdue) cGroup.overdueOrders += 1;
-      if (dm.debtDueDate) {
-        if (
-          !cGroup.nearestDueDate ||
-          new Date(dm.debtDueDate).getTime() < new Date(cGroup.nearestDueDate).getTime()
-        ) {
-          cGroup.nearestDueDate = dm.debtDueDate;
-        }
-      }
-    } else {
-      cGroup.settledDebtOrders += 1;
-    }
-    cGroup.totalOrderAmount += dm.totalAmount;
-    cGroup.totalInitialDebt += dm.initialDebtAmount;
-    cGroup.totalPaidAmount += dm.paidAmount;
-    cGroup.totalCollectedDebt = (cGroup.totalCollectedDebt || 0) + dm.collectedDebtAmount;
-    cGroup.totalReducedByReturn = (cGroup.totalReducedByReturn || 0) + dm.reducedByReturnAmount;
-    cGroup.totalDebtAmount += dm.debtAmount;
-    if (
-      !cGroup.lastOrderAt ||
-      new Date(row.createdAt).getTime() > new Date(cGroup.lastOrderAt).getTime()
-    ) {
-      cGroup.lastOrderAt = row.createdAt;
-    }
-    cGroup.orders.push(row);
-
-    for (const dp of dm.debtPayments) {
-      cGroup.paymentHistory.push({
-        _id: String(dp._id || `${o._id}_${dp.paidAt}`),
-        orderId: String(o._id),
-        orderCode: o.orderCode,
-        amount: Number(dp.amount) || 0,
-        method: dp.method || "BANKING",
-        note: dp.note || "",
-        paidAt: dp.paidAt ? new Date(dp.paidAt).toISOString() : row.createdAt,
-        collectedByName: dp.collectedByName || "Quản Trị Viên",
-      });
-    }
-
-    for (const da of dm.debtAdjustments) {
-      cGroup.debtAdjustments = cGroup.debtAdjustments || [];
-      cGroup.debtAdjustments.push({
-        _id: String(da._id || `${o._id}_${da.returnCode}`),
-        orderId: String(o._id),
-        orderCode: o.orderCode,
-        returnCode: da.returnCode || "",
-        amount: Number(da.amount) || 0,
-        debtBefore: Number(da.debtBefore) || 0,
-        debtAfter: Number(da.debtAfter) || 0,
-        at: da.at ? new Date(da.at).toISOString() : row.createdAt,
-        byName: da.byName || "Nhân viên bán hàng",
-      });
-    }
-  }
-
-  const cashCollected = isProductOnlyCatFilter
-    ? null
-    : cashAtPurchase + serviceCashCollected + debtCollectedInPeriod - cashRefunded;
-  const collectedRevenue = cashCollected ?? Math.max(0, netRevenue - outstandingDebtInPeriod);
-
-  const debtCustomers = Array.from(customerDebtMap.values())
-    .map((c) => ({
-      ...c,
-      paymentHistory: c.paymentHistory.sort(
-        (a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime()
-      ),
-    }))
-    .sort((a, b) => {
-      if (b.totalDebtAmount !== a.totalDebtAmount) return b.totalDebtAmount - a.totalDebtAmount;
-      return b.totalInitialDebt - a.totalInitialDebt;
-    });
-
-  const activeDebtCustomersCount = debtCustomers.filter((c) => c.totalDebtAmount > 0).length;
+  const {
+    totalOutstandingDebt,
+    totalInitialDebt,
+    totalCollectedDebt,
+    totalReducedByReturn,
+    activeDebtOrdersCount,
+    settledDebtOrdersCount,
+    overdueDebtAmount,
+    overdueOrdersCount,
+    debtCollectedInPeriod,
+    debtOrders,
+    debtCustomers,
+    activeDebtCustomersCount,
+    cashCollected,
+    collectedRevenue,
+  } = computeFallbackDebtStats({
+    orders,
+    refundedCashByOrderId,
+    filterPayMethod,
+    filterCatId,
+    inRange,
+    ensureDay,
+    ensureHour,
+    isProductOnlyCatFilter,
+    cashAtPurchase,
+    serviceCashCollected,
+    cashRefunded,
+    netRevenue,
+    outstandingDebtInPeriod,
+  });
 
   const byPaymentMethod = Object.values(paymentStats).map((pm) => ({
     ...pm,
     sharePercent: orderRevenue > 0 ? Math.round((pm.revenue / orderRevenue) * 1000) / 10 : 0,
   }));
 
-  const catStatsMap = new Map<
-    string,
-    {
-      categoryId: string;
-      categoryName: string;
-      unitsSold: number;
-      revenue: number;
-      netRevenue: number;
-      cogs: number;
-      grossProfit: number;
-    }
-  >();
-
-  prodStats.forEach((st) => {
-    const netUnits = Math.max(0, st.soldQty + st.exchangeOutQty - st.returnedQty);
-    if (netUnits === 0 && st.revenue === 0 && st.cogs === 0) return;
-    const key = st.categoryId || "UNCATEGORIZED";
-    if (!catStatsMap.has(key)) {
-      catStatsMap.set(key, {
-        categoryId: key,
-        categoryName: st.categoryName,
-        unitsSold: 0,
-        revenue: 0,
-        netRevenue: 0,
-        cogs: 0,
-        grossProfit: 0,
-      });
-    }
-    const cRow = catStatsMap.get(key)!;
-    cRow.unitsSold += netUnits;
-    cRow.revenue += st.revenue;
-    cRow.netRevenue += st.revenue;
-    cRow.cogs += st.cogs;
-    cRow.grossProfit = cRow.revenue - cRow.cogs;
+  const {
+    byCategory,
+    topSellingProducts,
+    needsPushProducts,
+  } = computeFallbackProductAndCategoryStats({
+    products,
+    prodById,
+    prodByCode,
+    prodStats,
+    catMap,
+    getProdCatId,
+    isProductOnlyCatFilter,
+    serviceRevenue,
+    totalServiceUnits,
+    fromDate,
+    toDate,
+    dailyMap,
+    ensureDay,
   });
-
-  if (!isProductOnlyCatFilter && (serviceRevenue > 0 || totalServiceUnits > 0)) {
-    catStatsMap.set("SERVICE", {
-      categoryId: "SERVICE",
-      categoryName: "Dịch vụ (Căng vợt / Sửa chữa)",
-      unitsSold: totalServiceUnits,
-      revenue: serviceRevenue,
-      netRevenue: serviceRevenue,
-      cogs: 0,
-      grossProfit: serviceRevenue,
-    });
-  }
-
-  const totalCatRev = Array.from(catStatsMap.values()).reduce((s, c) => s + c.revenue, 0);
-  const byCategory = Array.from(catStatsMap.values())
-    .map((c) => ({
-      ...c,
-      sharePercent: totalCatRev > 0 ? Math.round((c.revenue / totalCatRev) * 1000) / 10 : 0,
-    }))
-    .sort((a, b) => b.revenue - a.revenue);
-
-  const allProductRows: ProductSalesAnalysisRow[] = Array.from(prodStats.values()).map((st) => {
-    const prod = prodById.get(st.productId) || prodByCode.get(st.productCode);
-    const stockFloor1 = Number(prod?.stockFloor1 ?? prod?.stock ?? 0);
-    const stockFloor2 = Number(prod?.stockFloor2 ?? 0);
-    const stock = stockFloor1 + stockFloor2;
-    const sellingPrice = Number(prod?.sellingPrice ?? 0);
-    const costPrice = Number(prod?.costPrice ?? 0);
-    const netSoldQty = Math.max(0, st.soldQty + st.exchangeOutQty - st.returnedQty);
-    const profit = st.revenue - st.cogs;
-    const marginPercent = st.revenue > 0 ? Math.round((profit / st.revenue) * 1000) / 10 : 0;
-    const inventoryCostValue = stock * costPrice;
-    const inventorySellValue = stock * sellingPrice;
-
-    let restockAlert = "";
-    if (netSoldQty > 0) {
-      if (stock === 0) {
-        restockAlert = "Hết hàng toàn kho — Cần nhập thêm gấp";
-      } else if (stockFloor1 === 0 && stockFloor2 > 0) {
-        restockAlert = `Hết hàng Tầng 1 (Tầng 2 còn ${stockFloor2}) — Cần xuất chuyển tầng xuống Tầng 1`;
-      } else if (stockFloor1 <= 2 && stockFloor2 > 0) {
-        restockAlert = `Tầng 1 sắp hết (còn ${stockFloor1}, Tầng 2 có ${stockFloor2}) — Nên dời thêm từ Tầng 2`;
-      } else if (stock <= 3) {
-        restockAlert = `Sắp hết hàng (Tổng tồn còn ${stock}) — Nên nhập bổ sung`;
-      }
-    }
-
-    const pushReasons: string[] = [];
-    let suggestedAction = "";
-    let pushScore = 0;
-
-    if (stock > 0) {
-      if (sellingPrice <= 0) {
-        pushReasons.push("Chưa đặt giá niêm yết (0 VND)");
-        suggestedAction = "Cập nhật giá niêm yết trong Quản lý Kho để POS có thể bán";
-        pushScore += 100;
-      }
-      if (stockFloor1 === 0 && stockFloor2 > 0) {
-        pushReasons.push(`Tầng 1 = 0, đang nằm ở Kho Tầng 2 (${stockFloor2} ${st.unit})`);
-        if (!suggestedAction) {
-          suggestedAction = "Lập Phiếu Xuất Kho Chuyển Tầng đưa hàng từ Tầng 2 xuống Tầng 1 trưng bày";
-        }
-        pushScore += 80 + Math.min(40, stockFloor2 * 2);
-      }
-      if (netSoldQty === 0) {
-        pushReasons.push(`Chưa bán được chiếc nào trong kỳ (Tồn: ${stock} ${st.unit})`);
-        if (!suggestedAction) {
-          suggestedAction =
-            stock >= 10
-              ? "Tồn kho cao chưa phát sinh đơn — Nên chạy khuyến mãi giảm giá % hoặc tặng kèm combo"
-              : "Trưng bày nổi bật tại quầy Tầng 1 hoặc tư vấn ưu tiên cho khách";
-        }
-        pushScore += 50 + Math.min(50, stock * 3);
-      } else if (stock >= netSoldQty * 5 && stock >= 6) {
-        pushReasons.push(
-          `Tồn kho cao gấp ${Math.round(stock / netSoldQty)} lần lượng bán (Tồn ${stock} / Bán ${netSoldQty})`
-        );
-        if (!suggestedAction) {
-          suggestedAction = "Tốc độ tiêu thụ chậm so với lượng tồn — Nên giảm giá nhẹ hoặc đẩy mạnh giới thiệu";
-        }
-        pushScore += 30 + Math.min(40, stock * 2);
-      }
-
-      if (inventoryCostValue >= 3000000 && netSoldQty <= 1) {
-        pushReasons.push(
-          `Đọng vốn lớn (${Math.round((inventoryCostValue / 1000000) * 10) / 10}tr VND)`
-        );
-        pushScore += 35;
-      }
-    }
-
-    return {
-      productId: st.productId,
-      productCode: st.productCode,
-      productName: st.productName,
-      categoryId: st.categoryId,
-      categoryName: st.categoryName,
-      unit: st.unit,
-      soldQty: st.soldQty,
-      giftQty: st.giftQty,
-      returnedQty: st.returnedQty,
-      netSoldQty,
-      revenue: st.revenue,
-      cogs: st.cogs,
-      grossProfit: profit,
-      marginPercent,
-      orderCount: st.orderIds.size,
-      lastSoldAt: st.lastSoldAt,
-      sellingPrice,
-      costPrice,
-      stockFloor1,
-      stockFloor2,
-      stock,
-      inventoryCostValue,
-      inventorySellValue,
-      restockAlert,
-      pushScore,
-      pushReasons,
-      suggestedAction,
-    };
-  });
-
-  const topSellingProducts = allProductRows
-    .filter((r) => r.netSoldQty > 0 || r.soldQty > 0)
-    .sort((a, b) => {
-      if (b.netSoldQty !== a.netSoldQty) return b.netSoldQty - a.netSoldQty;
-      return b.revenue - a.revenue;
-    });
-
-  const needsPushProducts = allProductRows
-    .filter((r) => r.stock > 0 && r.pushScore > 0)
-    .sort((a, b) => {
-      if (b.pushScore !== a.pushScore) return b.pushScore - a.pushScore;
-      if (b.inventoryCostValue !== a.inventoryCostValue)
-        return b.inventoryCostValue - a.inventoryCostValue;
-      return b.stock - a.stock;
-    });
-
-  if (!fromDate && !toDate) {
-    const latestKey = Array.from(dailyMap.keys()).sort().pop();
-    const anchor = latestKey ? parseLocalDateBound(latestKey, false) || new Date() : new Date();
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(anchor);
-      d.setDate(anchor.getDate() - i);
-      ensureDay(d);
-    }
-  }
 
   const dailyTrend = Array.from(dailyMap.values()).sort((a, b) =>
     a.date.localeCompare(b.date)
