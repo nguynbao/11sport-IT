@@ -54,9 +54,9 @@
     "semantic_hash": ""
   },
   "cms/tailwind.config.js": {
-    "mtime": 1795618152.6803193,
-    "seen": 1795623501.892681,
-    "ast_hash": "2c69f32f4112ccde9305dfaa541e0ae8",
+    "mtime": 1795633216.1068993,
+    "seen": 1795633321.302171,
+    "ast_hash": "9ac19d420ea2041f610660471c50ff0d",
     "semantic_hash": ""
   },
   "cms/tsconfig.json": {
