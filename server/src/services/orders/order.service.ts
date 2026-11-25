@@ -1,4 +1,3 @@
-import { ServiceRequest, ServiceResponse } from '../shared/types';
 import {
   attendanceRepo,
   customerRepo,
@@ -7,62 +6,41 @@ import {
   returnExchangeRepo,
   shiftAssignmentRepo,
   stockMovementRepo,
-} from '../repositories';
-import { ApiError } from '../shared/errors';
-import {
+} from "../../repositories";
+import type {
   DebtStatus,
   DiscountType,
-  IDebtPaymentRecord,
   IOrderItem,
   ISplitPaymentItem,
   OrderShiftCode,
   PaymentMethod,
   SplitMethod,
-} from '../models/Order';
+} from "../../models/Order";
+import { ApiError } from "../../shared/errors";
+import { ServiceContext } from "../../shared/http";
+import { created, ok, ServiceResult } from "../../shared/result";
+import { filterAndRankBySearch, normalizePhoneDigits } from "../../shared/search";
+import { buildVariantKey, resolveVariantPricing } from "../../shared/productCode";
+import { withOrderLock } from "../../shared/orderLock";
 import {
   deductStockForSale,
+  executeUnpackSetToRetail,
+  formatProductWithVariant,
   getFloorStocks,
   getVariantFloorStocks,
-  formatProductWithVariant,
-} from './inventory';
-import { executeUnpackSetToRetail } from './inventory';
-import { buildVariantKey, resolveVariantPricing } from '../shared/productCode';
-import { filterAndRankBySearch, normalizePhoneDigits } from '../shared/search';
-import { withOrderLock } from '../shared/orderLock';
-
-
-const ORDER_MANAGER_ROLES = new Set(['CEO', 'ADMIN', 'ACCOUNTANT', 'HR']);
-
-function pad2(n: number): string {
-  return String(n).padStart(2, '0');
-}
-
-export function toLocalDateStr(d = new Date()): string {
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-}
-
-export function inferShiftCodeFromTime(d = new Date()): 'SHIFT_1' | 'SHIFT_2' {
-  const totalMinutes = d.getHours() * 60 + d.getMinutes();
-  return totalMinutes >= 17 * 60 + 30 ? 'SHIFT_2' : 'SHIFT_1';
-}
-
-export function isSalesOnlyUser(
-  user?: { role?: string; department?: string } | null
-): boolean {
-  if (!user) return false;
-  const role = String(user.role || '').toUpperCase();
-  if (ORDER_MANAGER_ROLES.has(role)) return false;
-  return role === 'SALES' || String(user.department || '').toUpperCase() === 'SALES';
-}
-
-export function getShiftDisplayLabel(
-  shiftCode: 'SHIFT_1' | 'SHIFT_2' | 'BOTH' | 'OFF'
-): string {
-  if (shiftCode === 'SHIFT_1') return 'Ca 1 (08:30 - 17:30)';
-  if (shiftCode === 'SHIFT_2') return 'Ca 2 (12:00 - 21:00)';
-  if (shiftCode === 'BOTH') return 'Ca 1 + Ca 2 (08:30 - 21:00)';
-  return 'Nghỉ (OFF)';
-}
+} from "../inventory";
+import {
+  computeShiftOrdersSummary,
+  getOrderEffectiveShiftAndDate,
+  getSalesAllowedBillDates,
+  getShiftDisplayLabel,
+  inferShiftCodeFromTime,
+  isOrderInSalesCurrentShift,
+  isSalesOnlyUser,
+  parseDueDateInput,
+  SALES_MAX_BILL_CHECK_DAYS,
+  toLocalDateStr,
+} from "./orderShift.rules";
 
 export async function resolveStaffShiftForDate(
   user: { userId?: string; role?: string; department?: string } | undefined | null,
@@ -135,154 +113,6 @@ export async function resolveOrderShiftOnWrite(
   return { shiftDate, shiftCode: inferShiftCodeFromTime(now) };
 }
 
-export function getOrderEffectiveShiftAndDate(order: any): {
-  shiftDate: string;
-  shiftCode: OrderShiftCode;
-} {
-  const refDate =
-    order?.status !== 'DRAFT' && order?.confirmedAt
-      ? new Date(order.confirmedAt)
-      : new Date(order?.createdAt || Date.now());
-  const validDate = !isNaN(refDate.getTime()) ? refDate : new Date();
-
-  const shiftDate =
-    typeof order?.shiftDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(order.shiftDate.trim())
-      ? order.shiftDate.trim()
-      : toLocalDateStr(validDate);
-
-  const rawShift = String(order?.shiftCode || '').trim().toUpperCase();
-  const shiftCode: OrderShiftCode =
-    rawShift === 'SHIFT_1' || rawShift === 'SHIFT_2' || rawShift === 'BOTH'
-      ? (rawShift as OrderShiftCode)
-      : inferShiftCodeFromTime(validDate);
-
-  return { shiftDate, shiftCode };
-}
-
-export const SALES_MAX_BILL_CHECK_DAYS = 3;
-
-export function getSalesAllowedBillDates(
-  ref: Date | string = new Date(),
-  maxDays: number = SALES_MAX_BILL_CHECK_DAYS
-): string[] {
-  let baseDate: Date;
-  if (typeof ref === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(ref.trim())) {
-    const [y, m, d] = ref.trim().split('-').map(Number);
-    baseDate = new Date(y, m - 1, d, 12, 0, 0, 0);
-  } else if (ref instanceof Date && !isNaN(ref.getTime())) {
-    baseDate = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate(), 12, 0, 0, 0);
-  } else {
-    const now = new Date();
-    baseDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0, 0);
-  }
-
-  const dates: string[] = [];
-  const count = Math.max(1, Math.min(30, Math.floor(maxDays)));
-  for (let i = 0; i < count; i++) {
-    const dt = new Date(baseDate);
-    dt.setDate(baseDate.getDate() - i);
-    dates.push(toLocalDateStr(dt));
-  }
-  return dates;
-}
-
-/**
- * Kiểm tra đơn hàng có thuộc phạm vi ngày cho phép kiểm tra Bill của nhân viên Sales hay không:
- * 1. Bỏ ràng buộc theo ca: Sales được xem toàn bộ bill trong ngày của mọi ca (SHIFT_1, SHIFT_2, BOTH), kể cả khi lịch OFF.
- * 2. Giới hạn tối đa 3 ngày gần nhất (Hôm nay, Hôm qua, Hôm kia). Đơn cũ quá 3 ngày không được xem.
- */
-export function isOrderInSalesCurrentShift(
-  order: any,
-  _staffShift?: 'SHIFT_1' | 'SHIFT_2' | 'BOTH' | 'OFF',
-  todayStr: string = toLocalDateStr(new Date()),
-  maxDays: number = SALES_MAX_BILL_CHECK_DAYS
-): boolean {
-  const { shiftDate } = getOrderEffectiveShiftAndDate(order);
-  const allowedDates = getSalesAllowedBillDates(todayStr, maxDays);
-  return allowedDates.includes(shiftDate);
-}
-
-function computeShiftOrdersSummary(orders: any[]) {
-  let paidOrdersCount = 0;
-  let draftOrdersCount = 0;
-  let totalRevenue = 0;
-  let cashTotal = 0;
-  let bankingTotal = 0;
-  let cardTotal = 0;
-  let debtTotal = 0;
-
-  for (const o of orders) {
-    if (o.status === 'DRAFT') {
-      draftOrdersCount += 1;
-      continue;
-    }
-    paidOrdersCount += 1;
-    const totalAmt = Math.max(0, Number(o.totalAmount) || 0);
-    const debtAmt = Math.max(0, Number(o.debtAmount) || 0);
-    const paidAmt =
-      o.paidAmount !== undefined && o.paidAmount !== null
-        ? Math.max(0, Number(o.paidAmount) || 0)
-        : Math.max(0, totalAmt - debtAmt);
-
-    totalRevenue += totalAmt;
-    debtTotal += debtAmt;
-
-    if (o.paymentMethod === 'CASH') {
-      cashTotal += paidAmt;
-    } else if (o.paymentMethod === 'BANKING') {
-      bankingTotal += paidAmt;
-    } else if (o.paymentMethod === 'CARD') {
-      cardTotal += paidAmt;
-    } else if (o.paymentMethod === 'OTHER') {
-      const splits = Array.isArray(o.splitPayments) ? o.splitPayments : [];
-      if (splits.length > 0) {
-        for (const sp of splits) {
-          const spAmt = Math.max(0, Number(sp?.amount) || 0);
-          if (sp?.method === 'CASH') cashTotal += spAmt;
-          else if (sp?.method === 'BANKING') bankingTotal += spAmt;
-          else if (sp?.method === 'CARD') cardTotal += spAmt;
-        }
-      } else {
-        cashTotal += paidAmt;
-      }
-    }
-  }
-
-  return {
-    paidOrdersCount,
-    draftOrdersCount,
-    totalRevenue,
-    cashTotal,
-    bankingTotal,
-    cardTotal,
-    debtTotal,
-  };
-}
-
-function parseDueDateInput(raw: unknown): Date | null {
-  if (!raw) return null;
-  const str = String(raw).trim();
-  if (!str) return null;
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(str);
-  if (m) {
-    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 23, 59, 59, 999);
-  }
-  const dt = new Date(str);
-  if (isNaN(dt.getTime())) return null;
-  return dt;
-}
-
-// GET /api/v1/customers/lookup?phone=...
-
-// GET /api/v1/customers
-
-// GET /api/v1/orders/current-shift — Tra cứu Bill bán hàng theo ngày hoặc toàn bộ lịch sử (không giới hạn ca hay số ngày)
-
-// GET /api/v1/orders
-
-// GET /api/v1/orders/by-code/:code
-
-// GET /api/v1/orders/:id
 
 async function generateNextOrderCode(): Promise<string> {
   const all = await orderRepo.find({});
@@ -794,104 +624,15 @@ async function applyPaidOrderSideEffects(
 
 // DELETE /api/v1/orders/:id
 
-export async function getCustomersLookup(req: ServiceRequest): Promise<ServiceResponse> {
-  const rawPhone = String(req.query.phone || '').replace(/\s+/g, '').trim();
-    const normPhone = normalizePhoneDigits(rawPhone);
-    if (!rawPhone) {
-      throw new ApiError(400, 'PHONE_REQUIRED', 'Vui lòng nhập số điện thoại để tra cứu', {
-        phone: 'Bắt buộc',
-      });
-    }
 
-    const allCustomers = await customerRepo.find({});
-    const customer =
-      (await customerRepo.findOne({ phone: rawPhone })) ||
-      (normPhone
-        ? allCustomers.find((c) => normalizePhoneDigits(c.phone) === normPhone) || null
-        : null);
-
-    const targetPhone = customer?.phone || normPhone || rawPhone;
-    const allOrders = await orderRepo.find({}, { createdAt: -1 });
-    const allCustomerOrders = allOrders.filter(
-      (o) =>
-        o.customerPhone === targetPhone ||
-        (normPhone && normalizePhoneDigits(o.customerPhone) === normPhone)
-    );
-    const allReturns = await returnExchangeRepo.find({}, { createdAt: -1 });
-    const allCustomerReturns = allReturns.filter(
-      (r) =>
-        r.customerPhone === targetPhone ||
-        (normPhone && normalizePhoneDigits(r.customerPhone) === normPhone)
-    );
-
-    const nowMs = Date.now();
-    let totalDebtAmount = 0;
-    let unpaidOrdersCount = 0;
-    let overdueOrdersCount = 0;
-
-    for (const o of allCustomerOrders) {
-      if (o.status === 'DRAFT') continue;
-      const debt = Math.max(0, Number(o.debtAmount) || 0);
-      if (debt > 0) {
-        totalDebtAmount += debt;
-        unpaidOrdersCount += 1;
-        if (o.debtDueDate && new Date(o.debtDueDate).getTime() < nowMs) {
-          overdueOrdersCount += 1;
-        }
-      }
-    }
-
-    // Tra cứu lịch sử khách hàng: trả về toàn bộ đơn hàng và phiếu trả/đổi (không giới hạn ca hay số ngày).
-    const orders = allCustomerOrders;
-    const returns = allCustomerReturns;
-
-    return { status: 200, payload: {
-      data: {
-        found: !!customer,
-        customer: customer || null,
-        orders,
-        returns,
-        debtSummary: {
-          totalDebtAmount,
-          unpaidOrdersCount,
-          overdueOrdersCount,
-        },
-      },
-      meta: {
-        orderCount: orders.length,
-        returnCount: returns.length,
-        totalDebtAmount,
-        unpaidOrdersCount,
-        overdueOrdersCount,
-      },
-    } };
-}
-
-export async function getCustomers(req: ServiceRequest): Promise<ServiceResponse> {
-  const { search } = req.query;
-    const allCustomers = await customerRepo.find({}, { lastOrderAt: -1 });
-
-    const filtered = search
-      ? filterAndRankBySearch(allCustomers, String(search), (c) => [
-          { text: c.phone, weight: 1.5 },
-          { text: c.name, weight: 1.3 },
-        ])
-      : allCustomers;
-
-    return { status: 200, payload: {
-      data: filtered,
-      meta: { total: filtered.length },
-    } };
-}
-
-export async function getOrdersCurrentShift(req: ServiceRequest): Promise<ServiceResponse> {
+export async function getCurrentShiftOrders(ctx: ServiceContext, query: any): Promise<ServiceResult> {
   const {
       search,
       status,
       paymentMethod,
       shiftCode: queryShiftCode,
       date: queryDate,
-    } = req.query;
+    } = query || {};
     const now = new Date();
     const todayStr = toLocalDateStr(now);
 
@@ -907,7 +648,7 @@ export async function getOrdersCurrentShift(req: ServiceRequest): Promise<Servic
       }
     }
 
-    const staffShift = await resolveStaffShiftForDate(req.user, todayStr, now);
+    const staffShift = await resolveStaffShiftForDate(ctx.user, todayStr, now);
     const allOrders = await orderRepo.find({}, { createdAt: -1 });
     const qShift = String(queryShiftCode || '').trim().toUpperCase();
 
@@ -978,9 +719,7 @@ export async function getOrdersCurrentShift(req: ServiceRequest): Promise<Servic
           ? getShiftDisplayLabel('SHIFT_2')
           : 'Cả ngày (Mọi ca)';
 
-    return { status: 200, payload: {
-      data: filtered,
-      meta: {
+    return ok(filtered, {
         total: filtered.length,
         date: !isAllDates ? rawDate : todayStr,
         dateFilter: !isAllDates ? rawDate : 'ALL',
@@ -989,11 +728,10 @@ export async function getOrdersCurrentShift(req: ServiceRequest): Promise<Servic
         shiftCode: effectiveShiftForMeta,
         shiftLabel: effectiveShiftLabel,
         summary,
-      },
-    } };
+      });
 }
 
-export async function getOrders(req: ServiceRequest): Promise<ServiceResponse> {
+export async function listOrders(ctx: ServiceContext, query: any): Promise<ServiceResult> {
   const {
       search,
       phone,
@@ -1002,7 +740,7 @@ export async function getOrders(req: ServiceRequest): Promise<ServiceResponse> {
       debtStatus,
       date: queryDate,
       shiftCode: queryShiftCode,
-    } = req.query;
+    } = query || {};
     const allOrders = await orderRepo.find({}, { createdAt: -1 });
     const normFilterPhone = phone ? normalizePhoneDigits(String(phone)) : '';
     const now = new Date();
@@ -1069,34 +807,28 @@ export async function getOrders(req: ServiceRequest): Promise<ServiceResponse> {
         ])
       : baseFiltered;
 
-    return { status: 200, payload: {
-      data: filtered,
-      meta: {
+    return ok(filtered, {
         total: filtered.length,
-      },
-    } };
+      });
 }
 
-export async function getOrdersByCode_ByCode(req: ServiceRequest): Promise<ServiceResponse> {
-  const code = String(req.params.code || '').trim().toUpperCase();
-    const order = await orderRepo.findOne({ orderCode: code });
+export async function getOrderByCode(ctx: ServiceContext, code: string): Promise<ServiceResult> {
+  const cleanCode = String(code || '').trim().toUpperCase();
+    const order = await orderRepo.findOne({ orderCode: cleanCode });
     if (!order) {
       throw new ApiError(404, 'ORDER_NOT_FOUND', `Không tìm thấy đơn hàng có mã "${code}"`);
     }
 
     const returns = await returnExchangeRepo.find({ orderId: order._id }, { createdAt: -1 });
 
-    return { status: 200, payload: {
-      data: {
+    return ok({
         ...order,
         returns,
-      },
-      meta: {},
-    } };
+      }, {});
 }
 
-export async function getOrders_ById(req: ServiceRequest): Promise<ServiceResponse> {
-  const idOrCode = String(req.params.id || '').trim();
+export async function getOrderById(ctx: ServiceContext, id: string): Promise<ServiceResult> {
+  const idOrCode = String(id || '').trim();
     const order =
       (await orderRepo.findById(idOrCode)) ||
       (await orderRepo.findOne({ orderCode: idOrCode.toUpperCase() }));
@@ -1107,25 +839,22 @@ export async function getOrders_ById(req: ServiceRequest): Promise<ServiceRespon
 
     const returns = await returnExchangeRepo.find({ orderId: order._id }, { createdAt: -1 });
 
-    return { status: 200, payload: {
-      data: {
+    return ok({
         ...order,
         returns,
-      },
-      meta: {},
-    } };
+      }, {});
 }
 
-export async function postOrders(req: ServiceRequest): Promise<ServiceResponse> {
-  const rawStatus = String(req.body?.status || '').toUpperCase();
-    const isDraft = Boolean(req.body?.isDraft) || rawStatus === 'DRAFT';
+export async function createOrder(ctx: ServiceContext, body: any): Promise<ServiceResult> {
+  const rawStatus = String(body?.status || '').toUpperCase();
+    const isDraft = Boolean(body?.isDraft) || rawStatus === 'DRAFT';
 
-    const prepared = await prepareOrderData(req.body, isDraft);
+    const prepared = await prepareOrderData(body, isDraft);
     const orderCode = await generateNextOrderCode();
     const now = new Date();
     const { shiftDate, shiftCode } = await resolveOrderShiftOnWrite(
-      req.user,
-      req.body?.shiftCode,
+      ctx.user,
+      body?.shiftCode,
       now
     );
 
@@ -1159,10 +888,10 @@ export async function postOrders(req: ServiceRequest): Promise<ServiceResponse> 
       status: isDraft ? 'DRAFT' : 'PAID',
       shiftDate,
       shiftCode,
-      createdBy: req.user?.userId || 'SALES',
-      createdByName: req.user?.fullName || 'Nhân viên bán hàng',
-      confirmedBy: isDraft ? '' : req.user?.userId || 'SALES',
-      confirmedByName: isDraft ? '' : req.user?.fullName || 'Nhân viên bán hàng',
+      createdBy: ctx.user?.userId || 'SALES',
+      createdByName: ctx.user?.fullName || 'Nhân viên bán hàng',
+      confirmedBy: isDraft ? '' : ctx.user?.userId || 'SALES',
+      confirmedByName: isDraft ? '' : ctx.user?.fullName || 'Nhân viên bán hàng',
       confirmedAt: isDraft ? null : now,
     });
 
@@ -1171,7 +900,7 @@ export async function postOrders(req: ServiceRequest): Promise<ServiceResponse> 
         createdOrder._id,
         createdOrder.orderCode,
         prepared,
-        req.user
+        ctx.user
       );
       if (customer && !createdOrder.customerId) {
         await orderRepo.updateById(createdOrder._id, { customerId: customer._id });
@@ -1179,14 +908,11 @@ export async function postOrders(req: ServiceRequest): Promise<ServiceResponse> 
       }
     }
 
-    return { status: 201, payload: {
-      data: createdOrder,
-      meta: { isDraft, shiftDate, shiftCode },
-    } };
+    return created(createdOrder, { isDraft, shiftDate, shiftCode });
 }
 
-export async function putOrders_ById(req: ServiceRequest): Promise<ServiceResponse> {
-  const idOrCode = String(req.params.id || '').trim();
+export async function updateDraftOrder(ctx: ServiceContext, id: string, body: any): Promise<ServiceResult> {
+  const idOrCode = String(id || '').trim();
     const existingOrder =
       (await orderRepo.findById(idOrCode)) ||
       (await orderRepo.findOne({ orderCode: idOrCode.toUpperCase() }));
@@ -1205,8 +931,8 @@ export async function putOrders_ById(req: ServiceRequest): Promise<ServiceRespon
 
     const now = new Date();
     const todayStr = toLocalDateStr(now);
-    if (isSalesOnlyUser(req.user)) {
-      const staffShift = await resolveStaffShiftForDate(req.user, todayStr, now);
+    if (isSalesOnlyUser(ctx.user)) {
+      const staffShift = await resolveStaffShiftForDate(ctx.user, todayStr, now);
       if (!isOrderInSalesCurrentShift(existingOrder, staffShift, todayStr)) {
         throw new ApiError(
           403,
@@ -1216,23 +942,23 @@ export async function putOrders_ById(req: ServiceRequest): Promise<ServiceRespon
       }
     }
 
-    const rawStatus = String(req.body?.status || 'DRAFT').toUpperCase();
-    const isDraft = req.body?.isDraft !== undefined ? Boolean(req.body.isDraft) : rawStatus !== 'PAID';
+    const rawStatus = String(body?.status || 'DRAFT').toUpperCase();
+    const isDraft = body?.isDraft !== undefined ? Boolean(body.isDraft) : rawStatus !== 'PAID';
 
     const mergedBody = {
-      customerName: req.body?.customerName ?? existingOrder.customerName,
-      customerPhone: req.body?.customerPhone ?? existingOrder.customerPhone,
-      paymentMethod: req.body?.paymentMethod ?? existingOrder.paymentMethod,
-      paymentMethodDetail: req.body?.paymentMethodDetail ?? existingOrder.paymentMethodDetail,
-      splitPayments: req.body?.splitPayments ?? existingOrder.splitPayments,
-      debtAmount: req.body?.debtAmount ?? existingOrder.debtAmount,
-      debtDueDate: req.body?.debtDueDate ?? existingOrder.debtDueDate,
-      hasCardFee: req.body?.hasCardFee ?? existingOrder.hasCardFee,
-      cardFeePercent: req.body?.cardFeePercent ?? existingOrder.cardFeePercent,
-      billDiscountType: req.body?.billDiscountType ?? existingOrder.billDiscountType,
-      billDiscountValue: req.body?.billDiscountValue ?? existingOrder.billDiscountValue,
-      note: req.body?.note ?? existingOrder.note,
-      items: req.body?.items ?? existingOrder.items,
+      customerName: body?.customerName ?? existingOrder.customerName,
+      customerPhone: body?.customerPhone ?? existingOrder.customerPhone,
+      paymentMethod: body?.paymentMethod ?? existingOrder.paymentMethod,
+      paymentMethodDetail: body?.paymentMethodDetail ?? existingOrder.paymentMethodDetail,
+      splitPayments: body?.splitPayments ?? existingOrder.splitPayments,
+      debtAmount: body?.debtAmount ?? existingOrder.debtAmount,
+      debtDueDate: body?.debtDueDate ?? existingOrder.debtDueDate,
+      hasCardFee: body?.hasCardFee ?? existingOrder.hasCardFee,
+      cardFeePercent: body?.cardFeePercent ?? existingOrder.cardFeePercent,
+      billDiscountType: body?.billDiscountType ?? existingOrder.billDiscountType,
+      billDiscountValue: body?.billDiscountValue ?? existingOrder.billDiscountValue,
+      note: body?.note ?? existingOrder.note,
+      items: body?.items ?? existingOrder.items,
     };
 
     const prepared = await prepareOrderData(mergedBody, isDraft);
@@ -1243,13 +969,13 @@ export async function putOrders_ById(req: ServiceRequest): Promise<ServiceRespon
         existingOrder._id,
         existingOrder.orderCode,
         prepared,
-        req.user
+        ctx.user
       );
       if (customer) customerId = customer._id;
     }
 
     const resolvedShift = !isDraft
-      ? await resolveOrderShiftOnWrite(req.user, req.body?.shiftCode, now)
+      ? await resolveOrderShiftOnWrite(ctx.user, body?.shiftCode, now)
       : null;
 
     const updatedOrder = await orderRepo.updateById(existingOrder._id, {
@@ -1282,20 +1008,17 @@ export async function putOrders_ById(req: ServiceRequest): Promise<ServiceRespon
         : {
             shiftDate: resolvedShift?.shiftDate || existingOrder.shiftDate,
             shiftCode: resolvedShift?.shiftCode || existingOrder.shiftCode,
-            confirmedBy: req.user?.userId || 'SALES',
-            confirmedByName: req.user?.fullName || 'Nhân viên bán hàng',
+            confirmedBy: ctx.user?.userId || 'SALES',
+            confirmedByName: ctx.user?.fullName || 'Nhân viên bán hàng',
             confirmedAt: now,
           }),
     });
 
-    return { status: 200, payload: {
-      data: updatedOrder,
-      meta: { isDraft },
-    } };
+    return ok(updatedOrder, { isDraft });
 }
 
-export async function postOrders_ByIdConfirm(req: ServiceRequest): Promise<ServiceResponse> {
-  const idOrCode = String(req.params.id || '').trim();
+export async function confirmDraftOrder(ctx: ServiceContext, id: string, body: any): Promise<ServiceResult> {
+  const idOrCode = String(id || '').trim();
     const existingOrder =
       (await orderRepo.findById(idOrCode)) ||
       (await orderRepo.findOne({ orderCode: idOrCode.toUpperCase() }));
@@ -1314,8 +1037,8 @@ export async function postOrders_ByIdConfirm(req: ServiceRequest): Promise<Servi
 
     const now = new Date();
     const todayStr = toLocalDateStr(now);
-    if (isSalesOnlyUser(req.user)) {
-      const staffShift = await resolveStaffShiftForDate(req.user, todayStr, now);
+    if (isSalesOnlyUser(ctx.user)) {
+      const staffShift = await resolveStaffShiftForDate(ctx.user, todayStr, now);
       if (!isOrderInSalesCurrentShift(existingOrder, staffShift, todayStr)) {
         throw new ApiError(
           403,
@@ -1326,19 +1049,19 @@ export async function postOrders_ByIdConfirm(req: ServiceRequest): Promise<Servi
     }
 
     const mergedBody = {
-      customerName: req.body?.customerName ?? existingOrder.customerName,
-      customerPhone: req.body?.customerPhone ?? existingOrder.customerPhone,
-      paymentMethod: req.body?.paymentMethod ?? existingOrder.paymentMethod,
-      paymentMethodDetail: req.body?.paymentMethodDetail ?? existingOrder.paymentMethodDetail,
-      splitPayments: req.body?.splitPayments ?? existingOrder.splitPayments,
-      debtAmount: req.body?.debtAmount ?? existingOrder.debtAmount,
-      debtDueDate: req.body?.debtDueDate ?? existingOrder.debtDueDate,
-      hasCardFee: req.body?.hasCardFee ?? existingOrder.hasCardFee,
-      cardFeePercent: req.body?.cardFeePercent ?? existingOrder.cardFeePercent,
-      billDiscountType: req.body?.billDiscountType ?? existingOrder.billDiscountType,
-      billDiscountValue: req.body?.billDiscountValue ?? existingOrder.billDiscountValue,
-      note: req.body?.note ?? existingOrder.note,
-      items: req.body?.items ?? existingOrder.items,
+      customerName: body?.customerName ?? existingOrder.customerName,
+      customerPhone: body?.customerPhone ?? existingOrder.customerPhone,
+      paymentMethod: body?.paymentMethod ?? existingOrder.paymentMethod,
+      paymentMethodDetail: body?.paymentMethodDetail ?? existingOrder.paymentMethodDetail,
+      splitPayments: body?.splitPayments ?? existingOrder.splitPayments,
+      debtAmount: body?.debtAmount ?? existingOrder.debtAmount,
+      debtDueDate: body?.debtDueDate ?? existingOrder.debtDueDate,
+      hasCardFee: body?.hasCardFee ?? existingOrder.hasCardFee,
+      cardFeePercent: body?.cardFeePercent ?? existingOrder.cardFeePercent,
+      billDiscountType: body?.billDiscountType ?? existingOrder.billDiscountType,
+      billDiscountValue: body?.billDiscountValue ?? existingOrder.billDiscountValue,
+      note: body?.note ?? existingOrder.note,
+      items: body?.items ?? existingOrder.items,
     };
 
     const prepared = await prepareOrderData(mergedBody, false);
@@ -1346,11 +1069,11 @@ export async function postOrders_ByIdConfirm(req: ServiceRequest): Promise<Servi
       existingOrder._id,
       existingOrder.orderCode,
       prepared,
-      req.user
+      ctx.user
     );
     const { shiftDate, shiftCode } = await resolveOrderShiftOnWrite(
-      req.user,
-      req.body?.shiftCode,
+      ctx.user,
+      body?.shiftCode,
       now
     );
 
@@ -1381,155 +1104,17 @@ export async function postOrders_ByIdConfirm(req: ServiceRequest): Promise<Servi
       status: 'PAID',
       shiftDate,
       shiftCode,
-      confirmedBy: req.user?.userId || 'SALES',
-      confirmedByName: req.user?.fullName || 'Nhân viên bán hàng',
+      confirmedBy: ctx.user?.userId || 'SALES',
+      confirmedByName: ctx.user?.fullName || 'Nhân viên bán hàng',
       confirmedAt: now,
     });
 
-    return { status: 200, payload: {
-      data: updatedOrder,
-      meta: { shiftDate, shiftCode },
-    } };
+    return ok(updatedOrder, { shiftDate, shiftCode });
 }
 
-export async function postOrders_ByIdDebtPayment(req: ServiceRequest): Promise<ServiceResponse> {
-  if (!['CEO', 'ADMIN', 'ACCOUNTANT'].includes(req.user?.role || '')) {
-      throw new ApiError(
-        403,
-        'FORBIDDEN',
-        'Chỉ Giám đốc (CEO), Quản lý (ADMIN) hoặc Kế toán (ACCOUNTANT) trên CMS mới được phép xác nhận thu nợ / tất toán công nợ'
-      );
-    }
 
-    const idOrCode = String(req.params.id || '').trim();
-    const initialLookupOrder =
-      (await orderRepo.findById(idOrCode)) ||
-      (await orderRepo.findOne({ orderCode: idOrCode.toUpperCase() }));
-
-    if (!initialLookupOrder) {
-      throw new ApiError(404, 'ORDER_NOT_FOUND', 'Không tìm thấy đơn hàng cần thu nợ');
-    }
-
-    const result = await withOrderLock(String(initialLookupOrder._id), async () => {
-      const existingOrder = await orderRepo.findById(initialLookupOrder._id);
-      if (!existingOrder) {
-        throw new ApiError(404, 'ORDER_NOT_FOUND', 'Không tìm thấy đơn hàng cần thu nợ');
-      }
-
-      if (existingOrder.status === 'DRAFT') {
-        throw new ApiError(
-          400,
-          'ORDER_IS_DRAFT',
-          'Đơn hàng đang ở trạng thái Bản nháp (DRAFT), chưa phát sinh công nợ thực tế'
-        );
-      }
-
-      const currentDebt = Math.max(0, Number(existingOrder.debtAmount) || 0);
-      if (currentDebt <= 0) {
-        throw new ApiError(
-          400,
-          'ORDER_NO_DEBT',
-          `Đơn hàng ${existingOrder.orderCode} đã thanh toán đủ, không còn dư nợ`
-        );
-      }
-
-      const rawAmount = req.body?.amount;
-      const payAmount =
-        rawAmount === undefined || rawAmount === null || req.body?.payFull === true
-          ? currentDebt
-          : Math.round(Number(rawAmount));
-
-      if (isNaN(payAmount) || payAmount <= 0 || payAmount > currentDebt) {
-        throw new ApiError(
-          400,
-          'INVALID_DEBT_PAYMENT_AMOUNT',
-          `Số tiền thu nợ phải lớn hơn 0 và không vượt quá dư nợ hiện tại (${currentDebt.toLocaleString('vi-VN')} VND)`,
-          { amount: 'Số tiền thu nợ không hợp lệ' }
-        );
-      }
-
-      const rawMethod = String(req.body?.method || 'BANKING').toUpperCase();
-      const validMethods: ('CASH' | 'BANKING' | 'CARD')[] = ['CASH', 'BANKING', 'CARD'];
-      const method: 'CASH' | 'BANKING' | 'CARD' = validMethods.includes(rawMethod as any)
-        ? (rawMethod as 'CASH' | 'BANKING' | 'CARD')
-        : 'BANKING';
-
-      const note = String(req.body?.note || '').trim() || 'Thu công nợ khách hàng';
-      const paymentRecord: IDebtPaymentRecord = {
-        _id: `dp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-        amount: payAmount,
-        method,
-        note,
-        paidAt: new Date(),
-        collectedBy: req.user?.userId || 'ADMIN',
-        collectedByName: req.user?.fullName || 'Quản Trị Viên 11Sport',
-      };
-
-      const prevPayments = Array.isArray(existingOrder.debtPayments)
-        ? existingOrder.debtPayments
-        : [];
-      const nextPayments = [...prevPayments, paymentRecord];
-      const nextDebtAmount = Math.max(0, currentDebt - payAmount);
-      const totalOrderAmount = Math.max(0, Number(existingOrder.totalAmount) || 0);
-      const totalCollectedDebt = nextPayments.reduce(
-        (s, dp) => s + Math.max(0, Number(dp.amount) || 0),
-        0
-      );
-      const reducedByReturnAmount = (
-        Array.isArray(existingOrder.debtAdjustments) ? existingOrder.debtAdjustments : []
-      ).reduce((s, da) => s + Math.max(0, Number(da?.amount) || 0), 0);
-      const initialDebt = Math.max(
-        currentDebt,
-        Number(existingOrder.initialDebtAmount) || currentDebt,
-        nextDebtAmount + totalCollectedDebt + reducedByReturnAmount
-      );
-      const cashAtPurchase = Math.max(0, totalOrderAmount - initialDebt);
-
-      const orderReturns = await returnExchangeRepo.find({ orderId: existingOrder._id });
-      const totalCashRefundedForOrder = orderReturns.reduce((s, r) => {
-        const rDebtRed = Math.max(0, Math.round(Number(r.debtReduction) || 0));
-        const rRefundAmt = Math.max(0, Math.round(Number(r.refundAmount) || 0));
-        const rCashRef =
-          r.cashRefund !== undefined && r.cashRefund !== null
-            ? Math.max(0, Math.round(Number(r.cashRefund) || 0))
-            : Math.max(0, rRefundAmt - rDebtRed);
-        return s + rCashRef;
-      }, 0);
-
-      const nextPaidAmount = Math.max(
-        0,
-        Math.min(totalOrderAmount, cashAtPurchase + totalCollectedDebt - totalCashRefundedForOrder)
-      );
-      const nextDebtStatus: DebtStatus = nextDebtAmount === 0 ? 'SETTLED' : 'PARTIAL';
-
-      const updatedOrder = await orderRepo.updateById(existingOrder._id, {
-        paidAmount: nextPaidAmount,
-        debtAmount: nextDebtAmount,
-        initialDebtAmount: initialDebt,
-        debtStatus: nextDebtStatus,
-        debtPayments: nextPayments,
-      });
-
-      return {
-        updatedOrder,
-        payAmount,
-        nextDebtAmount,
-        nextDebtStatus,
-      };
-    });
-
-    return { status: 200, payload: {
-      data: result.updatedOrder,
-      meta: {
-        collectedAmount: result.payAmount,
-        remainingDebt: result.nextDebtAmount,
-        debtStatus: result.nextDebtStatus,
-      },
-    } };
-}
-
-export async function deleteOrders_ById(req: ServiceRequest): Promise<ServiceResponse> {
-  const idOrCode = String(req.params.id || '').trim();
+export async function deleteDraftOrder(ctx: ServiceContext, id: string): Promise<ServiceResult> {
+  const idOrCode = String(id || '').trim();
     const existingOrder =
       (await orderRepo.findById(idOrCode)) ||
       (await orderRepo.findOne({ orderCode: idOrCode.toUpperCase() }));
@@ -1546,10 +1131,10 @@ export async function deleteOrders_ById(req: ServiceRequest): Promise<ServiceRes
       );
     }
 
-    if (isSalesOnlyUser(req.user)) {
+    if (isSalesOnlyUser(ctx.user)) {
       const now = new Date();
       const todayStr = toLocalDateStr(now);
-      const staffShift = await resolveStaffShiftForDate(req.user, todayStr, now);
+      const staffShift = await resolveStaffShiftForDate(ctx.user, todayStr, now);
       if (!isOrderInSalesCurrentShift(existingOrder, staffShift, todayStr)) {
         throw new ApiError(
           403,
@@ -1560,12 +1145,10 @@ export async function deleteOrders_ById(req: ServiceRequest): Promise<ServiceRes
     }
 
     await orderRepo.deleteById(existingOrder._id);
-    return { status: 200, payload: {
-      data: {
+    return ok({
         deleted: true,
         _id: existingOrder._id,
         orderCode: existingOrder.orderCode,
-      },
-      meta: {},
-    } };
+      }, {});
 }
+

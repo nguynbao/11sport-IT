@@ -11,6 +11,7 @@ import {
   stockMovementRepo,
 } from '../src/config/db';
 import { seedDatabaseIfNeeded } from '../src/config/seed';
+import { toLocalDateStr } from '../src/shared/date';
 
 const app = createApp();
 
@@ -590,8 +591,8 @@ describe('GĐ2 & GĐ4: Chuẩn hóa chỉ số Dashboard Doanh thu (D1–D4) & T
     expect(dpRes.body.data.debtAmount).toBe(160000);
     expect(dpRes.body.data.paidAmount).toBe(150000); // 100.000 lúc mua + 50.000 thu nợ (không bị cộng nhầm 290.000 giảm nợ trả hàng!)
 
-    // AC-12 & AC-13: Xem báo cáo hôm nay (from = hôm nay)
-    const todayStr = new Date().toISOString().slice(0, 10);
+    // AC-12 & AC-13: Xem báo cáo hôm nay (from = hôm nay theo giờ VN)
+    const todayStr = toLocalDateStr();
     const dashToday = (await getDash(`?from=${todayStr}&to=${todayStr}`)).body.data;
     expect(dashToday.summary.returnGoodsTotal).toBe(300000);
     expect(dashToday.summary.returnFromPriorPeriods).toBe(300000);

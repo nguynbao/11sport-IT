@@ -1,91 +1,38 @@
-import { Request, Response, NextFunction } from 'express';
+import { handle } from '../shared/http';
 import {
-  getCustomersLookup,
-  getCustomers,
-  getOrdersCurrentShift,
-  getOrders,
-  getOrdersByCode_ByCode,
-  getOrders_ById,
-  postOrders,
-  putOrders_ById,
-  postOrders_ByIdConfirm,
-  postOrders_ByIdDebtPayment,
-  deleteOrders_ById,
-} from '../services/ordersCustomers.service';
+  lookupCustomer,
+  listCustomers,
+  getCurrentShiftOrders,
+  listOrders,
+  getOrderByCode,
+  getOrderById,
+  createOrder,
+  updateDraftOrder,
+  confirmDraftOrder,
+  payOrderDebt,
+  deleteDraftOrder,
+} from '../services/orders';
 
-export async function getCustomersLookupHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await getCustomersLookup({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function getCustomersHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await getCustomers({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function getOrdersCurrentShiftHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await getOrdersCurrentShift({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function getOrdersHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await getOrders({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function getOrdersByCode_ByCodeHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await getOrdersByCode_ByCode({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function getOrders_ByIdHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await getOrders_ById({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function postOrdersHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await postOrders({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function putOrders_ByIdHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await putOrders_ById({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function postOrders_ByIdConfirmHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await postOrders_ByIdConfirm({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function postOrders_ByIdDebtPaymentHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await postOrders_ByIdDebtPayment({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
-
-export async function deleteOrders_ByIdHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await deleteOrders_ById({ user: req.user, isFallbackUser: req.isFallbackUser, query: req.query, params: req.params, body: req.body, headers: req.headers, ip: req.ip, socket: req.socket });
-    res.status(result.status).json(result.payload);
-  } catch (err) { next(err); }
-}
+export const getCustomersLookupHandler = handle((req) => lookupCustomer(req.query));
+export const getCustomersHandler = handle((req) => listCustomers(req.query));
+export const getOrdersCurrentShiftHandler = handle((req, ctx) =>
+  getCurrentShiftOrders(ctx, req.query)
+);
+export const getOrdersHandler = handle((req, ctx) => listOrders(ctx, req.query));
+export const getOrdersByCode_ByCodeHandler = handle((req, ctx) =>
+  getOrderByCode(ctx, req.params.code)
+);
+export const getOrders_ByIdHandler = handle((req, ctx) => getOrderById(ctx, req.params.id));
+export const postOrdersHandler = handle((req, ctx) => createOrder(ctx, req.body));
+export const putOrders_ByIdHandler = handle((req, ctx) =>
+  updateDraftOrder(ctx, req.params.id, req.body)
+);
+export const postOrders_ByIdConfirmHandler = handle((req, ctx) =>
+  confirmDraftOrder(ctx, req.params.id, req.body)
+);
+export const postOrders_ByIdDebtPaymentHandler = handle((req, ctx) =>
+  payOrderDebt(ctx, req.params.id, req.body)
+);
+export const deleteOrders_ByIdHandler = handle((req, ctx) =>
+  deleteDraftOrder(ctx, req.params.id)
+);
