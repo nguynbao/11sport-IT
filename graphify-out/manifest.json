@@ -1500,9 +1500,9 @@
     "semantic_hash": ""
   },
   "server/src/services/handover/handover.service.ts": {
-    "mtime": 1795625305.377624,
-    "seen": 1795626492.783571,
-    "ast_hash": "d94288d2b128be39248f89908e2a45bf",
+    "mtime": 1795627190.404725,
+    "seen": 1795627247.986259,
+    "ast_hash": "9ca968e88a27e8577baca3d680fe3f50",
     "semantic_hash": ""
   },
   "server/src/services/handover/handover.types.ts": {
@@ -1674,9 +1674,9 @@
     "semantic_hash": ""
   },
   "server/src/services/products/product.service.ts": {
-    "mtime": 1795625945.1369588,
-    "seen": 1795626492.783621,
-    "ast_hash": "7e5b42a2216560420f09e6c419143aa0",
+    "mtime": 1795627190.1742914,
+    "seen": 1795627247.9863129,
+    "ast_hash": "124f52dbd205966dd79850ccf9635b9d",
     "semantic_hash": ""
   },
   "server/src/services/products/productVariant.service.ts": {

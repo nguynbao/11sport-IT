@@ -16,6 +16,7 @@ import {
 import {
   isHandoverManagerRole,
   isSalesStaffUser,
+  resolvePendingIncomingHandoverForSales,
   stripVnAccents,
 } from './handover.rules';
 
@@ -311,7 +312,6 @@ export async function listHandovers(ctx: ServiceContext, query: any): Promise<Se
     }
   }
 
-  const { resolvePendingIncomingHandoverForSales } = await import('./handover.rules');
   const pendingIncomingHandover = isSales
     ? resolvePendingIncomingHandoverForSales({
         allHandovers,

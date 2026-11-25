@@ -422,7 +422,7 @@ export async function lookupProducts(ctx: ServiceContext, query: any): Promise<S
     if (!hit) {
       throw new ApiError(404, 'PRODUCT_NOT_FOUND', `Không tìm thấy sản phẩm với mã "${raw}"`);
     }
-    const hideCost = ctx.user?.role === 'SALES';
+    const hideCost = !ctx.user || ctx.user.role === 'SALES';
     const floors = getFloorStocks(hit.product);
     const { costPrice, ...rest } = hit.product;
     const pricing = resolveVariantPricing(hit.product, hit.variant?.color, hit.variant?.size);
@@ -453,7 +453,7 @@ export async function listProducts(ctx: ServiceContext, query: any): Promise<Ser
 
     // Ẩn giá gốc và chỉ hiển thị sản phẩm Kho Tầng 1 đối với nhân viên bán hàng (SALES)
     const isSalesRole = ctx.user?.role === 'SALES';
-    const hideCost = isSalesRole;
+    const hideCost = !ctx.user || isSalesRole;
     const setLinksMap = enrichProductsWithSetLinks(allProducts);
     const baseFiltered = allProducts
       .map((p) => {
