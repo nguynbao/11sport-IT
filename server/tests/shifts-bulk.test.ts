@@ -3,7 +3,7 @@ import request from 'supertest';
 import { createApp } from '../src/app';
 import { connectDatabase, clearDatabase, staffRepo } from '../src/config/db';
 import { seedDatabaseIfNeeded } from '../src/config/seed';
-import { hashPassword } from '../src/utils/auth';
+import { hashPassword } from '../src/shared/auth';
 
 describe('Xếp ca tuần: Sửa & Lưu hàng loạt (PUT /shifts/assign/bulk) + quy định 6 ngày làm / 1 ngày nghỉ', () => {
   const app = createApp();
@@ -48,21 +48,21 @@ describe('Xếp ca tuần: Sửa & Lưu hàng loạt (PUT /shifts/assign/bulk) +
     expect(res.status).toBe(403);
   });
 
-  it('Chặn lưu khi Sales chưa đủ 7 ngày hoặc nghỉ quá 4 ngày/tháng; cho phép gộp tối đa 4 ngày OFF trong 1 tuần và các tuần sau nghỉ 0 ngày', async () => {
+  it('HR xếp lịch linh hoạt không bị chặn cứng theo tuần/tháng (PUT /shifts/assign/bulk) nhưng không lưu thừa nếu dọn sạch', async () => {
     const partial = await save(fullWeek(2).slice(0, 2));
-    expect(partial.status).toBe(400);
-    expect(partial.body.code).toBe('WEEKLY_OFF_REQUIRED');
+    expect(partial.status).toBe(200);
 
-    // Nghỉ 5 ngày trong 1 tuần -> vượt tối đa 4 ngày/tháng -> chặn 400
+    // HR cũng có thể xếp 5 ngày OFF nếu cần
     const fiveOff = week.map((date, i) => ({
       staffId: salesId,
       date,
       dayOfWeek: i + 1,
       shiftCode: i < 5 ? 'OFF' : 'SHIFT_1',
     }));
-    expect((await save(fiveOff)).status).toBe(400);
+    expect((await save(fiveOff)).status).toBe(200);
 
-    // Lỗi thì không lưu gì
+    // Dọn sạch tuần trước khi test tiếp
+    await save(week.map((date) => ({ staffId: salesId, date, shiftCode: null })));
     expect(await getWeek()).toHaveLength(0);
 
     // Dùng hết cả 4 ngày OFF ngay trong 1 tuần (tuần 09/11..15/11) -> hợp lệ 200
@@ -98,7 +98,7 @@ describe('Xếp ca tuần: Sửa & Lưu hàng loạt (PUT /shifts/assign/bulk) +
           shiftCode: i === 0 ? 'OFF' : 'SHIFT_1',
         })),
       });
-    expect(exceedMonth.status).toBe(400);
+    expect(exceedMonth.status).toBe(200);
 
     // Tuần 23/11..29/11 đi làm cả 7 ngày (0 ngày OFF vì đã hết quota tháng) -> hợp lệ 200!
     const zeroOffWeek3 = await request(app)
@@ -145,13 +145,13 @@ describe('Xếp ca tuần: Sửa & Lưu hàng loạt (PUT /shifts/assign/bulk) +
     expect(list.find((a) => a.date === '2026-11-11')?.shiftCode).toBe('SHIFT_2');
     expect(list.filter((a) => a.shiftCode === 'OFF')).toHaveLength(1);
 
-    // Bỏ 1 ngày -> thiếu ngày -> chặn
-    expect((await save([{ staffId: salesId, date: '2026-11-10', shiftCode: null }])).status).toBe(400);
+    // HR xoá 1 ngày trong tuần -> hợp lệ 200
+    expect((await save([{ staffId: salesId, date: '2026-11-10', shiftCode: null }])).status).toBe(200);
 
-    // Xoá cả tuần -> hợp lệ
+    // Xoá các ngày còn lại của tuần -> hợp lệ
     const clear = await save(week.map((date) => ({ staffId: salesId, date, shiftCode: null })));
     expect(clear.status).toBe(200);
-    expect(clear.body.data.deleted).toBe(7);
+    expect(clear.body.data.deleted).toBe(6);
     expect(await getWeek()).toHaveLength(0);
   });
 
@@ -161,13 +161,29 @@ describe('Xếp ca tuần: Sửa & Lưu hàng loạt (PUT /shifts/assign/bulk) +
   });
 
   it('Luồng Sales đăng ký ca tuần sau -> HR chỉnh tay/xác nhận -> Sales nhận thông báo chấm đỏ & xem lịch', async () => {
+    const now = new Date();
+    const dow = now.getDay() === 0 ? 7 : now.getDay();
+    const nextMonDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (8 - dow));
+    const fmt = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const dynWeekStart = fmt(nextMonDate);
+    const dynWeek = Array.from({ length: 7 }, (_, i) =>
+      fmt(new Date(nextMonDate.getFullYear(), nextMonDate.getMonth(), nextMonDate.getDate() + i))
+    );
+    const getDynWeek = async () => {
+      const res = await request(app)
+        .get(`/api/v1/shifts/schedule?weekStart=${dynWeekStart}`)
+        .set('Authorization', `Bearer ${hrToken}`);
+      return res.body.data.assignments as any[];
+    };
+
     // 1. Sales gửi đăng ký ca sai quy định (5 ngày OFF > 4 ngày/tháng) -> chặn 400
     const badPref = await request(app)
       .post('/api/v1/shifts/preferences')
       .set('Authorization', `Bearer ${salesToken}`)
       .send({
-        weekStart,
-        preferences: week.map((date, i) => ({
+        weekStart: dynWeekStart,
+        preferences: dynWeek.map((date, i) => ({
           date,
           dayOfWeek: i + 1,
           isOffRequested: i < 5,
@@ -182,8 +198,8 @@ describe('Xếp ca tuần: Sửa & Lưu hàng loạt (PUT /shifts/assign/bulk) +
       .post('/api/v1/shifts/preferences')
       .set('Authorization', `Bearer ${salesToken}`)
       .send({
-        weekStart,
-        preferences: week.map((date, i) => ({
+        weekStart: dynWeekStart,
+        preferences: dynWeek.map((date, i) => ({
           date,
           dayOfWeek: i + 1,
           isOffRequested: i === 2,
@@ -193,13 +209,13 @@ describe('Xếp ca tuần: Sửa & Lưu hàng loạt (PUT /shifts/assign/bulk) +
     expect(okPref.status).toBe(200);
 
     // 3. Kiểm tra trên bảng phân ca HR thấy lịch đăng ký (assignedBy = AUTO)
-    const hrViewBefore = await getWeek();
+    const hrViewBefore = await getDynWeek();
     expect(hrViewBefore).toHaveLength(7);
     expect(hrViewBefore.every((a) => a.assignedBy === 'AUTO')).toBe(true);
 
     // Kiểm tra phía Sales lúc HR chưa xác nhận: isRegistered = true, isConfirmedByHr = false, hasUnseenConfirmedSchedule = false
     const salesBeforeConfirm = await request(app)
-      .get(`/api/v1/shifts/my-schedule?weekStart=${weekStart}`)
+      .get(`/api/v1/shifts/my-schedule?weekStart=${dynWeekStart}`)
       .set('Authorization', `Bearer ${salesToken}`);
     expect(salesBeforeConfirm.status).toBe(200);
     expect(salesBeforeConfirm.body.data.isRegistered).toBe(true);
@@ -211,21 +227,21 @@ describe('Xếp ca tuần: Sửa & Lưu hàng loạt (PUT /shifts/assign/bulk) +
       .put('/api/v1/shifts/assign/bulk')
       .set('Authorization', `Bearer ${hrToken}`)
       .send({
-        weekStart,
+        weekStart: dynWeekStart,
         confirmWeek: false,
         changes: [
-          { staffId: salesId, date: '2026-11-11', dayOfWeek: 3, shiftCode: 'SHIFT_2' },
-          { staffId: salesId, date: '2026-11-14', dayOfWeek: 6, shiftCode: 'OFF' },
+          { staffId: salesId, date: dynWeek[2], dayOfWeek: 3, shiftCode: 'SHIFT_2' },
+          { staffId: salesId, date: dynWeek[5], dayOfWeek: 6, shiftCode: 'OFF' },
         ],
       });
     expect(hrDraft.status).toBe(200);
     expect(hrDraft.body.data.confirmed).toBe(0);
 
-    const hrViewAfterDraft = await getWeek();
+    const hrViewAfterDraft = await getDynWeek();
     expect(hrViewAfterDraft.every((a) => a.assignedBy === 'AUTO')).toBe(true);
 
     const salesAfterDraft = await request(app)
-      .get(`/api/v1/shifts/my-schedule?weekStart=${weekStart}`)
+      .get(`/api/v1/shifts/my-schedule?weekStart=${dynWeekStart}`)
       .set('Authorization', `Bearer ${salesToken}`);
     expect(salesAfterDraft.status).toBe(200);
     expect(salesAfterDraft.body.data.isConfirmedByHr).toBe(false);
@@ -236,11 +252,11 @@ describe('Xếp ca tuần: Sửa & Lưu hàng loạt (PUT /shifts/assign/bulk) +
       .put('/api/v1/shifts/assign/bulk')
       .set('Authorization', `Bearer ${hrToken}`)
       .send({
-        weekStart,
+        weekStart: dynWeekStart,
         confirmWeek: true,
         changes: [
-          { staffId: salesId, date: '2026-11-14', dayOfWeek: 6, shiftCode: 'SHIFT_1' },
-          { staffId: salesId, date: '2026-11-15', dayOfWeek: 7, shiftCode: 'OFF' },
+          { staffId: salesId, date: dynWeek[5], dayOfWeek: 6, shiftCode: 'SHIFT_1' },
+          { staffId: salesId, date: dynWeek[6], dayOfWeek: 7, shiftCode: 'OFF' },
         ],
       });
     expect(hrConfirm.status).toBe(200);
@@ -248,7 +264,7 @@ describe('Xếp ca tuần: Sửa & Lưu hàng loạt (PUT /shifts/assign/bulk) +
 
     // 6. Phía Sales nhận được thông báo chấm đỏ (hasUnseenConfirmedSchedule = true, isConfirmedByHr = true)
     const salesAfterConfirm = await request(app)
-      .get(`/api/v1/shifts/my-schedule?weekStart=${weekStart}`)
+      .get(`/api/v1/shifts/my-schedule?weekStart=${dynWeekStart}`)
       .set('Authorization', `Bearer ${salesToken}`);
     expect(salesAfterConfirm.status).toBe(200);
     expect(salesAfterConfirm.body.data.isConfirmedByHr).toBe(true);
@@ -259,12 +275,12 @@ describe('Xếp ca tuần: Sửa & Lưu hàng loạt (PUT /shifts/assign/bulk) +
     const seenRes = await request(app)
       .post('/api/v1/shifts/my-schedule/seen')
       .set('Authorization', `Bearer ${salesToken}`)
-      .send({ weekStart });
+      .send({ weekStart: dynWeekStart });
     expect(seenRes.status).toBe(200);
     expect(seenRes.body.data.markedCount).toBe(7);
 
     const salesAfterSeen = await request(app)
-      .get(`/api/v1/shifts/my-schedule?weekStart=${weekStart}`)
+      .get(`/api/v1/shifts/my-schedule?weekStart=${dynWeekStart}`)
       .set('Authorization', `Bearer ${salesToken}`);
     expect(salesAfterSeen.body.data.hasUnseenConfirmedSchedule).toBe(false);
   });
@@ -400,7 +416,7 @@ describe('Xếp ca tuần: Sửa & Lưu hàng loạt (PUT /shifts/assign/bulk) +
       .send({ status: 'APPROVED' });
     expect(approve1.status).toBe(200);
 
-    // Lịch tuần 09/11..15/11 đặt 2026-11-09 là SHIFT_1 nhưng đặt 4 ngày khác (10..13/11) là OFF -> vượt 4 ngày/tháng
+    // HR xếp lịch không ràng buộc cứng điều kiện: vẫn lưu được dù vượt 4 ngày/tháng
     const bulkExceedApprovedInWeek = await request(app)
       .put('/api/v1/shifts/assign/bulk')
       .set('Authorization', `Bearer ${hrToken}`)
@@ -413,7 +429,7 @@ describe('Xếp ca tuần: Sửa & Lưu hàng loạt (PUT /shifts/assign/bulk) +
           shiftCode: i >= 1 && i <= 4 ? 'OFF' : 'SHIFT_1',
         })),
       });
-    expect(bulkExceedApprovedInWeek.status).toBe(400);
+    expect(bulkExceedApprovedInWeek.status).toBe(200);
 
     // Với /shifts/preferences: đăng ký ca tuần không cho phép chọn quá 2 ngày nghỉ/tuần (kể cả khi mới dùng 1 đơn OFF) -> chặn 400
     const prefExceedTwoDaysInWeek = await request(app)
@@ -488,7 +504,7 @@ describe('Xếp ca tuần: Sửa & Lưu hàng loạt (PUT /shifts/assign/bulk) +
           shiftCode: i < 2 ? 'OFF' : 'SHIFT_1',
         })),
       });
-    expect(bulkExceedPending.status).toBe(400);
+    expect(bulkExceedPending.status).toBe(200);
 
     // Xếp 1 ngày OFF trong tuần 09/11..15/11 (3 đơn chờ + 1 ngày ca OFF = 4) -> hợp lệ 200
     const bulkOkOne = await request(app)

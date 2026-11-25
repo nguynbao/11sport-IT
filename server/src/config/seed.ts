@@ -10,15 +10,15 @@ import {
   holidayRepo,
   getDbMode,
 } from './db';
-import { hashPassword } from '../utils/auth';
+import { hashPassword } from '../shared/auth';
 import {
   extractVariantFromText,
   generateProductCode,
   generateVariantProductCode,
   isStandardSixDigitProductCode,
   normalizeToCompactUpperCode,
-} from '../utils/productCode';
-import { normalizeVariants } from '../utils/warehouseFloor';
+} from '../shared/productCode';
+import { normalizeVariants } from '../services/inventory';
 
 let codeMigrationPromise: Promise<void> | null = null;
 

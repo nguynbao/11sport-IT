@@ -1,8 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { staffRepo } from '../config/db';
 import { IStaff, StaffRole, StaffDepartment } from '../models/Staff';
-import { ApiError } from '../utils/errors';
-import { verifyTokenWithStatus, isTestRuntime } from '../utils/auth';
+import { ApiError } from '../shared/errors';
+import { verifyTokenWithStatus, isTestRuntime } from '../shared/auth';
 
 declare global {
   namespace Express {
