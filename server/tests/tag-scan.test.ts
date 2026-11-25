@@ -3,8 +3,8 @@ import request from 'supertest';
 import { createApp } from '../src/app';
 import { connectDatabase, clearDatabase, disconnectDatabase } from '../src/config/db';
 import { seedDatabaseIfNeeded } from '../src/config/seed';
-import { matchTagToItems } from '../src/utils/tagMatch';
-import { generateProductCode } from '../src/utils/productCode';
+import { matchTagToItems } from '../src/shared/tagMatch';
+import { generateProductCode } from '../src/shared/productCode';
 
 const app = createApp();
 

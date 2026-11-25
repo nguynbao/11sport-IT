@@ -1,15 +1,15 @@
-import { SYSTEM_BRAND_ALIASES, SYSTEM_BRAND_NAME } from "../utils/brandVersion";
 import { ServiceRequest, ServiceResponse } from '../shared/types';
 import { brandRepo, categoryRepo, productRepo } from '../repositories';
-import { ApiError } from '../utils/errors';
-import { filterAndRankBySearch } from '../utils/search';
+import { ApiError } from '../shared/errors';
+import { filterAndRankBySearch } from '../shared/search';
 import {
   NO_BRAND_CODE,
   isValidSkuPart,
   normalizeToCompactUpperCode,
   suggestBrandCode,
-} from '../utils/productCode';
-import { syncProductReferencesAfterRecode } from '../utils/productScheme';
+} from '../shared/productCode';
+import { syncProductReferencesAfterRecode } from './productScheme.service';
+import { ensureSystemBrand } from './catalogDefaults.service';
 
 
 function requireBrandManager(role?: string) {
@@ -299,20 +299,6 @@ export async function deleteBrands_ById(req: ServiceRequest): Promise<ServiceRes
     }
     await brandRepo.deleteById(String(brand._id));
     return { status: 200, payload: { data: { _id: brand._id, deleted: true }, meta: {} } };
-}
-
-/** Đảm bảo luôn có Brand hệ thống NN (dùng cho mọi Category). */
-export async function ensureSystemBrand() {
-  const existing = await brandRepo.findOne({ code: NO_BRAND_CODE });
-  if (existing) return existing;
-  return brandRepo.create({
-    code: NO_BRAND_CODE,
-    name: SYSTEM_BRAND_NAME,
-    status: 'ACTIVE',
-    aliases: SYSTEM_BRAND_ALIASES,
-    categoryIds: [],
-    isSystem: true,
-  });
 }
 
 /**

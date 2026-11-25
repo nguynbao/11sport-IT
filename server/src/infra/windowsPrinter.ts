@@ -3,7 +3,7 @@ import { promisify } from "util";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
-import { toCompactBarcode128 } from "./productCode";
+import { toCompactBarcode128 } from "../shared/productCode";
 
 export { toCompactBarcode128 };
 

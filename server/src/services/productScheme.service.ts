@@ -12,10 +12,9 @@ import {
   returnExchangeRepo,
   promotionRepo,
   shiftHandoverRepo,
-} from '../config/db';
-import { ensureCategorySkuCode } from '../services/categories.service';
-import { ensureSystemBrand } from '../services/brands.service';
-import { ApiError } from './errors';
+} from '../repositories';
+import { ensureCategorySkuCode, ensureSystemBrand } from './catalogDefaults.service';
+import { ApiError } from '../shared/errors';
 import {
   NO_BRAND_CODE,
   buildRootCode,
@@ -27,7 +26,7 @@ import {
   suggestColorCode,
   suggestVersionCode,
   toSizeCode,
-} from './productCode';
+} from '../shared/productCode';
 
 export interface SchemeVariantInput {
   color?: string;
@@ -245,9 +244,9 @@ export function isSystemBrandCode(code?: string): boolean {
  * Nhập kho (imports): khớp sản phẩm có sẵn theo mã chính xác & đề xuất mã mới
  * cho sản phẩm chưa có trên hệ thống (KHÔNG khớp mờ theo tên).
  * --------------------------------------------------------------------------------- */
-import type { BrandLike } from './brandVersion';
-import { assignCategorySkuCodes, proposeVersion, resolveBrandForProduct } from './brandVersion';
-import { suggestBrandCode, isNewSchemeProduct } from './productCode';
+import type { BrandLike } from '../shared/brandVersion';
+import { assignCategorySkuCodes, proposeVersion, resolveBrandForProduct } from '../shared/brandVersion';
+import { suggestBrandCode, isNewSchemeProduct } from '../shared/productCode';
 
 export interface ImportSchemeContext {
   products: any[];

@@ -4,7 +4,7 @@ import {
   shiftAssignmentRepo,
   staffRepo,
 } from '../repositories';
-import { ApiError } from '../utils/errors';
+import { ApiError } from '../shared/errors';
 import { getMergedHolidayMap } from '../services/holidays.service';
 import {
   assertPaidLeaveQuota,

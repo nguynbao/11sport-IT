@@ -1,6 +1,6 @@
-import { productRepo, stockMovementRepo } from '../config/db';
+import { productRepo, stockMovementRepo } from '../repositories';
 import { WarehouseFloor } from '../models/Product';
-import { ApiError } from './errors';
+import { ApiError } from '../shared/errors';
 import {
   applyFloorDelta,
   floorLabel,
@@ -8,7 +8,7 @@ import {
   getFloorStocks,
   getVariantFloorStocks,
   normalizeFloor,
-} from './warehouseFloor';
+} from './warehouseFloor.service';
 
 export interface UnpackSetParams {
   retailProductId: string;

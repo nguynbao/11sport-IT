@@ -1,10 +1,10 @@
-import { ApiError } from '../utils/errors';
+import { ApiError } from '../shared/errors';
 import {
   listSystemPrinters,
   printBarcodeLabelsDirect,
   DirectPrintPayload,
   LabelPrintItem,
-} from '../utils/windowsPrinter';
+} from '../infra/windowsPrinter';
 
 export async function getSystemPrintersList() {
   return listSystemPrinters();

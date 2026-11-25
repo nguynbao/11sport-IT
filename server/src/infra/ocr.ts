@@ -1,6 +1,6 @@
-import { ApiError } from './errors';
-import { generateProductCode, normalizeToUpperCode } from './productCode';
-import { decodeScannedBarcodeServer } from './tagMatch';
+import { ApiError } from '../shared/errors';
+import { generateProductCode, normalizeToUpperCode } from '../shared/productCode';
+import { decodeScannedBarcodeServer } from '../shared/tagMatch';
 
 export type OcrMode = 'TABLE' | 'TAG';
 

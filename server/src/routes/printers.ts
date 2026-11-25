@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { ApiError } from '../utils/errors';
+import { ApiError } from '../shared/errors';
 import { getPrintersHandler, printLabelsHandler } from '../controllers/printers.controller';
 
 export const printersRouter = Router();

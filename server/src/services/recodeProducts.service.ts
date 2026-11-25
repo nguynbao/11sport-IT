@@ -26,7 +26,7 @@ import {
   normalizeToCompactUpperCode,
   suggestColorCode,
   toSizeCode,
-} from '../utils/productCode';
+} from '../shared/productCode';
 import {
   BrandSeedItem,
   assignCategorySkuCodes,
@@ -35,8 +35,8 @@ import {
   resolveBrandForProduct,
   SYSTEM_BRAND_ALIASES,
   SYSTEM_BRAND_NAME,
-} from '../utils/brandVersion';
-import { parseXlsxBufferToMatrix } from '../utils/fileImportParser';
+} from '../shared/brandVersion';
+import { parseXlsxBufferToMatrix } from '../shared/fileImportParser';
 
 /* ------------------------------------------------------------------ Guard */
 

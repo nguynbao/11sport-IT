@@ -11,8 +11,8 @@ import {
   shiftHandoverRepo,
   staffRepo,
 } from '../repositories';
-import { ApiError } from '../utils/errors';
-import { verifyToken } from '../utils/auth';
+import { ApiError } from '../shared/errors';
+import { verifyToken } from '../shared/auth';
 import { ShiftCode } from '../models/Attendance';
 import { getLateToleranceMinutes } from '../services/attendanceTimesheet.service';
 import {

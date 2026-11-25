@@ -3,7 +3,7 @@ import request from 'supertest';
 import { createApp } from '../src/app';
 import { connectDatabase, clearDatabase, disconnectDatabase } from '../src/config/db';
 import { seedDatabaseIfNeeded } from '../src/config/seed';
-import { generateProductCode } from '../src/utils/productCode';
+import { generateProductCode } from '../src/shared/productCode';
 
 const app = createApp();
 

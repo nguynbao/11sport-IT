@@ -9,7 +9,7 @@ import {
   normalizePhoneDigits,
   scoreSearchMatch,
   filterAndRankBySearch,
-} from '../src/utils/search';
+} from '../src/shared/search';
 
 const app = createApp();
 

@@ -9,9 +9,9 @@ import {
   categoryRepo,
   serviceOrderRepo,
 } from '../repositories';
-import { ApiError } from '../utils/errors';
-import { floorLabel, getFloorStocks } from '../utils/warehouseFloor';
-import { normalizePhoneDigits } from '../utils/search';
+import { ApiError } from '../shared/errors';
+import { floorLabel, getFloorStocks } from './warehouseFloor.service';
+import { normalizePhoneDigits } from '../shared/search';
 
 
 function extractOrderDebtMeta(o: any, refundedCashForOrder = 0) {

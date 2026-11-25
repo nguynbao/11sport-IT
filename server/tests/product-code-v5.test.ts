@@ -10,7 +10,7 @@ import {
   buildRootCode,
   buildVariantSku,
   toCompactBarcode128,
-} from '../src/utils/productCode';
+} from '../src/shared/productCode';
 
 const app = createApp();
 

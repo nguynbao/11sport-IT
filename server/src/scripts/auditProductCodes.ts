@@ -11,7 +11,7 @@ import {
   normalizeToCompactUpperCode,
   resolveBrandInfo,
   resolveCategoryInitial,
-} from '../utils/productCode';
+} from '../shared/productCode';
 
 type Issue = { type: string; [k: string]: any };
 

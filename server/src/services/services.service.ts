@@ -1,9 +1,9 @@
 import { ServiceRequest, ServiceResponse } from '../shared/types';
 import { Router, Request } from 'express';
 import { customerRepo, serviceOrderRepo, serviceTypeRepo, staffRepo } from '../repositories';
-import { ApiError } from '../utils/errors';
-import { verifyToken, TokenPayload } from '../utils/auth';
-import { filterAndRankBySearch, normalizePhoneDigits } from '../utils/search';
+import { ApiError } from '../shared/errors';
+import { verifyToken, TokenPayload } from '../shared/auth';
+import { filterAndRankBySearch, normalizePhoneDigits } from '../shared/search';
 import {
   IServiceOrderItem,
   IServicePaymentRecord,

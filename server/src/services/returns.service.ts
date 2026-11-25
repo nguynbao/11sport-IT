@@ -5,7 +5,7 @@ import {
   returnExchangeRepo,
   stockMovementRepo,
 } from '../repositories';
-import { ApiError } from '../utils/errors';
+import { ApiError } from '../shared/errors';
 import { requireRoles } from '../middleware/auth';
 import { IReturnItem, IExchangeItem, ReturnCondition } from '../models/ReturnExchange';
 import { DebtStatus, IDebtAdjustmentRecord, PaymentMethod } from '../models/Order';
@@ -15,11 +15,11 @@ import {
   getFloorStocks,
   getVariantFloorStocks,
   formatProductWithVariant,
-} from '../utils/warehouseFloor';
-import { executeUnpackSetToRetail } from '../utils/unpackSet';
-import { buildVariantKey, resolveVariantPricing } from '../utils/productCode';
-import { filterAndRankBySearch } from '../utils/search';
-import { withOrderLock, deepCloneSnapshot } from '../utils/orderLock';
+} from './warehouseFloor.service';
+import { executeUnpackSetToRetail } from './unpackSet.service';
+import { buildVariantKey, resolveVariantPricing } from '../shared/productCode';
+import { filterAndRankBySearch } from '../shared/search';
+import { withOrderLock, deepCloneSnapshot } from '../shared/orderLock';
 
 async function generateNextReturnExchangeCode(isExchange: boolean): Promise<string> {
   const all = await returnExchangeRepo.find({});

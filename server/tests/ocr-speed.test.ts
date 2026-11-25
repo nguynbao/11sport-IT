@@ -6,11 +6,11 @@ process.env.FORCE_MEMORY_DB = 'true';
 import { createApp } from '../src/app';
 import { connectDatabase, clearDatabase, productRepo } from '../src/config/db';
 import { seedDatabaseIfNeeded } from '../src/config/seed';
-import { ocrScanTag, getGeminiModels } from '../src/utils/ocr';
+import { ocrScanTag, getGeminiModels } from '../src/infra/ocr';
 import {
   resolveKeepAliveIntervalMs,
   resolveKeepAliveHealthUrl,
-} from '../src/utils/keepAlive';
+} from '../src/infra/keepAlive';
 
 const app = createApp();
 const originalFetch = global.fetch;

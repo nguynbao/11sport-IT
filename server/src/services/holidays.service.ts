@@ -1,5 +1,5 @@
 import { holidayRepo } from '../repositories';
-import { ApiError } from '../utils/errors';
+import { ApiError } from '../shared/errors';
 
 // ============================================================================
 // Thuật toán Âm - Dương lịch Việt Nam (Múi giờ UTC+7 - Hồ Ngọc Đức)

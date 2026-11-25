@@ -1,5 +1,5 @@
 import { ServiceRequest, ServiceResponse } from '../shared/types';
-import { ApiError } from '../utils/errors';
+import { ApiError } from '../shared/errors';
 
 export interface WiseCurrencyInfo {
   code: string;

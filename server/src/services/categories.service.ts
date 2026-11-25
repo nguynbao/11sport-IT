@@ -1,9 +1,9 @@
 import { ServiceRequest, ServiceResponse } from '../shared/types';
 import { categoryRepo, productRepo } from '../repositories';
-import { isValidSkuPart, normalizeToUpperCode, suggestCategorySkuCode } from '../utils/productCode';
-import { syncProductReferencesAfterRecode } from '../utils/productScheme';
-import { ApiError } from '../utils/errors';
-import { filterAndRankBySearch } from '../utils/search';
+import { isValidSkuPart, normalizeToUpperCode, suggestCategorySkuCode } from '../shared/productCode';
+import { syncProductReferencesAfterRecode } from './productScheme.service';
+import { ApiError } from '../shared/errors';
+import { filterAndRankBySearch } from '../shared/search';
 
 
 async function validateSkuCode(raw: any, exceptId?: string): Promise<string> {
@@ -254,17 +254,3 @@ export async function deleteCategories_ById(req: ServiceRequest): Promise<Servic
     } };
 }
 
-/** v5.0: lấy (hoặc gán lần đầu) CateCode của category — dùng trong mã sản phẩm mới */
-export async function ensureCategorySkuCode(category: any): Promise<string> {
-  if (category?.skuCode) return String(category.skuCode);
-  const all = await categoryRepo.find({});
-  const used = new Set(all.map((c) => String(c.skuCode || '')).filter(Boolean));
-  const sku = suggestCategorySkuCode(
-    String(category?.name || ''),
-    String(category?.code || ''),
-    used
-  );
-  await categoryRepo.updateById(String(category._id), { skuCode: sku } as any);
-  category.skuCode = sku;
-  return sku;
-}

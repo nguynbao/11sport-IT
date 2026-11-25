@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { isTestRuntime } from '../utils/auth';
+import { isTestRuntime } from '../shared/auth';
 
 /**
  * Thiết lập các HTTP security headers cơ bản tương đương helmet mà không cần phụ thuộc ngoài.

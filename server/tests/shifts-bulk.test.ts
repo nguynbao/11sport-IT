@@ -3,7 +3,7 @@ import request from 'supertest';
 import { createApp } from '../src/app';
 import { connectDatabase, clearDatabase, staffRepo } from '../src/config/db';
 import { seedDatabaseIfNeeded } from '../src/config/seed';
-import { hashPassword } from '../src/utils/auth';
+import { hashPassword } from '../src/shared/auth';
 
 describe('Xếp ca tuần: Sửa & Lưu hàng loạt (PUT /shifts/assign/bulk) + quy định 6 ngày làm / 1 ngày nghỉ', () => {
   const app = createApp();

@@ -8,10 +8,10 @@ import {
   shiftHandoverRepo,
   staffRepo,
 } from '../repositories';
-import { ApiError } from '../utils/errors';
+import { ApiError } from '../shared/errors';
 import { ShiftType } from '../models/ShiftAssignment';
-import { getFloorStocks } from '../utils/warehouseFloor';
-import { generateVariantProductCode } from '../utils/productCode';
+import { getFloorStocks } from './warehouseFloor.service';
+import { generateVariantProductCode } from '../shared/productCode';
 import {
   ADVANCE_NOTICE_DAYS_REQUIRED,
   assertPaidLeaveQuota,

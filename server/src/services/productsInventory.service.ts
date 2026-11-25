@@ -11,7 +11,7 @@ import {
   isCompactBarcodeMatchVariant,
   normalizeToCompactUpperCode,
   resolveVariantPricing,
-} from '../utils/productCode';
+} from '../shared/productCode';
 import {
   resolveCategoryAndBrand,
   resolveVersionCode,
@@ -20,8 +20,8 @@ import {
   findCodeConflicts,
   findDuplicateProduct,
   syncProductReferencesAfterRecode,
-} from '../utils/productScheme';
-import { ApiError } from '../utils/errors';
+} from './productScheme.service';
+import { ApiError } from '../shared/errors';
 import {
   normalizeFloor,
   floorLabel,
@@ -31,9 +31,9 @@ import {
   summarizeVariants,
   formatProductWithVariant,
   sanitizeColorHexes,
-} from '../utils/warehouseFloor';
-import { enrichProductsWithSetLinks, executeUnpackSetToRetail } from '../utils/unpackSet';
-import { filterAndRankBySearch } from '../utils/search';
+} from './warehouseFloor.service';
+import { enrichProductsWithSetLinks, executeUnpackSetToRetail } from './unpackSet.service';
+import { filterAndRankBySearch } from '../shared/search';
 
 
 // Quản lý/Admin/CEO (role ADMIN | CEO) và Kế toán & Kho (role ACCOUNTANT) quản lý giá & tồn

@@ -7,8 +7,8 @@ import { createApp } from './app';
 import { env } from './config/env';
 import { connectDatabase } from './config/database';
 import { seedDatabaseIfNeeded } from './config/seed';
-import { startKeepAlive } from './utils/keepAlive';
-import { assertSecurityEnvironment } from './utils/auth';
+import { startKeepAlive } from './infra/keepAlive';
+import { assertSecurityEnvironment } from './shared/auth';
 
 const PORT = env.port;
 

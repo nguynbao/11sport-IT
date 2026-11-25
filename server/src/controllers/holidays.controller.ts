@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { ApiError } from '../utils/errors';
+import { ApiError } from '../shared/errors';
 import {
   listHolidays,
   syncVietnamHolidays,

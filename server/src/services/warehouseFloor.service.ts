@@ -7,7 +7,7 @@ import {
   isNewSchemeProduct,
   normalizeToCompactUpperCode,
   suggestColorCode,
-} from './productCode';
+} from '../shared/productCode';
 
 export interface NormalizeVariantOptions {
   /**

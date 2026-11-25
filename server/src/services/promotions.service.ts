@@ -1,7 +1,7 @@
 import { ServiceRequest, ServiceResponse } from '../shared/types';
 import { categoryRepo, productRepo, promotionRepo } from '../repositories';
-import { resolveVariantPricing } from '../utils/productCode';
-import { ApiError } from '../utils/errors';
+import { resolveVariantPricing } from '../shared/productCode';
+import { ApiError } from '../shared/errors';
 import {
   IPromotionConditionCategory,
   IPromotionConditionProduct,
@@ -10,8 +10,8 @@ import {
   PromotionDiscountType,
   PromotionStatus,
 } from '../models/Promotion';
-import { getFloorStocks } from '../utils/warehouseFloor';
-import { filterAndRankBySearch } from '../utils/search';
+import { getFloorStocks } from './warehouseFloor.service';
+import { filterAndRankBySearch } from '../shared/search';
 
 
 export type EffectivePromotionStatus =

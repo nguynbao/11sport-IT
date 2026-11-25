@@ -1,10 +1,10 @@
 import { ServiceRequest, ServiceResponse } from '../shared/types';
 import { staffRepo } from '../repositories';
-import { hashPassword, verifyPassword, signToken } from '../utils/auth';
+import { hashPassword, verifyPassword, signToken } from '../shared/auth';
 import { invalidateStaffAuthCache } from '../middleware/auth';
-import { ApiError } from '../utils/errors';
-import { filterAndRankBySearch } from '../utils/search';
-import { parseStaffImportFile } from '../utils/staffImportParser';
+import { ApiError } from '../shared/errors';
+import { filterAndRankBySearch } from '../shared/search';
+import { parseStaffImportFile } from './staffImportParser.service';
 
 /** Loại hợp đồng được phép chọn khi tạo/cập nhật: Thực tập, Thử việc, Chính thức */
 const VALID_CONTRACT_TYPES = ['INTERN', 'PROBATION', 'FULLTIME'];

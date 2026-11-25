@@ -16,7 +16,7 @@ import {
   normalizeToCompactUpperCode,
   buildVariantSku,
   isNewSchemeProduct,
-} from '../utils/productCode';
+} from '../shared/productCode';
 import {
   ImportSchemeContext,
   loadImportSchemeContext,
@@ -26,13 +26,13 @@ import {
   resolveExplicitImportSchemeItem,
   findCodeConflictsInList,
   createProductFromImportProposal,
-} from '../utils/productScheme';
+} from './productScheme.service';
 import {
   matchTagToItems,
   isScannedCodeMatchServer,
   getBarcodeCandidatesServer,
-} from '../utils/tagMatch';
-import { ApiError } from '../utils/errors';
+} from '../shared/tagMatch';
+import { ApiError } from '../shared/errors';
 import { requireRoles } from '../middleware/auth';
 import { IImportReceiptItem } from '../models/ImportReceipt';
 import {
@@ -42,8 +42,8 @@ import {
   getFloorStocks,
   formatProductWithVariant,
   sanitizeColorHexes,
-} from '../utils/warehouseFloor';
-import { filterAndRankBySearch } from '../utils/search';
+} from './warehouseFloor.service';
+import { filterAndRankBySearch } from '../shared/search';
 import {
   OcrTableRow,
   parseTextToRows,
@@ -51,7 +51,7 @@ import {
   ocrScanTable,
   ocrScanTag,
   sanitizeBarcode,
-} from '../utils/ocr';
+} from '../infra/ocr';
 import {
   parseXlsxBufferToMatrix,
   parseCsvTextToMatrix,
@@ -59,7 +59,7 @@ import {
   convertMatrixToImportRows,
   parseRawTextToImportRows,
   ParsedImportFileRow,
-} from '../utils/fileImportParser';
+} from '../shared/fileImportParser';
 
 // Khóa tuần tự theo khóa (mã tạo phiếu hoặc receiptId) chống ghi đè mã phiếu và chống hoàn thành/ghi sổ 2 lần khi click đúp hoặc request song song
 const importLockQueues = new Map<string, Promise<unknown>>();

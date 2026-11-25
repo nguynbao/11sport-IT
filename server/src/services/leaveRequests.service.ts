@@ -1,5 +1,5 @@
 import { leaveRequestRepo, shiftAssignmentRepo, staffRepo } from "../repositories";
-import { ApiError } from "../utils/errors";
+import { ApiError } from "../shared/errors";
 import {
   toLocalDateStr,
   parseLocalDateStr,
