@@ -19,6 +19,7 @@ Trash2
 } from "lucide-react";
 import { DEFAULT_WEEKLY_SCHEDULE,shiftLabel,useShiftHandover,WEEKDAY_LABELS } from "../hooks/useShiftHandover";
 import { ShiftHandoverDetailModal } from "./ShiftHandoverDetailModal";
+import { PaginationBar } from "@/shared/ui/PaginationBar";
 
 export default function ShiftHandoverModule({ currentUser }: { currentUser: StaffUser | null }) {
   const vm = useShiftHandover({ currentUser });
@@ -380,7 +381,7 @@ export default function ShiftHandoverModule({ currentUser }: { currentUser: Staf
                   </td>
                 </tr>
               ) : (
-                filteredItems.map((h) => {
+                vm.handoverPagination.items.map((h) => {
                   const diffCount = Array.isArray(h.discrepancies) ? h.discrepancies.length : 0;
                   const categoriesText =
                     Array.isArray(h.checkedCategories) && h.checkedCategories.length > 0
@@ -526,6 +527,15 @@ export default function ShiftHandoverModule({ currentUser }: { currentUser: Staf
               )}
             </tbody>
           </table>
+          <PaginationBar
+            totalItems={vm.handoverPagination.total}
+            page={vm.handoverPagination.page}
+            totalPages={vm.handoverPagination.totalPages}
+            pageSize={vm.handoverPagination.pageSize}
+            onPageChange={vm.handoverPagination.setPage}
+            onPageSizeChange={vm.handoverPagination.setPageSize}
+            itemLabel="phiếu bàn giao"
+          />
         </div>
       </div>
 

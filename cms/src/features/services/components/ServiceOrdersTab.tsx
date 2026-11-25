@@ -13,6 +13,7 @@ Search,
 Wallet
 } from "lucide-react";
 import { ServiceManagementViewModel } from "../hooks/useServiceManagement";
+import { PaginationBar } from "@/shared/ui/PaginationBar";
 const STATUS_INFO: Record<
   ServiceOrderStatus,
   { label: string; badgeCls: string }
@@ -520,6 +521,15 @@ export function ServiceOrdersTab({ vm }: { vm: ServiceManagementViewModel }) {
                 </tbody>
               </table>
             </div>
+            <PaginationBar
+              totalItems={vm.orderTotal}
+              page={vm.orderPage}
+              totalPages={vm.orderTotalPages}
+              pageSize={vm.orderPageSize}
+              onPageChange={vm.setOrderPage}
+              onPageSizeChange={vm.setOrderPageSize}
+              itemLabel="đơn dịch vụ"
+            />
           </div>
         </div>
       )}

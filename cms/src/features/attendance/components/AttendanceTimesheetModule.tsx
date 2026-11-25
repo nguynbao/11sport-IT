@@ -27,6 +27,7 @@ import { CellDetailModal } from "./TimesheetCellDetailModal";
 import { KpiCard } from "./TimesheetKpiCard";
 import { MatrixView } from "./TimesheetMatrixView";
 import { SummaryView } from "./TimesheetSummaryView";
+import { PaginationBar } from "@/shared/ui/PaginationBar";
 
 
 export default function AttendanceTimesheetModule() {
@@ -298,16 +299,25 @@ export default function AttendanceTimesheetModule() {
       ) : (
         <div className="space-y-2.5">
           <div className="flex flex-col xl:flex-row xl:items-stretch gap-3">
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 space-y-2">
               {view === "MATRIX" ? (
                 <MatrixView
                   data={data}
-                  rows={filteredRows}
+                  rows={vm.timesheetPagination.items}
                   onCellClick={(row, day, cell) => setEditTarget({ row, day, cell })}
                 />
               ) : (
-                <SummaryView rows={filteredRows} />
+                <SummaryView rows={vm.timesheetPagination.items} />
               )}
+              <PaginationBar
+                totalItems={vm.timesheetPagination.total}
+                page={vm.timesheetPagination.page}
+                totalPages={vm.timesheetPagination.totalPages}
+                pageSize={vm.timesheetPagination.pageSize}
+                onPageChange={vm.timesheetPagination.setPage}
+                onPageSizeChange={vm.timesheetPagination.setPageSize}
+                itemLabel="nhân viên"
+              />
             </div>
 
             {/* Chú thích bên phải xếp thành hàng dọc */}

@@ -9,6 +9,7 @@ Flame,
 PieChart,
 Search
 } from "lucide-react";
+import { PaginationBar } from "@/shared/ui/PaginationBar";
 import { RevenueDashboardViewModel } from "../hooks/useRevenueDashboard";
 import { formatShortVND } from "./RevenueCharts";
 

@@ -2,8 +2,11 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { Order, ReturnReceipt } from "@/shared/types";
 import { apiRequest } from "@/shared/api/client";
 import { API_ENDPOINTS } from "@/shared/api/endpoints";
+import { extractPagination } from "@/shared/api/pagination";
+import { DEBOUNCE_MS, DEFAULT_PAGE_SIZE } from "@/config/listing";
 import { formatVND } from "@/shared/utils/format";
-import { useDebounce, filterAndRankBySearch } from "@/shared/lib/search";
+import { useDebounce } from "@/shared/hooks/useDebounce";
+import { filterAndRankBySearch } from "@/shared/lib/search";
 
 export function useOrdersReturns({ onOpenInvoice }: { onOpenInvoice: (order: Order) => void }) {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -12,12 +15,25 @@ export function useOrdersReturns({ onOpenInvoice }: { onOpenInvoice: (order: Ord
   const [statusFilter, setStatusFilter] = useState("");
   const [paymentFilter, setPaymentFilter] = useState("");
   const [debtFilter, setDebtFilter] = useState("");
+  const [ordPage, setOrdPage] = useState(1);
+  const [ordPageSize, setOrdPageSizeState] = useState<number>(DEFAULT_PAGE_SIZE);
+  const [ordTotal, setOrdTotal] = useState(0);
+  const [ordTotalPages, setOrdTotalPages] = useState(1);
+  const [retPage, setRetPage] = useState(1);
+  const [retPageSize, setRetPageSizeState] = useState<number>(DEFAULT_PAGE_SIZE);
+  const [retTotal, setRetTotal] = useState(0);
+  const [retTotalPages, setRetTotalPages] = useState(1);
   const [actionMsg, setActionMsg] = useState<{ type: "success" | "error"; text: string } | null>(
     null
   );
 
   // Debounce từ khóa tìm kiếm (400ms) để tránh gọi API liên tục trên từng phím gõ
-  const debouncedSearch = useDebounce(search, 400);
+  const debouncedSearch = useDebounce(search, DEBOUNCE_MS.API);
+
+  useEffect(() => {
+    setOrdPage(1);
+    setRetPage(1);
+  }, [debouncedSearch, statusFilter, paymentFilter, debtFilter]);
 
   const loadData = useCallback(async () => {
     try {
@@ -26,22 +42,45 @@ export function useOrdersReturns({ onOpenInvoice }: { onOpenInvoice: (order: Ord
       if (statusFilter) q.set("status", statusFilter);
       if (paymentFilter) q.set("paymentMethod", paymentFilter);
       if (debtFilter) q.set("debtStatus", debtFilter);
+      q.set("page", String(ordPage));
+      q.set("pageSize", String(ordPageSize));
 
       const retQ = new URLSearchParams();
       if (debouncedSearch.trim()) retQ.set("search", debouncedSearch.trim());
+      retQ.set("page", String(retPage));
+      retQ.set("pageSize", String(retPageSize));
 
       const [ordRes, retRes] = await Promise.all([
         apiRequest<Order[]>(`${API_ENDPOINTS.ORDERS.BASE}?${q.toString()}`),
         apiRequest<ReturnReceipt[]>(
-          `${API_ENDPOINTS.RETURNS.BASE}${retQ.toString() ? `?${retQ.toString()}` : ""}`
+          `${API_ENDPOINTS.RETURNS.BASE}?${retQ.toString()}`
         ),
       ]);
-      setOrders(Array.isArray(ordRes.data) ? ordRes.data : []);
-      setReturns(Array.isArray(retRes.data) ? retRes.data : []);
+      const ordList = Array.isArray(ordRes.data) ? ordRes.data : [];
+      const retList = Array.isArray(retRes.data) ? retRes.data : [];
+      setOrders(ordList);
+      setReturns(retList);
+
+      const ordPg = extractPagination(ordRes.meta, ordList.length, ordPage, ordPageSize);
+      setOrdTotal(ordPg.total);
+      setOrdTotalPages(ordPg.totalPages);
+
+      const retPg = extractPagination(retRes.meta, retList.length, retPage, retPageSize);
+      setRetTotal(retPg.total);
+      setRetTotalPages(retPg.totalPages);
     } catch {
       // ignore
     }
-  }, [debouncedSearch, statusFilter, paymentFilter, debtFilter]);
+  }, [debouncedSearch, statusFilter, paymentFilter, debtFilter, ordPage, ordPageSize, retPage, retPageSize]);
+
+  const setOrdPageSize = (sz: number) => {
+    setOrdPageSizeState(sz);
+    setOrdPage(1);
+  };
+  const setRetPageSize = (sz: number) => {
+    setRetPageSizeState(sz);
+    setRetPage(1);
+  };
 
   useEffect(() => {
     loadData();
@@ -151,6 +190,18 @@ export function useOrdersReturns({ onOpenInvoice }: { onOpenInvoice: (order: Ord
     actionMsg,
     displayedOrders,
     displayedReturns,
+    ordPage,
+    ordPageSize,
+    ordTotal,
+    ordTotalPages,
+    setOrdPage,
+    setOrdPageSize,
+    retPage,
+    retPageSize,
+    retTotal,
+    retTotalPages,
+    setRetPage,
+    setRetPageSize,
     handleConfirmDraft,
     handleDeleteDraft,
   };

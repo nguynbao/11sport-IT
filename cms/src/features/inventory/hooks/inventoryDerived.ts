@@ -1,4 +1,5 @@
 import { filterAndRankBySearch } from "@/shared/lib/search";
+import { paginateItems } from "@/shared/utils/pagination";
 import type { Product } from "@/shared/types";
 import { useEffect,useMemo } from "react";
 import type { InventoryState } from "./useInventoryState";
@@ -180,18 +181,10 @@ export function useInventoryDerived(deps: {
     setImpPage(1);
   }, [activeWarehouse, impPageSize]);
 
-  const prodTotalPages =
-    prodPageSize <= 0
-      ? 1
-      : Math.max(1, Math.ceil(displayedProducts.length / prodPageSize));
-  const safeProdPage = Math.min(prodPage, prodTotalPages);
-  const pagedProducts =
-    prodPageSize <= 0
-      ? displayedProducts
-      : displayedProducts.slice(
-        (safeProdPage - 1) * prodPageSize,
-        safeProdPage * prodPageSize
-      );
+  const prodPg = paginateItems(displayedProducts, prodPage, prodPageSize);
+  const prodTotalPages = prodPg.totalPages;
+  const safeProdPage = prodPg.page;
+  const pagedProducts = prodPg.items;
 
 
   const filteredReportRows = reportRows.filter((r) => {
@@ -209,54 +202,30 @@ export function useInventoryDerived(deps: {
     }
     return true;
   });
-  const reportTotalPages =
-    reportPageSize <= 0
-      ? 1
-      : Math.max(1, Math.ceil(filteredReportRows.length / reportPageSize));
-  const safeReportPage = Math.min(reportPage, reportTotalPages);
-  const pagedReportRows =
-    reportPageSize <= 0
-      ? filteredReportRows
-      : filteredReportRows.slice(
-        (safeReportPage - 1) * reportPageSize,
-        safeReportPage * reportPageSize
-      );
+  const reportPg = paginateItems(filteredReportRows, reportPage, reportPageSize);
+  const reportTotalPages = reportPg.totalPages;
+  const safeReportPage = reportPg.page;
+  const pagedReportRows = reportPg.items;
 
   const filteredMovements = movements.filter((m) => {
     if (activeWarehouse === "ALL") return true;
     const loc = m.warehouseLocation || "FLOOR_1";
     return loc === activeWarehouse;
   });
-  const movTotalPages =
-    movPageSize <= 0
-      ? 1
-      : Math.max(1, Math.ceil(filteredMovements.length / movPageSize));
-  const safeMovPage = Math.min(movPage, movTotalPages);
-  const pagedMovements =
-    movPageSize <= 0
-      ? filteredMovements
-      : filteredMovements.slice(
-        (safeMovPage - 1) * movPageSize,
-        safeMovPage * movPageSize
-      );
+  const movPg = paginateItems(filteredMovements, movPage, movPageSize);
+  const movTotalPages = movPg.totalPages;
+  const safeMovPage = movPg.page;
+  const pagedMovements = movPg.items;
 
   const filteredImports = importsList.filter((imp) => {
     if (activeWarehouse === "ALL") return true;
     const wh = imp.targetWarehouse === "FLOOR_2" ? "FLOOR_2" : "FLOOR_1";
     return wh === activeWarehouse;
   });
-  const impTotalPages =
-    impPageSize <= 0
-      ? 1
-      : Math.max(1, Math.ceil(filteredImports.length / impPageSize));
-  const safeImpPage = Math.min(impPage, impTotalPages);
-  const pagedImports =
-    impPageSize <= 0
-      ? filteredImports
-      : filteredImports.slice(
-        (safeImpPage - 1) * impPageSize,
-        safeImpPage * impPageSize
-      );
+  const impPg = paginateItems(filteredImports, impPage, impPageSize);
+  const impTotalPages = impPg.totalPages;
+  const safeImpPage = impPg.page;
+  const pagedImports = impPg.items;
 
 
 

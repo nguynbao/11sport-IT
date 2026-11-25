@@ -5,6 +5,7 @@ import { Order } from "@/shared/types";
 import { formatVND, formatDateTime, formatPhone } from "@/shared/utils/format";
 import { Search, Printer, ShoppingBag, RotateCcw, CheckCircle2, Trash2 } from "lucide-react";
 import ExportExcelButton from "@/shared/ui/ExportExcelButton";
+import { PaginationBar } from "@/shared/ui/PaginationBar";
 import { exportOrders, exportReturns } from "../exports";
 import { useOrdersReturns } from "../hooks/useOrdersReturns";
 
@@ -27,6 +28,18 @@ export default function OrdersReturnsModule({
     actionMsg,
     displayedOrders,
     displayedReturns,
+    ordPage,
+    ordPageSize,
+    ordTotal,
+    ordTotalPages,
+    setOrdPage,
+    setOrdPageSize,
+    retPage,
+    retPageSize,
+    retTotal,
+    retTotalPages,
+    setRetPage,
+    setRetPageSize,
     handleConfirmDraft,
     handleDeleteDraft,
   } = useOrdersReturns({ onOpenInvoice });
@@ -264,6 +277,15 @@ export default function OrdersReturnsModule({
             </tbody>
           </table>
         </div>
+        <PaginationBar
+          totalItems={ordTotal}
+          page={ordPage}
+          totalPages={ordTotalPages}
+          pageSize={ordPageSize}
+          onPageChange={setOrdPage}
+          onPageSizeChange={setOrdPageSize}
+          itemLabel="đơn hàng"
+        />
       </div>
 
       {/* Bảng Phiếu Trả / Đổi Hàng */}
@@ -340,6 +362,15 @@ export default function OrdersReturnsModule({
             </tbody>
           </table>
         </div>
+        <PaginationBar
+          totalItems={retTotal}
+          page={retPage}
+          totalPages={retTotalPages}
+          pageSize={retPageSize}
+          onPageChange={setRetPage}
+          onPageSizeChange={setRetPageSize}
+          itemLabel="phiếu trả/đổi"
+        />
       </div>
     </div>
   );

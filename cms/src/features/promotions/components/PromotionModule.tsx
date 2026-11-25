@@ -18,6 +18,7 @@ Trash2
 } from "lucide-react";
 import { usePromotionModule } from "../hooks/usePromotionModule";
 import { PromotionFormModal } from "./PromotionFormModal";
+import { PaginationBar } from "@/shared/ui/PaginationBar";
 function toDateTimeLocalInput(iso?: string | null): string {
   if (!iso) return "";
   try {
@@ -241,7 +242,7 @@ export default function PromotionModule() {
           </div>
         ) : (
           <div className="divide-y divide-slate-200">
-            {filteredPromotions.map((promo) => (
+            {vm.promoPagination.items.map((promo) => (
               <div
                 key={promo._id}
                 className={`p-4 sm:p-5 transition hover:bg-slate-50/80 ${promo.isCurrentlyActive ? "" : "opacity-80 bg-slate-50/40"
@@ -456,6 +457,15 @@ export default function PromotionModule() {
                 </div>
               </div>
             ))}
+            <PaginationBar
+              totalItems={vm.promoPagination.total}
+              page={vm.promoPagination.page}
+              totalPages={vm.promoPagination.totalPages}
+              pageSize={vm.promoPagination.pageSize}
+              onPageChange={vm.promoPagination.setPage}
+              onPageSizeChange={vm.promoPagination.setPageSize}
+              itemLabel="chương trình"
+            />
           </div>
         )}
       </div>

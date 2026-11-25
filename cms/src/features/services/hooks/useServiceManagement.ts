@@ -1,9 +1,12 @@
 import { apiRequest } from "@/shared/api/client";
-import { useDebounce } from "@/shared/lib/search";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
+import { extractPagination } from "@/shared/api/pagination";
+import { DEBOUNCE_MS, DEFAULT_PAGE_SIZE } from "@/config/listing";
+import { useClientPagination } from "@/shared/hooks/useClientPagination";
+import { useDebounce } from "@/shared/hooks/useDebounce";
 import { ServiceOrder,ServiceOrdersMeta,ServiceOrderStatus,ServicePaymentMethod,ServiceType,StaffUser } from "@/shared/types";
 import { cleanPhoneDigits,formatPhone,formatVND } from "@/shared/utils/format";
 import React,{ useCallback,useEffect,useState } from "react";
-import { API_ENDPOINTS } from "@/shared/api/endpoints";
 const STATUS_INFO: Record<
   ServiceOrderStatus,
   { label: string; badgeCls: string }
@@ -95,7 +98,12 @@ export function useServiceManagement({ currentUser }: { currentUser?: StaffUser 
   });
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [orderSearch, setOrderSearch] = useState("");
-  const debouncedOrderSearch = useDebounce(orderSearch, 250);
+  const debouncedOrderSearch = useDebounce(orderSearch, DEBOUNCE_MS.API);
+  const debouncedTypeSearch = useDebounce(typeSearch, DEBOUNCE_MS.API);
+  const [orderPage, setOrderPage] = useState(1);
+  const [orderPageSize, setOrderPageSizeState] = useState<number>(DEFAULT_PAGE_SIZE);
+  const [orderTotal, setOrderTotal] = useState(0);
+  const [orderTotalPages, setOrderTotalPages] = useState(1);
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [paymentFilter, setPaymentFilter] = useState<string>("ALL");
   const [overdueOnly, setOverdueOnly] = useState<boolean>(false);
@@ -133,20 +141,28 @@ export function useServiceManagement({ currentUser }: { currentUser?: StaffUser 
   >([]);
   const [savingOrderEdit, setSavingOrderEdit] = useState(false);
 
+  const typePagination = useClientPagination(serviceTypes, DEFAULT_PAGE_SIZE);
+
   const fetchServiceTypes = useCallback(async () => {
     setLoadingTypes(true);
     try {
-      const q = typeSearch.trim()
-        ? `?search=${encodeURIComponent(typeSearch.trim())}`
+      const q = debouncedTypeSearch.trim()
+        ? `?search=${encodeURIComponent(debouncedTypeSearch.trim())}`
         : "";
-      const res = await apiRequest<ServiceType[]>(`/service-types${q}`);
+      const res = await apiRequest<ServiceType[]>(`${API_ENDPOINTS.SERVICES.TYPES}${q}`);
       setServiceTypes(res.data || []);
+      typePagination.resetPage();
     } catch (err: any) {
       setErrorMsg(err?.message || "Lỗi khi tải danh mục loại dịch vụ");
     } finally {
       setLoadingTypes(false);
     }
-  }, [typeSearch]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedTypeSearch]);
+
+  useEffect(() => {
+    setOrderPage(1);
+  }, [debouncedOrderSearch, statusFilter, paymentFilter, overdueOnly, fromDate, toDate, orderPageSize]);
 
   const fetchServiceOrders = useCallback(async () => {
     setLoadingOrders(true);
@@ -166,12 +182,18 @@ export function useServiceManagement({ currentUser }: { currentUser?: StaffUser 
       }
       if (fromDate) params.set("from", fromDate);
       if (toDate) params.set("to", toDate);
+      params.set("page", String(orderPage));
+      params.set("pageSize", String(orderPageSize));
 
       const qs = params.toString();
       const res = await apiRequest<ServiceOrder[]>(
-        `/service-orders${qs ? `?${qs}` : ""}`
+        `${API_ENDPOINTS.SERVICES.ORDERS}${qs ? `?${qs}` : ""}`
       );
-      setServiceOrders(res.data || []);
+      const list = res.data || [];
+      setServiceOrders(list);
+      const pg = extractPagination(res.meta, list.length, orderPage, orderPageSize);
+      setOrderTotal(pg.total);
+      setOrderTotalPages(pg.totalPages);
       if (res.meta) {
         setOrdersMeta(res.meta as unknown as ServiceOrdersMeta);
       }
@@ -180,7 +202,12 @@ export function useServiceManagement({ currentUser }: { currentUser?: StaffUser 
     } finally {
       setLoadingOrders(false);
     }
-  }, [debouncedOrderSearch, statusFilter, paymentFilter, overdueOnly, fromDate, toDate]);
+  }, [debouncedOrderSearch, statusFilter, paymentFilter, overdueOnly, fromDate, toDate, orderPage, orderPageSize]);
+
+  const setOrderPageSize = (sz: number) => {
+    setOrderPageSizeState(sz);
+    setOrderPage(1);
+  };
 
   useEffect(() => {
     if (canManageServices) {
@@ -520,6 +547,19 @@ export function useServiceManagement({ currentUser }: { currentUser?: StaffUser 
     handleSubmitCollect,
     handleOpenEditOrder,
     handleSaveOrderEdit,
+    pagedServiceTypes: typePagination.items,
+    typePage: typePagination.page,
+    typePageSize: typePagination.pageSize,
+    typeTotal: typePagination.total,
+    typeTotalPages: typePagination.totalPages,
+    setTypePage: typePagination.setPage,
+    setTypePageSize: typePagination.setPageSize,
+    orderPage,
+    orderPageSize,
+    orderTotal,
+    orderTotalPages,
+    setOrderPage,
+    setOrderPageSize,
   };
 }
 

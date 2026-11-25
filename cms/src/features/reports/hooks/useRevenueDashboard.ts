@@ -1,5 +1,8 @@
 import { apiRequest } from "@/shared/api/client";
-import { filterAndRankBySearch,useDebounce } from "@/shared/lib/search";
+import { DEBOUNCE_MS } from "@/config/listing";
+import { useDebounce } from "@/shared/hooks/useDebounce";
+import { paginateItems } from "@/shared/utils/pagination";
+import { filterAndRankBySearch } from "@/shared/lib/search";
 import { Category,Order,Product,ReturnReceipt,RevenueDashboardData,ServiceOrder } from "@/shared/types";
 import { useCallback,useEffect,useMemo,useState } from "react";
 import { buildClientFallbackDashboard } from "../fallbackDashboard";
@@ -161,8 +164,9 @@ export function useRevenueDashboard({ onNavigateToInventory, onNavigateToDebts }
   }, [loadDashboard]);
 
   // Debounce từ khóa tìm kiếm bảng Top Bán chạy và bảng Cần đẩy bán (350ms)
-  const debouncedTopSearch = useDebounce(topSearch, 350);
-  const debouncedPushSearch = useDebounce(pushSearch, 350);
+  const debouncedTopSearch = useDebounce(topSearch, DEBOUNCE_MS.LOCAL);
+  const debouncedPushSearch = useDebounce(pushSearch, DEBOUNCE_MS.LOCAL);
+  const debouncedDebtSearch = useDebounce(debtSearch, DEBOUNCE_MS.LOCAL);
 
   // Reset trang khi lọc
   useEffect(() => {
@@ -214,26 +218,20 @@ export function useRevenueDashboard({ onNavigateToInventory, onNavigateToDebts }
     ]);
   }, [data?.needsPushProducts, debouncedPushSearch, pushFilter]);
 
-  const topTotalPages = Math.max(1, Math.ceil(sortedTopProducts.length / topPageSize));
-  const pagedTopProducts = sortedTopProducts.slice(
-    (topPage - 1) * topPageSize,
-    topPage * topPageSize
-  );
+  const topPg = paginateItems(sortedTopProducts, topPage, topPageSize);
+  const topTotalPages = topPg.totalPages;
+  const pagedTopProducts = topPg.items;
 
-  const pushTotalPages = Math.max(1, Math.ceil(filteredPushProducts.length / pushPageSize));
-  const pagedPushProducts = filteredPushProducts.slice(
-    (pushPage - 1) * pushPageSize,
-    pushPage * pushPageSize
-  );
+  const pushPg = paginateItems(filteredPushProducts, pushPage, pushPageSize);
+  const pushTotalPages = pushPg.totalPages;
+  const pagedPushProducts = pushPg.items;
 
   const reversedDaily = useMemo(() => {
     return [...(data?.dailyTrend || [])].reverse();
   }, [data?.dailyTrend]);
-  const dailyTotalPages = Math.max(1, Math.ceil(reversedDaily.length / dailyPageSize));
-  const pagedDaily = reversedDaily.slice(
-    (dailyPage - 1) * dailyPageSize,
-    dailyPage * dailyPageSize
-  );
+  const dailyPg = paginateItems(reversedDaily, dailyPage, dailyPageSize);
+  const dailyTotalPages = dailyPg.totalPages;
+  const pagedDaily = dailyPg.items;
 
   // Dữ liệu chuỗi thời gian cho Biểu đồ (Theo giờ / Theo ngày / Theo tháng)
   const chartSeries = useMemo(() => {
@@ -365,7 +363,7 @@ export function useRevenueDashboard({ onNavigateToInventory, onNavigateToDebts }
       if (debtFilter === "SETTLED") return o.debtStatus === "SETTLED" || o.debtAmount === 0;
       return true;
     });
-    const q = debtSearch.trim();
+    const q = debouncedDebtSearch.trim();
     if (!q) return byStatus;
     return filterAndRankBySearch(byStatus, q, (o) => [
       { text: o.orderCode, weight: 1.5 },

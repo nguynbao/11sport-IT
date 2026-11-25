@@ -4,6 +4,9 @@ import { useEffect,useMemo,useState } from "react";
 import { EditableImportRow } from "../utils";
 import { buildStaffActions } from "./staffActionsHelper";
 import { buildStaffImportActions } from "./staffImportHelper";
+import { DEBOUNCE_MS, DEFAULT_PAGE_SIZE } from "@/config/listing";
+import { useClientPagination } from "@/shared/hooks/useClientPagination";
+import { useDebounce } from "@/shared/hooks/useDebounce";
 import { API_ENDPOINTS } from "@/shared/api/endpoints";
 
 export interface StaffModuleProps {
@@ -403,8 +406,10 @@ export function useStaffModule({ mode = "HR_FULL", currentUser = null }: StaffMo
     }
   };
 
+  const debouncedSearchQuery = useDebounce(searchQuery, DEBOUNCE_MS.LOCAL);
+
   const filteredStaffList = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+    const q = debouncedSearchQuery.trim().toLowerCase();
     const filtered = staffList.filter((st) => {
       const normalizedRole = st.role;
       const dept = st.department || (normalizedRole === "SALES" ? "SALES" : "OFFICE");
@@ -459,7 +464,13 @@ export function useStaffModule({ mode = "HR_FULL", currentUser = null }: StaffMo
       }
       return (a.code || "").localeCompare(b.code || "", "vi") * dir;
     });
-  }, [staffList, searchQuery, filterDept, filterRole, filterContract, filterStatus, sortBy, sortOrder]);
+  }, [staffList, debouncedSearchQuery, filterDept, filterRole, filterContract, filterStatus, sortBy, sortOrder]);
+
+  const staffPagination = useClientPagination(filteredStaffList, DEFAULT_PAGE_SIZE);
+  useEffect(() => {
+    staffPagination.resetPage();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearchQuery, filterDept, filterRole, filterContract, filterStatus, sortBy, sortOrder]);
 
   const allModalSelected =
     importRows.length > 0 && importRows.every((r) => r.selected);
@@ -504,6 +515,7 @@ export function useStaffModule({ mode = "HR_FULL", currentUser = null }: StaffMo
     handleResetFilters,
     handleColumnSort,
     filteredStaffList,
+    staffPagination,
     allModalSelected,
     selectedModalCount,
   };

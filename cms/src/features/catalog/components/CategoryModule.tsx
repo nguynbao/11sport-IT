@@ -18,6 +18,7 @@ X,
 } from "lucide-react";
 import { exportCategories } from "../exports";
 import { useCategoryModule } from "../hooks/useCategoryModule";
+import { PaginationBar } from "@/shared/ui/PaginationBar";
 
 
 export default function CategoryModule() {
@@ -276,7 +277,7 @@ export default function CategoryModule() {
                   </td>
                 </tr>
               )}
-              {visibleCategories.map((cat, idx) => {
+              {vm.categoryPagination.items.map((cat, idx) => {
                 const count = Number(cat.productCount || 0);
                 const isRowChanged =
                   String(editingCodes[cat._id] ?? cat.code).trim().toUpperCase() !== cat.code ||
@@ -454,6 +455,15 @@ export default function CategoryModule() {
             </tbody>
           </table>
         </div>
+        <PaginationBar
+          totalItems={vm.categoryPagination.total}
+          page={vm.categoryPagination.page}
+          totalPages={vm.categoryPagination.totalPages}
+          pageSize={vm.categoryPagination.pageSize}
+          onPageChange={vm.categoryPagination.setPage}
+          onPageSizeChange={vm.categoryPagination.setPageSize}
+          itemLabel="danh mục"
+        />
       </div>
     </div>
   );

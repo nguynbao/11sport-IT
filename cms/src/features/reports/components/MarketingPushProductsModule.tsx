@@ -16,6 +16,7 @@ Tag,
 TrendingDown,
 } from "lucide-react";
 import { exportPushProducts } from "../exports";
+import { PaginationBar } from "@/shared/ui/PaginationBar";
 import { useMarketingPushProducts } from "../hooks/useMarketingPushProducts";
 
 export default function MarketingPushProductsModule({

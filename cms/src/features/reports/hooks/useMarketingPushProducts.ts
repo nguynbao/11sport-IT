@@ -1,5 +1,8 @@
 import { apiRequest } from "@/shared/api/client";
-import { filterAndRankBySearch,useDebounce } from "@/shared/lib/search";
+import { DEBOUNCE_MS } from "@/config/listing";
+import { useDebounce } from "@/shared/hooks/useDebounce";
+import { paginateItems } from "@/shared/utils/pagination";
+import { filterAndRankBySearch } from "@/shared/lib/search";
 import { Category,Order,Product,ProductSalesAnalysisRow,ReturnReceipt } from "@/shared/types";
 import { useCallback,useEffect,useMemo,useState } from "react";
 import { parseLocalDateBound } from "../utils";
@@ -237,7 +240,7 @@ export function useMarketingPushProducts(onNavigateToInventory?: (searchCode?: s
   const [pushPage, setPushPage] = useState(1);
   const [pushPageSize, setPushPageSize] = useState(15);
 
-  const debouncedSearch = useDebounce(pushSearch, 200);
+  const debouncedSearch = useDebounce(pushSearch, DEBOUNCE_MS.LOCAL);
 
   const toDateInput = (d: Date) => {
     const yyyy = d.getFullYear();
@@ -360,11 +363,9 @@ export function useMarketingPushProducts(onNavigateToInventory?: (searchCode?: s
     ]);
   }, [rows, debouncedSearch, pushFilter]);
 
-  const pushTotalPages = Math.max(1, Math.ceil(filteredPushProducts.length / pushPageSize));
-  const pagedPushProducts = filteredPushProducts.slice(
-    (pushPage - 1) * pushPageSize,
-    pushPage * pushPageSize
-  );
+  const pushPg = paginateItems(filteredPushProducts, pushPage, pushPageSize);
+  const pushTotalPages = pushPg.totalPages;
+  const pagedPushProducts = pushPg.items;
 
 
   return {

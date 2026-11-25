@@ -1,7 +1,7 @@
 import { addProductVariantsApi,fetchBrandsApi,previewProductCodeApi } from "@/shared/api/catalogLookup";
 import { apiRequest } from "@/shared/api/client";
 import { describeApiError } from "@/shared/api/errors";
-import { useDebounce } from "@/shared/lib/search";
+import { useDebounce } from "@/shared/hooks/useDebounce";
 import { Brand,Category,PreviewCodeResult,Product } from "@/shared/types";
 import { useEffect,useMemo,useRef,useState } from "react";
 import { API_ENDPOINTS } from "@/shared/api/endpoints";
@@ -207,7 +207,7 @@ export function useProductCodeCreator({
     versionCode,
     variants: namedVariants.map((v) => [v.color.trim(), v.colorCode, v.size.trim()]),
   });
-  const debouncedKey = useDebounce(previewKey, 400);
+  const debouncedKey = useDebounce(previewKey);
 
   useEffect(() => {
     if (!open) return;

@@ -1,7 +1,10 @@
 
 import { apiRequest,getStoredUser } from "@/shared/api/client";
 import { describeApiError } from "@/shared/api/errors";
-import { filterAndRankBySearch,useDebounce } from "@/shared/lib/search";
+import { DEBOUNCE_MS, DEFAULT_PAGE_SIZE } from "@/config/listing";
+import { useClientPagination } from "@/shared/hooks/useClientPagination";
+import { useDebounce } from "@/shared/hooks/useDebounce";
+import { filterAndRankBySearch } from "@/shared/lib/search";
 import { Brand,Category,Product,ProductVariant } from "@/shared/types";
 import { BarcodeLabelItem } from "@/shared/ui/BarcodeLabelModal";
 import {
@@ -63,7 +66,7 @@ export function useProductCatalog() {
   const [filterBrandId, setFilterBrandId] = useState("");
   const [filterStatus, setFilterStatus] = useState<StockStatusFilter>("ALL");
   const [search, setSearch] = useState("");
-  const debouncedSearch = useDebounce(search, 300);
+  const debouncedSearch = useDebounce(search, DEBOUNCE_MS.LOCAL);
 
   // Modals & messages
   const [showCodeCreator, setShowCodeCreator] = useState(false);
@@ -192,6 +195,12 @@ export function useProductCatalog() {
         : []),
     ]);
   }, [products, filterCategoryId, filterBrandId, filterStatus, debouncedSearch, brandMap]);
+
+  const productPagination = useClientPagination(visibleProducts, DEFAULT_PAGE_SIZE);
+  useEffect(() => {
+    productPagination.resetPage();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterCategoryId, filterBrandId, filterStatus, debouncedSearch]);
 
   const handleCodeCreatorDone = (result: ProductCodeCreatorResult) => {
     setStatusMsg({
@@ -438,6 +447,7 @@ export function useProductCatalog() {
     categoryMap,
     brandMap,
     visibleProducts,
+    productPagination,
     handleCodeCreatorDone,
     handleSaveBaseProduct,
     handleSaveVariantPrice,

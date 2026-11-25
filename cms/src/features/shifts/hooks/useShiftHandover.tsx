@@ -1,5 +1,8 @@
 
 import { apiRequest } from "@/shared/api/client";
+import { DEBOUNCE_MS, DEFAULT_PAGE_SIZE } from "@/config/listing";
+import { useDebounce } from "@/shared/hooks/useDebounce";
+import { useClientPagination } from "@/shared/hooks/useClientPagination";
 import { Category,DailyHandoverCheckData,HandoverScheduleConfigData,ShiftHandoverRecord,StaffUser } from "@/shared/types";
 import {
 AlertTriangle,
@@ -289,9 +292,11 @@ export function useShiftHandover({ currentUser }: { currentUser: StaffUser | nul
     }
   };
 
+  const debouncedSearchTerm = useDebounce(searchTerm, DEBOUNCE_MS.LOCAL);
+
   const filteredItems = handovers.filter((h) => {
-    if (!searchTerm.trim()) return true;
-    const q = searchTerm.toLowerCase();
+    if (!debouncedSearchTerm.trim()) return true;
+    const q = debouncedSearchTerm.toLowerCase();
     const matchStaff =
       (h.fromStaffName || "").toLowerCase().includes(q) ||
       (h.toStaffName || "").toLowerCase().includes(q);
@@ -307,6 +312,12 @@ export function useShiftHandover({ currentUser }: { currentUser: StaffUser | nul
       : false;
     return matchStaff || matchNote || matchProduct;
   });
+
+  const handoverPagination = useClientPagination(filteredItems, DEFAULT_PAGE_SIZE);
+  useEffect(() => {
+    handoverPagination.resetPage();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearchTerm]);
 
   const totalCount = filteredItems.length;
   const pendingCount = filteredItems.filter((h) => h.status === "PENDING").length;
@@ -397,6 +408,7 @@ export function useShiftHandover({ currentUser }: { currentUser: StaffUser | nul
     handleConfirm,
     handleDelete,
     filteredItems,
+    handoverPagination,
     totalCount,
     pendingCount,
     acceptedCount,

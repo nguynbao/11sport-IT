@@ -16,6 +16,7 @@ import React from "react";
 
 import { DebtManagementModuleProps,useDebtManagement } from "../hooks/useDebtManagement";
 import { DebtPaymentModal } from "./DebtPaymentModal";
+import { PaginationBar } from "@/shared/ui/PaginationBar";
 
 export default function DebtManagementModule(props: DebtManagementModuleProps) {
   const vm = useDebtManagement(props);
@@ -250,7 +251,7 @@ export default function DebtManagementModule(props: DebtManagementModuleProps) {
                     </td>
                   </tr>
                 ) : (
-                  filteredDebtOrders.map((o) => (
+                  vm.ordersPagination.items.map((o) => (
                     <tr
                       key={o._id}
                       className={`hover:bg-slate-50 ${
@@ -393,6 +394,15 @@ export default function DebtManagementModule(props: DebtManagementModuleProps) {
                 )}
               </tbody>
             </table>
+            <PaginationBar
+              totalItems={vm.ordersPagination.total}
+              page={vm.ordersPagination.page}
+              totalPages={vm.ordersPagination.totalPages}
+              pageSize={vm.ordersPagination.pageSize}
+              onPageChange={vm.ordersPagination.setPage}
+              onPageSizeChange={vm.ordersPagination.setPageSize}
+              itemLabel="đơn công nợ"
+            />
           </div>
         ) : (
           /* TAB 2: GOM NHÓM THEO KHÁCH HÀNG (SĐT) */
@@ -417,7 +427,7 @@ export default function DebtManagementModule(props: DebtManagementModuleProps) {
                     </td>
                   </tr>
                 ) : (
-                  filteredDebtCustomers.map((c) => {
+                  vm.customersPagination.items.map((c) => {
                     const isExpanded = expandedCustomerPhone === c.phone;
                     const custOrders = c.orders || [];
                     return (
@@ -548,6 +558,15 @@ export default function DebtManagementModule(props: DebtManagementModuleProps) {
                 )}
               </tbody>
             </table>
+            <PaginationBar
+              totalItems={vm.customersPagination.total}
+              page={vm.customersPagination.page}
+              totalPages={vm.customersPagination.totalPages}
+              pageSize={vm.customersPagination.pageSize}
+              onPageChange={vm.customersPagination.setPage}
+              onPageSizeChange={vm.customersPagination.setPageSize}
+              itemLabel="khách hàng nợ"
+            />
           </div>
         )}
       </div>

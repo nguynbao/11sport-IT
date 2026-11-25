@@ -1,4 +1,7 @@
 import { apiRequest } from "@/shared/api/client";
+import { DEBOUNCE_MS, DEFAULT_PAGE_SIZE } from "@/config/listing";
+import { useClientPagination } from "@/shared/hooks/useClientPagination";
+import { useDebounce } from "@/shared/hooks/useDebounce";
 import { filterAndRankBySearch } from "@/shared/lib/search";
 import { DebtOrderRow,Order,RevenueDashboardData } from "@/shared/types";
 import { formatVND } from "@/shared/utils/format";
@@ -137,6 +140,8 @@ export function useDebtManagement({ onOpenInvoice }: DebtManagementModuleProps) 
   const dm = data?.debtManagement;
   const s = data?.summary;
 
+  const debouncedDebtSearch = useDebounce(debtSearch, DEBOUNCE_MS.LOCAL);
+
   const filteredDebtOrders = useMemo(() => {
     const list = dm?.orders || [];
     const byStatus = list.filter((o) => {
@@ -147,14 +152,14 @@ export function useDebtManagement({ onOpenInvoice }: DebtManagementModuleProps) 
       if (debtFilter === "SETTLED") return o.debtStatus === "SETTLED" || o.debtAmount === 0;
       return true;
     });
-    const q = debtSearch.trim();
+    const q = debouncedDebtSearch.trim();
     if (!q) return byStatus;
     return filterAndRankBySearch(byStatus, q, (o) => [
       { text: o.orderCode, weight: 1.5 },
       { text: o.customerName, weight: 1.3 },
       { text: o.customerPhone, weight: 1.4 },
     ]);
-  }, [dm?.orders, debtFilter, debtSearch]);
+  }, [dm?.orders, debtFilter, debouncedDebtSearch]);
 
   const filteredDebtCustomers = useMemo(() => {
     const list = dm?.customers || [];
@@ -164,13 +169,22 @@ export function useDebtManagement({ onOpenInvoice }: DebtManagementModuleProps) 
       if (debtFilter === "SETTLED") return c.totalDebtAmount === 0;
       return true;
     });
-    const q = debtSearch.trim();
+    const q = debouncedDebtSearch.trim();
     if (!q) return byStatus;
     return filterAndRankBySearch(byStatus, q, (c) => [
       { text: c.customerName, weight: 1.4 },
       { text: c.phone, weight: 1.5 },
     ]);
-  }, [dm?.customers, debtFilter, debtSearch]);
+  }, [dm?.customers, debtFilter, debouncedDebtSearch]);
+
+  const ordersPagination = useClientPagination(filteredDebtOrders, DEFAULT_PAGE_SIZE);
+  const customersPagination = useClientPagination(filteredDebtCustomers, DEFAULT_PAGE_SIZE);
+
+  useEffect(() => {
+    ordersPagination.resetPage();
+    customersPagination.resetPage();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debtFilter, debouncedDebtSearch]);
 
 
   return {
@@ -203,6 +217,8 @@ export function useDebtManagement({ onOpenInvoice }: DebtManagementModuleProps) 
     s,
     filteredDebtOrders,
     filteredDebtCustomers,
+    ordersPagination,
+    customersPagination,
   };
 }
 

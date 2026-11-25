@@ -20,6 +20,7 @@ X,
 } from "lucide-react";
 import { exportBrands } from "../exports";
 import { useBrandModule } from "../hooks/useBrandModule";
+import { PaginationBar } from "@/shared/ui/PaginationBar";
 
 
 export default function BrandModule() {
@@ -340,7 +341,7 @@ export default function BrandModule() {
                   </td>
                 </tr>
               )}
-              {visibleBrands.map((b, idx) => {
+              {vm.brandPagination.items.map((b, idx) => {
                 const count = Number(b.productCount || 0);
                 return (
                   <tr key={b._id} className={`hover:bg-slate-50 ${editing?._id === b._id ? "bg-teal-50" : ""}`}>
@@ -440,6 +441,15 @@ export default function BrandModule() {
             </tbody>
           </table>
         </div>
+        <PaginationBar
+          totalItems={vm.brandPagination.total}
+          page={vm.brandPagination.page}
+          totalPages={vm.brandPagination.totalPages}
+          pageSize={vm.brandPagination.pageSize}
+          onPageChange={vm.brandPagination.setPage}
+          onPageSizeChange={vm.brandPagination.setPageSize}
+          itemLabel="thương hiệu"
+        />
       </div>
     </div>
   );

@@ -6,6 +6,7 @@ BarChart3,
 Calendar,
 LineChart
 } from "lucide-react";
+import { PaginationBar } from "@/shared/ui/PaginationBar";
 import { RevenueDashboardViewModel } from "../hooks/useRevenueDashboard";
 import { RevenueBreakdownCard } from "./RevenueBreakdownCard";
 import { formatShortVND } from "./RevenueCharts";
@@ -450,31 +451,14 @@ export function RevenueOverviewTab({ vm }: { vm: RevenueDashboardViewModel }) {
                       </table>
                     </div>
 
-                    {dailyTotalPages > 1 && (
-                      <div className="flex items-center justify-between text-xs text-slate-600">
-                        <span>
-                          Trang <strong>{dailyPage}</strong> / {dailyTotalPages} ({reversedDaily.length} ngày)
-                        </span>
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            disabled={dailyPage <= 1}
-                            onClick={() => setDailyPage((p) => Math.max(1, p - 1))}
-                            className="px-2.5 py-1 rounded border border-slate-300 disabled:opacity-40 hover:bg-slate-100 font-bold"
-                          >
-                            Trước
-                          </button>
-                          <button
-                            type="button"
-                            disabled={dailyPage >= dailyTotalPages}
-                            onClick={() => setDailyPage((p) => Math.min(dailyTotalPages, p + 1))}
-                            className="px-2.5 py-1 rounded border border-slate-300 disabled:opacity-40 hover:bg-slate-100 font-bold"
-                          >
-                            Tiếp
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                    <PaginationBar
+                      totalItems={reversedDaily.length}
+                      page={dailyPage}
+                      totalPages={dailyTotalPages}
+                      pageSize={15}
+                      onPageChange={setDailyPage}
+                      itemLabel="ngày"
+                    />
                   </>
                 )}
               </div>

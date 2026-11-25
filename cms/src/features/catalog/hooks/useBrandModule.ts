@@ -1,7 +1,10 @@
 
 import { apiRequest,getStoredUser } from "@/shared/api/client";
 import { describeApiError } from "@/shared/api/errors";
-import { filterAndRankBySearch,useDebounce } from "@/shared/lib/search";
+import { DEBOUNCE_MS, DEFAULT_PAGE_SIZE } from "@/config/listing";
+import { useClientPagination } from "@/shared/hooks/useClientPagination";
+import { useDebounce } from "@/shared/hooks/useDebounce";
+import { filterAndRankBySearch } from "@/shared/lib/search";
 import { Brand,Category } from "@/shared/types";
 import React,{ useEffect,useMemo,useState } from "react";
 import { API_ENDPOINTS } from "@/shared/api/endpoints";
@@ -40,7 +43,7 @@ export function useBrandModule() {
   const [filterCategoryId, setFilterCategoryId] = useState("");
   const [filterStatus, setFilterStatus] = useState<"" | "ACTIVE" | "INACTIVE">("");
   const [search, setSearch] = useState("");
-  const debouncedSearch = useDebounce(search, 250);
+  const debouncedSearch = useDebounce(search, DEBOUNCE_MS.LOCAL);
   const [statusMsg, setStatusMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const categoryMap = useMemo(() => {
@@ -82,6 +85,12 @@ export function useBrandModule() {
       ...(b.aliases || []).map((a) => ({ text: a, weight: 1.1 })),
     ]);
   }, [brands, debouncedSearch]);
+
+  const brandPagination = useClientPagination(visibleBrands, DEFAULT_PAGE_SIZE);
+  useEffect(() => {
+    brandPagination.resetPage();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterCategoryId, filterStatus, debouncedSearch]);
 
   const stats = useMemo(() => {
     const active = brands.filter((b) => b.status === "ACTIVE").length;
@@ -240,6 +249,7 @@ export function useBrandModule() {
     setStatusMsg,
     categoryMap,
     visibleBrands,
+    brandPagination,
     stats,
     resetForm,
     startEdit,

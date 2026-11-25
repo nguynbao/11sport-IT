@@ -1,5 +1,6 @@
 import { getStoredUser } from "@/shared/api/client";
-import { useDebounce } from "@/shared/lib/search";
+import { DEBOUNCE_MS } from "@/config/listing";
+import { useDebounce } from "@/shared/hooks/useDebounce";
 import { Brand,Category,InventoryReportRow,Product,ProductVariant,StockMovement,WarehouseFloor } from "@/shared/types";
 import { BarcodeLabelItem } from "@/shared/ui/BarcodeLabelModal";
 import { useEffect,useRef,useState } from "react";
@@ -185,8 +186,8 @@ export function useInventoryState() {
   const [loading, setLoading] = useState(false);
 
   // Debounce từ khóa tìm kiếm sản phẩm (400ms) và tìm kiếm chuyển tầng (300ms) để tối ưu số lượng request API
-  const debouncedSearch = useDebounce(search, 400);
-  const debouncedTransferSearch = useDebounce(transferSearch, 300);
+  const debouncedSearch = useDebounce(search, DEBOUNCE_MS.API);
+  const debouncedTransferSearch = useDebounce(transferSearch, DEBOUNCE_MS.LOCAL);
 
   return {
     subTab,

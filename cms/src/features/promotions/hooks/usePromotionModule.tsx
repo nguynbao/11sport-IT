@@ -1,4 +1,7 @@
 import { apiRequest } from "@/shared/api/client";
+import { DEBOUNCE_MS, DEFAULT_PAGE_SIZE } from "@/config/listing";
+import { useClientPagination } from "@/shared/hooks/useClientPagination";
+import { useDebounce } from "@/shared/hooks/useDebounce";
 import { filterAndRankBySearch } from "@/shared/lib/search";
 import { Category,Product,Promotion,PromotionConditionType,PromotionDiscountType } from "@/shared/types";
 import {
@@ -266,19 +269,23 @@ export function usePromotionModule() {
     );
   };
 
+  const debouncedCondProdSearch = useDebounce(condProdSearch, DEBOUNCE_MS.LOCAL);
+  const debouncedGiftProdSearch = useDebounce(giftProdSearch, DEBOUNCE_MS.LOCAL);
+  const debouncedSearch = useDebounce(search, DEBOUNCE_MS.LOCAL);
+
   // Lọc sản phẩm cho bảng chọn điều kiện
   const filteredConditionProducts = useMemo(() => {
     const byCat = products.filter((p) => {
       if (condProdCatId && getCategoryId(p) !== condProdCatId) return false;
       return true;
     });
-    if (!condProdSearch.trim()) return byCat;
-    return filterAndRankBySearch(byCat, condProdSearch, (p) => [
+    if (!debouncedCondProdSearch.trim()) return byCat;
+    return filterAndRankBySearch(byCat, debouncedCondProdSearch, (p) => [
       { text: p.code, weight: 1.5 },
       { text: p.name, weight: 1.3 },
       { text: getCategoryName(p), weight: 0.9 },
     ]);
-  }, [products, condProdCatId, condProdSearch, categories]);
+  }, [products, condProdCatId, debouncedCondProdSearch, categories]);
 
   // Lọc sản phẩm cho bảng chọn quà tặng kèm
   const filteredGiftProducts = useMemo(() => {
@@ -286,13 +293,13 @@ export function usePromotionModule() {
       if (giftProdCatId && getCategoryId(p) !== giftProdCatId) return false;
       return true;
     });
-    if (!giftProdSearch.trim()) return byCat;
-    return filterAndRankBySearch(byCat, giftProdSearch, (p) => [
+    if (!debouncedGiftProdSearch.trim()) return byCat;
+    return filterAndRankBySearch(byCat, debouncedGiftProdSearch, (p) => [
       { text: p.code, weight: 1.5 },
       { text: p.name, weight: 1.3 },
       { text: getCategoryName(p), weight: 0.9 },
     ]);
-  }, [products, giftProdCatId, giftProdSearch, categories]);
+  }, [products, giftProdCatId, debouncedGiftProdSearch, categories]);
 
   const handleSubmitForm = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -433,8 +440,8 @@ export function usePromotionModule() {
       return true;
     });
 
-    if (!search.trim()) return byStatus;
-    return filterAndRankBySearch(byStatus, search, (p) => [
+    if (!debouncedSearch.trim()) return byStatus;
+    return filterAndRankBySearch(byStatus, debouncedSearch, (p) => [
       { text: p.code, weight: 1.5 },
       { text: p.name, weight: 1.4 },
       { text: p.description, weight: 0.9 },
@@ -448,7 +455,13 @@ export function usePromotionModule() {
       })),
       ...(p.giftItems || []).map((g) => ({ text: g.productName, weight: 1.2 })),
     ]);
-  }, [promotions, statusFilter, search]);
+  }, [promotions, statusFilter, debouncedSearch]);
+
+  const promoPagination = useClientPagination(filteredPromotions, DEFAULT_PAGE_SIZE);
+  useEffect(() => {
+    promoPagination.resetPage();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, debouncedSearch]);
 
   const kpiStats = useMemo(() => {
     const total = promotions.length;
@@ -572,6 +585,7 @@ export function usePromotionModule() {
     handleToggleStatus,
     handleDeletePromo,
     filteredPromotions,
+    promoPagination,
     kpiStats,
     renderEffectiveBadge,
   };

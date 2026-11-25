@@ -2,6 +2,9 @@ import { buildSheet,downloadExcel,ExcelColumn,excelFileName } from "@/shared/lib
 import { Department,TimesheetCell,TimesheetCellCode,TimesheetData,TimesheetDay,TimesheetRow } from "@/shared/types";
 import { useCallback,useEffect,useMemo,useState } from "react";
 import { fetchTimesheetApi } from "../api";
+import { DEBOUNCE_MS, DEFAULT_PAGE_SIZE } from "@/config/listing";
+import { useDebounce } from "@/shared/hooks/useDebounce";
+import { useClientPagination } from "@/shared/hooks/useClientPagination";
 import {
 CELL_STYLE,
 EditTarget,
@@ -70,15 +73,23 @@ export function useAttendanceTimesheet() {
     setYear(now.getFullYear());
   };
 
+  const debouncedSearch = useDebounce(search, DEBOUNCE_MS.LOCAL);
+
   const filteredRows = useMemo(() => {
     if (!data) return [];
-    const q = search.trim().toLowerCase();
+    const q = debouncedSearch.trim().toLowerCase();
     return data.rows.filter((r) => {
       if (q && !r.staffName.toLowerCase().includes(q) && !r.staffCode.toLowerCase().includes(q)) return false;
       if (issueFilter === "ISSUES" && !hasIssue(r)) return false;
       return true;
     });
-  }, [data, search, issueFilter]);
+  }, [data, debouncedSearch, issueFilter]);
+
+  const timesheetPagination = useClientPagination(filteredRows, DEFAULT_PAGE_SIZE);
+  useEffect(() => {
+    timesheetPagination.resetPage();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, issueFilter, month, year, department]);
 
   const totals = useMemo(() => {
     return filteredRows.reduce(
@@ -343,6 +354,7 @@ export function useAttendanceTimesheet() {
     goNext,
     goThisMonth,
     filteredRows,
+    timesheetPagination,
     totals,
     monthInfo,
     handleExport,

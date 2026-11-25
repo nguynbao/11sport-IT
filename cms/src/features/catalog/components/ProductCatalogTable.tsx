@@ -16,6 +16,7 @@ Trash2
 } from "lucide-react";
 import React from "react";
 import { ProductCatalogViewModel } from "../hooks/useProductCatalog";
+import { PaginationBar } from "@/shared/ui/PaginationBar";
 import { ProductCatalogVariantSection } from "./ProductCatalogVariantSection";
 
 export function ProductCatalogTable({ vm }: { vm: ProductCatalogViewModel }) {
@@ -73,7 +74,7 @@ export function ProductCatalogTable({ vm }: { vm: ProductCatalogViewModel }) {
                   </td>
                 </tr>
               )}
-              {visibleProducts.map((p, idx) => {
+              {vm.productPagination.items.map((p, idx) => {
                 const catId =
                   typeof p.categoryId === "object" ? p.categoryId?._id || "" : String(p.categoryId || "");
                 const cat = categoryMap.get(catId);
@@ -346,6 +347,15 @@ export function ProductCatalogTable({ vm }: { vm: ProductCatalogViewModel }) {
             </tbody>
           </table>
         </div>
+        <PaginationBar
+          totalItems={vm.productPagination.total}
+          page={vm.productPagination.page}
+          totalPages={vm.productPagination.totalPages}
+          pageSize={vm.productPagination.pageSize}
+          onPageChange={vm.productPagination.setPage}
+          onPageSizeChange={vm.productPagination.setPageSize}
+          itemLabel="sản phẩm"
+        />
     </>
   );
 }

@@ -16,6 +16,7 @@ Users
 } from "lucide-react";
 import { exportStaff } from "../exports";
 import { StaffViewModel } from "../hooks/useStaffModule";
+import { PaginationBar } from "@/shared/ui/PaginationBar";
 import { toIsoDateSlice } from "../utils";
 
 export function StaffListTable({ vm }: { vm: StaffViewModel }) {
@@ -251,7 +252,7 @@ export function StaffListTable({ vm }: { vm: StaffViewModel }) {
                   </td>
                 </tr>
               ) : (
-                filteredStaffList.map((st) => {
+                vm.staffPagination.items.map((st) => {
                   const normalizedRole = st.role;
                   const isTargetAdmin = normalizedRole === "ADMIN";
                   const isTargetCeo = normalizedRole === "CEO";
@@ -482,6 +483,15 @@ export function StaffListTable({ vm }: { vm: StaffViewModel }) {
             </tbody>
           </table>
         </div>
+        <PaginationBar
+          totalItems={vm.staffPagination.total}
+          page={vm.staffPagination.page}
+          totalPages={vm.staffPagination.totalPages}
+          pageSize={vm.staffPagination.pageSize}
+          onPageChange={vm.staffPagination.setPage}
+          onPageSizeChange={vm.staffPagination.setPageSize}
+          itemLabel="nhân sự"
+        />
       </div>
 
     </>

@@ -10,6 +10,7 @@ Search,
 Trash2
 } from "lucide-react";
 import { ServiceManagementViewModel } from "../hooks/useServiceManagement";
+import { PaginationBar } from "@/shared/ui/PaginationBar";
 const STATUS_INFO: Record<
   ServiceOrderStatus,
   { label: string; badgeCls: string }
@@ -240,7 +241,7 @@ export function ServiceTypesTab({ vm }: { vm: ServiceManagementViewModel }) {
                         </td>
                       </tr>
                     ) : (
-                      serviceTypes.map((st) => (
+                      vm.pagedServiceTypes.map((st) => (
                         <tr key={st._id} className="hover:bg-slate-50">
                           <td className="py-3 px-3 font-mono font-bold text-slate-700">
                             {st.code}
@@ -322,6 +323,15 @@ export function ServiceTypesTab({ vm }: { vm: ServiceManagementViewModel }) {
                   </tbody>
                 </table>
               </div>
+              <PaginationBar
+                totalItems={vm.typeTotal}
+                page={vm.typePage}
+                totalPages={vm.typeTotalPages}
+                pageSize={vm.typePageSize}
+                onPageChange={vm.setTypePage}
+                onPageSizeChange={vm.setTypePageSize}
+                itemLabel="loại dịch vụ"
+              />
             </div>
           </div>
         </div>

@@ -1,7 +1,10 @@
 
 import { apiRequest } from "@/shared/api/client";
 import { describeApiError } from "@/shared/api/errors";
-import { filterAndRankBySearch,useDebounce } from "@/shared/lib/search";
+import { DEBOUNCE_MS, DEFAULT_PAGE_SIZE } from "@/config/listing";
+import { useClientPagination } from "@/shared/hooks/useClientPagination";
+import { useDebounce } from "@/shared/hooks/useDebounce";
+import { filterAndRankBySearch } from "@/shared/lib/search";
 import { Category } from "@/shared/types";
 import React,{ useEffect,useMemo,useState } from "react";
 import { API_ENDPOINTS } from "@/shared/api/endpoints";
@@ -19,7 +22,7 @@ export function useCategoryModule() {
 
   // Filters
   const [search, setSearch] = useState("");
-  const debouncedSearch = useDebounce(search, 200);
+  const debouncedSearch = useDebounce(search, DEBOUNCE_MS.LOCAL);
   const [filterStatus, setFilterStatus] = useState<"" | "ACTIVE" | "INACTIVE">("");
 
   const [editingCodes, setEditingCodes] = useState<Record<string, string>>({});
@@ -64,6 +67,12 @@ export function useCategoryModule() {
       { text: c.name, weight: 1.4 },
     ]);
   }, [categories, filterStatus, debouncedSearch]);
+
+  const categoryPagination = useClientPagination(visibleCategories, DEFAULT_PAGE_SIZE);
+  useEffect(() => {
+    categoryPagination.resetPage();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterStatus, debouncedSearch]);
 
   const stats = useMemo(() => {
     const active = categories.filter((c) => c.status === "ACTIVE").length;
@@ -246,6 +255,7 @@ export function useCategoryModule() {
     statusMsg,
     setStatusMsg,
     visibleCategories,
+    categoryPagination,
     stats,
     resetForm,
     resetRow,
