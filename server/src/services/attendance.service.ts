@@ -19,7 +19,7 @@ import {
   expireStalePendingHandovers,
   isSalesStaffUser,
   resolvePendingIncomingHandoverForSales,
-} from '../services/shifts.service';
+} from '../services/handover';
 
 
 // ---------------------------------------------------------------------------
