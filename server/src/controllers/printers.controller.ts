@@ -1,20 +1,6 @@
-import { Request, Response, NextFunction } from 'express';
-import { getSystemPrintersList, executeDirectLabelPrint } from '../services/printers.service';
+import { handle } from '../shared/http';
+import { getSystemPrintersList, executeDirectLabelPrint } from '../services/integrations';
 
-export async function getPrintersHandler(_req: Request, res: Response, next: NextFunction) {
-  try {
-    const result = await getSystemPrintersList();
-    res.json({ success: true, data: result, meta: {} });
-  } catch (err) {
-    next(err);
-  }
-}
+export const getPrintersHandler = handle(() => getSystemPrintersList());
 
-export async function printLabelsHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const { result, message } = await executeDirectLabelPrint(req.body || {});
-    res.json({ success: true, data: result, message, meta: {} });
-  } catch (err) {
-    next(err);
-  }
-}
+export const printLabelsHandler = handle((req) => executeDirectLabelPrint(req.body || {}));

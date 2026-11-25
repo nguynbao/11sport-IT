@@ -1,16 +1,20 @@
-import { ApiError } from '../shared/errors';
+import { ApiError } from '../../shared/errors';
+import { ok, raw, ServiceResult } from '../../shared/result';
 import {
   listSystemPrinters,
   printBarcodeLabelsDirect,
   DirectPrintPayload,
   LabelPrintItem,
-} from '../infra/windowsPrinter';
+} from '../../infra/windowsPrinter';
 
-export async function getSystemPrintersList() {
-  return listSystemPrinters();
+export async function getSystemPrintersList(): Promise<ServiceResult> {
+  const printers = await listSystemPrinters();
+  return ok(printers);
 }
 
-export async function executeDirectLabelPrint(body: Partial<DirectPrintPayload> = {}) {
+export async function executeDirectLabelPrint(
+  body: Partial<DirectPrintPayload> = {}
+): Promise<ServiceResult> {
   const printerName = String(body.printerName || '').trim();
   if (!printerName) {
     throw new ApiError(400, 'VALIDATION_ERROR', 'Vui lòng chọn máy in để in tem mã vạch', {
@@ -59,10 +63,12 @@ export async function executeDirectLabelPrint(body: Partial<DirectPrintPayload> 
       })),
     });
 
-    return {
-      result,
+    return raw({
+      success: true,
+      data: result,
       message: `Đã in ${result.printedLabels} tem (${result.printedPages} hàng 70×20mm) tới máy in "${printerName}"`,
-    };
+      meta: {},
+    });
   } catch (err: any) {
     if (err instanceof ApiError) throw err;
     throw new ApiError(

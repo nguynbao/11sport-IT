@@ -1254,9 +1254,9 @@
     "semantic_hash": ""
   },
   "server/src/controllers/printers.controller.ts": {
-    "mtime": 1795623198.1158075,
-    "seen": 1795623501.8927202,
-    "ast_hash": "478b9004907a4cb547efc2a4ceac54e7",
+    "mtime": 1795626550.0056643,
+    "seen": 1795626620.2310631,
+    "ast_hash": "971409ff9dc827bf2382daa0016cabf4",
     "semantic_hash": ""
   },
   "server/src/controllers/productsInventory.controller.ts": {
@@ -1272,9 +1272,9 @@
     "semantic_hash": ""
   },
   "server/src/controllers/reports.controller.ts": {
-    "mtime": 1795623176.471132,
-    "seen": 1795623501.892725,
-    "ast_hash": "f097e656f38b5070485989f544fbb0e7",
+    "mtime": 1795626552.7445714,
+    "seen": 1795626620.23107,
+    "ast_hash": "7962151e551a448005e4dbf2ac96b40f",
     "semantic_hash": ""
   },
   "server/src/controllers/returns.controller.ts": {
@@ -1296,9 +1296,9 @@
     "semantic_hash": ""
   },
   "server/src/controllers/wise.controller.ts": {
-    "mtime": 1795623245.081375,
-    "seen": 1795623501.892731,
-    "ast_hash": "e1c5db874d61a0a869b55573ac8cb64d",
+    "mtime": 1795626551.4541988,
+    "seen": 1795626620.2310789,
+    "ast_hash": "9b3627f92857b8d36198e76fa71a7a7b",
     "semantic_hash": ""
   },
   "server/src/infra/keepAlive.ts": {
@@ -1335,24 +1335,6 @@
     "mtime": 1795622696.8561223,
     "seen": 1795623501.8928,
     "ast_hash": "2147943296a3843c1d22347e96cb576f",
-    "semantic_hash": ""
-  },
-  "server/src/services/printers.service.ts": {
-    "mtime": 1795623342.3442583,
-    "seen": 1795623501.89284,
-    "ast_hash": "4be33eecd197758449de11b74121fa64",
-    "semantic_hash": ""
-  },
-  "server/src/services/reports.service.ts": {
-    "mtime": 1795625854.4200816,
-    "seen": 1795626492.783629,
-    "ast_hash": "372120296edbb27d0514d6d5dd689bb5",
-    "semantic_hash": ""
-  },
-  "server/src/services/wise.service.ts": {
-    "mtime": 1795623342.3517416,
-    "seen": 1795623501.892858,
-    "ast_hash": "e43e99f85415c7488b17fa29757237b3",
     "semantic_hash": ""
   },
   "server/src/shared/auth.ts": {
@@ -1416,9 +1398,9 @@
     "semantic_hash": ""
   },
   "docs/devops/server-architecture.md": {
-    "mtime": 1795623470.5506904,
-    "seen": 1795623501.8930078,
-    "ast_hash": "2c85d0b2312c3dd1300b2f0a212899d2",
+    "mtime": 1795626611.5154324,
+    "seen": 1795626620.231553,
+    "ast_hash": "9b616e89531c6455c65664a554dd89a0",
     "semantic_hash": ""
   },
   "server/scripts/dump-routes.mjs": {
@@ -1953,6 +1935,66 @@
     "mtime": 1795625611.488342,
     "seen": 1795626492.783881,
     "ast_hash": "a971cd5b2b6dc796abf72b9681d3997e",
+    "semantic_hash": ""
+  },
+  "server/src/services/integrations/index.ts": {
+    "mtime": 1795626495.936464,
+    "seen": 1795626620.231255,
+    "ast_hash": "ea00149b16073e757eb93c4117a6d2df",
+    "semantic_hash": ""
+  },
+  "server/src/services/integrations/printer.service.ts": {
+    "mtime": 1795626516.2969356,
+    "seen": 1795626620.2312582,
+    "ast_hash": "e7c8220fadd950bc092dcf2769501fc4",
+    "semantic_hash": ""
+  },
+  "server/src/services/integrations/wise.service.ts": {
+    "mtime": 1795626555.4717548,
+    "seen": 1795626620.2312598,
+    "ast_hash": "a0326d14f7c8d5801165ffd75a338e0a",
+    "semantic_hash": ""
+  },
+  "server/src/services/reports/index.ts": {
+    "mtime": 1795626518.4845953,
+    "seen": 1795626620.231311,
+    "ast_hash": "c1a447082e51693fe69ab3a5f93ad1fc",
+    "semantic_hash": ""
+  },
+  "server/src/services/reports/pushProducts.report.ts": {
+    "mtime": 1795626568.2683392,
+    "seen": 1795626620.231313,
+    "ast_hash": "2a4e214caba0321398e8b93319700f83",
+    "semantic_hash": ""
+  },
+  "server/src/services/reports/reports.helpers.ts": {
+    "mtime": 1795626522.3384404,
+    "seen": 1795626620.231315,
+    "ast_hash": "62e26d8a8ce6c09356864df7c9320cb0",
+    "semantic_hash": ""
+  },
+  "server/src/services/reports/revenueDashboard.report.ts": {
+    "mtime": 1795626558.515453,
+    "seen": 1795626620.231317,
+    "ast_hash": "4ac0ef9fd1ee73f449757c441e0e7b08",
+    "semantic_hash": ""
+  },
+  "server/src/services/reports/staffActivity.report.ts": {
+    "mtime": 1795626557.0405412,
+    "seen": 1795626620.231319,
+    "ast_hash": "dce8d9f122d9ca2cfeb6a9d1f467a3d6",
+    "semantic_hash": ""
+  },
+  "server/src/services/integrations/README.md": {
+    "mtime": 1795626497.0362842,
+    "seen": 1795626620.2315881,
+    "ast_hash": "58a44b19af2a2349259a1d87ede3ce37",
+    "semantic_hash": ""
+  },
+  "server/src/services/reports/README.md": {
+    "mtime": 1795626519.3202596,
+    "seen": 1795626620.231602,
+    "ast_hash": "d20df1aa18476d69d28ca3530bac1bb5",
     "semantic_hash": ""
   },
   "cms/package-lock.json": {
