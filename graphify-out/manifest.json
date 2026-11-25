@@ -2106,9 +2106,9 @@
     "semantic_hash": ""
   },
   "cms/src/features/staff/components/StaffModule.tsx": {
-    "mtime": 1795629450.0881708,
-    "seen": 1795629608.064954,
-    "ast_hash": "341083a3188f14ea79645d2aa1b74dbb",
+    "mtime": 1795630031.3938875,
+    "seen": 1795630088.6719391,
+    "ast_hash": "6b743d9748a0f012d70c12ef85fff6db",
     "semantic_hash": ""
   },
   "cms/src/features/staff/exports.ts": {
@@ -2283,6 +2283,48 @@
     "mtime": 1795629739.2923472,
     "seen": 1795629997.8677819,
     "ast_hash": "ff5327ddb164f4f8dce7e8b4a97456bf",
+    "semantic_hash": ""
+  },
+  "cms/src/features/staff/components/StaffCreateForm.tsx": {
+    "mtime": 1795630019.3200095,
+    "seen": 1795630088.671932,
+    "ast_hash": "11b1cae23215ae69e284d8df0c137ffa",
+    "semantic_hash": ""
+  },
+  "cms/src/features/staff/components/StaffEditProfileModal.tsx": {
+    "mtime": 1795630019.3257587,
+    "seen": 1795630088.671934,
+    "ast_hash": "3ebcb12f49183975bbf7ec10b60ba5df",
+    "semantic_hash": ""
+  },
+  "cms/src/features/staff/components/StaffImportPreviewModal.tsx": {
+    "mtime": 1795630019.3234181,
+    "seen": 1795630088.671936,
+    "ast_hash": "8a38e2086af08ce272e2f77fe897df82",
+    "semantic_hash": ""
+  },
+  "cms/src/features/staff/components/StaffListTable.tsx": {
+    "mtime": 1795630019.3219938,
+    "seen": 1795630088.671937,
+    "ast_hash": "5390c5e288ae63e4c65cf5d6984b5c7a",
+    "semantic_hash": ""
+  },
+  "cms/src/features/staff/components/StaffPasswordModal.tsx": {
+    "mtime": 1795630019.3240879,
+    "seen": 1795630088.67194,
+    "ast_hash": "344ba67d0b9ad95c3951edca4219b0dc",
+    "semantic_hash": ""
+  },
+  "cms/src/features/staff/hooks/useStaffModule.ts": {
+    "mtime": 1795630019.3177192,
+    "seen": 1795630088.671943,
+    "ast_hash": "20f625ad406e2cc8bb45463c44f5c0a6",
+    "semantic_hash": ""
+  },
+  "cms/src/features/staff/utils.ts": {
+    "mtime": 1795630019.309277,
+    "seen": 1795630088.671946,
+    "ast_hash": "d1898381c9cb71a5dbc63551e5e29bfa",
     "semantic_hash": ""
   },
   "cms/package-lock.json": {
