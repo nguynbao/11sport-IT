@@ -1,14 +1,15 @@
 "use client";
 
 import { getStoredUser } from "@/shared/api/client";
-import { ShoppingCart, CheckCircle2, AlertCircle, X, FileText, Zap, Wrench, Clock } from "lucide-react";
-import { PosServiceSection } from "@/features/services";
 import { type PosTabProps } from "../types";
 import { usePosTab } from "../hooks/usePosTab";
 import { CheckoutForm } from "./CheckoutForm";
 import { PosHeader } from "./PosHeader";
 import { PosLeftColumn } from "./PosLeftColumn";
 import { PosRightColumn } from "./PosRightColumn";
+import { PosServicesModeBar } from "./PosServicesModeBar";
+import { PosScanBanner } from "./PosScanBanner";
+import { PosBottomModeBar } from "./PosBottomModeBar";
 import { VariantPickerModal } from "./VariantPickerModal";
 import { GiftModal } from "./GiftModal";
 
@@ -165,49 +166,11 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
   return (
     <div>
       {posMode === "SERVICES" ? (
-        <div className="space-y-3">
-          <div className="bg-white rounded-xl shadow-xs border border-slate-200 p-2.5 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setPosMode("PRODUCTS")}
-                className="px-4 py-2 rounded-lg text-xs sm:text-sm font-extrabold flex items-center gap-2 bg-slate-100 text-slate-700 hover:bg-blue-50 hover:text-brand-ink transition"
-              >
-                <ShoppingCart className="w-4 h-4" />
-                <span>← Quay lại Bán sản phẩm (POS)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setPosMode("SERVICES")}
-                className="px-4 py-2 rounded-lg text-xs sm:text-sm font-extrabold flex items-center gap-2 bg-blue-600 text-white shadow-xs transition"
-              >
-                <Wrench className="w-4 h-4" />
-                <span>Làm dịch vụ (Nhận đồ & Hẹn trả)</span>
-                {serviceMeta &&
-                  serviceMeta.receivedCount +
-                    serviceMeta.inProgressCount +
-                    serviceMeta.readyCount >
-                    0 && (
-                    <span className="px-2 py-0.5 rounded-full text-[11px] font-mono font-bold bg-white/20 text-white">
-                      {serviceMeta.receivedCount +
-                        serviceMeta.inProgressCount +
-                        serviceMeta.readyCount}{" "}
-                      đơn chờ
-                    </span>
-                  )}
-                {serviceMeta && serviceMeta.overdueCount > 0 && (
-                  <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-600 text-white">
-                    ⚠️ {serviceMeta.overdueCount} quá hạn
-                  </span>
-                )}
-              </button>
-            </div>
-            <div className="text-xs text-slate-500 hidden md:block pr-2">
-              Nhận đồ khách gửi làm dịch vụ (đan vợt, hàn vợt, vệ sinh...) • Hẹn ngày trả & theo dõi tiến độ
-            </div>
-          </div>
-          <PosServiceSection onMetaChange={setServiceMeta} />
-        </div>
+        <PosServicesModeBar
+          onSelectProductsMode={() => setPosMode("PRODUCTS")}
+          serviceMeta={serviceMeta}
+          onMetaChange={setServiceMeta}
+        />
       ) : (
         <div className="relative rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-[#ebedf0] flex flex-col lg:h-[calc(100dvh-90px)] lg:max-h-[calc(100dvh-90px)] min-h-[540px]">
           {/* ==================== THANH HEADER XANH LÁ CHỦ ĐẠO (11 SPORT) ==================== */}
@@ -234,36 +197,10 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
 
           {/* Thông báo quét mã vạch gần nhất (nếu có) */}
           {lastScanBanner && (
-            <div
-              className={`mx-3 mt-2 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center justify-between gap-2 border ${
-                lastScanBanner.type === "success"
-                  ? "bg-blue-50 border-blue-300 text-blue-900"
-                  : lastScanBanner.type === "warning"
-                    ? "bg-amber-50 border-amber-300 text-amber-900"
-                    : "bg-red-50 border-red-300 text-red-900"
-              }`}
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                {lastScanBanner.type === "success" ? (
-                  <CheckCircle2 className="w-4 h-4 text-brand-ink shrink-0" />
-                ) : (
-                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                )}
-                <span className="truncate">{lastScanBanner.message}</span>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="text-[10px] font-mono opacity-75">
-                  {lastScanBanner.time}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setLastScanBanner(null)}
-                  className="text-slate-400 hover:text-slate-700"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
+            <PosScanBanner
+              banner={lastScanBanner}
+              onDismiss={() => setLastScanBanner(null)}
+            />
           )}
 
           {/* ==================== VÙNG NỘI DUNG CHÍNH ==================== */}
@@ -408,60 +345,20 @@ export default function PosTab({ onOpenInvoice }: PosTabProps) {
           )}
 
           {/* ==================== THANH CHẾ ĐỘ BÁN HÀNG DƯỚI ĐÁY (BÁN NHANH / BÁN THƯỜNG / HÓA ĐƠN NHÁP) ==================== */}
-          <div className="bg-white border-t border-slate-200 pl-14 sm:pl-16 pr-3 flex flex-wrap items-center justify-between gap-2 text-xs select-none shrink-0">
-            <div className="flex items-center gap-1 overflow-x-auto">
-              <button
-                type="button"
-                onClick={() => {
-                  setPosSubView("FAST");
-                  setShowCheckoutDrawer(false);
-                }}
-                className={`px-4 py-2.5 font-extrabold flex items-center gap-1.5 border-t-2 transition ${
-                  posSubView === "FAST"
-                    ? "border-blue-600 text-brand-ink bg-blue-50/50"
-                    : "border-transparent text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                <Zap className="w-3.5 h-3.5" />
-                <span>Bán nhanh</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setPosSubView("CATALOG")}
-                className={`px-4 py-2.5 font-extrabold flex items-center gap-1.5 border-t-2 transition ${
-                  posSubView === "CATALOG"
-                    ? "border-blue-600 text-brand-ink bg-blue-50/50"
-                    : "border-transparent text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                <Clock className="w-3.5 h-3.5" />
-                <span>Bán thường</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setPosSubView("DRAFTS");
-                  setShowCheckoutDrawer(false);
-                }}
-                className={`px-4 py-2.5 font-extrabold flex items-center gap-1.5 border-t-2 transition ${
-                  posSubView === "DRAFTS"
-                    ? "border-blue-600 text-brand-ink bg-blue-50/50"
-                    : "border-transparent text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                <FileText className="w-3.5 h-3.5" />
-                <span>Hóa đơn nháp ({savedDraftOrders.length})</span>
-              </button>
-            </div>
-
-            <div className="hidden sm:flex items-center gap-2 py-1.5 text-[11px] text-slate-500">
-              <span className="px-2.5 py-1 rounded-full bg-blue-50 text-brand-ink font-bold border border-blue-200">
-                11 Sport POS • Kho Tầng 1 ({floor1Products.length} SP)
-              </span>
-            </div>
-          </div>
+          <PosBottomModeBar
+            posSubView={posSubView}
+            savedDraftsCount={savedDraftOrders.length}
+            floor1ProductsCount={floor1Products.length}
+            onSelectFast={() => {
+              setPosSubView("FAST");
+              setShowCheckoutDrawer(false);
+            }}
+            onSelectCatalog={() => setPosSubView("CATALOG")}
+            onSelectDrafts={() => {
+              setPosSubView("DRAFTS");
+              setShowCheckoutDrawer(false);
+            }}
+          />
 
       {/* POPUP CHỌN PHÂN LOẠI (MÀU SẮC & SIZE) KHI QUÉT MÃ CHUNG HOẶC BẤM CHỌN BÁN */}
       <VariantPickerModal

@@ -558,9 +558,9 @@
     "semantic_hash": ""
   },
   "web/src/app/api/printers/route.ts": {
-    "mtime": 1795329655.4990904,
-    "seen": 1795330125.924757,
-    "ast_hash": "2eaba13f030304a125a77e2e07135a9f",
+    "mtime": 1795673923.5353065,
+    "seen": 1795674019.823482,
+    "ast_hash": "1af212af24f4ef71f1a6d35c938f8edc",
     "semantic_hash": ""
   },
   "web/src/app/api/version/route.ts": {
@@ -3240,9 +3240,9 @@
     "semantic_hash": ""
   },
   "web/src/features/pos/components/PosTab.tsx": {
-    "mtime": 1795665791.0295722,
-    "seen": 1795665878.807876,
-    "ast_hash": "12e10bab86d0ff0a5fccd89960bc0153",
+    "mtime": 1795673946.360158,
+    "seen": 1795674019.8236852,
+    "ast_hash": "397af18a46c5244790c553103ad8aeb2",
     "semantic_hash": ""
   },
   "web/src/features/pos/components/ShiftHandoverModal.tsx": {
@@ -4527,6 +4527,36 @@
     "mtime": 1795670131.227367,
     "seen": 1795670162.9596758,
     "ast_hash": "88e01c9e56d0c151e2b37278a9f4b4ef",
+    "semantic_hash": ""
+  },
+  "web/src/app/api/printers/code128.ts": {
+    "mtime": 1795673920.0325422,
+    "seen": 1795674019.823479,
+    "ast_hash": "eef40a4db4204a67def59c72e8d1d7f8",
+    "semantic_hash": ""
+  },
+  "web/src/app/api/printers/windowsPsScripts.ts": {
+    "mtime": 1795673922.0404444,
+    "seen": 1795674019.823484,
+    "ast_hash": "481c22a859802d5f201f0d049c93f375",
+    "semantic_hash": ""
+  },
+  "web/src/features/pos/components/PosBottomModeBar.tsx": {
+    "mtime": 1795673926.923085,
+    "seen": 1795674019.82367,
+    "ast_hash": "81a26ac0d1d1468eb39d431683f3b759",
+    "semantic_hash": ""
+  },
+  "web/src/features/pos/components/PosScanBanner.tsx": {
+    "mtime": 1795673925.9145868,
+    "seen": 1795674019.823678,
+    "ast_hash": "bbeab78cf220dc5e08d48c73fe30cf7b",
+    "semantic_hash": ""
+  },
+  "web/src/features/pos/components/PosServicesModeBar.tsx": {
+    "mtime": 1795673979.6619372,
+    "seen": 1795674019.823681,
+    "ast_hash": "3ec102d1c46d87a75bb3afd12b325c24",
     "semantic_hash": ""
   },
   "cms/package-lock.json": {
