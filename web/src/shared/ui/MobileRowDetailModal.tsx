@@ -35,39 +35,54 @@ export function MobileRowDetailModal() {
       open={Boolean(detail)}
       onClose={() => setDetail(null)}
       title={detail?.title || "Chi tiết dòng"}
-      subtitle="Xem đầy đủ nội dung"
+      subtitle="Thông tin chi tiết"
       maxWidthClass="max-w-lg"
       footer={
         <button
           type="button"
           onClick={() => setDetail(null)}
-          className="w-full py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-sm cursor-pointer"
+          className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm cursor-pointer"
         >
           Đóng
         </button>
       }
     >
-      <div className="grid grid-cols-2 gap-2.5">
+      <dl className="divide-y divide-slate-100">
         {(detail?.fields || []).map((f, i) => {
-          const isWide =
-            f.fullWidth || f.text.includes("\n") || f.text.length > 34;
+          const isBlock =
+            f.fullWidth || f.text.includes("\n") || f.text.length > 30;
+
+          if (isBlock) {
+            return (
+              <div
+                key={`${f.label}-${i}`}
+                className="py-3 first:pt-0 last:pb-0 space-y-1.5"
+              >
+                <dt className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  {f.label}
+                </dt>
+                <dd className="text-[13px] font-semibold text-slate-900 whitespace-pre-line break-words leading-relaxed">
+                  {f.text || "—"}
+                </dd>
+              </div>
+            );
+          }
+
           return (
             <div
               key={`${f.label}-${i}`}
-              className={`rounded-xl bg-slate-50/90 border border-slate-200/80 px-3 py-2.5 space-y-1 ${
-                isWide ? "col-span-2" : "col-span-1"
-              }`}
+              className="py-2.5 first:pt-0 last:pb-0 flex items-baseline justify-between gap-4"
             >
-              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              <dt className="text-xs font-medium text-slate-500 shrink-0">
                 {f.label}
-              </div>
-              <div className="text-[13px] font-semibold text-slate-900 whitespace-pre-line break-words leading-snug">
+              </dt>
+              <dd className="text-[13px] font-bold text-slate-900 text-right break-words">
                 {f.text || "—"}
-              </div>
+              </dd>
             </div>
           );
         })}
-      </div>
+      </dl>
     </ResponsiveModal>
   );
 }

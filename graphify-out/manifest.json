@@ -4494,9 +4494,9 @@
     "semantic_hash": ""
   },
   "web/src/shared/ui/MobileRowDetailModal.tsx": {
-    "mtime": 1795668838.8943698,
-    "seen": 1795668869.3304949,
-    "ast_hash": "08d6edb3b53382ce0a80411a33100c25",
+    "mtime": 1795668917.424449,
+    "seen": 1795668943.056849,
+    "ast_hash": "08c5c8f0af462451b38c7dbddade74b4",
     "semantic_hash": ""
   },
   "web/src/shared/ui/ResponsiveModal.tsx": {
