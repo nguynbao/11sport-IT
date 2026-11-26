@@ -1,15 +1,14 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import {
-  StaffUser,
-  DailyHandoverCheckData,
+import type {
   DailyHandoverCategorySummary,
-  ShiftHandoverRecord,
+  DailyHandoverCheckData,
   ShiftHandoverCategoryCount,
-  fetchDailyHandoverCheckApi,
-  createHandoverApi,
-} from "@/lib/api";
+  ShiftHandoverRecord,
+  StaffUser,
+} from "@/shared/types";
+import { createHandoverApi, fetchDailyHandoverCheckApi } from "../api";
 import {
   Boxes,
   AlertCircle,

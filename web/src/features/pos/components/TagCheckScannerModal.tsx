@@ -16,17 +16,16 @@ import {
   HelpCircle,
   Zap,
 } from "lucide-react";
+import type { ImportItem, ImportReceipt } from "@/shared/types";
 import {
   apiRequest,
-  ImportItem,
-  ImportReceipt,
   KEEP_ALIVE_INTERVAL_MS,
   pingServerHealth,
-} from "@/lib/api";
+} from "@/shared/api/client";
 import {
   cleanBarcodeCode,
   useHardwareBarcodeScanner,
-} from "@/lib/barcodeScanner";
+} from "@/shared/lib/barcodeScanner";
 
 /**
  * Bước 4 — Chụp tag kiểm tra thực tế (ĐẾM TỪNG CHIẾC, TỐI ĐA <= 5 GIÂY)

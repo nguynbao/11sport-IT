@@ -1,17 +1,10 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import {
-  StaffUser,
-  AttendanceData,
-  DailyHandoverProductItem,
-  checkInApi,
-  checkOutApi,
-  getTodayAttendanceApi,
-  confirmHandoverApi,
-  fetchDailyHandoverCheckApi,
-  apiRequest,
-} from "@/lib/api";
+import type { AttendanceData, DailyHandoverProductItem, StaffUser } from "@/shared/types";
+import { apiRequest } from "@/shared/api/client";
+import { checkInApi, checkOutApi, getTodayAttendanceApi } from "../api";
+import { confirmHandoverApi, fetchDailyHandoverCheckApi } from "@/features/pos";
 import {
   Clock,
   Wifi,

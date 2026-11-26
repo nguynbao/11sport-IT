@@ -1,19 +1,19 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import {
-  StaffUser,
+import type {
   AttendanceData,
-  ShiftHandoverRecord,
-  DailyHandoverCheckData,
   DailyHandoverCategorySummary,
-  checkInApi,
-  checkOutApi,
-  getTodayAttendanceApi,
+  DailyHandoverCheckData,
+  ShiftHandoverRecord,
+  StaffUser,
+} from "@/shared/types";
+import { checkInApi, checkOutApi, getTodayAttendanceApi } from "../api";
+import {
   confirmHandoverApi,
-  fetchHandoversApi,
   fetchDailyHandoverCheckApi,
-} from "@/lib/api";
+  fetchHandoversApi,
+} from "@/features/pos";
 import {
   Play,
   Pause,

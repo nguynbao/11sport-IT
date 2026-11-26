@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { fetchMyShiftScheduleApi, submitShiftPreferencesApi } from "@/lib/api";
+import { fetchMyShiftScheduleApi, submitShiftPreferencesApi } from "../api";
 import { Calendar, CheckCircle2, AlertCircle, X, Send } from "lucide-react";
 
 interface Props {

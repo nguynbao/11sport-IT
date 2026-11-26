@@ -1,16 +1,11 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import {
-  Category,
-  Product,
-  Order,
-  ReturnReceipt,
-  apiRequest,
-  formatVND,
-  useDebounce,
-  filterAndRankBySearch,
-} from "@/lib/api";
+import type { Category, Order, Product, ReturnReceipt } from "@/shared/types";
+import { apiRequest } from "@/shared/api/client";
+import { formatVND } from "@/shared/utils/format";
+import { useDebounce } from "@/shared/hooks/useDebounce";
+import { filterAndRankBySearch } from "@/shared/lib/search";
 import {
   Rocket,
   Search,

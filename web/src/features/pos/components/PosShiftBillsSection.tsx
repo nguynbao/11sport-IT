@@ -1,15 +1,10 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import {
-  Order,
-  CurrentShiftOrdersMeta,
-  fetchCurrentShiftOrdersApi,
-  formatVND,
-  formatDateTime,
-  formatPhone,
-  useDebounce,
-} from "@/lib/api";
+import type { CurrentShiftOrdersMeta, Order } from "@/shared/types";
+import { formatDateTime, formatPhone, formatVND } from "@/shared/utils/format";
+import { useDebounce } from "@/shared/hooks/useDebounce";
+import { fetchCurrentShiftOrdersApi } from "../api";
 import {
   FileText,
   Search,

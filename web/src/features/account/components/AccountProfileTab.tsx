@@ -1,15 +1,9 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import {
-  StaffUser,
-  UserRole,
-  apiRequest,
-  cleanPhoneDigits,
-  formatPhone,
-  getStoredToken,
-  setStoredAuth,
-} from "@/lib/api";
+import type { StaffUser, UserRole } from "@/shared/types";
+import { apiRequest, getStoredToken, setStoredAuth } from "@/shared/api/client";
+import { cleanPhoneDigits, formatPhone } from "@/shared/utils/format";
 import {
   User,
   Phone,

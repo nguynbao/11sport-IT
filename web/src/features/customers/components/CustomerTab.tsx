@@ -1,17 +1,11 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import {
-  Order,
-  ReturnReceipt,
-  apiRequest,
-  formatVND,
-  formatDateTime,
-  formatPhone,
-  cleanPhoneDigits,
-  useDebounce,
-  filterAndRankBySearch,
-} from "@/lib/api";
+import type { Order, ReturnReceipt } from "@/shared/types";
+import { apiRequest } from "@/shared/api/client";
+import { cleanPhoneDigits, formatDateTime, formatPhone, formatVND } from "@/shared/utils/format";
+import { useDebounce } from "@/shared/hooks/useDebounce";
+import { filterAndRankBySearch } from "@/shared/lib/search";
 import { Search, User, Phone, Printer, ShoppingBag, RotateCcw } from "lucide-react";
 
 interface CustomerTabProps {
