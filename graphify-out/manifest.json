@@ -3186,15 +3186,15 @@
     "semantic_hash": ""
   },
   "web/src/features/customers/components/CustomerTab.tsx": {
-    "mtime": 1795663686.8766901,
-    "seen": 1795663789.159347,
-    "ast_hash": "4ae42958bfe1949dfe887a23eaa45beb",
+    "mtime": 1795667056.3886888,
+    "seen": 1795667157.7698429,
+    "ast_hash": "b3bf1f561812a72673f56ddebd39ccc1",
     "semantic_hash": ""
   },
   "web/src/features/customers/index.ts": {
-    "mtime": 1795663389.7539175,
-    "seen": 1795663454.7121449,
-    "ast_hash": "b53a4d907f3b96c6eadfb16732b23c5a",
+    "mtime": 1795667057.683545,
+    "seen": 1795667157.769846,
+    "ast_hash": "3f660f9fffe59e9384cc4700d9241b3d",
     "semantic_hash": ""
   },
   "web/src/features/inventory/components/InventoryTab.tsx": {
@@ -4455,6 +4455,42 @@
     "mtime": 1795665344.6095374,
     "seen": 1795665878.808342,
     "ast_hash": "2b75fc4d5b1f7bf29ed9da450c688db6",
+    "semantic_hash": ""
+  },
+  "web/src/features/customers/api.ts": {
+    "mtime": 1795667048.639634,
+    "seen": 1795667157.7698328,
+    "ast_hash": "92d42b987e029f5e99548f7996b5874e",
+    "semantic_hash": ""
+  },
+  "web/src/features/customers/components/CustomerOrdersTable.tsx": {
+    "mtime": 1795667053.656526,
+    "seen": 1795667157.769835,
+    "ast_hash": "8771e7ffecf4fb0ae5b913272f72e617",
+    "semantic_hash": ""
+  },
+  "web/src/features/customers/components/CustomerProfileSummary.tsx": {
+    "mtime": 1795667052.2368042,
+    "seen": 1795667157.7698371,
+    "ast_hash": "207b51c5a71cf132299d02fd89cad652",
+    "semantic_hash": ""
+  },
+  "web/src/features/customers/components/CustomerReturnsList.tsx": {
+    "mtime": 1795667054.779175,
+    "seen": 1795667157.769839,
+    "ast_hash": "e3ee1adc92123a732743e3e2741dbc55",
+    "semantic_hash": ""
+  },
+  "web/src/features/customers/components/CustomerSearchCard.tsx": {
+    "mtime": 1795667051.1909015,
+    "seen": 1795667157.769841,
+    "ast_hash": "cc77102a6d1eb76b5f1957f4a59f1de1",
+    "semantic_hash": ""
+  },
+  "web/src/features/customers/hooks/useCustomerTab.ts": {
+    "mtime": 1795667049.9292727,
+    "seen": 1795667157.769844,
+    "ast_hash": "4f31779bcfe7da1ae401b3f67860d4d6",
     "semantic_hash": ""
   },
   "cms/package-lock.json": {
