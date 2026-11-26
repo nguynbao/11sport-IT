@@ -7,6 +7,7 @@ export interface RowDetailField {
   label: string;
   text: string;
   fullWidth?: boolean;
+  isVariantList?: boolean;
 }
 
 export interface RowDetailPayload {
@@ -32,7 +33,12 @@ export function MobileRowDetailModal() {
 
   const fields = detail?.fields || [];
   const primaryField = fields[0];
-  const restFields = fields.slice(1);
+  const variantField = fields.find(
+    (f, idx) => idx > 0 && (f.isVariantList || f.label === "Phân loại / Màu sắc")
+  );
+  const restFields = fields.filter(
+    (f, idx) => idx > 0 && f !== variantField
+  );
 
   return (
     <ResponsiveModal
@@ -72,6 +78,28 @@ export function MobileRowDetailModal() {
                   {line}
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {variantField && (
+          <div className="rounded-2xl bg-slate-50 border border-slate-200/80 p-3.5 space-y-2">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              {variantField.label}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {(variantField.text || "")
+                .split("\n")
+                .map((v) => v.trim())
+                .filter(Boolean)
+                .map((v, idx) => (
+                  <span
+                    key={idx}
+                    className="inline-flex items-center px-2.5 py-1 rounded-full bg-white border border-slate-200 text-xs font-semibold text-slate-800 shadow-2xs"
+                  >
+                    {v}
+                  </span>
+                ))}
             </div>
           </div>
         )}

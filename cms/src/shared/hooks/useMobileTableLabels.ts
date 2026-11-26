@@ -10,11 +10,14 @@ function cellText(cell: HTMLTableCellElement): string {
 
 function textWithoutButtons(el: Element): string {
   const clone = el.cloneNode(true) as Element;
-  clone.querySelectorAll("button").forEach((b) => {
-    const title = b.getAttribute("title") || "";
-    if (!title.startsWith("Mã con:")) b.remove();
-  });
+  clone.querySelectorAll("button").forEach((b) => b.remove());
   return (clone.textContent || "").replace(/\s+/g, " ").trim();
+}
+
+function extractVariantPills(cell: HTMLTableCellElement): string[] {
+  return Array.from(cell.querySelectorAll('button[title^="Mã con:"]'))
+    .map((b) => (b.textContent || "").replace(/\s+/g, " ").trim())
+    .filter(Boolean);
 }
 
 function extractFullCellText(cell: HTMLTableCellElement): string {
@@ -52,12 +55,7 @@ function extractFullCellText(cell: HTMLTableCellElement): string {
       return;
     }
 
-    const isKeepButton = (el: Element) =>
-      el.tagName === "BUTTON" && (el.getAttribute("title") || "").startsWith("Mã con:");
-
-    const childEls = Array.from(el.children).filter(
-      (c) => c.tagName !== "BUTTON" || isKeepButton(c)
-    );
+    const childEls = Array.from(el.children).filter((c) => c.tagName !== "BUTTON");
     if (childEls.length === 0) {
       pushLine(textWithoutButtons(el));
       return;
@@ -174,13 +172,21 @@ export function applyTableLabels(table: HTMLTableElement): void {
         btn.textContent = "Xem đầy đủ nội dung";
         btn.addEventListener("click", (ev) => {
           ev.stopPropagation();
-          const fields: { label: string; text: string }[] = [];
+          const fields: { label: string; text: string; isVariantList?: boolean }[] = [];
           Array.from(row.cells).forEach((c) => {
             if (c.classList.contains("cms-mobile-detail-cell")) return;
             const label = c.getAttribute("data-label") || "";
             if (!label || /thao tác/i.test(label)) return;
             const text = extractFullCellText(c);
             if (text) fields.push({ label, text });
+            const variants = extractVariantPills(c);
+            if (variants.length > 0) {
+              fields.push({
+                label: "Phân loại / Màu sắc",
+                text: variants.join("\n"),
+                isVariantList: true,
+              });
+            }
           });
           const firstLine = (fields[0]?.text || "").split("\n")[0]?.trim();
           const title = firstLine
