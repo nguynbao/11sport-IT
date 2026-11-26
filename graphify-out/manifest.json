@@ -588,9 +588,9 @@
     "semantic_hash": ""
   },
   "web/tailwind.config.js": {
-    "mtime": 1795618152.794221,
-    "seen": 1795623501.892983,
-    "ast_hash": "2c69f32f4112ccde9305dfaa541e0ae8",
+    "mtime": 1795663950.7445881,
+    "seen": 1795663999.214047,
+    "ast_hash": "9ac19d420ea2041f610660471c50ff0d",
     "semantic_hash": ""
   },
   "web/tsconfig.json": {
