@@ -182,14 +182,14 @@ export default function MyAttendanceCalendar({
           {/* Thanh tiêu đề + chọn tháng + gửi đơn */}
           <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-4 flex flex-wrap items-center justify-between gap-2 shadow-sm">
             <div>
-              <h2 className="text-base sm:text-lg font-extrabold text-slate-900 flex items-center gap-2">
-                Lịch Chấm Công Của Tôi
-                <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-100 text-brand-ink">
+              <h2 className="text-base sm:text-lg font-extrabold text-slate-900 flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <span className="whitespace-nowrap">Lịch Chấm Công Của Tôi</span>
+                <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-100 text-brand-ink whitespace-nowrap">
                   Khối Văn phòng
                 </span>
                 {data?.row?.contractType && (
                   <span
-                    className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                    className={`px-2 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap ${
                       data.row.contractType === "FULLTIME"
                         ? "bg-teal-100 text-brand-ink"
                         : "bg-slate-100 text-slate-600"
