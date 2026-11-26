@@ -48,7 +48,7 @@ export default function HrmAttendanceModule(props: { currentUser: StaffUser | nu
       )}
 
       {/* Sub Tabs Navigation */}
-      <div className="bg-white p-2 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap gap-2">
+      <div className="bg-white p-1.5 sm:p-2 rounded-2xl shadow-sm border border-slate-200 flex overflow-x-auto no-scrollbar sm:flex-wrap gap-1.5 sm:gap-2 [&>button]:shrink-0 [&>button]:whitespace-nowrap">
         <button
           onClick={() => setActiveTab("CALENDAR")}
           className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition flex items-center gap-2 ${activeTab === "CALENDAR"
@@ -170,7 +170,7 @@ export default function HrmAttendanceModule(props: { currentUser: StaffUser | nu
             <div className="py-12 text-center text-slate-400">Không có đơn nào phù hợp bộ lọc.</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm text-slate-600">
+              <table data-cards className="w-full text-left text-sm text-slate-600">
                 <thead className="bg-slate-50 text-slate-700 uppercase font-semibold text-xs border-b border-slate-200">
                   <tr>
                     <th className="py-3 px-4">Ngày xin</th>

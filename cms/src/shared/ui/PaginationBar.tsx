@@ -41,8 +41,8 @@ export function PaginationBar({
   for (let i = startPage; i <= endPage; i++) pages.push(i);
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-slate-50 border-t border-slate-200 text-xs text-slate-600">
-      <div className="flex items-center gap-2">
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 px-3 sm:px-4 py-3 bg-slate-50 border-t border-slate-200 text-xs text-slate-600">
+      <div className="flex flex-wrap items-center justify-between sm:justify-start gap-2">
         <span>
           Hiển thị <strong className="text-slate-900">{startIdx}–{endIdx}</strong> /{" "}
           <strong className="text-slate-900">{totalItems}</strong> {itemLabel}
@@ -51,7 +51,7 @@ export function PaginationBar({
           <select
             value={pageSize}
             onChange={(e) => onPageSizeChange(Number(e.target.value))}
-            className="px-2 py-1 rounded border border-slate-300 bg-white text-xs font-semibold text-slate-700 cursor-pointer"
+            className="px-2 py-1.5 sm:py-1 rounded border border-slate-300 bg-white text-xs font-semibold text-slate-700 cursor-pointer"
           >
             {pageSizeOptions.map((sz) => (
               <option key={sz} value={sz}>
@@ -64,13 +64,13 @@ export function PaginationBar({
       </div>
 
       {totalPages > 1 && pageSize > 0 && (
-        <div className="flex items-center gap-1">
+        <div className="flex items-center justify-between sm:justify-end gap-1">
           <button
             type="button"
             disabled={page <= 1}
             onClick={() => onPageChange(1)}
             title="Trang đầu"
-            className="p-1.5 rounded border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+            className="min-w-[34px] min-h-[34px] sm:min-w-0 sm:min-h-0 p-1.5 rounded border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer inline-flex items-center justify-center"
           >
             <ChevronsLeft className="w-3.5 h-3.5" />
           </button>
@@ -79,34 +79,40 @@ export function PaginationBar({
             disabled={page <= 1}
             onClick={() => onPageChange(page - 1)}
             title="Trang trước"
-            className="p-1.5 rounded border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+            className="min-w-[34px] min-h-[34px] sm:min-w-0 sm:min-h-0 p-1.5 rounded border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer inline-flex items-center justify-center"
           >
             <ChevronLeft className="w-3.5 h-3.5" />
           </button>
 
-          {startPage > 1 && <span className="px-1 text-slate-400">…</span>}
-          {pages.map((p) => (
-            <button
-              key={p}
-              type="button"
-              onClick={() => onPageChange(p)}
-              className={`min-w-[28px] h-7 px-2 rounded border text-xs font-bold transition cursor-pointer ${
-                p === page
-                  ? "bg-teal-600 text-white border-teal-600 shadow-xs"
-                  : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
-              }`}
-            >
-              {p}
-            </button>
-          ))}
-          {endPage < totalPages && <span className="px-1 text-slate-400">…</span>}
+          <span className="sm:hidden px-2 font-mono font-bold text-slate-800">
+            {page} / {totalPages}
+          </span>
+
+          <div className="hidden sm:flex items-center gap-1">
+            {startPage > 1 && <span className="px-1 text-slate-400">…</span>}
+            {pages.map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => onPageChange(p)}
+                className={`min-w-[28px] h-7 px-2 rounded border text-xs font-bold transition cursor-pointer ${
+                  p === page
+                    ? "bg-teal-600 text-white border-teal-600 shadow-xs"
+                    : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
+                }`}
+              >
+                {p}
+              </button>
+            ))}
+            {endPage < totalPages && <span className="px-1 text-slate-400">…</span>}
+          </div>
 
           <button
             type="button"
             disabled={page >= totalPages}
             onClick={() => onPageChange(page + 1)}
             title="Trang sau"
-            className="p-1.5 rounded border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+            className="min-w-[34px] min-h-[34px] sm:min-w-0 sm:min-h-0 p-1.5 rounded border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer inline-flex items-center justify-center"
           >
             <ChevronRight className="w-3.5 h-3.5" />
           </button>

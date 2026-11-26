@@ -59,7 +59,7 @@ export function HistoryImportsView({ vm }: { vm: InventoryViewModel }) {
             />
           </div>
           <div className="overflow-x-auto border border-slate-200 rounded-xl">
-            <table className="w-full text-xs text-left">
+            <table data-cards className="w-full text-xs text-left">
               <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 uppercase">
                 <tr>
                   <th className="py-3 px-3">Mã Phiếu</th>
@@ -267,7 +267,7 @@ export function HistoryImportsView({ vm }: { vm: InventoryViewModel }) {
                                   <Eye className="w-3.5 h-3.5" /> Mở bảng Xem lại chi tiết đầy đủ
                                 </button>
                               </div>
-                              <table className="w-full text-[11px] text-left">
+                              <table data-cards className="w-full text-[11px] text-left">
                                 <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 uppercase">
                                   <tr>
                                     <th className="py-2 px-2.5 text-center">STT</th>

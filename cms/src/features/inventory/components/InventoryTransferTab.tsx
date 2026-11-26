@@ -140,7 +140,7 @@ export function InventoryTransferTab({ vm }: { vm: InventoryViewModel }) {
                 </div>
               ) : (
                 <div className="overflow-x-auto border border-indigo-200 rounded-xl">
-                  <table className="w-full text-xs text-left">
+                  <table data-cards className="w-full text-xs text-left">
                     <thead className="bg-indigo-950 text-white uppercase">
                       <tr>
                         <th className="py-2.5 px-3 w-12 text-center">STT</th>

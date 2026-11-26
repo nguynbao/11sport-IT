@@ -7,7 +7,7 @@ formatMinutes
 export function SummaryView({ rows }: { rows: TimesheetRow[] }) {
   return (
     <div className="border border-slate-200 rounded-xl overflow-auto max-h-[62vh]">
-      <table className="w-full text-xs text-slate-700">
+      <table data-cards className="w-full text-xs text-slate-700">
         <thead className="sticky top-0 z-10 bg-slate-100 text-slate-700 font-bold">
           <tr>
             <th className="px-3 py-2 text-left">Nhân viên</th>

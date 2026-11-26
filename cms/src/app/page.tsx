@@ -9,7 +9,9 @@ import { MarketingPushProductsModule, RevenueDashboardModule, StaffActivityModul
 import { ServiceManagementModule } from "@/features/services";
 import { ShiftHandoverModule } from "@/features/shifts";
 import { AccountProfileModule, StaffModule } from "@/features/staff";
+import { useMobileTableLabels } from "@/shared/hooks/useMobileTableLabels";
 import InvoicePdfModal from "@/shared/ui/InvoicePdfModal";
+import { MobileRowDetailModal } from "@/shared/ui/MobileRowDetailModal";
 import React from "react";
 import { CmsAuthGate } from "./_components/CmsAuthGate";
 import { CmsChangePasswordModal } from "./_components/CmsChangePasswordModal";
@@ -59,6 +61,7 @@ export default function CmsDashboardPage() {
     currentMenu,
     CurrentIcon,
   } = useCmsShell();
+  useMobileTableLabels();
 
   if (checkingAuth || !adminUser) {
     return (
@@ -169,6 +172,9 @@ export default function CmsDashboardPage() {
         order={invoiceOrder}
         onClose={() => setInvoiceOrder(null)}
       />
+
+      {/* Popup xem đầy đủ nội dung dòng trên Mobile */}
+      <MobileRowDetailModal />
 
       {/* Modal Cấu Hình IP Wi-Fi Chấm Công (2 Cơ Sở) */}
       {showIpConfigModal && (

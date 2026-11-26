@@ -136,7 +136,7 @@ export function ShiftHandoverDetailModal({ vm }: { vm: ShiftHandoverViewModel })
                       Tổng số lượng kiểm theo danh mục Tầng 1 (bao gồm mọi size, màu, mã)
                     </div>
                     <div className="border border-slate-200 rounded-2xl overflow-hidden">
-                      <table className="w-full text-left border-collapse text-xs">
+                      <table data-cards className="w-full text-left border-collapse text-xs">
                         <thead>
                           <tr className="bg-slate-100 text-slate-700 font-bold">
                             <th className="py-2.5 px-3">Danh mục kiểm</th>
@@ -195,7 +195,7 @@ export function ShiftHandoverDetailModal({ vm }: { vm: ShiftHandoverViewModel })
                   </div>
                 ) : (
                   <div className="border border-slate-200 rounded-2xl overflow-hidden">
-                    <table className="w-full text-left border-collapse text-xs">
+                    <table data-cards className="w-full text-left border-collapse text-xs">
                       <thead>
                         <tr className="bg-slate-100 text-slate-700 font-bold">
                           <th className="py-2.5 px-3">Mã SP</th>

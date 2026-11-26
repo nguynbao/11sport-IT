@@ -121,15 +121,7 @@ export default function BarcodeLabelModal(props: BarcodeLabelModalProps) {
         </div>
 
         {/* Body */}
-        <div
-          style={{
-            padding: 18,
-            overflowY: "auto",
-            display: "grid",
-            gridTemplateColumns: "1.1fr 0.9fr",
-            gap: 18
-          }}
-        >
+        <div className="grid grid-cols-1 md:grid-cols-[1.1fr_0.9fr] gap-4 p-3.5 sm:p-5 overflow-y-auto">
       <BarcodeLabelLeftColumn vm={vm} />
           {/* Right column: 2-Column 70x20mm Live Preview + Status */}
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>

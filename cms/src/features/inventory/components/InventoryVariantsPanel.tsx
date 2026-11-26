@@ -163,7 +163,7 @@ export function InventoryVariantsPanel({
                                 })()}
 
                                 <div className="overflow-x-auto max-h-80 overflow-y-auto border border-slate-200 rounded-lg">
-                                  <table className="w-full text-xs text-left">
+                                  <table data-cards className="w-full text-xs text-left">
                                     <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 uppercase text-[10px] sticky top-0 z-10">
                                       <tr>
                                         <th className="py-2 px-2.5 w-10 text-center">#</th>

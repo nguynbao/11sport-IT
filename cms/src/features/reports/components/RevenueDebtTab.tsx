@@ -195,7 +195,7 @@ export function RevenueDebtTab({ vm }: { vm: RevenueDashboardViewModel }) {
           {/* TAB 1: DANH SÁCH ĐƠN CÔNG NỢ (CHỈ XEM THÔNG TIN) */}
           {debtTab === "ORDERS" ? (
             <div className="overflow-x-auto border border-slate-200 rounded-xl">
-              <table className="w-full text-xs">
+              <table data-cards className="w-full text-xs">
                 <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[11px]">
                   <tr>
                     <th className="text-left px-3 py-2.5">Mã đơn / Ngày mua</th>
@@ -332,7 +332,7 @@ export function RevenueDebtTab({ vm }: { vm: RevenueDashboardViewModel }) {
           ) : (
             /* TAB 2: GOM NHÓM THEO KHÁCH HÀNG (SĐT) — CHỈ XEM THÔNG TIN */
             <div className="overflow-x-auto border border-slate-200 rounded-xl">
-              <table className="w-full text-xs">
+              <table data-cards className="w-full text-xs">
                 <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[11px]">
                   <tr>
                     <th className="text-left px-3 py-2.5">Khách hàng / SĐT</th>
