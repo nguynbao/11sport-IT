@@ -2,7 +2,7 @@
 
 import React, { useEffect } from "react";
 import ThemeToggle from "./ThemeToggle";
-import { StaffUser, UserRole } from "@/lib/api";
+import type { StaffUser, UserRole } from "@/shared/types";
 import {
   ShieldCheck,
   ExternalLink,

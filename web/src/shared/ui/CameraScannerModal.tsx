@@ -20,13 +20,10 @@ import {
   Sparkles,
   Images,
 } from "lucide-react";
-import {
-  apiRequest,
-  ImportItem,
-  Product,
-  filterAndRankBySearch,
-  formatVND,
-} from "@/lib/api";
+import type { ImportItem, Product } from "@/shared/types";
+import { apiRequest } from "@/shared/api/client";
+import { filterAndRankBySearch } from "@/shared/lib/search";
+import { formatVND } from "@/shared/utils/format";
 
 interface CameraScannerModalProps {
   mode: "OCR_TABLE" | "SCAN_TAG";

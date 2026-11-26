@@ -1,14 +1,10 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import {
-  Product,
-  apiRequest,
-  formatNumberDots,
-  generateVariantProductCode,
-  parseNumberDots,
-  toCompactBarcode128
-} from "@/lib/api";
+import type { Product } from "@/shared/types";
+import { apiRequest } from "@/shared/api/client";
+import { formatNumberDots, parseNumberDots } from "@/shared/utils/format";
+import { generateVariantProductCode, toCompactBarcode128 } from "@/shared/utils/productCode";
 import {
   Printer,
   X,

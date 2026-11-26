@@ -1,20 +1,16 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import type { Brand, Category, PreviewCodeResult, Product } from "@/shared/types";
+import { apiRequest } from "@/shared/api/client";
+import { describeApiError } from "@/shared/api/errors";
 import {
-  Brand,
-  Category,
-  PreviewCodeResult,
-  Product,
   addProductVariantsApi,
-  apiRequest,
-  describeApiError,
   fetchBrandsApi,
-  formatNumberDots,
-  parseNumberDots,
   previewProductCodeApi,
-  useDebounce,
-} from "@/lib/api";
+} from "@/shared/api/catalogLookup";
+import { formatNumberDots, parseNumberDots } from "@/shared/utils/format";
+import { useDebounce } from "@/shared/hooks/useDebounce";
 import {
   AlertCircle,
   AlertTriangle,

@@ -77,7 +77,7 @@ import {
   ColorSwatchBadge,
   getColorBoxBorderStyle,
   resolveVariantColorHexes,
-} from "./ColorSwatchPicker";
+} from "@/shared/ui/ColorSwatchPicker";
 
 const PINNED_GIFTS_STORAGE_KEY = "11sport_pos_pinned_gift_ids";
 

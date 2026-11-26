@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useRef } from "react";
-import { Order, formatVND, formatNumberDots, formatDateTime, formatPhone } from "@/lib/api";
+import type { Order } from "@/shared/types";
+import { formatVND, formatNumberDots, formatDateTime, formatPhone } from "@/shared/utils/format";
 import { Printer, X, Receipt, Download } from "lucide-react";
 
 interface InvoicePdfModalProps {

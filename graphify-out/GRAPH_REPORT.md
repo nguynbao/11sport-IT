@@ -1,23 +1,23 @@
 # Graph Report - 11sport-IT  (2026-11-26)
 
 ## Corpus Check
-- 531 files · ~512,054 words
+- 531 files · ~512,119 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 9 file(s) not represented in the graph (top: (none) 3, .example 3, .css 2)
 
 ## Summary
-- 3001 nodes · 9728 edges · 138 communities (116 shown, 22 thin omitted)
+- 3001 nodes · 9740 edges · 129 communities (107 shown, 22 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 137 edges (avg confidence: 0.93)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `40c47ec8`
+- Built from commit: `ad5bb4f5`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - web/src/components/MyAttendanceCalendar.tsx
-- timesheet.queries.ts
+- useProductCatalog.ts
 - useShiftHandover.tsx
 - CreateLeaveModal.tsx
 - attendance/components/MyAttendanceCalendar.tsx
@@ -38,7 +38,7 @@
 - imports.ts
 - Feature Danh mục & Sản phẩm (`catalog/`)
 - PosTab.tsx
-- services/leave/index.ts
+- productsInventory.controller.ts
 - return.service.ts
 - printerPrintLabels.ts
 - Repository
@@ -49,11 +49,11 @@
 - attendance.service.ts
 - ref_react
 - promotion.service.ts
-- ok
+- brand.service.ts
 - importFileParse.service.ts
 - publicStorefront.ts
-- CameraScannerModal.tsx
-- recode.service.ts
+- web/src/shared/types/promotions.ts
+- useViewport.ts
 - useShiftSchedule.ts
 - 20261113000001-ensure-indexes.ts
 - handover.service.ts
@@ -70,12 +70,11 @@
 - 3. Quy tắc Nghiệp vụ đã chốt (Business Rules)
 - Hướng dẫn Hạ tầng & Triển khai Storefront (`shop/`) - 11 Sport
 - cms/src/shared/utils/format.ts
-- useProductCatalog.ts
+- useServiceManagement.ts
 - ref_lucide_react
 - staffImportParser.ts
-- weeklyPreference.service.ts
 - compilerOptions
-- PaginationBar
+- ref_lucide_react
 - Repository
 - compilerOptions
 - web/src/components/BarcodeLabelModal.tsx
@@ -109,12 +108,10 @@
 - types/index.ts
 - hrm.ts
 - staff.service.ts
-- requireAuth
 - cms/src/app/layout.tsx
 - Dashboard doanh thu — chuẩn hóa chỉ số & trả hàng đơn công nợ
 - importScan.service.ts
 - usePromotionModule.tsx
-- imports.controller.ts
 - ReturnExchangeTab.tsx
 - attendance/api.ts
 - server/scripts/check-architecture.mjs
@@ -131,23 +128,17 @@
 - Nghiệp vụ Nhân sự (`staff/`)
 - PosTab.tsx
 - InventoryModule.tsx
-- Attendance.ts
 - ref_path
-- web/src/shared/lib/search.ts
-- Nghiệp vụ Bảng công tháng (`timesheet/`)
-- ImportReceipt.ts
+- CameraScannerModal.tsx
 - staffImport.parser.ts
-- tagMatch.ts
 - StaffListTable.tsx
 - cms/scripts/check-architecture.mjs
 - web/src/app/api/printers/route.ts
 - importPdfInventory.ts
 - ocr-speed.test.ts
-- ShiftAssignment.ts
 - Kiến trúc Backend (`server/`)
 - ref_react
 - web/src/app/layout.tsx
-- Nghiệp vụ Xếp ca tuần (`shifts/`)
 
 ## God Nodes (most connected - your core abstractions)
 1. `ApiError` - 173 edges
@@ -176,15 +167,15 @@
 ## Import Cycles
 - None detected.
 
-## Communities (138 total, 22 thin omitted)
+## Communities (129 total, 22 thin omitted)
 
 ### Community 0 - "web/src/components/MyAttendanceCalendar.tsx"
 Cohesion: 0.11
-Nodes (35): CONTRACT_LABEL, fmtDate(), isPaidLeaveEligible(), LEAVE_REASON_MAX, LEAVE_TYPE_META, LeaveFilter, LeaveRequestModal(), MyLeaveRequestsPanel() (+27 more)
+Nodes (33): CONTRACT_LABEL, fmtDate(), isPaidLeaveEligible(), LEAVE_REASON_MAX, LEAVE_TYPE_META, LeaveFilter, LeaveRequestModal(), MyLeaveRequestsPanel() (+25 more)
 
-### Community 1 - "timesheet.queries.ts"
-Cohesion: 0.29
-Nodes (21): ShiftCode, attendanceRepo, adjustAttendanceRecord(), applyManualOffForStaffDate(), createManualAttendance(), buildTimesheet(), getMyAttendanceCalendar(), getTimesheetReport() (+13 more)
+### Community 1 - "useProductCatalog.ts"
+Cohesion: 0.20
+Nodes (16): SubTab, useProductCatalog(), addProductVariantsApi(), fetchBrandsApi(), lookupProductByCodeApi(), previewProductCodeApi(), describeApiError(), PRODUCT_CODE_ERROR_MESSAGES (+8 more)
 
 ### Community 2 - "useShiftHandover.tsx"
 Cohesion: 0.20
@@ -199,24 +190,24 @@ Cohesion: 0.24
 Nodes (17): fetchMyCalendarApi(), MyAttendanceCalendar(), DayCell(), DayDetailModal(), InfoBox(), Row(), StatCard(), CONTRACT_LABEL (+9 more)
 
 ### Community 5 - "lib/api.ts"
-Cohesion: 0.10
-Nodes (41): AttendanceModal(), addLocalDays(), DAY_NAMES, FridayShiftRegistrationModal(), getNextMondayLocalStr(), pad2(), Props, toLocalDateStr() (+33 more)
+Cohesion: 0.08
+Nodes (49): AttendanceModal(), Props, addLocalDays(), DAY_NAMES, FridayShiftRegistrationModal(), getNextMondayLocalStr(), pad2(), Props (+41 more)
 
 ### Community 6 - "seed.ts"
-Cohesion: 0.18
-Nodes (22): An toàn DB, supertest, createApp(), clearDatabase(), connectDatabase(), disconnectDatabase(), seedDatabaseIfNeeded(), app (+14 more)
+Cohesion: 0.17
+Nodes (21): An toàn DB, supertest, clearDatabase(), connectDatabase(), disconnectDatabase(), seedDatabaseIfNeeded(), app, app (+13 more)
 
 ### Community 7 - "order.service.ts"
-Cohesion: 0.15
-Nodes (40): deleteOrders_ByIdHandler, getCustomersHandler, getCustomersLookupHandler, getOrders_ByIdHandler, getOrdersByCode_ByCodeHandler, getOrdersCurrentShiftHandler, getOrdersHandler, postOrders_ByIdConfirmHandler (+32 more)
+Cohesion: 0.09
+Nodes (56): 1. Hiện trạng đã xác minh trong code, deleteOrders_ByIdHandler, getCustomersHandler, getCustomersLookupHandler, getOrders_ByIdHandler, getOrdersByCode_ByCodeHandler, getOrdersCurrentShiftHandler, getOrdersHandler (+48 more)
 
 ### Community 8 - "useStaffModule.ts"
-Cohesion: 0.23
-Nodes (15): StaffCreateHrFields(), StaffEditSalarySection(), buildStaffActions(), StaffViewModel, useStaffModule(), EditableImportRow, formatMoneyInput(), parseMoneyInput() (+7 more)
+Cohesion: 0.24
+Nodes (14): StaffCreateHrFields(), StaffEditSalarySection(), buildStaffActions(), StaffViewModel, useStaffModule(), EditableImportRow, formatMoneyInput(), parseMoneyInput() (+6 more)
 
 ### Community 9 - "InventoryTab.tsx"
-Cohesion: 0.11
-Nodes (36): ColorInputWithPicker(), ColorSwatchBadge(), getColorBoxBorderStyle(), inferColorHexesFromText(), normalizeTextForColorMatch(), resolveVariantColorHexes(), sanitizeHexList(), SPORT_COLOR_PALETTE (+28 more)
+Cohesion: 0.08
+Nodes (50): InventoryTab(), GiftCartItem, ExchangeItemForm, ExchangeOption, addProductVariantsApi(), fetchBrandsApi(), lookupProductByCodeApi(), previewProductCodeApi() (+42 more)
 
 ### Community 10 - "useAttendanceTimesheet.ts"
 Cohesion: 0.14
@@ -235,23 +226,23 @@ Cohesion: 0.18
 Nodes (7): 1. Quy ước chung, Hợp đồng API (API Contract) - 11 Sport (v5.0), Cơ chế an toàn, Lệnh, Migration DB — 11 Sport, Migration hiện có, Quy trình deploy (bắt buộc)
 
 ### Community 14 - "ref_react"
-Cohesion: 0.11
-Nodes (21): CmsDrawersProps, CmsHeaderProps, CMS_MENU_ITEMS, CmsModuleType, ROLE_ALLOWED_MODULES, fetchAttendanceConfig(), updateAttendanceConfigApi(), Props (+13 more)
+Cohesion: 0.13
+Nodes (19): CmsAuthGateProps, CmsDrawersProps, CmsHeaderProps, CMS_MENU_ITEMS, CmsModuleType, ROLE_ALLOWED_MODULES, fetchAttendanceConfig(), updateAttendanceConfigApi() (+11 more)
 
 ### Community 15 - "productScheme.service.ts"
-Cohesion: 0.08
-Nodes (54): RFC-4180, ensureCategorySkuCode(), ensureSystemBrand(), buildSchemeRootCode(), bumpVersionCode(), CodeConflict, createProductFromImportProposal(), findDuplicateProduct() (+46 more)
+Cohesion: 0.05
+Nodes (80): RFC-4180, ensureCategorySkuCode(), ensureSystemBrand(), bumpVersionCode(), CodeConflict, ImportProductProposal, ImportSchemeContext, proposeImportProduct() (+72 more)
 
 ### Community 16 - "server/package.json"
 Cohesion: 0.05
 Nodes (44): cors, mongodb-memory-server, tesseract.js, ts-node-dev, @types/cors, @types/express, @types/supertest, dependencies (+36 more)
 
 ### Community 17 - "web/src/shared/utils/productCode.ts"
-Cohesion: 0.12
-Nodes (35): BarcodeLabelItem, BarcodeLabelModal(), BarcodeLabelModalProps, CODE128_PATTERNS, encodeCode128Bars(), encodeCode128RawPattern(), escapeHtml(), FIXED_LABEL_CONFIG (+27 more)
+Cohesion: 0.20
+Nodes (22): buildCompactColorTokenFE(), extractVariantFromText(), findVariantByColorSize(), generateProductCode(), generateSixDigitsFromSeed(), generateVariantProductCode(), isNewSchemeProductFE(), isStandardSixDigitProductCode() (+14 more)
 
 ### Community 18 - "serviceOrder.service.ts"
-Cohesion: 0.11
+Cohesion: 0.10
 Nodes (46): deleteServiceTypes_ByIdHandler, getServiceOrders_ByIdHandler, getServiceOrdersHandler, getServiceTypesHandler, patchServiceOrders_ByIdHandler, patchServiceOrders_ByIdStatusHandler, patchServiceTypes_ByIdHandler, postServiceOrders_ByIdPaymentsHandler (+38 more)
 
 ### Community 19 - "imports.ts"
@@ -262,13 +253,13 @@ Nodes (40): dependencies, docx-preview@^0.4.1, lucide-react@^0.460.0, mammoth@^1
 Cohesion: 0.06
 Nodes (41): dependencies, docx-preview@^0.4.1, lucide-react@^0.460.0, mammoth@^1.13.0, next@^14.2.15, react@^18.3.1, react-dom@^18.3.1, devDependencies (+33 more)
 
-### Community 22 - "services/leave/index.ts"
-Cohesion: 0.17
-Nodes (30): createLeaveRequestHandler, deleteLeaveRequestHandler, getLeaveRequestsHandler, patchLeaveRequestHandler, leaveRequestsRouter, assertAdvanceNoticeForLeaveRequest(), assertPaidLeaveQuota(), assertSalesUnpaidOffQuota() (+22 more)
+### Community 22 - "productsInventory.controller.ts"
+Cohesion: 0.19
+Nodes (18): deleteProducts_ByIdHandler, getInventoryMovementsHandler, getInventoryReportHandler, getInventoryTransfersHandler, getProductsHandler, getProductsLookupHandler, patchProducts_ByIdHandler, patchProducts_ByIdVariantsHandler (+10 more)
 
 ### Community 23 - "return.service.ts"
-Cohesion: 0.08
-Nodes (37): getReturnsHandler, postReturnsCalculateHandler, postReturnsHandler, DebtAdjustmentRecordSchema, DebtPaymentRecordSchema, DebtStatus, DiscountType, IDebtAdjustmentRecord (+29 more)
+Cohesion: 0.14
+Nodes (21): getReturnsHandler, postReturnsCalculateHandler, postReturnsHandler, PaymentMethod, ExchangeItemSchema, IExchangeItem, IReturnExchange, IReturnItem (+13 more)
 
 ### Community 24 - "printerPrintLabels.ts"
 Cohesion: 0.19
@@ -287,8 +278,8 @@ Cohesion: 0.20
 Nodes (14): CODE128_PATTERNS, DirectPrintPayload, encodeCode128BPattern(), encodeCode128RawPattern(), execFileAsync, isThermalPrinter(), LabelPrintItem, listSystemPrinters() (+6 more)
 
 ### Community 28 - "product.service.ts"
-Cohesion: 0.13
-Nodes (54): deleteProducts_ByIdHandler, getInventoryMovementsHandler, getInventoryReportHandler, getInventoryTransfersHandler, getProductsHandler, getProductsLookupHandler, patchProducts_ByIdHandler, patchProducts_ByIdVariantsHandler (+46 more)
+Cohesion: 0.14
+Nodes (56): WarehouseFloor, createCategory(), requireCategoryManager(), updateCategory(), validateSkuCode(), buildSchemeRootCode(), createProductFromImportProposal(), findCodeConflicts() (+48 more)
 
 ### Community 29 - "ProductCatalogModule.tsx"
 Cohesion: 0.22
@@ -299,32 +290,32 @@ Cohesion: 0.11
 Nodes (41): ShiftAssignment, 2.13 Quản trị Nhân sự, Chấm công & Xếp ca HRM (`/attendance`, `/leave-requests`, `/shifts`, `/holidays`) *(v4.0)*, A. Chấm công (`/attendance`), B. Đơn từ & Phê duyệt WFH / Nghỉ phép (`/leave-requests`), C. Xếp ca & Bàn giao Kho Tầng 1 (`/shifts`), D. Cấu hình Ngày Lễ (`/holidays`), E. Kiểm tra Phiên bản Build trên Web & CMS (`GET /api/version`), getAttendanceConfigHandler (+33 more)
 
 ### Community 31 - "ref_react"
-Cohesion: 0.09
-Nodes (40): SubTab, InventoryPaginationBar(), InventoryPaginationBarProps, downloadAdminSampleCsv(), useInventoryDerived(), InventoryAdminImportDeps, useInventoryAdminImport(), useInventoryLoaders() (+32 more)
+Cohesion: 0.12
+Nodes (33): InventoryPaginationBar(), InventoryPaginationBarProps, parseAndApplyAdminImportFile(), downloadAdminSampleCsv(), useInventoryDerived(), InventoryAdminImportDeps, useInventoryAdminImport(), useInventoryLoaders() (+25 more)
 
 ### Community 32 - "promotion.service.ts"
-Cohesion: 0.12
-Nodes (31): deletePromotions_ByIdHandler, getPromotionsHandler, patchPromotions_ByIdHandler, postPromotionsEvaluateHandler, postPromotionsHandler, IPromotion, IPromotionConditionCategory, IPromotionConditionProduct (+23 more)
+Cohesion: 0.11
+Nodes (29): deletePromotions_ByIdHandler, getPromotionsHandler, patchPromotions_ByIdHandler, postPromotionsEvaluateHandler, postPromotionsHandler, IPromotion, IPromotionConditionCategory, IPromotionConditionProduct (+21 more)
 
-### Community 33 - "ok"
-Cohesion: 0.13
-Nodes (32): Quy ước trong mỗi domain (`services/<domain>/`), deleteBrands_ByIdHandler, getBrandsHandler, patchBrands_ByIdHandler, postBrandsHandler, customerRepo, brandsRouter, assertUniqueName() (+24 more)
+### Community 33 - "brand.service.ts"
+Cohesion: 0.31
+Nodes (14): deleteBrands_ByIdHandler, getBrandsHandler, patchBrands_ByIdHandler, postBrandsHandler, assertUniqueName(), brandUsage(), cleanAliases(), countProductsByBrand() (+6 more)
 
 ### Community 34 - "importFileParse.service.ts"
-Cohesion: 0.23
-Nodes (21): ensureStandardProductCodesMigrated(), buildTagCodes(), ocrScanTag(), validateOcrInput(), rowsToImportItems(), ocrScan(), parseImportFile(), colLettersToIndex() (+13 more)
+Cohesion: 0.21
+Nodes (25): ensureStandardProductCodesMigrated(), Issue, main(), checkLine(), rowsToImportItems(), parseImportFile(), generateCode(), colLettersToIndex() (+17 more)
 
 ### Community 35 - "publicStorefront.ts"
 Cohesion: 0.08
 Nodes (27): StockMovement, 2.0 Kiểm tra trạng thái hệ thống (`/health`), 2.10 Chương trình Khuyến mãi (`/promotions`) *(v2.7)*, 2.10 Quản lý Loại Dịch Vụ & Đơn Dịch Vụ (`/service-types`, `/service-orders`), 2.11 Chuẩn hóa Mã Sản Phẩm Viết Liền, Biến Thể (`Size` / `Màu`) & Nhập Kho File PDF/Excel + In Tem Label *(v2.8)*, 2.13 Máy in Tem Mã Vạch Nhiệt & In Trực Tiếp (`/printers`) *(v3.1)*, 2.14 Mã Con Theo Thuộc Tính Biến Thể (`variantCode`) — In Tem & Quét Kiểm Kho / Bán Hàng POS *(v3.2)*, 2.15 Chọn & Hiển Thị 1 Hoặc Nhiều Mã Màu Trực Quan (`colorHexes`) Cho Biến Thể Sản Phẩm *(v3.3)* (+19 more)
 
-### Community 36 - "CameraScannerModal.tsx"
-Cohesion: 0.16
-Nodes (18): 1. Tổng quan Phạm vi & Môi trường Kiểm thử, 2. Bảng Ma trận Test Cases chi tiết (AC-01 đến AC-07 & Biên/Lỗi), 3. Kết quả Chạy Kiểm thử Tự động & Kiểm tra Build/Type-check, 4. Kết luận Nghiệm thu, Tài liệu Kịch bản Kiểm thử & Kết quả Nghiệm thu - 11Sport (v1.0), CameraScannerModal(), CameraScannerModalProps, compressImageToDataUrl() (+10 more)
+### Community 36 - "web/src/shared/types/promotions.ts"
+Cohesion: 0.25
+Nodes (7): EffectivePromotionStatus, Promotion, PromotionConditionCategory, PromotionConditionProduct, PromotionConditionType, PromotionDiscountType, PromotionGiftItem
 
-### Community 37 - "recode.service.ts"
-Cohesion: 0.10
-Nodes (37): assignCategorySkuCodes(), brandTerms(), buildBrandSeedList(), EXTRA_ALIASES, findBrandExact(), findTermIndex(), knownBrandCandidates(), matchBrandInText() (+29 more)
+### Community 37 - "useViewport.ts"
+Cohesion: 0.67
+Nodes (3): Breakpoint, useBreakpoint(), useIsMobile()
 
 ### Community 38 - "useShiftSchedule.ts"
 Cohesion: 0.17
@@ -335,16 +326,16 @@ Cohesion: 0.28
 Nodes (5): migration, migration, toObjectId(), Migration, MigrationContext
 
 ### Community 40 - "handover.service.ts"
-Cohesion: 0.15
-Nodes (33): confirmHandoverHandler, deleteHandoverHandler, getHandoverDailyCheckHandler, getHandoverScheduleConfigHandler, listHandoversHandler, putHandoverScheduleConfigHandler, submitHandoverHandler, attendanceConfigRepo (+25 more)
+Cohesion: 0.05
+Nodes (111): confirmHandoverHandler, deleteHandoverHandler, getHandoverDailyCheckHandler, getHandoverScheduleConfigHandler, listHandoversHandler, putHandoverScheduleConfigHandler, submitHandoverHandler, createLeaveRequestHandler (+103 more)
 
 ### Community 41 - "web/src/app/page.tsx"
-Cohesion: 0.11
+Cohesion: 0.10
 Nodes (36): getDefaultTabForRole(), getRoleDisplayName(), isAttendanceOnlyRole(), isBlockedFromWebPos(), TABS_CONFIG, WebPosHomePage(), AccountProfileTab(), AccountProfileTabProps (+28 more)
 
 ### Community 42 - "app.ts"
-Cohesion: 0.21
-Nodes (12): buildHealthPayload(), createCorsMiddleware(), DEFAULT_ORIGINS, privateNetworkAccessMiddleware(), getDbMode(), env, createRateLimiter(), getRequestIpKey() (+4 more)
+Cohesion: 0.20
+Nodes (16): buildHealthPayload(), createApp(), createCorsMiddleware(), DEFAULT_ORIGINS, privateNetworkAccessMiddleware(), getDbMode(), env, bootstrap() (+8 more)
 
 ### Community 43 - "5. Đặc tả Component cốt lõi (`shop/`)"
 Cohesion: 0.11
@@ -359,8 +350,8 @@ Cohesion: 0.11
 Nodes (17): compilerOptions, allowJs, esModuleInterop, incremental, isolatedModules, jsx, lib, module (+9 more)
 
 ### Community 47 - "routes/index.ts"
-Cohesion: 0.08
-Nodes (35): express, getMyCalendarHandler, getTimesheetHandler, patchAttendanceHandler, postManualAttendanceHandler, getPrintersHandler, printLabelsHandler, getWiseCurrenciesHandler (+27 more)
+Cohesion: 0.06
+Nodes (45): express, getMyCalendarHandler, getTimesheetHandler, patchAttendanceHandler, postManualAttendanceHandler, deleteCategories_ByIdHandler, getCategoriesHandler, patchCategories_ByIdHandler (+37 more)
 
 ### Community 50 - "Đặc tả Yêu cầu Nghiệp vụ: Website Bán hàng 11 Sport (`shop/`) & CMS Quản lý Website (`cms/`)"
 Cohesion: 0.12
@@ -375,32 +366,28 @@ Cohesion: 0.13
 Nodes (14): generateValue, key, sync, value, services, buildCommand, envVars, healthCheckPath (+6 more)
 
 ### Community 53 - "cms/src/shared/utils/format.ts"
-Cohesion: 0.08
-Nodes (33): ProductCatalogTable(), ProductCatalogViewModel, DebtManagementModule(), DebtPaymentModal(), DebtManagementViewModel, PromotionConditionFields(), PromotionFormModal(), PromotionModule() (+25 more)
-
-### Community 54 - "useProductCatalog.ts"
 Cohesion: 0.09
-Nodes (37): DEBOUNCE_MS, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, PAGE_SIZE_OPTIONS, BrandForm, BrandModuleViewModel, CODE_RE, EMPTY_FORM (+29 more)
+Nodes (30): SetLinkModal(), DebtManagementModule(), DebtPaymentModal(), DebtManagementViewModel, PromotionConditionFields(), PromotionFormModal(), PromotionRewardFields(), PromotionModuleViewModel (+22 more)
+
+### Community 54 - "useServiceManagement.ts"
+Cohesion: 0.14
+Nodes (15): useOrdersReturns(), STATUS_INFO, buildPageQuery(), extractPagination(), PagedQueryParams, PaginationMeta, usePagedList(), UsePagedListOptions (+7 more)
 
 ### Community 55 - "ref_lucide_react"
-Cohesion: 0.25
-Nodes (18): ProductCatalogVariantSection(), HistoryTransfersView(), InventoryProductsTable(), InventoryScannerPanel(), InventoryTableFooter(), InventoryTransferTab(), InventoryVariantsPanel(), TransferProductPicker() (+10 more)
+Cohesion: 0.26
+Nodes (18): ProductCatalogVariantSection(), ProductCatalogViewModel, HistoryTransfersView(), InventoryProductsTable(), InventoryTableFooter(), InventoryTransferTab(), InventoryVariantsPanel(), TransferProductPicker() (+10 more)
 
 ### Community 56 - "staffImportParser.ts"
 Cohesion: 0.14
 Nodes (13): compilerOptions, esModuleInterop, forceConsistentCasingInFileNames, module, moduleResolution, outDir, resolveJsonModule, rootDir (+5 more)
 
-### Community 57 - "weeklyPreference.service.ts"
-Cohesion: 0.23
-Nodes (21): assignSingleShiftHandler, assignWeekBulkHandler, getMyScheduleHandler, getWeeklyScheduleHandler, markMyScheduleSeenHandler, registerWeeklyPreferencesHandler, leaveRequestRepo, shiftAssignmentRepo (+13 more)
-
 ### Community 58 - "compilerOptions"
 Cohesion: 0.15
 Nodes (13): depends_on, server, condition, web, command, container_name, depends_on, image (+5 more)
 
-### Community 59 - "PaginationBar"
-Cohesion: 0.23
-Nodes (11): BrandModule(), CategoryModule(), CmsRoleBadge(), HistoryImportsView(), HistoryMovementsView(), OrdersReturnsModule(), ExportExcelButton(), ExportExcelButtonProps (+3 more)
+### Community 59 - "ref_lucide_react"
+Cohesion: 0.16
+Nodes (18): BrandModule(), CategoryBrandModule(), CategoryModule(), ProductCatalogModule(), ProductCatalogTable(), COMMON_COLORS, COMMON_SIZES, StockStatusFilter (+10 more)
 
 ### Community 60 - "Repository"
 Cohesion: 0.17
@@ -427,12 +414,12 @@ Cohesion: 0.17
 Nodes (12): 2.19 Chuẩn hoá Mã Sản Phẩm `CATE + BRAND + VERSION + MÀU + SIZE`, Thương hiệu (`/brands`) & Giá theo biến thể *(v5.0)*, A. Quy tắc mã, B. Thương hiệu (`/brands`), C. Category — trường mới, D. Product — trường mới (response `GET /products`, `POST/PATCH /products`), E. `POST /api/v1/products/preview-code` (xem trước mã, không ghi DB), F. `POST /api/v1/products` — luồng mới (khi body có `brandId`), H. `PATCH /api/v1/products/:id` — trường mới (+4 more)
 
 ### Community 66 - "inventory/exports.ts"
-Cohesion: 0.11
+Cohesion: 0.10
 Nodes (48): exportBrands(), exportCategories(), categoryNameOf(), checkersOf(), exportImports(), exportInventoryReport(), exportMovements(), exportProducts() (+40 more)
 
 ### Community 67 - "cms/src/app/page.tsx"
 Cohesion: 0.09
-Nodes (28): CmsAuthGate(), CmsAuthGateProps, CmsChangePasswordModal(), CmsChangePasswordModalProps, CmsDrawers(), CmsHeader(), CmsDashboardPage(), AttendanceIpConfigModule() (+20 more)
+Nodes (26): CmsAuthGate(), CmsChangePasswordModal(), CmsChangePasswordModalProps, CmsDrawers(), CmsHeader(), CmsDashboardPage(), AttendanceIpConfigModule(), PromotionModule() (+18 more)
 
 ### Community 68 - "utils/productCode.ts"
 Cohesion: 0.08
@@ -459,8 +446,8 @@ Cohesion: 0.22
 Nodes (8): 1. Thống kê Lỗi theo Mức độ, 2. Danh sách Lỗi đã Phát hiện & Đã Xác minh Sửa lỗi (Resolved), 3. Kiểm thử Phi chức năng & Bảo mật cơ bản, BUG-01: Nút chuyển nhanh vai trò (Quick Login) trên `web/` và `cms/` gửi mật khẩu mặc định chưa khớp với dữ liệu Seed của `server/`, BUG-02: Xử lý dữ liệu phản hồi tại `ImportTab.tsx` khi gọi `POST /api/v1/imports/:id/complete`, BUG-03: Hiển thị mã phiếu Trả/Đổi trong thông báo thành công tại `ReturnExchangeTab.tsx`, BUG-04: Bảng hóa đơn khổ K80 bị tràn ngang do mã sản phẩm dài và dính nền trang khi bấm In PDF, Báo cáo Lỗi (Bug Report) - 11Sport (v1.0)
 
 ### Community 74 - "ocr.ts"
-Cohesion: 0.15
-Nodes (20): ALLOWED_MIME, buildThinkingConfig(), callGeminiModel(), callGeminiTable(), callGeminiTag(), DEFAULT_TABLE_MODELS, DEFAULT_TAG_MODELS, getGeminiModels() (+12 more)
+Cohesion: 0.09
+Nodes (38): ALLOWED_MIME, buildTagCodes(), buildThinkingConfig(), callGeminiModel(), callGeminiTable(), callGeminiTag(), DEFAULT_TABLE_MODELS, DEFAULT_TAG_MODELS (+30 more)
 
 ### Community 75 - "compilerOptions"
 Cohesion: 0.25
@@ -495,16 +482,16 @@ Cohesion: 0.33
 Nodes (5): 1. Vấn đề, 2. Quy tắc đã chốt, 3. Chuyển đổi dữ liệu cũ (CHỈ DB LOCAL), 4. Tiêu chí nghiệm thu, Chuẩn hoá mã sản phẩm: CATEGORY + BRAND + VERSION + MÀU + SIZE (v1)
 
 ### Community 86 - "http.ts"
-Cohesion: 0.14
-Nodes (30): getReportsPushProductsHandler, getReportsRevenueDashboardHandler, getReportsStaffActivityHandler, categoryRepo, importReceiptRepo, orderRepo, serviceOrderRepo, staffRepo (+22 more)
+Cohesion: 0.11
+Nodes (45): Quy ước trong mỗi domain (`services/<domain>/`), categoryRepo, importReceiptRepo, orderRepo, productRepo, returnExchangeRepo, serviceOrderRepo, staffRepo (+37 more)
 
 ### Community 87 - "scripts"
 Cohesion: 0.50
 Nodes (3): Cài đặt (Claude Code), Cách dùng, Skill GitHub gợi ý cho từng phòng ban
 
 ### Community 96 - "types/index.ts"
-Cohesion: 0.10
-Nodes (37): OrdersReturnsModuleProps, buildClientFallbackDashboard(), computeFallbackDebtStats(), aggregateOrdersAndReturns(), computeFallbackProductAndCategoryStats(), computeFallbackServiceStats(), buildFallbackPushProducts(), PushProductsReportResponse (+29 more)
+Cohesion: 0.09
+Nodes (39): OrdersReturnsModuleProps, buildClientFallbackDashboard(), computeFallbackDebtStats(), aggregateOrdersAndReturns(), computeFallbackProductAndCategoryStats(), computeFallbackServiceStats(), buildFallbackPushProducts(), PushProductsReportResponse (+31 more)
 
 ### Community 97 - "hrm.ts"
 Cohesion: 0.14
@@ -514,33 +501,25 @@ Nodes (13): AttendanceConfig, AttendanceRecord, DailyHandoverCategorySummary, Le
 Cohesion: 0.18
 Nodes (23): getStaffHandler, patchStaff_ByIdHandler, postAuthChangePasswordHandler, postAuthLoginHandler, postStaffHandler, postStaffParseImportFileHandler, invalidateStaffAuthCache(), changePassword() (+15 more)
 
-### Community 99 - "requireAuth"
-Cohesion: 0.32
-Nodes (10): deleteCategories_ByIdHandler, getCategoriesHandler, patchCategories_ByIdHandler, postCategoriesHandler, categoriesRouter, createCategory(), deleteCategory(), requireCategoryManager() (+2 more)
-
 ### Community 100 - "cms/src/app/layout.tsx"
 Cohesion: 0.12
 Nodes (11): dynamic, revalidate, inter, metadata, RootLayout(), VersionChecker(), dynamic, revalidate (+3 more)
 
 ### Community 101 - "Dashboard doanh thu — chuẩn hóa chỉ số & trả hàng đơn công nợ"
-Cohesion: 0.15
-Nodes (12): 10. Phiếu bàn giao → backend-dev, 1. Hiện trạng đã xác minh trong code, 2. Công thức chuẩn, 3. Ví dụ số (một đơn đủ các yếu tố), 4. User story, 5. Đặc tả sửa POST `/returns` & `/returns/calculate` với đơn công nợ, 6. Tiêu chí nghiệm thu (Given/When/Then), 7. Trường hợp biên (+4 more)
+Cohesion: 0.18
+Nodes (10): 10. Phiếu bàn giao → backend-dev, 2. Công thức chuẩn, 3. Ví dụ số (một đơn đủ các yếu tố), 4. User story, 5. Đặc tả sửa POST `/returns` & `/returns/calculate` với đơn công nợ, 6. Tiêu chí nghiệm thu (Given/When/Then), 7. Trường hợp biên, 8. Tác động theo phần (+2 more)
 
 ### Community 102 - "importScan.service.ts"
-Cohesion: 0.18
-Nodes (34): sanitizeBarcode(), IImportReceiptItem, findCodeConflictsInList(), findExistingProductForImport(), loadImportSchemeContext(), resolveExplicitImportSchemeItem(), resolveImportColorCode(), enrichReceiptRoles() (+26 more)
+Cohesion: 0.12
+Nodes (50): deleteImports_ByIdHandler, getImports_ByIdHandler, getImportsHandler, postImports_ByIdCompleteHandler, postImports_ByIdFinishListingHandler, postImports_ByIdScanCheckHandler, postImports_ByIdScanTagHandler, postImportsHandler (+42 more)
 
 ### Community 103 - "usePromotionModule.tsx"
-Cohesion: 0.12
-Nodes (24): DebtManagementModuleProps, useDebtManagement(), toDateTimeLocalInput(), usePromotionModule(), useClientPagination(), boundedEditDistanceLeq1(), buildAcronym(), compactAlphaNum() (+16 more)
-
-### Community 104 - "imports.controller.ts"
-Cohesion: 0.24
-Nodes (14): deleteImports_ByIdHandler, getImports_ByIdHandler, getImportsHandler, postImports_ByIdCompleteHandler, postImports_ByIdFinishListingHandler, postImports_ByIdScanCheckHandler, postImports_ByIdScanTagHandler, postImportsHandler (+6 more)
+Cohesion: 0.09
+Nodes (36): DEBOUNCE_MS, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, PAGE_SIZE_OPTIONS, BrandForm, BrandModuleViewModel, CODE_RE, EMPTY_FORM (+28 more)
 
 ### Community 105 - "ReturnExchangeTab.tsx"
-Cohesion: 0.09
-Nodes (41): CustomerTab(), CustomerTabProps, InvoicePdfModal(), InvoicePdfModalProps, buildFallbackPushProducts(), MarketingPushProductsTab(), parseLocalDateBound(), PushProductRow (+33 more)
+Cohesion: 0.12
+Nodes (32): CustomerTab(), CustomerTabProps, formatPaymentMethodLabel(), formatShiftBadge(), formatShortVnDate(), getLocalDateStr(), getRecentQuickDates(), PosShiftBillsSection() (+24 more)
 
 ### Community 106 - "attendance/api.ts"
 Cohesion: 0.22
@@ -551,60 +530,44 @@ Cohesion: 0.13
 Nodes (11): cycles, dfs(), __dirname, files, FORBIDDEN, graph, inStack, SRC_ROOT (+3 more)
 
 ### Community 108 - "middleware/auth.ts"
-Cohesion: 0.17
-Nodes (17): bootstrap(), attachUserContext(), errorHandler(), Express, requireRoles(), resolveActiveStaffCached(), staffCache, assertSecurityEnvironment() (+9 more)
+Cohesion: 0.21
+Nodes (14): attachUserContext(), Express, requireRoles(), resolveActiveStaffCached(), staffCache, DEFAULT_JWT_EXPIRES_IN, DEFAULT_JWT_TTL_SECONDS, getJwtExpiresInSeconds() (+6 more)
 
 ### Community 109 - "web/scripts/check-architecture.mjs"
 Cohesion: 0.13
 Nodes (11): cycles, dfs(), __dirname, files, FORBIDDEN, graph, inStack, SRC_ROOT (+3 more)
 
 ### Community 111 - "repositories/index.ts"
-Cohesion: 0.05
-Nodes (47): mongoose, migration, AttendanceConfigModel, AttendanceConfigSchema, IAttendanceConfig, BrandModel, BrandSchema, BrandStatus (+39 more)
+Cohesion: 0.04
+Nodes (61): mongoose, migration, AttendanceCheckInType, AttendanceModel, AttendanceSchema, AttendanceStatus, IAttendance, OvertimeStatus (+53 more)
 
 ### Community 112 - "Nghiệp vụ Ngày lễ (`holidays/`)"
 Cohesion: 0.50
 Nodes (3): Cấu trúc, Nghiệp vụ Ngày lễ (`holidays/`), Quy tắc chính
 
 ### Community 119 - "PosTab.tsx"
-Cohesion: 0.09
-Nodes (40): CartItem, cartUnitPrice(), createDraft(), createEmptyDraftData(), DraftOrder, DraftOrderData, generateDraftId(), getCartLineKey() (+32 more)
+Cohesion: 0.12
+Nodes (35): CartItem, cartUnitPrice(), createDraft(), createEmptyDraftData(), DraftOrder, DraftOrderData, generateDraftId(), getCartLineKey() (+27 more)
 
 ### Community 120 - "InventoryModule.tsx"
-Cohesion: 0.13
-Nodes (22): ProductCatalogModule(), COMMON_COLORS, COMMON_SIZES, StockStatusFilter, AdminBatchImportModal(), AdminBatchImportTable(), ImportReceiptDetailModal(), InventoryHistoryTab() (+14 more)
-
-### Community 121 - "Attendance.ts"
-Cohesion: 0.29
-Nodes (6): AttendanceCheckInType, AttendanceModel, AttendanceSchema, AttendanceStatus, IAttendance, OvertimeStatus
+Cohesion: 0.17
+Nodes (18): AdminBatchImportModal(), AdminBatchImportTable(), CmsRoleBadge(), HistoryImportsView(), HistoryMovementsView(), ImportReceiptDetailModal(), InventoryHistoryTab(), InventoryModule() (+10 more)
 
 ### Community 122 - "ref_path"
 Cohesion: 0.18
 Nodes (5): args, BASELINE_FILE, current, __dirname, ROUTES_DIR
 
-### Community 123 - "web/src/shared/lib/search.ts"
-Cohesion: 0.33
-Nodes (8): boundedEditDistanceLeq1(), buildAcronym(), compactAlphaNum(), normalizePhoneDigits(), normalizeVietnamese(), PreparedField, scoreSearchMatch(), SearchField
-
-### Community 124 - "Nghiệp vụ Bảng công tháng (`timesheet/`)"
-Cohesion: 0.50
-Nodes (3): Cấu trúc, Nghiệp vụ Bảng công tháng (`timesheet/`), Quy tắc chính
-
-### Community 125 - "ImportReceipt.ts"
-Cohesion: 0.25
-Nodes (7): IImportReceipt, ImportReceiptItemSchema, ImportReceiptModel, ImportReceiptSchema, ImportReceiptStatus, IScanCount, WarehouseFloor
+### Community 123 - "CameraScannerModal.tsx"
+Cohesion: 0.11
+Nodes (27): 1. Tổng quan Phạm vi & Môi trường Kiểm thử, 2. Bảng Ma trận Test Cases chi tiết (AC-01 đến AC-07 & Biên/Lỗi), 3. Kết quả Chạy Kiểm thử Tự động & Kiểm tra Build/Type-check, 4. Kết luận Nghiệm thu, Tài liệu Kịch bản Kiểm thử & Kết quả Nghiệm thu - 11Sport (v1.0), boundedEditDistanceLeq1(), buildAcronym(), compactAlphaNum() (+19 more)
 
 ### Community 126 - "staffImport.parser.ts"
 Cohesion: 0.13
 Nodes (26): Request, ContractType, IStaff, StaffDepartment, StaffModel, StaffRole, StaffSchema, StaffStatus (+18 more)
 
-### Community 127 - "tagMatch.ts"
-Cohesion: 0.17
-Nodes (23): Issue, main(), checkLine(), findRowByKnownBarcode(), compactColorTokenForBarcode(), isCompactBarcodeMatchVariant(), normalizeToCompactUpperCode(), normalizeToUpperCode() (+15 more)
-
 ### Community 128 - "StaffListTable.tsx"
-Cohesion: 0.14
-Nodes (14): StaffCreateForm(), StaffEditProfileModal(), StaffImportPreviewModal(), StaffListTable(), StaffModule(), StaffPasswordModal(), ContractFilePreviewModal(), preparePreview() (+6 more)
+Cohesion: 0.13
+Nodes (15): AccountProfileModule(), StaffCreateForm(), StaffEditProfileModal(), StaffImportPreviewModal(), StaffModule(), StaffPasswordModal(), getRoleDisplayName(), ContractFilePreviewModal() (+7 more)
 
 ### Community 129 - "cms/scripts/check-architecture.mjs"
 Cohesion: 0.13
@@ -622,45 +585,37 @@ Nodes (9): dotenv, apiCall(), buildProductName(), FLOOR_1_ITEMS, FLOOR_2_ITEMS, 
 Cohesion: 0.52
 Nodes (5): pingKeepAliveOnce(), resolveKeepAliveHealthUrl(), resolveKeepAliveIntervalMs(), startKeepAlive(), app
 
-### Community 133 - "ShiftAssignment.ts"
-Cohesion: 0.40
-Nodes (4): IShiftAssignment, ShiftAssignmentModel, ShiftAssignmentSchema, ShiftType
-
 ### Community 134 - "Kiến trúc Backend (`server/`)"
 Cohesion: 0.50
 Nodes (3): Cấu trúc phân tầng (Layered Architecture), Kiến trúc Backend (`server/`), Quy tắc phụ thuộc một chiều
 
 ### Community 135 - "ref_react"
-Cohesion: 0.20
-Nodes (18): useCmsShell(), useBrandModule(), parseAndApplyAdminImportFile(), submitAdminBatchImport(), ViewTab, parseStaffImportFileApi(), buildStaffImportActions(), toIsoDateSlice() (+10 more)
+Cohesion: 0.19
+Nodes (18): useCmsShell(), useBrandModule(), submitAdminBatchImport(), ViewTab, parseStaffImportFileApi(), buildStaffImportActions(), toIsoDateSlice(), useAccountProfile() (+10 more)
 
 ### Community 136 - "web/src/app/layout.tsx"
 Cohesion: 0.32
 Nodes (5): inter, metadata, RootLayout(), viewport, VersionChecker()
 
-### Community 137 - "Nghiệp vụ Xếp ca tuần (`shifts/`)"
-Cohesion: 0.50
-Nodes (3): Cấu trúc, Nghiệp vụ Xếp ca tuần (`shifts/`), Quy tắc chính
-
 ## Knowledge Gaps
 - **2 isolated node(s):** `PATH`, `RFC-4180`
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 761 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 760 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
 - **22 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `StockMovement` connect `publicStorefront.ts` to `inventory/exports.ts`, `CameraScannerModal.tsx`, `TagCheckScannerModal.tsx`, `Đặc tả yêu cầu: Hệ thống Chấm công & Quản trị Nhân sự (HRM & Shift Handover)`, `3. Quy tắc Nghiệp vụ đã chốt (Business Rules)`, `ref_lucide_react`, `ref_react`?**
+- **Why does `StockMovement` connect `publicStorefront.ts` to `useProductCatalog.ts`, `inventory/exports.ts`, `TagCheckScannerModal.tsx`, `Đặc tả yêu cầu: Hệ thống Chấm công & Quản trị Nhân sự (HRM & Shift Handover)`, `3. Quy tắc Nghiệp vụ đã chốt (Business Rules)`, `ref_lucide_react`, `CameraScannerModal.tsx`, `ref_react`?**
   _High betweenness centrality (0.083) - this node is a cross-community bridge._
 - **What connects `PATH`, `RFC-4180` to the rest of the system?**
   _2 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `web/src/components/MyAttendanceCalendar.tsx` be split into smaller, more focused modules?**
-  _Cohesion score 0.10526315789473684 - nodes in this community are weakly interconnected._
-- **Why does `ApiError` connect `serviceOrder.service.ts` to `timesheet.queries.ts`, `order.service.ts`, `productScheme.service.ts`, `services/leave/index.ts`, `return.service.ts`, `product.service.ts`, `attendance.service.ts`, `promotion.service.ts`, `ok`, `importFileParse.service.ts`, `handover.service.ts`, `routes/index.ts`, `weeklyPreference.service.ts`, `holidays.controller.ts`, `ocr.ts`, `http.ts`, `staff.service.ts`, `requireAuth`, `importScan.service.ts`, `imports.controller.ts`, `middleware/auth.ts`?**
-  _High betweenness centrality (0.080) - this node is a cross-community bridge._
+  _Cohesion score 0.11260504201680673 - nodes in this community are weakly interconnected._
+- **Why does `ApiError` connect `product.service.ts` to `promotion.service.ts`, `brand.service.ts`, `staff.service.ts`, `importFileParse.service.ts`, `importScan.service.ts`, `order.service.ts`, `handover.service.ts`, `ocr.ts`, `middleware/auth.ts`, `routes/index.ts`, `productScheme.service.ts`, `serviceOrder.service.ts`, `http.ts`, `return.service.ts`, `attendance.service.ts`, `holidays.controller.ts`?**
+  _High betweenness centrality (0.082) - this node is a cross-community bridge._
 - **Should `lib/api.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.09728506787330317 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.08302485457429931 - nodes in this community are weakly interconnected._
 - **Why does `A. Chấm công (`/attendance`)` connect `attendance.service.ts` to `lib/api.ts`, `CreateLeaveModal.tsx`, `ProductCatalogModule.tsx`?**
-  _High betweenness centrality (0.068) - this node is a cross-community bridge._
-- **Should `InventoryTab.tsx` be split into smaller, more focused modules?**
-  _Cohesion score 0.11498257839721254 - nodes in this community are weakly interconnected._
+  _High betweenness centrality (0.072) - this node is a cross-community bridge._
+- **Should `order.service.ts` be split into smaller, more focused modules?**
+  _Cohesion score 0.09216589861751152 - nodes in this community are weakly interconnected._

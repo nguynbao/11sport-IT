@@ -33,7 +33,7 @@ import {
   GraduationCap,
   Landmark,
 } from "lucide-react";
-import ContractFilePreviewModal from "./ContractFilePreviewModal";
+import ContractFilePreviewModal from "@/shared/ui/ContractFilePreviewModal";
 
 function toIsoDateSlice(val?: string | null): string {
   if (!val) return "";

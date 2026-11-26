@@ -19,14 +19,14 @@ import {
   addProductVariantsApi,
   describeApiError,
 } from "@/lib/api";
-import BarcodeLabelModal, { BarcodeLabelItem } from "./BarcodeLabelModal";
-import ProductCodeCreatorModal, { ProductCodeCreatorResult } from "./ProductCodeCreatorModal";
+import BarcodeLabelModal, { BarcodeLabelItem } from "@/shared/ui/BarcodeLabelModal";
+import ProductCodeCreatorModal, { ProductCodeCreatorResult } from "@/shared/ui/ProductCodeCreatorModal";
 import {
   ColorInputWithPicker,
   ColorSwatchBadge,
   getColorBoxBorderStyle,
   resolveVariantColorHexes,
-} from "./ColorSwatchPicker";
+} from "@/shared/ui/ColorSwatchPicker";
 import {
   cleanBarcodeCode,
   findProductAndVariantByScannedBarcode,

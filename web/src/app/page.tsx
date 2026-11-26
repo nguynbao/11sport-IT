@@ -19,7 +19,7 @@ import CustomerTab from "@/components/CustomerTab";
 import ReturnExchangeTab from "@/components/ReturnExchangeTab";
 import PosShiftBillsSection from "@/components/PosShiftBillsSection";
 import MarketingPushProductsTab from "@/components/MarketingPushProductsTab";
-import InvoicePdfModal from "@/components/InvoicePdfModal";
+import InvoicePdfModal from "@/shared/ui/InvoicePdfModal";
 import MyAttendanceCalendar from "@/components/MyAttendanceCalendar";
 import AccountProfileTab from "@/components/AccountProfileTab";
 import WiseCalculatorStash from "@/components/WiseCalculatorStash";
@@ -28,7 +28,7 @@ import DrawerMenu, {
   TabType,
   TabConfig,
   DrawerPageType,
-} from "@/components/DrawerMenu";
+} from "@/shared/ui/DrawerMenu";
 import {
   ShoppingCart,
   Package,

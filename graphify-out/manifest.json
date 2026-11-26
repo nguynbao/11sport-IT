@@ -599,40 +599,10 @@
     "ast_hash": "5f77ca05ea062b76c4cafb502c477c4d",
     "semantic_hash": ""
   },
-  "web/src/components/BarcodeLabelModal.tsx": {
-    "mtime": 1795329655.5089533,
-    "seen": 1795330125.924767,
-    "ast_hash": "4df7e154ea96cf58fce6e8c790b0fce6",
-    "semantic_hash": ""
-  },
-  "web/src/components/CameraScannerModal.tsx": {
-    "mtime": 1795404410.2640278,
-    "seen": 1795404879.809108,
-    "ast_hash": "911a8532bf96a8dc6f06dbd13d9bcec3",
-    "semantic_hash": ""
-  },
-  "web/src/components/ColorSwatchPicker.tsx": {
-    "mtime": 1795404410.26574,
-    "seen": 1795404879.80911,
-    "ast_hash": "fb7a0b03e70cd6da438acc24d2c63edb",
-    "semantic_hash": ""
-  },
-  "web/src/components/ContractFilePreviewModal.tsx": {
-    "mtime": 1795404410.2668102,
-    "seen": 1795404879.809112,
-    "ast_hash": "394d0ff5718c3931f6ded2f5e35d3aba",
-    "semantic_hash": ""
-  },
   "web/src/components/CustomerTab.tsx": {
     "mtime": 1795404410.267898,
     "seen": 1795404879.8091142,
     "ast_hash": "d367dd3ebb1b7256418194e1751a3b2e",
-    "semantic_hash": ""
-  },
-  "web/src/components/DrawerMenu.tsx": {
-    "mtime": 1795404410.2692032,
-    "seen": 1795404879.809116,
-    "ast_hash": "0dda36985981b33ebcc430b8f9092b29",
     "semantic_hash": ""
   },
   "web/src/components/FridayShiftRegistrationModal.tsx": {
@@ -651,12 +621,6 @@
     "mtime": 1795663307.0720348,
     "seen": 1795663309.329,
     "ast_hash": "f54b880916a5f9a6448f6a4557456ecd",
-    "semantic_hash": ""
-  },
-  "web/src/components/InvoicePdfModal.tsx": {
-    "mtime": 1795618152.7871733,
-    "seen": 1795623501.892952,
-    "ast_hash": "36c9ee76c8f7bf9f5dc4a9d09aded0cd",
     "semantic_hash": ""
   },
   "web/src/components/LeaveRequests.tsx": {
@@ -695,12 +659,6 @@
     "ast_hash": "e1a5a99fa44c9b06e26d524b63ad650e",
     "semantic_hash": ""
   },
-  "web/src/components/ProductCodeCreatorModal.tsx": {
-    "mtime": 1795404410.2806861,
-    "seen": 1795404879.8091378,
-    "ast_hash": "e3542a1afa2556a308cf8806cbeb2340",
-    "semantic_hash": ""
-  },
   "web/src/components/ReturnExchangeTab.tsx": {
     "mtime": 1795618152.7921808,
     "seen": 1795623501.8929658,
@@ -717,18 +675,6 @@
     "mtime": 1795404410.2848985,
     "seen": 1795404879.809145,
     "ast_hash": "3a990fa5080e2737770b2bb4d52cc51e",
-    "semantic_hash": ""
-  },
-  "web/src/components/ThemeToggle.tsx": {
-    "mtime": 1795404410.285295,
-    "seen": 1795404879.809147,
-    "ast_hash": "3142a1321d2080e39775015b29f20f7c",
-    "semantic_hash": ""
-  },
-  "web/src/components/VersionChecker.tsx": {
-    "mtime": 1795329655.5434642,
-    "seen": 1795330125.924802,
-    "ast_hash": "c2ea9f916028918bddd613deb05724c9",
     "semantic_hash": ""
   },
   "web/src/components/WiseCalculatorStash.tsx": {
@@ -3255,6 +3201,60 @@
     "mtime": 1795662937.3177803,
     "seen": 1795663309.329153,
     "ast_hash": "13296a499ea5a3b8cf35de68951fc60f",
+    "semantic_hash": ""
+  },
+  "web/src/shared/ui/BarcodeLabelModal.tsx": {
+    "mtime": 1795663323.7264686,
+    "seen": 1795663380.5279381,
+    "ast_hash": "fc9baccc5c8e5896dc111c6479bb41ab",
+    "semantic_hash": ""
+  },
+  "web/src/shared/ui/CameraScannerModal.tsx": {
+    "mtime": 1795663326.0136328,
+    "seen": 1795663380.527942,
+    "ast_hash": "f603ce15a7b9999490895038b43a7aa1",
+    "semantic_hash": ""
+  },
+  "web/src/shared/ui/ColorSwatchPicker.tsx": {
+    "mtime": 1795404410.26574,
+    "seen": 1795663380.5279438,
+    "ast_hash": "fb7a0b03e70cd6da438acc24d2c63edb",
+    "semantic_hash": ""
+  },
+  "web/src/shared/ui/ContractFilePreviewModal.tsx": {
+    "mtime": 1795404410.2668102,
+    "seen": 1795663380.527946,
+    "ast_hash": "394d0ff5718c3931f6ded2f5e35d3aba",
+    "semantic_hash": ""
+  },
+  "web/src/shared/ui/DrawerMenu.tsx": {
+    "mtime": 1795663327.8925886,
+    "seen": 1795663380.5279481,
+    "ast_hash": "e337a2b28ea9267cf49329fa4bbfe911",
+    "semantic_hash": ""
+  },
+  "web/src/shared/ui/InvoicePdfModal.tsx": {
+    "mtime": 1795663327.202162,
+    "seen": 1795663380.52795,
+    "ast_hash": "7405364415b28c0a420853b5b1f2749d",
+    "semantic_hash": ""
+  },
+  "web/src/shared/ui/ProductCodeCreatorModal.tsx": {
+    "mtime": 1795663324.7549415,
+    "seen": 1795663380.527952,
+    "ast_hash": "072c31089ab7d61343886fb2774b6331",
+    "semantic_hash": ""
+  },
+  "web/src/shared/ui/ThemeToggle.tsx": {
+    "mtime": 1795404410.285295,
+    "seen": 1795663380.5279539,
+    "ast_hash": "3142a1321d2080e39775015b29f20f7c",
+    "semantic_hash": ""
+  },
+  "web/src/shared/ui/VersionChecker.tsx": {
+    "mtime": 1795329655.5434642,
+    "seen": 1795663380.527956,
+    "ast_hash": "c2ea9f916028918bddd613deb05724c9",
     "semantic_hash": ""
   },
   "cms/package-lock.json": {
