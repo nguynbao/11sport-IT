@@ -290,26 +290,30 @@ html.dark img[src="/logo-11sport.svg"]:not([data-keep-logo]),
   table[data-cards] > tbody > tr,
   table[data-cards] > tfoot > tr {
     display: block !important;
-    margin: 8px;
-    padding: 4px 12px;
+    margin: 10px 8px;
+    padding: 8px 12px;
     border: 1px solid rgba(148, 163, 184, 0.45) !important;
-    border-radius: 12px;
+    border-radius: 14px;
+    background-color: #ffffff;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+  html.dark table[data-cards] > tbody > tr,
+  html.dark table[data-cards] > tfoot > tr {
+    background-color: #212121;
   }
 
   table[data-cards] > tbody > tr > td,
   table[data-cards] > tfoot > tr > td {
-    display: flex !important;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
-    width: auto !important;
+    display: block !important;
+    width: 100% !important;
     min-width: 0 !important;
     max-width: 100% !important;
-    padding: 7px 0 !important;
-    text-align: right !important;
+    padding: 8px 0 !important;
+    text-align: left !important;
     border: 0 !important;
     border-bottom: 1px dashed rgba(148, 163, 184, 0.3) !important;
-    word-break: break-word;
+    overflow-wrap: break-word;
+    word-break: normal !important;
     white-space: normal !important;
   }
   table[data-cards] > tbody > tr > td:last-child,
@@ -318,21 +322,53 @@ html.dark img[src="/logo-11sport.svg"]:not([data-keep-logo]),
   table[data-cards] > tbody > tr > td[data-label]::before,
   table[data-cards] > tfoot > tr > td[data-label]::before {
     content: attr(data-label);
-    flex: 0 0 38%;
-    max-width: 38%;
+    display: block;
+    margin-bottom: 4px;
     text-align: left;
-    font-size: 11px;
+    font-size: 10.5px;
     font-weight: 700;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.03em;
     text-transform: uppercase;
     color: #6b6b6b;
   }
   html.dark table[data-cards] > tbody > tr > td[data-label]::before,
   html.dark table[data-cards] > tfoot > tr > td[data-label]::before { color: #9a9a9b; }
 
-  /* Ô có nút/nhóm thao tác: cho phép xuống dòng, canh phải */
+  /* Đảm bảo select / input / flex bên trong ô không tràn mép card */
+  table[data-cards] td select,
+  table[data-cards] td input {
+    max-width: 100% !important;
+    box-sizing: border-box;
+  }
   table[data-cards] > tbody > tr > td > div.flex,
-  table[data-cards] > tbody > tr > td > .flex { flex-wrap: wrap; justify-content: flex-end; }
+  table[data-cards] > tbody > tr > td > .flex {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+
+  /* Nút mở popup xem đầy đủ nội dung trên mobile */
+  .cms-mobile-detail-cell {
+    padding: 10px 0 2px !important;
+    border-bottom: 0 !important;
+  }
+  .cms-mobile-detail-btn {
+    width: 100%;
+    padding: 8px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    background-color: #f8fafc;
+    color: #334155;
+    font-size: 12px;
+    font-weight: 700;
+    text-align: center;
+    cursor: pointer;
+  }
+  html.dark .cms-mobile-detail-btn {
+    background-color: #2d2d2d;
+    color: #e8b020;
+    border-color: #3a3a3a;
+  }
 
   /* Dòng chi tiết (colSpan) & dòng trống: hiển thị dạng khối, bỏ khung card lồng thừa */
   table[data-cards] > tbody > tr > td[colspan],

@@ -48,9 +48,9 @@
     "semantic_hash": ""
   },
   "cms/src/app/page.tsx": {
-    "mtime": 1795659679.980053,
-    "seen": 1795659744.785832,
-    "ast_hash": "0b0665102eb9d4fa183905f0e13a6ea2",
+    "mtime": 1795660791.6783354,
+    "seen": 1795660817.983045,
+    "ast_hash": "7f9fd0628b1bcec353ef3d05910c47cb",
     "semantic_hash": ""
   },
   "cms/tailwind.config.js": {
@@ -3078,9 +3078,9 @@
     "semantic_hash": ""
   },
   "cms/src/shared/hooks/useMobileTableLabels.ts": {
-    "mtime": 1795659679.3638191,
-    "seen": 1795659744.786409,
-    "ast_hash": "8d8459da7a6e5b5bc1f975f6f94b9c47",
+    "mtime": 1795660786.8100169,
+    "seen": 1795660817.9833071,
+    "ast_hash": "b3fbd772969bf44118e9b4a3de66af6e",
     "semantic_hash": ""
   },
   "cms/src/shared/hooks/useViewport.ts": {
@@ -3093,6 +3093,12 @@
     "mtime": 1795659873.849518,
     "seen": 1795659913.927275,
     "ast_hash": "5af147e7931155b8e96e2a5f54816881",
+    "semantic_hash": ""
+  },
+  "cms/src/shared/ui/MobileRowDetailModal.tsx": {
+    "mtime": 1795660785.214678,
+    "seen": 1795660817.983352,
+    "ast_hash": "46d031369a2a1b8e913d03f28ca93eb1",
     "semantic_hash": ""
   },
   "cms/package-lock.json": {
