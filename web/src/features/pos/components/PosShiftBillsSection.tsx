@@ -4,6 +4,8 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import type { CurrentShiftOrdersMeta, Order } from "@/shared/types";
 import { formatDateTime, formatPhone, formatVND } from "@/shared/utils/format";
 import { useDebounce } from "@/shared/hooks/useDebounce";
+import { useClientPagination } from "@/shared/hooks/useClientPagination";
+import { PaginationBar } from "@/shared/ui/PaginationBar";
 import { fetchCurrentShiftOrdersApi } from "../api";
 import {
   FileText,
@@ -78,6 +80,15 @@ export default function PosShiftBillsSection({
   refreshTrigger = 0,
 }: PosShiftBillsSectionProps) {
   const [orders, setOrders] = useState<Order[]>([]);
+  const {
+    page,
+    pageSize,
+    total: totalBills,
+    totalPages,
+    items: pagedOrders,
+    setPage,
+    setPageSize,
+  } = useClientPagination(orders, 20);
   const [meta, setMeta] = useState<CurrentShiftOrdersMeta | null>(null);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -377,8 +388,9 @@ export default function PosShiftBillsSection({
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto border border-slate-200 rounded-xl">
-            <table className="w-full min-w-[920px] text-xs sm:text-sm text-left">
+          <div className="border border-slate-200 rounded-xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[920px] text-xs sm:text-sm text-left">
               <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 text-[11px] uppercase">
                 <tr>
                   <th className="py-3 px-3.5">Mã Bill</th>
@@ -392,7 +404,7 @@ export default function PosShiftBillsSection({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {orders.map((ord) => {
+                {pagedOrders.map((ord) => {
                   const code = ord.orderCode || ord.code || "";
                   const totalUnits = (ord.items || []).reduce(
                     (s, it) => s + (Number(it.quantity) || 0),
@@ -542,7 +554,18 @@ export default function PosShiftBillsSection({
                   );
                 })}
               </tbody>
-            </table>
+              </table>
+            </div>
+            <PaginationBar
+              totalItems={totalBills}
+              page={page}
+              totalPages={totalPages}
+              pageSize={pageSize}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+              itemLabel="hoá đơn"
+              showAllOption
+            />
           </div>
         )}
       </div>

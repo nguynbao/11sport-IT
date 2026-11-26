@@ -23,6 +23,8 @@ import {
 } from "lucide-react";
 import { exchangeUnitPrice, getExchangeItemPricing } from "../types";
 import { useReturnExchange } from "../hooks/useReturnExchange";
+import { useClientPagination } from "@/shared/hooks/useClientPagination";
+import { PaginationBar } from "@/shared/ui/PaginationBar";
 
 export default function ReturnExchangeTab() {
   const {
@@ -73,6 +75,16 @@ export default function ReturnExchangeTab() {
     debtAfter,
     handleSubmitReturnExchange,
   } = useReturnExchange();
+
+  const {
+    page: returnsPage,
+    pageSize: returnsPageSize,
+    total: returnsTotal,
+    totalPages: returnsTotalPages,
+    items: pagedReturns,
+    setPage: setReturnsPage,
+    setPageSize: setReturnsPageSize,
+  } = useClientPagination(recentReturns, 10);
 
   return (
     <div className="space-y-4 md:space-y-6">
@@ -965,7 +977,7 @@ export default function ReturnExchangeTab() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {recentReturns.slice(0, 8).map((r) => (
+                {pagedReturns.map((r) => (
                   <tr key={r._id}>
                     <td className="py-2.5 px-3 font-mono font-bold">
                       {r.returnCode || r.code}
@@ -1015,6 +1027,15 @@ export default function ReturnExchangeTab() {
               </tbody>
             </table>
           </div>
+          <PaginationBar
+            totalItems={returnsTotal}
+            page={returnsPage}
+            totalPages={returnsTotalPages}
+            pageSize={returnsPageSize}
+            onPageChange={setReturnsPage}
+            onPageSizeChange={setReturnsPageSize}
+            itemLabel="phiếu đổi trả"
+          />
         </div>
       )}
     </div>

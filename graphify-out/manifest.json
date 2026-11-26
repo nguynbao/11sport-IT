@@ -3198,9 +3198,9 @@
     "semantic_hash": ""
   },
   "web/src/features/inventory/components/InventoryTab.tsx": {
-    "mtime": 1795663560.4224446,
-    "seen": 1795663669.1487072,
-    "ast_hash": "7f644161c70b89163b2532b922a05b0f",
+    "mtime": 1795665076.5349636,
+    "seen": 1795665161.9530602,
+    "ast_hash": "9340b302ebc6c23350ffbcf1da29c9df",
     "semantic_hash": ""
   },
   "web/src/features/inventory/index.ts": {
@@ -3234,9 +3234,9 @@
     "semantic_hash": ""
   },
   "web/src/features/pos/components/PosShiftBillsSection.tsx": {
-    "mtime": 1795663689.779978,
-    "seen": 1795663789.159372,
-    "ast_hash": "a023b6e8bfd7a860ff0d954837fd2d5a",
+    "mtime": 1795665107.076823,
+    "seen": 1795665161.9530811,
+    "ast_hash": "251421da00c035b0d391bfa68d7d24f4",
     "semantic_hash": ""
   },
   "web/src/features/pos/components/PosTab.tsx": {
@@ -3270,9 +3270,9 @@
     "semantic_hash": ""
   },
   "web/src/features/returns/components/ReturnExchangeTab.tsx": {
-    "mtime": 1795663507.6417222,
-    "seen": 1795663669.1487381,
-    "ast_hash": "012f5cbd92fd0ad3e41c2a8acb7d9f84",
+    "mtime": 1795665085.9775221,
+    "seen": 1795665161.953099,
+    "ast_hash": "29768a6f0974961ee7b9450d60cc3454",
     "semantic_hash": ""
   },
   "web/src/features/returns/index.ts": {
@@ -3381,6 +3381,54 @@
     "mtime": 1795664214.8466368,
     "seen": 1795664289.1989639,
     "ast_hash": "69ef42d291778c82f7ac0874ffbd9142",
+    "semantic_hash": ""
+  },
+  "web/src/config/listing.ts": {
+    "mtime": 1795665043.6602554,
+    "seen": 1795665161.953027,
+    "ast_hash": "e5eb73ee37b3bb9e4d7f29bb56a138ef",
+    "semantic_hash": ""
+  },
+  "web/src/shared/api/pagination.ts": {
+    "mtime": 1795665043.66564,
+    "seen": 1795665161.9531279,
+    "ast_hash": "c20c377596dd223e3f64e156f44abefc",
+    "semantic_hash": ""
+  },
+  "web/src/shared/hooks/useClientPagination.ts": {
+    "mtime": 1795665043.676813,
+    "seen": 1795665161.95313,
+    "ast_hash": "444c9628751b93df007f8956937a04e4",
+    "semantic_hash": ""
+  },
+  "web/src/shared/hooks/useDebouncedSearch.ts": {
+    "mtime": 1795665043.6873927,
+    "seen": 1795665161.953134,
+    "ast_hash": "323dd2646edeff88632fcf1d8b229353",
+    "semantic_hash": ""
+  },
+  "web/src/shared/hooks/usePagedList.ts": {
+    "mtime": 1795665043.6822872,
+    "seen": 1795665161.953137,
+    "ast_hash": "30bf1f91eca4338a5f56f8121d09413e",
+    "semantic_hash": ""
+  },
+  "web/src/shared/ui/PaginationBar.tsx": {
+    "mtime": 1795665043.6928658,
+    "seen": 1795665161.953174,
+    "ast_hash": "cedc7f3087aa9d9210034ffbb8f45911",
+    "semantic_hash": ""
+  },
+  "web/src/shared/utils/pagination.ts": {
+    "mtime": 1795665043.6709332,
+    "seen": 1795665161.953185,
+    "ast_hash": "0b7242b55e9a93f365dc79428a03f641",
+    "semantic_hash": ""
+  },
+  "web/tests/pagination.test.ts": {
+    "mtime": 1795665043.6970541,
+    "seen": 1795665161.9531982,
+    "ast_hash": "2035b251476aeb5edb9f640ef22a2a09",
     "semantic_hash": ""
   },
   "cms/package-lock.json": {

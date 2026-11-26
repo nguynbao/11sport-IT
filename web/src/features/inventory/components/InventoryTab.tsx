@@ -32,6 +32,8 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { useInventoryTab } from "../hooks/useInventoryTab";
+import { useClientPagination } from "@/shared/hooks/useClientPagination";
+import { PaginationBar } from "@/shared/ui/PaginationBar";
 
 export default function InventoryTab() {
   const {
@@ -100,6 +102,16 @@ export default function InventoryTab() {
     displayedProducts,
     colCount,
   } = useInventoryTab();
+
+  const {
+    page,
+    pageSize,
+    total,
+    totalPages,
+    items: pagedProducts,
+    setPage,
+    setPageSize,
+  } = useClientPagination(displayedProducts, 20);
 
   return (
     <div className="space-y-4 md:space-y-6">
@@ -533,7 +545,7 @@ export default function InventoryTab() {
                   </td>
                 </tr>
               ) : (
-                displayedProducts.map((p, idx) => {
+                pagedProducts.map((p, idx) => {
                   const catName =
                     p.categoryName ||
                     (typeof p.categoryId === "object" && p.categoryId?.name) ||
@@ -1114,6 +1126,16 @@ export default function InventoryTab() {
             </tbody>
           </table>
         </div>
+        <PaginationBar
+          totalItems={total}
+          page={page}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+          itemLabel="sản phẩm"
+          showAllOption
+        />
       </div>
 
       {/* Modal In Tem Mã Vạch (Label Printer) */}
