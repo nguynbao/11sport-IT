@@ -52,15 +52,14 @@ export default function InventoryMobileCards({
       });
 
     const fields = [
-      { label: "STT", text: String(idx + 1) },
+      { label: "STT", text: `#${idx + 1}` },
       { label: "Mã SP (chung)", text: p.code },
-      ...(p.legacyCode && p.legacyCode !== p.code ? [{ label: "Mã cũ", text: p.legacyCode }] : []),
-      { label: "Tên hàng hóa", text: p.name },
+      ...(p.legacyCode && p.legacyCode !== p.code
+        ? [{ label: "Mã cũ", text: p.legacyCode, fullWidth: true }]
+        : []),
+      { label: "Tên hàng hóa", text: p.name, fullWidth: true },
       { label: "Danh mục", text: catName },
       { label: "Thương hiệu", text: p.brandName || p.brand || "Không hãng" },
-      ...(variantLines.length > 0
-        ? [{ label: `Phân loại (${variantLines.length} mã con)`, text: variantLines.join("\n") }]
-        : []),
       { label: "Đơn vị tính", text: p.unit },
       ...(effectiveWarehouse === "FLOOR_1"
         ? [{ label: "Tồn Kho Tầng 1", text: `${f1} ${p.unit}` }]
@@ -71,7 +70,16 @@ export default function InventoryMobileCards({
             ]),
       ...(canSeeCostPrice ? [{ label: "Giá vốn", text: formatVND(p.costPrice) }] : []),
       { label: "Giá niêm yết", text: formatVND(priceEdits[p._id] ?? p.sellingPrice) },
-      ...(p.note ? [{ label: "Ghi chú", text: p.note }] : []),
+      ...(variantLines.length > 0
+        ? [
+            {
+              label: `Phân loại (${variantLines.length} mã con)`,
+              text: variantLines.join("\n"),
+              fullWidth: true,
+            },
+          ]
+        : []),
+      ...(p.note ? [{ label: "Ghi chú", text: p.note, fullWidth: true }] : []),
     ];
 
     window.dispatchEvent(
