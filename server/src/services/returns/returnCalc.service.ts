@@ -9,6 +9,7 @@ import {
   getFloorStocks,
   getVariantFloorStocks,
 } from "../inventory";
+import { canOverrideExchangeDowngrade, canProcessReturnOnly } from "./return.rules";
 
 export async function prepareReturnExchangeCalculation(body: any) {
   const { orderId, orderCode, returnItems = [], exchangeItems = [] } = body || {};
@@ -184,6 +185,7 @@ export async function prepareReturnExchangeCalculation(body: any) {
   }
 
   const preparedReturnItems: IReturnItem[] = [];
+  let returnListedTotal = 0;
   for (const rItem of returnItems) {
     const qty = Math.round(Number(rItem.quantity));
     if (!rItem.productId || isNaN(qty) || qty <= 0) {
@@ -311,6 +313,16 @@ export async function prepareReturnExchangeCalculation(body: any) {
         const origProd = await productRepo.findById(originalLine.productId);
         resolvedUnitCost = Math.max(0, Math.round(Number(origProd?.costPrice) || 0));
       }
+
+      const isGiftLine =
+        Boolean(originalLine.isGift) || originalLine.discountType === 'GIFT';
+      const returnListedUnitPrice = isGiftLine
+        ? 0
+        : Math.max(
+            0,
+            Math.round(Number(originalLine.originalUnitPrice ?? originalLine.unitPrice) || 0)
+          );
+      returnListedTotal += returnListedUnitPrice * take;
 
       preparedReturnItems.push({
         productId: originalLine.productId,
@@ -697,6 +709,16 @@ export async function prepareReturnExchangeCalculation(body: any) {
 
   const returnTotal = returnSubtotal + refundedCardFee;
   const exchangeTotal = preparedExchangeItems.reduce((sum, i) => sum + i.lineTotal, 0);
+  const exchangeListedTotal = preparedExchangeItems.reduce(
+    (sum, i) =>
+      sum +
+      Math.max(0, Math.round(Number(i.originalUnitPrice ?? i.unitPrice) || 0)) *
+        Math.max(0, Number(i.quantity) || 0),
+    0
+  );
+  const listedShortfall = Math.max(0, returnListedTotal - exchangeListedTotal);
+  const isDowngrade =
+    preparedExchangeItems.length > 0 && exchangeListedTotal < returnListedTotal;
   const netDifference = exchangeTotal - returnTotal;
   const refundAmount = netDifference < 0 ? Math.abs(netDifference) : 0;
   const additionalCharge = netDifference > 0 ? netDifference : 0;
@@ -734,6 +756,10 @@ export async function prepareReturnExchangeCalculation(body: any) {
     refundedCardFee,
     returnTotal,
     exchangeTotal,
+    returnListedTotal,
+    exchangeListedTotal,
+    listedShortfall,
+    isDowngrade,
     netDifference,
     refundAmount,
     additionalCharge,
@@ -752,25 +778,50 @@ export async function prepareReturnExchangeCalculation(body: any) {
 // POST /api/v1/returns
 
 
-export async function calculateReturnExchange(body: any): Promise<ServiceResult> {
+export async function calculateReturnExchange(
+  body: any,
+  ctx?: { user?: { role?: string } }
+): Promise<ServiceResult> {
+  const hasExchangeItems =
+    Array.isArray(body?.exchangeItems) && body.exchangeItems.length > 0;
+  const reqType = String(body?.type || '').toUpperCase();
+  const isReturnOnly = reqType === 'RETURN' || (!hasExchangeItems && reqType !== 'EXCHANGE');
+  const userRole = String(ctx?.user?.role || '').toUpperCase();
+  if (isReturnOnly && !canProcessReturnOnly(userRole)) {
+    throw new ApiError(
+      403,
+      'RETURN_ROLE_FORBIDDEN',
+      'Chỉ CEO, Admin hoặc Kế toán mới có quyền thực hiện trả hàng hoàn tiền.'
+    );
+  }
+
   const calc = await prepareReturnExchangeCalculation(body);
-    return ok({
-        orderId: calc.order._id,
-        orderCode: calc.order.orderCode,
-        returnItems: calc.preparedReturnItems,
-        exchangeItems: calc.preparedExchangeItems,
-        returnSubtotal: calc.returnSubtotal,
-        refundedCardFee: calc.refundedCardFee,
-        returnTotal: calc.returnTotal,
-        exchangeTotal: calc.exchangeTotal,
-        netDifference: calc.netDifference,
-        refundAmount: calc.refundAmount,
-        additionalCharge: calc.additionalCharge,
-        debtBefore: calc.debtBefore,
-        debtReduction: calc.debtReduction,
-        cashRefund: calc.cashRefund,
-        debtAfter: calc.debtAfter,
-        debtStatusAfter: calc.debtStatusAfter,
-      }, {});
+  const canOverrideDowngrade = canOverrideExchangeDowngrade(userRole);
+  return ok(
+    {
+      orderId: calc.order._id,
+      orderCode: calc.order.orderCode,
+      returnItems: calc.preparedReturnItems,
+      exchangeItems: calc.preparedExchangeItems,
+      returnSubtotal: calc.returnSubtotal,
+      refundedCardFee: calc.refundedCardFee,
+      returnTotal: calc.returnTotal,
+      exchangeTotal: calc.exchangeTotal,
+      returnListedTotal: calc.returnListedTotal,
+      exchangeListedTotal: calc.exchangeListedTotal,
+      listedShortfall: calc.listedShortfall,
+      isDowngrade: calc.isDowngrade,
+      canOverrideDowngrade,
+      netDifference: calc.netDifference,
+      refundAmount: calc.refundAmount,
+      additionalCharge: calc.additionalCharge,
+      debtBefore: calc.debtBefore,
+      debtReduction: calc.debtReduction,
+      cashRefund: calc.cashRefund,
+      debtAfter: calc.debtAfter,
+      debtStatusAfter: calc.debtStatusAfter,
+    },
+    {}
+  );
 }
 

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import type { Order } from "@/shared/types";
+import type { Order, ReturnReceipt } from "@/shared/types";
 import { apiRequest } from "@/shared/api/client";
 import { formatVND } from "@/shared/utils/format";
 import { type ExchangeItemForm, type ReturnItemForm, getExchangeItemPricing } from "../types";
@@ -10,6 +10,8 @@ interface Params {
   returnRows: ReturnItemForm[];
   exchangeRows: ExchangeItemForm[];
   mode: "EXCHANGE";
+  isDowngradeBlocked: boolean;
+  listedShortfall: number;
   setErrorMsg: Dispatch<SetStateAction<string>>;
   setSuccessMsg: Dispatch<SetStateAction<string>>;
   loadInitialLists: () => Promise<void>;
@@ -21,6 +23,8 @@ export function useReturnSubmit({
   returnRows,
   exchangeRows,
   mode,
+  isDowngradeBlocked,
+  listedShortfall,
   setErrorMsg,
   setSuccessMsg,
   loadInitialLists,
@@ -29,6 +33,7 @@ export function useReturnSubmit({
   const [refundMethod, setRefundMethod] = useState<"CASH" | "BANKING" | "CARD">("CASH");
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [printableReturn, setPrintableReturn] = useState<ReturnReceipt | null>(null);
 
   const handleSubmitReturnExchange = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,6 +50,13 @@ export function useReturnSubmit({
     if (mode === "EXCHANGE" && exchangeRows.length === 0) {
       setErrorMsg(
         "Bạn đang chọn chế độ ĐỔI HÀNG. Vui lòng tìm và bấm '+ Chọn đổi' ít nhất 1 sản phẩm mới ở Mục 2."
+      );
+      return;
+    }
+
+    if (mode === "EXCHANGE" && isDowngradeBlocked) {
+      setErrorMsg(
+        `Chỉ được đổi sang sản phẩm có giá niêm yết bằng hoặc cao hơn (còn thiếu ${formatVND(listedShortfall)}).`
       );
       return;
     }
@@ -117,6 +129,9 @@ export function useReturnSubmit({
             } thành công! Tồn kho và trạng thái đơn gốc đã được cập nhật.`
       );
       setNote("");
+      if (createdReturn) {
+        setPrintableReturn(createdReturn as ReturnReceipt);
+      }
       await loadInitialLists();
 
       if (updatedOrder && updatedOrder._id) {
@@ -142,5 +157,14 @@ export function useReturnSubmit({
     }
   };
 
-  return { refundMethod, setRefundMethod, note, setNote, submitting, handleSubmitReturnExchange };
+  return {
+    refundMethod,
+    setRefundMethod,
+    note,
+    setNote,
+    submitting,
+    printableReturn,
+    setPrintableReturn,
+    handleSubmitReturnExchange,
+  };
 }

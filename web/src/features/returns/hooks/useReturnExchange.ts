@@ -49,12 +49,22 @@ export function useReturnExchange() {
     mode,
   });
 
-  const { refundMethod, setRefundMethod, note, setNote, submitting, handleSubmitReturnExchange } =
-    useReturnSubmit({
+  const {
+    refundMethod,
+    setRefundMethod,
+    note,
+    setNote,
+    submitting,
+    printableReturn,
+    setPrintableReturn,
+    handleSubmitReturnExchange,
+  } = useReturnSubmit({
       selectedOrder,
       returnRows,
       exchangeRows,
       mode,
+      isDowngradeBlocked: calc.isDowngradeBlocked,
+      listedShortfall: calc.listedShortfall,
       setErrorMsg,
       setSuccessMsg,
       loadInitialLists,
@@ -80,6 +90,8 @@ export function useReturnExchange() {
     loading,
     loadingProducts,
     submitting,
+    printableReturn,
+    setPrintableReturn,
     errorMsg,
     successMsg,
     reloadSellableProducts,

@@ -1,10 +1,67 @@
 import type { Order } from "@/shared/types";
+import { AlertTriangle, ShieldAlert } from "lucide-react";
 import { formatVND } from "@/shared/utils/format";
 import type { ReturnCtx } from "./returnCtx";
 
-type Props = Pick<ReturnCtx, "refundMethod" | "setRefundMethod" | "note" | "setNote" | "returnSubtotal" | "refundedCardFee" | "returnTotal" | "mode" | "exchangeDiscountTotal" | "exchangeRawSubtotal" | "exchangeTotal" | "netDifference" | "debtBefore" | "debtReduction" | "refundAmount" | "debtAfter" | "cashRefund" | "submitting"> & { selectedOrder: Order };
+type Props = Pick<
+  ReturnCtx,
+  | "refundMethod"
+  | "setRefundMethod"
+  | "note"
+  | "setNote"
+  | "returnSubtotal"
+  | "refundedCardFee"
+  | "returnTotal"
+  | "mode"
+  | "exchangeDiscountTotal"
+  | "exchangeRawSubtotal"
+  | "exchangeTotal"
+  | "returnListedTotal"
+  | "exchangeListedTotal"
+  | "listedShortfall"
+  | "isDowngrade"
+  | "canOverrideDowngrade"
+  | "isDowngradeBlocked"
+  | "netDifference"
+  | "debtBefore"
+  | "debtReduction"
+  | "refundAmount"
+  | "debtAfter"
+  | "cashRefund"
+  | "submitting"
+> & { selectedOrder: Order };
 
-export default function ReturnSummary({ refundMethod, setRefundMethod, note, setNote, returnSubtotal, refundedCardFee, returnTotal, mode, exchangeDiscountTotal, exchangeRawSubtotal, exchangeTotal, netDifference, debtBefore, debtReduction, refundAmount, debtAfter, cashRefund, submitting, selectedOrder }: Props) {
+export default function ReturnSummary({
+  refundMethod,
+  setRefundMethod,
+  note,
+  setNote,
+  returnSubtotal,
+  refundedCardFee,
+  returnTotal,
+  mode,
+  exchangeDiscountTotal,
+  exchangeRawSubtotal,
+  exchangeTotal,
+  returnListedTotal,
+  exchangeListedTotal,
+  listedShortfall,
+  isDowngrade,
+  canOverrideDowngrade,
+  isDowngradeBlocked,
+  netDifference,
+  debtBefore,
+  debtReduction,
+  refundAmount,
+  debtAfter,
+  cashRefund,
+  submitting,
+  selectedOrder,
+}: Props) {
+  const upgradeProgress =
+    returnListedTotal > 0
+      ? Math.min(100, Math.round((exchangeListedTotal / returnListedTotal) * 100))
+      : 100;
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 items-start">
       <div className="space-y-3">
@@ -141,10 +198,46 @@ export default function ReturnSummary({ refundMethod, setRefundMethod, note, set
           </div>
         )}
 
+        {mode === "EXCHANGE" && returnListedTotal > 0 && (
+          <div className="p-3 rounded-xl bg-white/85 border border-blue-200/80 space-y-1.5">
+            <div className="flex items-center justify-between gap-2 text-[11px] font-bold text-slate-600">
+              <span>Giá niêm yết hàng đổi / hàng trả</span>
+              <span className="font-mono text-slate-900">
+                {formatVND(exchangeListedTotal)} / {formatVND(returnListedTotal)}
+              </span>
+            </div>
+            <div className="h-2 rounded-full bg-slate-200 overflow-hidden">
+              <div
+                className={`h-full transition-all duration-200 ${
+                  isDowngrade ? "bg-rose-500" : "bg-teal-500"
+                }`}
+                style={{ width: `${upgradeProgress}%` }}
+              />
+            </div>
+            {isDowngrade && !canOverrideDowngrade && (
+              <div className="flex items-start gap-2 pt-1 text-xs font-bold text-rose-700">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>
+                  Chưa đủ giá trị đổi (theo giá niêm yết). Cần chọn thêm tối thiểu{" "}
+                  <span className="font-mono underline">{formatVND(listedShortfall)}</span>.
+                </span>
+              </div>
+            )}
+            {isDowngrade && canOverrideDowngrade && (
+              <div className="flex items-start gap-2 pt-1 text-xs font-bold text-amber-800">
+                <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>
+                  Đổi xuống giá (thiếu {formatVND(listedShortfall)} niêm yết) — Đang dùng quyền ngoại lệ CEO/ADMIN.
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
         <button
           type="submit"
-          disabled={submitting}
-          className="w-full min-h-[48px] mt-3 py-3 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-sm shadow-lg"
+          disabled={submitting || isDowngradeBlocked}
+          className="w-full min-h-[48px] mt-3 py-3 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-extrabold text-sm shadow-lg"
         >
           {submitting
             ? "Đang xử lý..."

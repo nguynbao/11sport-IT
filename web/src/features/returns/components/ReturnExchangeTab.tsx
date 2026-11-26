@@ -9,13 +9,27 @@ import ExchangePicker from "./ExchangePicker";
 import ExchangeCart from "./ExchangeCart";
 import ReturnSummary from "./ReturnSummary";
 import RecentReturnsTable from "./RecentReturnsTable";
+import ReturnReceiptPrintModal from "./ReturnReceiptPrintModal";
 
 export default function ReturnExchangeTab() {
   const ctx = useReturnExchange();
-  const { selectedOrder, recentReturns, mode, errorMsg, successMsg, handleSubmitReturnExchange } = ctx;
+  const {
+    selectedOrder,
+    recentReturns,
+    mode,
+    errorMsg,
+    successMsg,
+    printableReturn,
+    setPrintableReturn,
+    handleSubmitReturnExchange,
+  } = ctx;
 
   return (
     <div className="space-y-4 md:space-y-6">
+      <div className="px-3.5 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-semibold">
+        Lưu ý: Trên Web POS chỉ hỗ trợ <strong>Đổi hàng</strong>. Trường hợp <strong>Trả hàng hoàn tiền</strong> vui lòng liên hệ Kế toán hoặc Quản lý (thực hiện trên CMS).
+      </div>
+
       {/* Khung tìm đơn hàng gốc */}
       <OrderSearchBox {...ctx} />
 
@@ -61,7 +75,13 @@ export default function ReturnExchangeTab() {
       )}
 
       {/* Danh sách phiếu trả/đổi gần đây */}
-      <RecentReturnsTable recentReturns={recentReturns} />
+      <RecentReturnsTable recentReturns={recentReturns} onPrintReturn={(r) => setPrintableReturn(r)} />
+
+      {/* Modal in bill phiếu đổi hàng */}
+      <ReturnReceiptPrintModal
+        returnReceipt={printableReturn}
+        onClose={() => setPrintableReturn(null)}
+      />
     </div>
   );
 }

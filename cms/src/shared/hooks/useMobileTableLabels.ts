@@ -161,6 +161,7 @@ export function applyTableLabels(table: HTMLTableElement): void {
       if (
         isBody &&
         !hasColSpan &&
+        !table.hasAttribute("data-no-detail") &&
         row.cells.length >= 4 &&
         !row.querySelector(".cms-mobile-detail-cell")
       ) {

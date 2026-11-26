@@ -217,6 +217,39 @@ export function useProductCatalog() {
     loadAll();
   };
 
+  const getBaseEdit = (p: Product) =>
+    editingBase[p._id] || {
+      name: p.name || "",
+      unit: p.unit || "Cái",
+      costPrice: Number(p.costPrice || 0),
+      sellingPrice: Number(p.sellingPrice || 0),
+      note: p.note || "",
+    };
+
+  const isBaseProductChanged = (p: Product) => {
+    const baseEdit = getBaseEdit(p);
+    return (
+      baseEdit.name.trim() !== String(p.name || "").trim() ||
+      baseEdit.unit.trim() !== String(p.unit || "Cái").trim() ||
+      String(baseEdit.note || "").trim() !== String(p.note || "").trim() ||
+      Number(baseEdit.costPrice || 0) !== Number(p.costPrice || 0) ||
+      Number(baseEdit.sellingPrice || 0) !== Number(p.sellingPrice || 0)
+    );
+  };
+
+  const resetBaseEdit = (p: Product) => {
+    setEditingBase((prev) => ({
+      ...prev,
+      [p._id]: {
+        name: p.name || "",
+        unit: p.unit || "Cái",
+        costPrice: Number(p.costPrice || 0),
+        sellingPrice: Number(p.sellingPrice || 0),
+        note: p.note || "",
+      },
+    }));
+  };
+
   const handleSaveBaseProduct = async (p: Product) => {
     const draft = editingBase[p._id];
     if (!draft) return;
@@ -440,6 +473,9 @@ export function useProductCatalog() {
     setExpandedProdId,
     editingBase,
     setEditingBase,
+    getBaseEdit,
+    isBaseProductChanged,
+    resetBaseEdit,
     savingProdId,
     newVariantDrafts,
     setNewVariantDrafts,

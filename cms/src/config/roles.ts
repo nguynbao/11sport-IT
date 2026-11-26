@@ -58,3 +58,9 @@ export const ROLE_ALLOWED_MODULES: Record<string, CmsModuleType[]> = {
   HR: ["HRM", "MY_ATTENDANCE", "PROFILE"],
   MARKETING: ["PUSH_PRODUCTS", "MY_ATTENDANCE", "PROFILE"],
 };
+
+export const RETURN_ALLOWED_ROLES = ["CEO", "ADMIN", "ACCOUNTANT"] as const;
+
+export function canProcessReturn(role?: string): boolean {
+  return (RETURN_ALLOWED_ROLES as readonly string[]).includes(String(role || "").toUpperCase());
+}

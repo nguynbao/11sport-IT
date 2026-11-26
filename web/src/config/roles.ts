@@ -22,3 +22,11 @@ export function getRoleDisplayName(role?: UserRole): string {
   if (role === "MARKETING") return "Marketing (MARKETING)";
   return "NV Bán hàng (SALES)";
 }
+
+export const EXCHANGE_DOWNGRADE_OVERRIDE_ROLES = ["CEO", "ADMIN"] as const;
+
+export function canOverrideExchangeDowngrade(role?: string): boolean {
+  return (EXCHANGE_DOWNGRADE_OVERRIDE_ROLES as readonly string[]).includes(
+    String(role || "").toUpperCase()
+  );
+}

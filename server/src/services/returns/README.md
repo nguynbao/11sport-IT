@@ -1,8 +1,9 @@
-# Nghiệp vụ Đổi / Trả hàng (`returns/`)
+# Return & Exchange Service Modules
 
-Tính toán và lập phiếu **Trả hàng (`RETURN`, mã `TH-xxxx`)** và **Đổi hàng (`EXCHANGE`, mã `DH-xxxx`)** theo từng dòng sản phẩm/biến thể, phân bổ giảm giá bill và phí quẹt thẻ, đồng thời hoàn/trừ công nợ và tồn kho nguyên tử.
+Folder chứa logic tính toán và xử lý nghiệp vụ đổi / trả hàng:
 
-## Cấu trúc
-- `returnCode.service.ts`: sinh mã phiếu `TH-xxxx` (trả hàng) và `DH-xxxx` (đổi hàng) chống trùng.
-- `returnCalc.service.ts`: tính chênh lệch trả/đổi hàng, phân bổ giảm giá bill và phí thẻ hoàn lại.
-- `return.service.ts`: liệt kê phiếu và thực thi giao dịch trả/đổi hàng có khóa tuần tự theo đơn gốc + rollback nếu lỗi.
+- `return.rules.ts` : Quy tắc phân quyền tập trung (`RETURN_ALLOWED_ROLES` cho phép trả hàng hoàn tiền với `CEO`/`ADMIN`/`ACCOUNTANT`, `EXCHANGE_DOWNGRADE_OVERRIDE_ROLES` cho phép đổi sang sản phẩm giá niêm yết thấp hơn với `CEO`/`ADMIN`).
+- `returnCalc.service.ts` : Validation, phân tích item hoàn, tính toán đổi hàng (mặc định chỉ cho phép đổi sản phẩm có giá niêm yết ≥ sản phẩm cũ, trừ `CEO`/`ADMIN`; trả hàng hoàn đủ theo số tiền thực tế đã trả trên bill), và bù trừ công nợ.
+- `return.service.ts` : Orchestrate transaction tạo phiếu đổi / trả hàng, hoàn kho (hàng tốt trả về kho Tầng 1), cập nhật công nợ, quỹ tiền, và cập nhật trạng thái đơn gốc.
+- `returnQuery.service.ts` : Query danh sách, chi tiết phiếu đổi / trả hàng.
+- `index.ts` : Re-export các API công khai.

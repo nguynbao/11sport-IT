@@ -15,6 +15,7 @@ export function useOrdersReturns({ onOpenInvoice }: { onOpenInvoice: (order: Ord
   const [statusFilter, setStatusFilter] = useState("");
   const [paymentFilter, setPaymentFilter] = useState("");
   const [debtFilter, setDebtFilter] = useState("");
+  const [returnTypeFilter, setReturnTypeFilter] = useState("");
   const [ordPage, setOrdPage] = useState(1);
   const [ordPageSize, setOrdPageSizeState] = useState<number>(DEFAULT_PAGE_SIZE);
   const [ordTotal, setOrdTotal] = useState(0);
@@ -35,6 +36,10 @@ export function useOrdersReturns({ onOpenInvoice }: { onOpenInvoice: (order: Ord
     setRetPage(1);
   }, [debouncedSearch, statusFilter, paymentFilter, debtFilter]);
 
+  useEffect(() => {
+    setRetPage(1);
+  }, [returnTypeFilter]);
+
   const loadData = useCallback(async () => {
     try {
       const q = new URLSearchParams();
@@ -47,6 +52,7 @@ export function useOrdersReturns({ onOpenInvoice }: { onOpenInvoice: (order: Ord
 
       const retQ = new URLSearchParams();
       if (debouncedSearch.trim()) retQ.set("search", debouncedSearch.trim());
+      if (returnTypeFilter) retQ.set("type", returnTypeFilter);
       retQ.set("page", String(retPage));
       retQ.set("pageSize", String(retPageSize));
 
@@ -71,7 +77,7 @@ export function useOrdersReturns({ onOpenInvoice }: { onOpenInvoice: (order: Ord
     } catch {
       // ignore
     }
-  }, [debouncedSearch, statusFilter, paymentFilter, debtFilter, ordPage, ordPageSize, retPage, retPageSize]);
+  }, [debouncedSearch, statusFilter, paymentFilter, debtFilter, returnTypeFilter, ordPage, ordPageSize, retPage, retPageSize]);
 
   const setOrdPageSize = (sz: number) => {
     setOrdPageSizeState(sz);
@@ -187,7 +193,10 @@ export function useOrdersReturns({ onOpenInvoice }: { onOpenInvoice: (order: Ord
     setPaymentFilter,
     debtFilter,
     setDebtFilter,
+    returnTypeFilter,
+    setReturnTypeFilter,
     actionMsg,
+    loadData,
     displayedOrders,
     displayedReturns,
     ordPage,

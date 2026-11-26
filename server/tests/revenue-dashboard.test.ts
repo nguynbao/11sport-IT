@@ -190,7 +190,8 @@ describe('GĐ1: Dashboard doanh thu — trả hàng trừ đúng phân bổ gi�
       return id as string;
     };
     const ret = async (orderId: string, productId: string) => {
-      const calcRes = await request(app).post('/api/v1/returns/calculate').set('x-user-id', 'sales1').send({
+      // Dùng tài khoản 'admin' vì nghiệp vụ trả hàng hoàn tiền chỉ cho phép CEO/ADMIN/ACCOUNTANT
+      const calcRes = await request(app).post('/api/v1/returns/calculate').set('x-user-id', 'admin').send({
         orderId,
         returnItems: [{ productId, quantity: 1, condition: 'GOOD' }],
       });
@@ -379,7 +380,7 @@ describe('GĐ2 & GĐ4: Chuẩn hóa chỉ số Dashboard Doanh thu (D1–D4) & T
     // Kiểm tra /returns/calculate trước khi xác nhận phiếu đổi trả R01
     const calcRes = await request(app)
       .post('/api/v1/returns/calculate')
-      .set('x-user-id', 'sales1')
+      .set('x-user-id', 'admin')
       .send({
         orderId: d01._id,
         type: 'EXCHANGE',
@@ -402,7 +403,7 @@ describe('GĐ2 & GĐ4: Chuẩn hóa chỉ số Dashboard Doanh thu (D1–D4) & T
     // Tạo phiếu đổi trả R01
     const r01Res = await request(app)
       .post('/api/v1/returns')
-      .set('x-user-id', 'sales1')
+      .set('x-user-id', 'admin')
       .send({
         orderId: d01._id,
         type: 'EXCHANGE',
@@ -566,7 +567,7 @@ describe('GĐ2 & GĐ4: Chuẩn hóa chỉ số Dashboard Doanh thu (D1–D4) & T
     // Phiếu đổi làm ngày hôm nay (kỳ sau): trả 1 SP p1 (300.000), đổi lấy 1 pEx (10.000) -> hoàn 290.000 trên đơn nợ 500.000
     const retDebtRes = await request(app)
       .post('/api/v1/returns')
-      .set('x-user-id', 'sales1')
+      .set('x-user-id', 'admin')
       .send({
         orderId: ordDebtId,
         type: 'EXCHANGE',
@@ -625,7 +626,7 @@ describe('GĐ2 & GĐ4: Chuẩn hóa chỉ số Dashboard Doanh thu (D1–D4) & T
     const rPart1 = (
       await request(app)
         .post('/api/v1/returns')
-        .set('x-user-id', 'sales1')
+        .set('x-user-id', 'admin')
         .send({
           orderId: oddOrd._id,
           type: 'EXCHANGE',
@@ -637,7 +638,7 @@ describe('GĐ2 & GĐ4: Chuẩn hóa chỉ số Dashboard Doanh thu (D1–D4) & T
     const rPart2 = (
       await request(app)
         .post('/api/v1/returns')
-        .set('x-user-id', 'sales1')
+        .set('x-user-id', 'admin')
         .send({
           orderId: oddOrd._id,
           type: 'EXCHANGE',
@@ -679,7 +680,7 @@ describe('GĐ2 & GĐ4: Chuẩn hóa chỉ số Dashboard Doanh thu (D1–D4) & T
 
     const noDebtRet = await request(app)
       .post('/api/v1/returns')
-      .set('x-user-id', 'sales1')
+      .set('x-user-id', 'admin')
       .send({
         orderId: noDebtOrd._id,
         type: 'EXCHANGE',
@@ -710,7 +711,7 @@ describe('GĐ2 & GĐ4: Chuẩn hóa chỉ số Dashboard Doanh thu (D1–D4) & T
     // Lần 1: Đổi 1 cái p2 (300k) lấy 1 pEx (10k), nợ gốc 150k -> giảm nợ 150k về 0, hoàn tiền 140k
     const retOk = await request(app)
       .post('/api/v1/returns')
-      .set('x-user-id', 'sales1')
+      .set('x-user-id', 'admin')
       .send({
         orderId: debtOrd2._id,
         type: 'EXCHANGE',
@@ -725,7 +726,7 @@ describe('GĐ2 & GĐ4: Chuẩn hóa chỉ số Dashboard Doanh thu (D1–D4) & T
     // Lần 2: Cố tình gửi thêm POST /returns cho cùng dòng -> bị chặn 400 EXCEED_RETURNABLE_QUANTITY, debtAmount vẫn >= 0
     const retDup = await request(app)
       .post('/api/v1/returns')
-      .set('x-user-id', 'sales1')
+      .set('x-user-id', 'admin')
       .send({
         orderId: debtOrd2._id,
         type: 'EXCHANGE',
@@ -757,7 +758,7 @@ describe('GĐ2 & GĐ4: Chuẩn hóa chỉ số Dashboard Doanh thu (D1–D4) & T
 
     const failedExchange = await request(app)
       .post('/api/v1/returns')
-      .set('x-user-id', 'sales1')
+      .set('x-user-id', 'admin')
       .send({
         orderId: debtOrd3._id,
         type: 'EXCHANGE',
@@ -839,7 +840,7 @@ describe('GĐ2 & GĐ4: Chuẩn hóa chỉ số Dashboard Doanh thu (D1–D4) & T
     const ret1 = (
       await request(app)
         .post('/api/v1/returns')
-        .set('x-user-id', 'sales1')
+        .set('x-user-id', 'admin')
         .send({
           orderId: threePieceOrder._id,
           type: 'EXCHANGE',
@@ -852,7 +853,7 @@ describe('GĐ2 & GĐ4: Chuẩn hóa chỉ số Dashboard Doanh thu (D1–D4) & T
     const ret2 = (
       await request(app)
         .post('/api/v1/returns')
-        .set('x-user-id', 'sales1')
+        .set('x-user-id', 'admin')
         .send({
           orderId: threePieceOrder._id,
           type: 'EXCHANGE',
@@ -865,7 +866,7 @@ describe('GĐ2 & GĐ4: Chuẩn hóa chỉ số Dashboard Doanh thu (D1–D4) & T
     const ret3 = (
       await request(app)
         .post('/api/v1/returns')
-        .set('x-user-id', 'sales1')
+        .set('x-user-id', 'admin')
         .send({
           orderId: threePieceOrder._id,
           type: 'EXCHANGE',
@@ -903,7 +904,7 @@ describe('GĐ2 & GĐ4: Chuẩn hóa chỉ số Dashboard Doanh thu (D1–D4) & T
     const [concResA, concResB] = await Promise.all([
       request(app)
         .post('/api/v1/returns')
-        .set('x-user-id', 'sales1')
+        .set('x-user-id', 'admin')
         .send({
           orderId: concOrder._id,
           type: 'EXCHANGE',
@@ -913,7 +914,7 @@ describe('GĐ2 & GĐ4: Chuẩn hóa chỉ số Dashboard Doanh thu (D1–D4) & T
         }),
       request(app)
         .post('/api/v1/returns')
-        .set('x-user-id', 'sales1')
+        .set('x-user-id', 'admin')
         .send({
           orderId: concOrder._id,
           type: 'EXCHANGE',
@@ -962,7 +963,7 @@ describe('GĐ2 & GĐ4: Chuẩn hóa chỉ số Dashboard Doanh thu (D1–D4) & T
     const [dupA, dupB] = await Promise.all([
       request(app)
         .post('/api/v1/returns')
-        .set('x-user-id', 'sales1')
+        .set('x-user-id', 'admin')
         .send({
           orderId: raceDupOrder._id,
           type: 'EXCHANGE',
@@ -971,7 +972,7 @@ describe('GĐ2 & GĐ4: Chuẩn hóa chỉ số Dashboard Doanh thu (D1–D4) & T
         }),
       request(app)
         .post('/api/v1/returns')
-        .set('x-user-id', 'sales1')
+        .set('x-user-id', 'admin')
         .send({
           orderId: raceDupOrder._id,
           type: 'EXCHANGE',
@@ -1007,7 +1008,7 @@ describe('GĐ2 & GĐ4: Chuẩn hóa chỉ số Dashboard Doanh thu (D1–D4) & T
 
     const failedTxRes = await request(app)
       .post('/api/v1/returns')
-      .set('x-user-id', 'sales1')
+      .set('x-user-id', 'admin')
       .send({
         orderId: txOrder._id,
         type: 'EXCHANGE',

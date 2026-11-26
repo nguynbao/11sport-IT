@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import type { Order, ReturnCalculateResult, ReturnReceipt } from "@/shared/types";
-import { apiRequest } from "@/shared/api/client";
+import { apiRequest, getStoredUser } from "@/shared/api/client";
+import { canOverrideExchangeDowngrade } from "@/config/roles";
 import { type ExchangeItemForm, type ReturnItemForm, getExchangeItemPricing } from "../types";
 import { calcReturnLocal } from "../utils/calcReturn";
 
@@ -94,6 +95,39 @@ export function useReturnCalculation({
   const cashRefund = serverCalc?.cashRefund ?? localCalc.cashRefund;
   const debtAfter = serverCalc?.debtAfter ?? localCalc.debtAfter;
 
+  const localReturnListedTotal = useMemo(
+    () =>
+      returnRows.reduce(
+        (s, r) =>
+          s +
+          (r.quantity > 0 && !r.isGift
+            ? Math.max(0, Math.round(r.originalUnitPrice || r.unitPrice || 0)) * r.quantity
+            : 0),
+        0
+      ),
+    [returnRows]
+  );
+  const localExchangeListedTotal = useMemo(
+    () =>
+      exchangeRows.reduce(
+        (s, ex) => s + getExchangeItemPricing(ex).originalUnitPrice * ex.quantity,
+        0
+      ),
+    [exchangeRows]
+  );
+
+  const returnListedTotal = serverCalc?.returnListedTotal ?? localReturnListedTotal;
+  const exchangeListedTotal = serverCalc?.exchangeListedTotal ?? localExchangeListedTotal;
+  const listedShortfall =
+    serverCalc?.listedShortfall ?? Math.max(0, returnListedTotal - exchangeListedTotal);
+  const isDowngrade =
+    serverCalc?.isDowngrade ??
+    (mode === "EXCHANGE" && exchangeRows.length > 0 && exchangeListedTotal < returnListedTotal);
+  const userRole = String(getStoredUser()?.role || "").toUpperCase();
+  const canOverrideDowngrade =
+    serverCalc?.canOverrideDowngrade ?? canOverrideExchangeDowngrade(userRole);
+  const isDowngradeBlocked = isDowngrade && !canOverrideDowngrade;
+
   return {
     serverCalc,
     localCalc,
@@ -103,6 +137,12 @@ export function useReturnCalculation({
     exchangeRawSubtotal,
     exchangeDiscountTotal,
     exchangeTotal,
+    returnListedTotal,
+    exchangeListedTotal,
+    listedShortfall,
+    isDowngrade,
+    canOverrideDowngrade,
+    isDowngradeBlocked,
     netDifference,
     refundAmount,
     debtBefore,

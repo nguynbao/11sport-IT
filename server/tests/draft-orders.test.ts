@@ -89,18 +89,19 @@ describe('Draft Orders (status = DRAFT) & Item Discount Pricing Tests', () => {
     expect(prod.stockFloor1).toBe(10);
     expect(prod.stock).toBe(10);
 
-    // 3. Không cho phép trả/đổi hàng trên đơn nháp (và RETURN thuần bị chặn RETURN_DISABLED)
-    const retDisabledRes = await request(app)
+    // 3. Không cho phép trả/đổi hàng trên đơn nháp (ORDER_IS_DRAFT)
+    const retDraftRes = await request(app)
       .post('/api/v1/returns')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         orderId: draftOrder._id,
         type: 'RETURN',
         refundMethod: 'CASH',
+        note: 'Test trả đơn nháp',
         returnItems: [{ productId, quantity: 1, condition: 'GOOD' }],
       });
-    expect(retDisabledRes.status).toBe(400);
-    expect(retDisabledRes.body.code).toBe('RETURN_DISABLED');
+    expect(retDraftRes.status).toBe(400);
+    expect(retDraftRes.body.code).toBe('ORDER_IS_DRAFT');
 
     const retRes = await request(app)
       .post('/api/v1/returns')

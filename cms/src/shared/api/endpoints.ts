@@ -67,6 +67,7 @@ export const API_ENDPOINTS = {
 
   RETURNS: {
     BASE: "/returns",
+    CALCULATE: "/returns/calculate",
   },
 
   PROMOTIONS: {

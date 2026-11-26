@@ -94,6 +94,22 @@ export interface Order {
 }
 
 
+export interface ReturnCalculateResult {
+  orderId: string;
+  orderCode: string;
+  returnSubtotal: number;
+  refundedCardFee: number;
+  returnTotal: number;
+  exchangeTotal: number;
+  netDifference: number;
+  refundAmount: number;
+  additionalCharge: number;
+  debtBefore: number;
+  debtReduction: number;
+  cashRefund: number;
+  debtAfter: number;
+}
+
 export interface ReturnReceipt {
   _id: string;
   returnCode: string;
