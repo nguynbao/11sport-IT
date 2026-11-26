@@ -85,6 +85,15 @@ export async function createReturnExchange(ctx: ServiceContext, body: any): Prom
 
     const txResult = await withOrderLock(String(initialOrder._id), async () => {
       const calc = await prepareReturnExchangeCalculation(body);
+      const userRole = String(ctx?.user?.role || '').toUpperCase();
+      const isExchangeDowngradeAllowed = userRole === 'CEO' || userRole === 'ADMIN';
+      if (calc.isDowngrade && !isExchangeDowngradeAllowed) {
+        throw new ApiError(
+          400,
+          'EXCHANGE_DOWNGRADE_NOT_ALLOWED',
+          `Chỉ được đổi sang sản phẩm có giá niêm yết bằng hoặc cao hơn (còn thiếu ${calc.listedShortfall.toLocaleString('vi-VN')} VND).`
+        );
+      }
       const {
         order,
         priorReturns,

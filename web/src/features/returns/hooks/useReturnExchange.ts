@@ -55,6 +55,8 @@ export function useReturnExchange() {
       returnRows,
       exchangeRows,
       mode,
+      isDowngradeBlocked: calc.isDowngradeBlocked,
+      listedShortfall: calc.listedShortfall,
       setErrorMsg,
       setSuccessMsg,
       loadInitialLists,

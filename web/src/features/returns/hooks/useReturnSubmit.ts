@@ -10,6 +10,8 @@ interface Params {
   returnRows: ReturnItemForm[];
   exchangeRows: ExchangeItemForm[];
   mode: "EXCHANGE";
+  isDowngradeBlocked: boolean;
+  listedShortfall: number;
   setErrorMsg: Dispatch<SetStateAction<string>>;
   setSuccessMsg: Dispatch<SetStateAction<string>>;
   loadInitialLists: () => Promise<void>;
@@ -21,6 +23,8 @@ export function useReturnSubmit({
   returnRows,
   exchangeRows,
   mode,
+  isDowngradeBlocked,
+  listedShortfall,
   setErrorMsg,
   setSuccessMsg,
   loadInitialLists,
@@ -45,6 +49,13 @@ export function useReturnSubmit({
     if (mode === "EXCHANGE" && exchangeRows.length === 0) {
       setErrorMsg(
         "Bạn đang chọn chế độ ĐỔI HÀNG. Vui lòng tìm và bấm '+ Chọn đổi' ít nhất 1 sản phẩm mới ở Mục 2."
+      );
+      return;
+    }
+
+    if (mode === "EXCHANGE" && isDowngradeBlocked) {
+      setErrorMsg(
+        `Chỉ được đổi sang sản phẩm có giá niêm yết bằng hoặc cao hơn (còn thiếu ${formatVND(listedShortfall)}).`
       );
       return;
     }

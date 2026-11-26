@@ -1,13 +1,15 @@
 "use client";
 
-import React from "react";
-import { Order } from "@/shared/types";
+import React, { useState } from "react";
+import { Order, ReturnReceipt } from "@/shared/types";
 import { formatVND, formatDateTime, formatPhone } from "@/shared/utils/format";
-import { Search, Printer, ShoppingBag, RotateCcw, CheckCircle2, Trash2 } from "lucide-react";
+import { Search, Printer, ShoppingBag, RotateCcw, CheckCircle2, Trash2, Eye } from "lucide-react";
 import ExportExcelButton from "@/shared/ui/ExportExcelButton";
 import { PaginationBar } from "@/shared/ui/PaginationBar";
 import { exportOrders, exportReturns } from "../exports";
 import { useOrdersReturns } from "../hooks/useOrdersReturns";
+import OrderDetailModal from "./OrderDetailModal";
+import ReturnDetailModal from "./ReturnDetailModal";
 
 interface OrdersReturnsModuleProps {
   onOpenInvoice: (order: Order) => void;
@@ -16,6 +18,8 @@ interface OrdersReturnsModuleProps {
 export default function OrdersReturnsModule({
   onOpenInvoice,
 }: OrdersReturnsModuleProps) {
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [selectedReturn, setSelectedReturn] = useState<ReturnReceipt | null>(null);
   const {
     search,
     setSearch,
@@ -151,8 +155,18 @@ export default function OrdersReturnsModule({
                 const totalDisc =
                   (Number(ord.itemDiscountTotal) || 0) +
                   (Number(ord.billDiscountAmount) || 0);
+                const itemsList = ord.items || [];
+                const giftCount = itemsList.filter(
+                  (it) => Boolean(it.isGift) || it.discountType === "GIFT"
+                ).length;
+                const paidCount = itemsList.length - giftCount;
+                const firstItem = itemsList[0];
                 return (
-                  <tr key={ord._id} className="hover:bg-slate-50">
+                  <tr
+                    key={ord._id}
+                    onClick={() => setSelectedOrder(ord)}
+                    className="hover:bg-slate-50 cursor-pointer transition"
+                  >
                     <td className="py-3 px-3 font-mono font-bold text-slate-900">
                       {ord.orderCode || ord.code}
                       <div className="text-[10px] text-slate-400 font-normal">
@@ -164,21 +178,22 @@ export default function OrdersReturnsModule({
                       <div className="font-mono text-slate-500">{formatPhone(ord.customerPhone) || "-"}</div>
                     </td>
                     <td className="py-3 px-3">
-                      {ord.items?.map((it, idx) => {
-                        const isGift = Boolean(it.isGift) || it.discountType === "GIFT";
-                        return (
-                          <div key={idx} className="text-slate-700 flex items-center gap-1 flex-wrap">
-                            <span>
-                              • {it.productName} (×{it.quantity})
-                            </span>
-                            {isGift && (
-                              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300">
-                                🎁 Hàng tặng
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })}
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="font-bold text-slate-800">
+                          {paidCount > 0 ? `${paidCount} sản phẩm` : `${itemsList.length} mặt hàng`}
+                        </span>
+                        {giftCount > 0 && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                            🎁 {giftCount} quà tặng
+                          </span>
+                        )}
+                      </div>
+                      {firstItem && (
+                        <div className="text-[11px] text-slate-500 truncate max-w-[230px] mt-0.5">
+                          {firstItem.productName}
+                          {itemsList.length > 1 ? ` (+${itemsList.length - 1})` : ""}
+                        </div>
+                      )}
                     </td>
                     <td className="py-3 px-3 font-semibold">
                       <div>{ord.paymentMethod}</div>
@@ -241,7 +256,18 @@ export default function OrdersReturnsModule({
                       </span>
                     </td>
                     <td className="py-3 px-3 text-right">
-                      <div className="inline-flex items-center justify-end gap-1.5 flex-wrap">
+                      <div
+                        className="inline-flex items-center justify-end gap-1.5 flex-wrap"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setSelectedOrder(ord)}
+                          className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold inline-flex items-center gap-1 cursor-pointer"
+                          title="Xem chi tiết đơn hàng"
+                        >
+                          <Eye className="w-3.5 h-3.5" /> Chi tiết
+                        </button>
                         {ord.status === "DRAFT" && (
                           <>
                             <button
@@ -310,11 +336,16 @@ export default function OrdersReturnsModule({
                 <th className="py-3 px-3">NV xử lý</th>
                 <th className="py-3 px-3">Ghi chú</th>
                 <th className="py-3 px-3">Ngày tạo</th>
+                <th className="py-3 px-3 text-center">Chi tiết</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {displayedReturns.map((r) => (
-                <tr key={r._id} className="hover:bg-slate-50">
+                <tr
+                  key={r._id}
+                  onClick={() => setSelectedReturn(r)}
+                  className="hover:bg-slate-50 cursor-pointer transition"
+                >
                   <td className="py-3 px-3 font-mono font-bold">
                     {r.returnCode || r.code}
                   </td>
@@ -357,6 +388,18 @@ export default function OrdersReturnsModule({
                   <td className="py-3 px-3 text-slate-500">
                     {formatDateTime(r.createdAt)}
                   </td>
+                  <td className="py-3 px-3 text-center">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedReturn(r);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold inline-flex items-center gap-1 cursor-pointer"
+                    >
+                      <Eye className="w-3.5 h-3.5" /> Xem
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -372,6 +415,30 @@ export default function OrdersReturnsModule({
           itemLabel="phiếu trả/đổi"
         />
       </div>
+
+      <OrderDetailModal
+        order={selectedOrder}
+        relatedReturns={
+          selectedOrder
+            ? displayedReturns.filter(
+                (r) =>
+                  String(r.orderId) === String(selectedOrder._id) ||
+                  r.orderCode === (selectedOrder.orderCode || selectedOrder.code)
+              )
+            : []
+        }
+        onClose={() => setSelectedOrder(null)}
+        onOpenInvoice={onOpenInvoice}
+        onSelectReturn={(r) => {
+          setSelectedOrder(null);
+          setSelectedReturn(r);
+        }}
+      />
+
+      <ReturnDetailModal
+        returnReceipt={selectedReturn}
+        onClose={() => setSelectedReturn(null)}
+      />
     </div>
   );
 }

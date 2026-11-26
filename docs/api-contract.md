@@ -429,6 +429,13 @@
       - `refundedCardFee`: nếu đơn gốc thanh toán bằng thẻ có thu phí (`order.cardFee > 0`), hoàn lại phí thẻ cho khách theo tỷ lệ giá trị hàng trả trên `afterBillDiscount` (`S - B`, tương đương tỷ lệ trên `subtotal`), hoặc hoàn trọn vẹn toàn bộ phần phí thẻ còn lại của đơn khi tất cả các dòng hàng có giá trị trong đơn đã được trả hết, đảm bảo tổng phí thẻ hoàn qua các lần không vượt quá `order.cardFee`. Nếu đơn gốc không thu phí thẻ thì `refundedCardFee = 0`.
       - `returnTotal = returnSubtotal + refundedCardFee`.
       - `netDifference = exchangeTotal - returnTotal` (dương: khách trả thêm `additionalCharge` thu ngay tại quầy không cộng vào nợ; âm: tổng nghĩa vụ hoàn cho khách `refundAmount = |netDifference|`).
+      - **Quy tắc đổi lên giá trị theo giá niêm yết (`EXCHANGE_DOWNGRADE_NOT_ALLOWED`)**:
+        - So sánh tổng giá trị niêm yết của hàng đổi mới (`exchangeListedTotal = Σ originalUnitPrice_exchange * qty`) với tổng giá trị niêm yết của hàng trả lại (`returnListedTotal = Σ (isGift ? 0 : originalUnitPrice_return) * qty`).
+        - Cho phép đổi ngang giá hoặc đổi lên (`exchangeListedTotal >= returnListedTotal`).
+        - Nếu `exchangeListedTotal < returnListedTotal` (`isDowngrade = true`, `listedShortfall = returnListedTotal - exchangeListedTotal`):
+          - Chỉ role `CEO` hoặc `ADMIN` được phép ngoại lệ (`canOverrideDowngrade = true`).
+          - Mọi role khác khi gọi `POST /api/v1/returns` sẽ bị từ chối với `400 EXCHANGE_DOWNGRADE_NOT_ALLOWED`.
+          - `POST /api/v1/returns/calculate` trả kèm `returnListedTotal`, `exchangeListedTotal`, `listedShortfall`, `isDowngrade`, `canOverrideDowngrade`.
     - **Xử lý trả/đổi hàng trên đơn có Công nợ (`order.debtAmount > 0`) *(v4.1 — BR-03..BR-13)***:
       - Khi `netDifference < 0` (`refundAmount > 0`) và đơn gốc đang còn nợ (`debtAmount > 0`): hệ thống **tự động cấn trừ vào dư nợ trước**, chỉ hoàn tiền mặt/chuyển khoản phần vượt quá dư nợ:
         - `debtBefore = order.debtAmount`

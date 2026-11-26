@@ -133,6 +133,11 @@ export interface ReturnCalculateResult {
   refundedCardFee: number;
   returnTotal: number;
   exchangeTotal: number;
+  returnListedTotal?: number;
+  exchangeListedTotal?: number;
+  listedShortfall?: number;
+  isDowngrade?: boolean;
+  canOverrideDowngrade?: boolean;
   netDifference: number;
   refundAmount: number;
   additionalCharge: number;
