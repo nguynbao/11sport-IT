@@ -64,7 +64,7 @@ import {
   List,
   Package,
 } from "lucide-react";
-import PosServiceSection from "./PosServiceSection";
+import { PosServiceSection } from "@/features/services";
 import {
   cleanBarcodeCode,
   findProductAndVariantByScannedBarcode,

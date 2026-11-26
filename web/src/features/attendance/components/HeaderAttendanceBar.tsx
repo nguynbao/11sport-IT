@@ -29,7 +29,7 @@ import {
   Plus,
   Minus,
 } from "lucide-react";
-import ShiftHandoverModal from "./ShiftHandoverModal";
+import { ShiftHandoverModal } from "@/features/pos";
 import FridayShiftRegistrationModal from "./FridayShiftRegistrationModal";
 
 /** Ngày hiện tại theo giờ máy (YYYY-MM-DD) */

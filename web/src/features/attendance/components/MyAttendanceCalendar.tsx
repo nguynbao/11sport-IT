@@ -37,7 +37,7 @@ import {
   CONTRACT_LABEL,
   isPaidLeaveEligible,
   LEAVE_REASON_MAX,
-} from "./LeaveRequests";
+} from "@/features/leave";
 import FridayShiftRegistrationModal from "./FridayShiftRegistrationModal";
 
 // ---------------------------------------------------------------------------

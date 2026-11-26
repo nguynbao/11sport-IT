@@ -12,18 +12,15 @@ import {
   clearStoredAuth,
   fetchMyShiftScheduleApi,
 } from "@/lib/api";
-import PosTab from "@/components/PosTab";
-import PosServiceSection from "@/components/PosServiceSection";
-import InventoryTab from "@/components/InventoryTab";
-import CustomerTab from "@/components/CustomerTab";
-import ReturnExchangeTab from "@/components/ReturnExchangeTab";
-import PosShiftBillsSection from "@/components/PosShiftBillsSection";
-import MarketingPushProductsTab from "@/components/MarketingPushProductsTab";
+import { PosTab, PosShiftBillsSection, WiseCalculatorStash } from "@/features/pos";
+import { PosServiceSection } from "@/features/services";
+import { InventoryTab } from "@/features/inventory";
+import { CustomerTab } from "@/features/customers";
+import { ReturnExchangeTab } from "@/features/returns";
+import { MarketingPushProductsTab } from "@/features/marketing";
 import InvoicePdfModal from "@/shared/ui/InvoicePdfModal";
-import MyAttendanceCalendar from "@/components/MyAttendanceCalendar";
-import AccountProfileTab from "@/components/AccountProfileTab";
-import WiseCalculatorStash from "@/components/WiseCalculatorStash";
-import HeaderAttendanceBar from "@/components/HeaderAttendanceBar";
+import { MyAttendanceCalendar, HeaderAttendanceBar } from "@/features/attendance";
+import { AccountProfileTab } from "@/features/account";
 import DrawerMenu, {
   TabType,
   TabConfig,

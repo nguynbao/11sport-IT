@@ -22,7 +22,7 @@ import {
   LogOut,
   LogIn,
 } from "lucide-react";
-import ShiftHandoverModal from "./ShiftHandoverModal";
+import { ShiftHandoverModal } from "@/features/pos";
 import FridayShiftRegistrationModal from "./FridayShiftRegistrationModal";
 
 interface Props {
