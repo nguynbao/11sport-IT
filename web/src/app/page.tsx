@@ -12,7 +12,9 @@ import { MyAttendanceCalendar } from "@/features/attendance";
 import { AccountProfileTab } from "@/features/account";
 import InvoicePdfModal from "@/shared/ui/InvoicePdfModal";
 import { MobileRowDetailModal } from "@/shared/ui/MobileRowDetailModal";
+import { PullToRefreshIndicator } from "@/shared/ui/PullToRefreshIndicator";
 import { useMobileTableLabels } from "@/shared/hooks/useMobileTableLabels";
+import { usePullToRefresh } from "@/shared/hooks/usePullToRefresh";
 import { getRoleDisplayName, isAttendanceOnlyRole } from "@/config/roles";
 import { useWebShell } from "./_hooks/useWebShell";
 import WebAuthGate from "./_components/WebAuthGate";
@@ -23,6 +25,7 @@ import WebChangePasswordModal from "./_components/WebChangePasswordModal";
 
 export default function WebPosHomePage() {
   useMobileTableLabels();
+  const pullToRefresh = usePullToRefresh();
   const shell = useWebShell();
 
   if (shell.checkingAuth || !shell.currentUser) {
@@ -44,6 +47,11 @@ export default function WebPosHomePage() {
 
   return (
     <div className="min-h-screen w-full max-w-full overflow-x-hidden flex flex-col bg-slate-100">
+      <PullToRefreshIndicator
+        pullDistance={pullToRefresh.pullDistance}
+        isRefreshing={pullToRefresh.isRefreshing}
+        isReadyToRefresh={pullToRefresh.isReadyToRefresh}
+      />
       <WebHeader
         currentUser={currentUser}
         activeDrawerPage={shell.activeDrawerPage}

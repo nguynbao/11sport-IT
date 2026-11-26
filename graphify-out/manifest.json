@@ -582,9 +582,9 @@
     "semantic_hash": ""
   },
   "web/src/app/page.tsx": {
-    "mtime": 1795668066.991859,
-    "seen": 1795668167.48788,
-    "ast_hash": "f20e19c13f116ac51200258e39771440",
+    "mtime": 1795670135.0082135,
+    "seen": 1795670162.959286,
+    "ast_hash": "e132b612e44ca071b5c62885f75afd6c",
     "semantic_hash": ""
   },
   "web/tailwind.config.js": {
@@ -4515,6 +4515,18 @@
     "mtime": 1795668644.139929,
     "seen": 1795668679.446059,
     "ast_hash": "0bbce3da4399077c65ef2226a0274279",
+    "semantic_hash": ""
+  },
+  "web/src/shared/hooks/usePullToRefresh.ts": {
+    "mtime": 1795670130.2658544,
+    "seen": 1795670162.959625,
+    "ast_hash": "c0d11b9b5dca2042da3ba1626920f835",
+    "semantic_hash": ""
+  },
+  "web/src/shared/ui/PullToRefreshIndicator.tsx": {
+    "mtime": 1795670131.227367,
+    "seen": 1795670162.9596758,
+    "ast_hash": "88e01c9e56d0c151e2b37278a9f4b4ef",
     "semantic_hash": ""
   },
   "cms/package-lock.json": {
