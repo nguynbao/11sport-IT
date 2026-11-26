@@ -49,8 +49,16 @@ export function useReturnExchange() {
     mode,
   });
 
-  const { refundMethod, setRefundMethod, note, setNote, submitting, handleSubmitReturnExchange } =
-    useReturnSubmit({
+  const {
+    refundMethod,
+    setRefundMethod,
+    note,
+    setNote,
+    submitting,
+    printableReturn,
+    setPrintableReturn,
+    handleSubmitReturnExchange,
+  } = useReturnSubmit({
       selectedOrder,
       returnRows,
       exchangeRows,
@@ -82,6 +90,8 @@ export function useReturnExchange() {
     loading,
     loadingProducts,
     submitting,
+    printableReturn,
+    setPrintableReturn,
     errorMsg,
     successMsg,
     reloadSellableProducts,

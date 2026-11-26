@@ -8,9 +8,12 @@ import { useClientPagination } from "@/shared/hooks/useClientPagination";
 import { PaginationBar } from "@/shared/ui/PaginationBar";
 import ReturnDetailModal from "./ReturnDetailModal";
 
-type Props = { recentReturns: ReturnReceipt[] };
+type Props = {
+  recentReturns: ReturnReceipt[];
+  onPrintReturn?: (r: ReturnReceipt) => void;
+};
 
-export default function RecentReturnsTable({ recentReturns }: Props) {
+export default function RecentReturnsTable({ recentReturns, onPrintReturn }: Props) {
   const [selectedReturn, setSelectedReturn] = useState<ReturnReceipt | null>(null);
   const {
     page: returnsPage,
@@ -184,6 +187,7 @@ export default function RecentReturnsTable({ recentReturns }: Props) {
       <ReturnDetailModal
         returnReceipt={selectedReturn}
         onClose={() => setSelectedReturn(null)}
+        onPrint={onPrintReturn}
       />
     </div>
   );

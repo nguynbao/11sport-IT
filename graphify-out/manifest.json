@@ -3270,9 +3270,9 @@
     "semantic_hash": ""
   },
   "web/src/features/returns/components/ReturnExchangeTab.tsx": {
-    "mtime": 1795674457.0572135,
-    "seen": 1795674775.1022909,
-    "ast_hash": "fb3bac5b237f5b3cfdf1f1c3f07e0aca",
+    "mtime": 1795677323.798131,
+    "seen": 1795677404.75545,
+    "ast_hash": "1919bbaa8f7dfd75faa603f7ccf3656a",
     "semantic_hash": ""
   },
   "web/src/features/returns/index.ts": {
@@ -3312,9 +3312,9 @@
     "semantic_hash": ""
   },
   "web/src/features/returns/hooks/useReturnExchange.ts": {
-    "mtime": 1795677035.4873374,
-    "seen": 1795677184.8635352,
-    "ast_hash": "a7ae59295ca9afebf7e3a993a03b8f6c",
+    "mtime": 1795677320.7504604,
+    "seen": 1795677404.7554638,
+    "ast_hash": "9efeda50da25540b14b325428fed7f40",
     "semantic_hash": ""
   },
   "web/src/features/returns/types.ts": {
@@ -4110,9 +4110,9 @@
     "semantic_hash": ""
   },
   "web/src/features/returns/components/RecentReturnsTable.tsx": {
-    "mtime": 1795677039.8641653,
-    "seen": 1795677184.863502,
-    "ast_hash": "98c404a5c1570311c1b24f9b6f48c14d",
+    "mtime": 1795677327.9464517,
+    "seen": 1795677404.755445,
+    "ast_hash": "3b9c6ca5663fde8e1ee40f17cfa688db",
     "semantic_hash": ""
   },
   "web/src/features/returns/components/ReturnItemsTable.tsx": {
@@ -4152,9 +4152,9 @@
     "semantic_hash": ""
   },
   "web/src/features/returns/hooks/useReturnSubmit.ts": {
-    "mtime": 1795677034.2899055,
-    "seen": 1795677184.863544,
-    "ast_hash": "ddcdaa95336177b0c0c3df4ea8e22c70",
+    "mtime": 1795677347.3960598,
+    "seen": 1795677404.7554681,
+    "ast_hash": "12cb6bc0f961c9b029138709562e3fd9",
     "semantic_hash": ""
   },
   "web/src/features/returns/utils/calcReturn.ts": {
@@ -4590,9 +4590,15 @@
     "semantic_hash": ""
   },
   "web/src/features/returns/components/ReturnDetailModal.tsx": {
-    "mtime": 1795677038.801424,
-    "seen": 1795677184.863507,
-    "ast_hash": "c839a4b91cde8fd4eb2be68b70b5fc4c",
+    "mtime": 1795677324.9894352,
+    "seen": 1795677404.755448,
+    "ast_hash": "2f8c199e4f268e0751cc60ac704ff3dd",
+    "semantic_hash": ""
+  },
+  "web/src/features/returns/components/ReturnReceiptPrintModal.tsx": {
+    "mtime": 1795677313.2281625,
+    "seen": 1795677404.755454,
+    "ast_hash": "9aa26bbfd9509b0ea5e70f07a948dc40",
     "semantic_hash": ""
   },
   "cms/package-lock.json": {

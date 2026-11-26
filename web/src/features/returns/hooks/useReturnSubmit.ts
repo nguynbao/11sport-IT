@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import type { Order } from "@/shared/types";
+import type { Order, ReturnReceipt } from "@/shared/types";
 import { apiRequest } from "@/shared/api/client";
 import { formatVND } from "@/shared/utils/format";
 import { type ExchangeItemForm, type ReturnItemForm, getExchangeItemPricing } from "../types";
@@ -33,6 +33,7 @@ export function useReturnSubmit({
   const [refundMethod, setRefundMethod] = useState<"CASH" | "BANKING" | "CARD">("CASH");
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [printableReturn, setPrintableReturn] = useState<ReturnReceipt | null>(null);
 
   const handleSubmitReturnExchange = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -128,6 +129,9 @@ export function useReturnSubmit({
             } thành công! Tồn kho và trạng thái đơn gốc đã được cập nhật.`
       );
       setNote("");
+      if (createdReturn) {
+        setPrintableReturn(createdReturn as ReturnReceipt);
+      }
       await loadInitialLists();
 
       if (updatedOrder && updatedOrder._id) {
@@ -153,5 +157,14 @@ export function useReturnSubmit({
     }
   };
 
-  return { refundMethod, setRefundMethod, note, setNote, submitting, handleSubmitReturnExchange };
+  return {
+    refundMethod,
+    setRefundMethod,
+    note,
+    setNote,
+    submitting,
+    printableReturn,
+    setPrintableReturn,
+    handleSubmitReturnExchange,
+  };
 }

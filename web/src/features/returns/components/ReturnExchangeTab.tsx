@@ -9,10 +9,20 @@ import ExchangePicker from "./ExchangePicker";
 import ExchangeCart from "./ExchangeCart";
 import ReturnSummary from "./ReturnSummary";
 import RecentReturnsTable from "./RecentReturnsTable";
+import ReturnReceiptPrintModal from "./ReturnReceiptPrintModal";
 
 export default function ReturnExchangeTab() {
   const ctx = useReturnExchange();
-  const { selectedOrder, recentReturns, mode, errorMsg, successMsg, handleSubmitReturnExchange } = ctx;
+  const {
+    selectedOrder,
+    recentReturns,
+    mode,
+    errorMsg,
+    successMsg,
+    printableReturn,
+    setPrintableReturn,
+    handleSubmitReturnExchange,
+  } = ctx;
 
   return (
     <div className="space-y-4 md:space-y-6">
@@ -61,7 +71,13 @@ export default function ReturnExchangeTab() {
       )}
 
       {/* Danh sách phiếu trả/đổi gần đây */}
-      <RecentReturnsTable recentReturns={recentReturns} />
+      <RecentReturnsTable recentReturns={recentReturns} onPrintReturn={(r) => setPrintableReturn(r)} />
+
+      {/* Modal in bill phiếu đổi hàng */}
+      <ReturnReceiptPrintModal
+        returnReceipt={printableReturn}
+        onClose={() => setPrintableReturn(null)}
+      />
     </div>
   );
 }
