@@ -43,7 +43,7 @@ export function CustomerOrdersTable({
       ) : (
         <div className="border border-slate-200 rounded-xl overflow-hidden">
           <div className="overflow-x-auto max-w-full">
-            <table className="w-full min-w-[900px] text-sm text-left">
+            <table data-cards className="w-full min-w-[900px] text-sm text-left">
               <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 text-xs uppercase">
                 <tr>
                   <th className="py-3 px-4">Mã Đơn</th>

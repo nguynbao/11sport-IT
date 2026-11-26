@@ -31,7 +31,7 @@ export default function ShiftBillsTable({
   return (
           <div className="border border-slate-200 rounded-xl overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[920px] text-xs sm:text-sm text-left">
+              <table data-cards className="w-full min-w-[920px] text-xs sm:text-sm text-left">
               <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 text-[11px] uppercase">
                 <tr>
                   <th className="py-3 px-3.5">Mã Bill</th>

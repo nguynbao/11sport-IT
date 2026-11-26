@@ -9,7 +9,7 @@ export default function InventoryTable({ loading, displayedProducts, pagedProduc
 
   return (
     <div className="overflow-x-auto border border-slate-200 rounded-2xl bg-white max-w-full">
-      <table className="w-full min-w-[920px] text-xs text-left">
+      <table data-cards className="w-full min-w-[920px] text-xs text-left">
         <thead className="bg-slate-50 text-slate-500 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider">
           <tr>
             <th className="py-3 px-3 w-10">STT</th>

@@ -11,6 +11,8 @@ import { MarketingPushProductsTab } from "@/features/marketing";
 import { MyAttendanceCalendar } from "@/features/attendance";
 import { AccountProfileTab } from "@/features/account";
 import InvoicePdfModal from "@/shared/ui/InvoicePdfModal";
+import { MobileRowDetailModal } from "@/shared/ui/MobileRowDetailModal";
+import { useMobileTableLabels } from "@/shared/hooks/useMobileTableLabels";
 import { getRoleDisplayName, isAttendanceOnlyRole } from "@/config/roles";
 import { useWebShell } from "./_hooks/useWebShell";
 import WebAuthGate from "./_components/WebAuthGate";
@@ -20,6 +22,7 @@ import WebDrawers from "./_components/WebDrawers";
 import WebChangePasswordModal from "./_components/WebChangePasswordModal";
 
 export default function WebPosHomePage() {
+  useMobileTableLabels();
   const shell = useWebShell();
 
   if (shell.checkingAuth || !shell.currentUser) {
@@ -150,6 +153,8 @@ export default function WebPosHomePage() {
         order={shell.invoiceOrder}
         onClose={() => shell.setInvoiceOrder(null)}
       />
+
+      <MobileRowDetailModal />
 
       <WiseCalculatorStash />
 

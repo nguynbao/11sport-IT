@@ -24,7 +24,7 @@ export default function RecentReturnsTable({ recentReturns }: Props) {
       Lịch sử Phiếu Trả / Đổi Hàng gần đây
     </h3>
     <div className="overflow-x-auto border border-slate-200 rounded-xl max-w-full">
-      <table className="w-full min-w-[760px] text-xs text-left">
+      <table data-cards className="w-full min-w-[760px] text-xs text-left">
         <thead className="bg-slate-100 text-slate-700 uppercase">
           <tr>
             <th className="py-2.5 px-3">Mã Phiếu</th>
