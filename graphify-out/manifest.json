@@ -3594,9 +3594,9 @@
     "semantic_hash": ""
   },
   "web/src/features/inventory/components/InventoryTable.tsx": {
-    "mtime": 1795668068.138029,
-    "seen": 1795668167.487979,
-    "ast_hash": "2fe415f23c090102d938830e312a1596",
+    "mtime": 1795668464.6162632,
+    "seen": 1795668530.614528,
+    "ast_hash": "bd8afa7201a403833f2640787730e3c7",
     "semantic_hash": ""
   },
   "web/src/features/inventory/components/InventoryToolbar.tsx": {
@@ -4503,6 +4503,12 @@
     "mtime": 1795668052.2180867,
     "seen": 1795668167.4883351,
     "ast_hash": "5af147e7931155b8e96e2a5f54816881",
+    "semantic_hash": ""
+  },
+  "web/src/features/inventory/components/InventoryMobileCards.tsx": {
+    "mtime": 1795668494.379576,
+    "seen": 1795668530.614518,
+    "ast_hash": "494acee77985d3291e18dd8a1da8e19d",
     "semantic_hash": ""
   },
   "cms/package-lock.json": {
