@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import type { Order, ReturnCalculateResult, ReturnReceipt } from "@/shared/types";
 import { apiRequest, getStoredUser } from "@/shared/api/client";
+import { canOverrideExchangeDowngrade } from "@/config/roles";
 import { type ExchangeItemForm, type ReturnItemForm, getExchangeItemPricing } from "../types";
 import { calcReturnLocal } from "../utils/calcReturn";
 
@@ -124,7 +125,7 @@ export function useReturnCalculation({
     (mode === "EXCHANGE" && exchangeRows.length > 0 && exchangeListedTotal < returnListedTotal);
   const userRole = String(getStoredUser()?.role || "").toUpperCase();
   const canOverrideDowngrade =
-    serverCalc?.canOverrideDowngrade ?? (userRole === "CEO" || userRole === "ADMIN");
+    serverCalc?.canOverrideDowngrade ?? canOverrideExchangeDowngrade(userRole);
   const isDowngradeBlocked = isDowngrade && !canOverrideDowngrade;
 
   return {

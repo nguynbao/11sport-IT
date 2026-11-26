@@ -190,6 +190,7 @@ describe('GĐ1: Dashboard doanh thu — trả hàng trừ đúng phân bổ gi�
       return id as string;
     };
     const ret = async (orderId: string, productId: string) => {
+      // Dùng tài khoản 'admin' vì nghiệp vụ trả hàng hoàn tiền chỉ cho phép CEO/ADMIN/ACCOUNTANT
       const calcRes = await request(app).post('/api/v1/returns/calculate').set('x-user-id', 'admin').send({
         orderId,
         returnItems: [{ productId, quantity: 1, condition: 'GOOD' }],

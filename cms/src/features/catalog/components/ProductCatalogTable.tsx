@@ -81,19 +81,8 @@ export function ProductCatalogTable({ vm }: { vm: ProductCatalogViewModel }) {
                   typeof p.categoryId === "object" ? p.categoryId?._id || "" : String(p.categoryId || "");
                 const cat = categoryMap.get(catId);
                 const brand = p.brandId ? brandMap.get(String(p.brandId)) : undefined;
-                const baseEdit = editingBase[p._id] || {
-                  name: p.name || "",
-                  unit: p.unit || "Cái",
-                  costPrice: Number(p.costPrice || 0),
-                  sellingPrice: Number(p.sellingPrice || 0),
-                  note: p.note || "",
-                };
-                const isBaseChanged =
-                  baseEdit.name.trim() !== String(p.name || "").trim() ||
-                  baseEdit.unit.trim() !== String(p.unit || "Cái").trim() ||
-                  String(baseEdit.note || "").trim() !== String(p.note || "").trim() ||
-                  Number(baseEdit.costPrice || 0) !== Number(p.costPrice || 0) ||
-                  Number(baseEdit.sellingPrice || 0) !== Number(p.sellingPrice || 0);
+                const baseEdit = vm.getBaseEdit(p);
+                const isBaseChanged = vm.isBaseProductChanged(p);
 
                 const prodVariants = Array.isArray(p.variants) ? p.variants : [];
                 const isExpanded = expandedProdId === p._id;
@@ -301,18 +290,7 @@ export function ProductCatalogTable({ vm }: { vm: ProductCatalogViewModel }) {
                               </button>
                               <button
                                 type="button"
-                                onClick={() =>
-                                  setEditingBase((prev) => ({
-                                    ...prev,
-                                    [p._id]: {
-                                      name: p.name || "",
-                                      unit: p.unit || "Cái",
-                                      costPrice: Number(p.costPrice || 0),
-                                      sellingPrice: Number(p.sellingPrice || 0),
-                                      note: p.note || "",
-                                    },
-                                  }))
-                                }
+                                onClick={() => vm.resetBaseEdit(p)}
                                 title="Hoàn tác thay đổi chưa lưu"
                                 className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 inline-flex items-center justify-center cursor-pointer"
                               >

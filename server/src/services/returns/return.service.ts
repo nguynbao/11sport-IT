@@ -21,6 +21,7 @@ import {
 } from "../inventory";
 import { generateNextReturnExchangeCode } from "./returnCode.service";
 import { prepareReturnExchangeCalculation } from "./returnCalc.service";
+import { canOverrideExchangeDowngrade, canProcessReturnOnly } from "./return.rules";
 
 export async function listReturns(query: any): Promise<ServiceResult> {
   const { orderId, type, search } = query || {};
@@ -57,8 +58,6 @@ export async function listReturns(query: any): Promise<ServiceResult> {
 }
 
 
-const RETURN_ALLOWED_ROLES = new Set(['CEO', 'ADMIN', 'ACCOUNTANT']);
-
 export async function createReturnExchange(ctx: ServiceContext, body: any): Promise<ServiceResult> {
   const { orderId, orderCode, type, exchangeItems, note } = body || {};
   const hasExchangeItems = Array.isArray(exchangeItems) && exchangeItems.length > 0;
@@ -67,7 +66,7 @@ export async function createReturnExchange(ctx: ServiceContext, body: any): Prom
   const userRole = String(ctx?.user?.role || '').toUpperCase();
 
   if (isReturnOnly) {
-    if (!RETURN_ALLOWED_ROLES.has(userRole)) {
+    if (!canProcessReturnOnly(userRole)) {
       throw new ApiError(
         403,
         'RETURN_ROLE_FORBIDDEN',
@@ -108,7 +107,7 @@ export async function createReturnExchange(ctx: ServiceContext, body: any): Prom
     const txResult = await withOrderLock(String(initialOrder._id), async () => {
       const calc = await prepareReturnExchangeCalculation(body);
       const userRole = String(ctx?.user?.role || '').toUpperCase();
-      const isExchangeDowngradeAllowed = userRole === 'CEO' || userRole === 'ADMIN';
+      const isExchangeDowngradeAllowed = canOverrideExchangeDowngrade(userRole);
       if (calc.isDowngrade && !isExchangeDowngradeAllowed) {
         throw new ApiError(
           400,

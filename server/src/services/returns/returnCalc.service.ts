@@ -9,6 +9,7 @@ import {
   getFloorStocks,
   getVariantFloorStocks,
 } from "../inventory";
+import { canOverrideExchangeDowngrade, canProcessReturnOnly } from "./return.rules";
 
 export async function prepareReturnExchangeCalculation(body: any) {
   const { orderId, orderCode, returnItems = [], exchangeItems = [] } = body || {};
@@ -314,7 +315,7 @@ export async function prepareReturnExchangeCalculation(body: any) {
       }
 
       const isGiftLine =
-        Boolean((originalLine as any).isGift) || originalLine.discountType === 'GIFT';
+        Boolean(originalLine.isGift) || originalLine.discountType === 'GIFT';
       const returnListedUnitPrice = isGiftLine
         ? 0
         : Math.max(
@@ -786,7 +787,7 @@ export async function calculateReturnExchange(
   const reqType = String(body?.type || '').toUpperCase();
   const isReturnOnly = reqType === 'RETURN' || (!hasExchangeItems && reqType !== 'EXCHANGE');
   const userRole = String(ctx?.user?.role || '').toUpperCase();
-  if (isReturnOnly && !['CEO', 'ADMIN', 'ACCOUNTANT'].includes(userRole)) {
+  if (isReturnOnly && !canProcessReturnOnly(userRole)) {
     throw new ApiError(
       403,
       'RETURN_ROLE_FORBIDDEN',
@@ -795,7 +796,7 @@ export async function calculateReturnExchange(
   }
 
   const calc = await prepareReturnExchangeCalculation(body);
-  const canOverrideDowngrade = userRole === 'CEO' || userRole === 'ADMIN';
+  const canOverrideDowngrade = canOverrideExchangeDowngrade(userRole);
   return ok(
     {
       orderId: calc.order._id,
