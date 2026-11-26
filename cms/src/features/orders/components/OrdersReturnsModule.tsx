@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Order, ReturnReceipt } from "@/shared/types";
-import { getStoredUser } from "@/shared/api/client";
+import { apiRequest, getStoredUser } from "@/shared/api/client";
+import { API_ENDPOINTS } from "@/shared/api/endpoints";
 import { canProcessReturn } from "@/config/roles";
 import { useOrdersReturns } from "../hooks/useOrdersReturns";
 import { OrdersTableSection } from "./OrdersTableSection";
@@ -20,6 +21,7 @@ export default function OrdersReturnsModule({
   onOpenInvoice,
 }: OrdersReturnsModuleProps) {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [selectedOrderReturns, setSelectedOrderReturns] = useState<ReturnReceipt[]>([]);
   const [selectedReturn, setSelectedReturn] = useState<ReturnReceipt | null>(null);
   const [returnOrder, setReturnOrder] = useState<Order | null>(null);
   const [printableReturn, setPrintableReturn] = useState<ReturnReceipt | null>(null);
@@ -55,6 +57,43 @@ export default function OrdersReturnsModule({
     handleConfirmDraft,
     handleDeleteDraft,
   } = useOrdersReturns({ onOpenInvoice });
+
+  useEffect(() => {
+    if (!selectedOrder) {
+      setSelectedOrderReturns([]);
+      return;
+    }
+    let cancelled = false;
+    const orderRef = String(
+      selectedOrder._id || selectedOrder.orderCode || selectedOrder.code || ""
+    );
+    if (!orderRef) {
+      setSelectedOrderReturns([]);
+      return;
+    }
+    apiRequest<ReturnReceipt[]>(
+      `${API_ENDPOINTS.RETURNS.BASE}?orderId=${encodeURIComponent(orderRef)}&pageSize=100`
+    )
+      .then((res) => {
+        if (!cancelled) {
+          setSelectedOrderReturns(Array.isArray(res.data) ? res.data : []);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSelectedOrderReturns(
+            displayedReturns.filter(
+              (r) =>
+                String(r.orderId) === String(selectedOrder._id) ||
+                r.orderCode === (selectedOrder.orderCode || selectedOrder.code)
+            )
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedOrder, displayedReturns]);
 
   return (
     <div className="space-y-6">
@@ -99,15 +138,7 @@ export default function OrdersReturnsModule({
 
       <OrderDetailModal
         order={selectedOrder}
-        relatedReturns={
-          selectedOrder
-            ? displayedReturns.filter(
-                (r) =>
-                  String(r.orderId) === String(selectedOrder._id) ||
-                  r.orderCode === (selectedOrder.orderCode || selectedOrder.code)
-              )
-            : []
-        }
+        relatedReturns={selectedOrderReturns}
         canReturn={canReturn}
         onClose={() => setSelectedOrder(null)}
         onOpenInvoice={onOpenInvoice}

@@ -36,6 +36,10 @@ export function useOrdersReturns({ onOpenInvoice }: { onOpenInvoice: (order: Ord
     setRetPage(1);
   }, [debouncedSearch, statusFilter, paymentFilter, debtFilter]);
 
+  useEffect(() => {
+    setRetPage(1);
+  }, [returnTypeFilter]);
+
   const loadData = useCallback(async () => {
     try {
       const q = new URLSearchParams();
