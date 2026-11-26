@@ -2970,9 +2970,9 @@
     "semantic_hash": ""
   },
   "cms/src/app/_components/CmsHeader.tsx": {
-    "mtime": 1795636320.4412208,
-    "seen": 1795659744.7858188,
-    "ast_hash": "2108e0c1304ff0210d100af213f482d0",
+    "mtime": 1795659877.6249819,
+    "seen": 1795659913.9269152,
+    "ast_hash": "471be22b4bc39ffd19f60a6e64beccac",
     "semantic_hash": ""
   },
   "cms/src/app/_hooks/useCmsShell.ts": {
@@ -3060,9 +3060,9 @@
     "semantic_hash": ""
   },
   "cms/src/shared/ui/PaginationBar.tsx": {
-    "mtime": 1795636320.4951084,
-    "seen": 1795659744.786488,
-    "ast_hash": "97791b346289b99cab98ecffbbc9d01f",
+    "mtime": 1795659875.6701572,
+    "seen": 1795659913.927271,
+    "ast_hash": "cedc7f3087aa9d9210034ffbb8f45911",
     "semantic_hash": ""
   },
   "cms/src/shared/utils/pagination.ts": {
@@ -3081,6 +3081,18 @@
     "mtime": 1795659679.3638191,
     "seen": 1795659744.786409,
     "ast_hash": "8d8459da7a6e5b5bc1f975f6f94b9c47",
+    "semantic_hash": ""
+  },
+  "cms/src/shared/hooks/useViewport.ts": {
+    "mtime": 1795659871.9855149,
+    "seen": 1795659913.927226,
+    "ast_hash": "99dbf26a443fed0fad82cdab780d2511",
+    "semantic_hash": ""
+  },
+  "cms/src/shared/ui/ResponsiveModal.tsx": {
+    "mtime": 1795659873.849518,
+    "seen": 1795659913.927275,
+    "ast_hash": "5af147e7931155b8e96e2a5f54816881",
     "semantic_hash": ""
   },
   "cms/package-lock.json": {

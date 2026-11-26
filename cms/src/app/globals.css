@@ -356,3 +356,7 @@ html.dark img[src="/logo-11sport.svg"]:not([data-keep-logo]),
     max-height: calc(100dvh - 16px) !important;
   }
 }
+
+/* Utility ẩn thanh cuộn cho tab ngang trên mobile */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
