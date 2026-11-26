@@ -7,7 +7,6 @@ import { useInventoryTab } from "../hooks/useInventoryTab";
 import { useClientPagination } from "@/shared/hooks/useClientPagination";
 import { PaginationBar } from "@/shared/ui/PaginationBar";
 import InventoryWarehouseSwitcher from "./InventoryWarehouseSwitcher";
-import InventoryKpiCards from "./InventoryKpiCards";
 import InventoryToolbar from "./InventoryToolbar";
 import InventoryScannerPanel from "./InventoryScannerPanel";
 import InventoryTable from "./InventoryTable";
@@ -26,6 +25,10 @@ export default function InventoryTab() {
     canSeeCostPrice,
     handleCodeCreatorDone,
     displayedProducts,
+    effectiveWarehouse,
+    totalStockFloor1,
+    totalStockFloor2,
+    totalStock,
   } = ctx;
 
   const {
@@ -38,29 +41,56 @@ export default function InventoryTab() {
     setPageSize,
   } = useClientPagination(displayedProducts, 20);
 
+  const activeWarehouseLabel =
+    effectiveWarehouse === "FLOOR_1"
+      ? "Kho Tầng 1"
+      : effectiveWarehouse === "FLOOR_2"
+        ? "Kho Tầng 2"
+        : "Gộp cả 2 Kho";
+
+  const totalStockQty =
+    effectiveWarehouse === "FLOOR_1"
+      ? totalStockFloor1
+      : effectiveWarehouse === "FLOOR_2"
+        ? totalStockFloor2
+        : totalStock;
+
   return (
-    <div className="space-y-4 md:space-y-6">
-      {/* BỘ CHUYỂN KHO TẦNG 1 & KHO TẦNG 2 (Ẩn Kho Tầng 2 đối với Saler) */}
+    <div className="space-y-4">
+      {/* HEADER GỌN GÀNG GIỐNG CMS: CHỌN KHO TẦNG + TẠO SP MỚI */}
       <InventoryWarehouseSwitcher {...ctx} />
 
-      {/* Thẻ KPI Tổng số sản phẩm & Tổng tồn kho */}
-      <InventoryKpiCards {...ctx} />
+      {/* DANH MỤC SẢN PHẨM (GIAO DIỆN GỌN NHƯ CMS) */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-3.5 sm:p-5 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div>
+            <h3 className="font-bold text-slate-900 text-base flex flex-wrap items-center gap-2">
+              <span>Danh mục Sản phẩm — {activeWarehouseLabel}</span>
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-mono bg-blue-100 text-brand-ink">
+                {displayedProducts.length} mặt hàng · {totalStockQty.toLocaleString("vi-VN")} đơn vị
+              </span>
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {effectiveWarehouse === "FLOOR_1"
+                ? "Đang xem tồn kho tại Kho Tầng 1 (Kho bán lẻ & trưng bày). Bấm vào từng dòng để xem chi tiết Màu sắc • Size • SL."
+                : effectiveWarehouse === "FLOOR_2"
+                  ? "Đang xem tồn kho tại Kho Tầng 2 (Kho dự trữ). Bấm vào từng dòng để xem chi tiết Màu sắc • Size • SL."
+                  : "Đang xem gộp cả 2 kho: hiển thị riêng cột Tồn Tầng 1, Tồn Tầng 2 và Tổng 2 Kho trên cùng một dòng."}
+            </p>
+          </div>
+        </div>
 
-      {/* Bộ lọc & Tìm kiếm */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 md:p-4 space-y-3">
         <InventoryToolbar {...ctx} />
 
-        {/* THANH MÁY QUÉT LABEL — QUÉT KIỂM HÀNG & ĐỐI CHIẾU TỒN KHO TRÊN KỆ */}
         <InventoryScannerPanel {...ctx} />
 
         {priceStatusMsg && (
-          <div className="mb-3 p-3 rounded-xl bg-blue-50 border border-blue-200 text-brand-ink text-xs font-bold flex items-center gap-2">
+          <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 text-brand-ink text-xs font-bold flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 shrink-0 text-brand-ink" />
             <span>{priceStatusMsg}</span>
           </div>
         )}
 
-        {/* Bảng tồn kho */}
         <InventoryTable {...ctx} pagedProducts={pagedProducts} />
         <PaginationBar
           totalItems={total}
@@ -74,7 +104,6 @@ export default function InventoryTab() {
         />
       </div>
 
-      {/* Modal In Tem Mã Vạch (Label Printer) */}
       <ProductCodeCreatorModal
         open={showCodeCreator}
         onClose={() => setShowCodeCreator(false)}

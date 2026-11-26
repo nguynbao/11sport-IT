@@ -3198,9 +3198,9 @@
     "semantic_hash": ""
   },
   "web/src/features/inventory/components/InventoryTab.tsx": {
-    "mtime": 1795665561.360705,
-    "seen": 1795665878.8077838,
-    "ast_hash": "a76f415e547c0463c76b67b1c6c56c25",
+    "mtime": 1795667832.4477217,
+    "seen": 1795667947.7845702,
+    "ast_hash": "8da12a9fc68ccd7bc4a9ad89edd32efe",
     "semantic_hash": ""
   },
   "web/src/features/inventory/index.ts": {
@@ -3581,12 +3581,6 @@
     "ast_hash": "2a8dd05b57eef7df9fe00beb9e89184b",
     "semantic_hash": ""
   },
-  "web/src/features/inventory/components/InventoryKpiCards.tsx": {
-    "mtime": 1795665561.3554845,
-    "seen": 1795665878.8077781,
-    "ast_hash": "e2ff11450c5bbee31ed89973c141b931",
-    "semantic_hash": ""
-  },
   "web/src/features/inventory/components/InventoryRow.tsx": {
     "mtime": 1795665561.3597465,
     "seen": 1795665878.807779,
@@ -3600,9 +3594,9 @@
     "semantic_hash": ""
   },
   "web/src/features/inventory/components/InventoryTable.tsx": {
-    "mtime": 1795665561.3602908,
-    "seen": 1795665878.807786,
-    "ast_hash": "495921335f3ff4f186627b63830a7a63",
+    "mtime": 1795667833.4614832,
+    "seen": 1795667947.7845728,
+    "ast_hash": "7f64dfcf77ab18a8d0dbf2d62263d775",
     "semantic_hash": ""
   },
   "web/src/features/inventory/components/InventoryToolbar.tsx": {
@@ -3618,9 +3612,9 @@
     "semantic_hash": ""
   },
   "web/src/features/inventory/components/InventoryWarehouseSwitcher.tsx": {
-    "mtime": 1795665561.3551764,
-    "seen": 1795665878.807791,
-    "ast_hash": "0c3bc9b04d55edda57ee0fb36736c5b2",
+    "mtime": 1795667831.3370302,
+    "seen": 1795667947.784579,
+    "ast_hash": "0bff01f335d14e5b4c4b38e25b1e395c",
     "semantic_hash": ""
   },
   "web/src/features/inventory/components/VariantExpandPanel.tsx": {
