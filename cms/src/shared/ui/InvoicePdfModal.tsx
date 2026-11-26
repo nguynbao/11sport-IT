@@ -258,7 +258,7 @@ export default function InvoicePdfModal({ order, onClose }: InvoicePdfModalProps
             id="printable-invoice"
             className={`mx-auto bg-white text-black shadow-md border border-slate-300 overflow-hidden ${paperSize === "K80"
               ? "w-full max-w-[360px] p-3.5 sm:p-4 text-[11px]"
-              : "w-full min-w-[560px] max-w-[794px] p-6 sm:p-8 text-xs"
+              : "w-full md:min-w-[560px] max-w-[794px] p-3.5 sm:p-6 md:p-8 text-xs"
               }`}
           >
             {/* Header cửa hàng 11Sport với Logo */}

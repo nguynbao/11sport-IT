@@ -59,7 +59,7 @@ export default function OrdersReturnsModule({
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="w-full sm:w-auto flex flex-wrap items-center gap-2">
             <ExportExcelButton
               label="Xuất Excel"
               onExport={() => exportOrders(displayedOrders)}
@@ -79,7 +79,7 @@ export default function OrdersReturnsModule({
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white"
+              className="w-full sm:w-auto px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white"
             >
               <option value="">Tất cả trạng thái</option>
               <option value="DRAFT">DRAFT (Bản nháp)</option>
@@ -93,7 +93,7 @@ export default function OrdersReturnsModule({
             <select
               value={paymentFilter}
               onChange={(e) => setPaymentFilter(e.target.value)}
-              className="px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white"
+              className="w-full sm:w-auto px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white"
             >
               <option value="">Tất cả PTTT</option>
               <option value="CASH">Tiền mặt (CASH)</option>
