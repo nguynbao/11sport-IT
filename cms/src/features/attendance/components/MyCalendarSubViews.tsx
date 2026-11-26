@@ -90,7 +90,7 @@ export function DayCell({
     <button
       type="button"
       onClick={onClick}
-      className={`group relative overflow-hidden text-left rounded-xl border-2 p-1.5 sm:p-2 min-h-[78px] sm:min-h-[104px] flex flex-col transition hover:shadow-md hover:-translate-y-0.5 ${st.box} ${
+      className={`group relative overflow-hidden text-left rounded-xl border-2 p-1 sm:p-2 min-h-[72px] sm:min-h-[104px] flex flex-col transition hover:shadow-md hover:-translate-y-0.5 ${st.box} ${
         day.isToday ? "ring-2 ring-teal-500 ring-offset-1" : ""
       }`}
     >
@@ -110,34 +110,34 @@ export function DayCell({
         </span>
       )}
 
-      <div className="flex items-center justify-between gap-1">
-        <div className="flex items-center gap-1">
+      <div className="flex items-center justify-between gap-0.5 sm:gap-1 w-full">
+        <div className="flex items-center gap-0.5 sm:gap-1 min-w-0">
           <span
-            className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs sm:text-sm font-black ${
+            className={`inline-flex items-center justify-center w-5 h-5 sm:w-6 sm:h-6 rounded-full text-[11px] sm:text-sm font-black shrink-0 ${
               day.isToday ? "bg-teal-600 text-white" : st.dayNum
             }`}
           >
             {day.day}
           </span>
-          {hasPending && <span className="w-2 h-2 rounded-full bg-amber-500" title="Có đơn chờ duyệt" />}
-          {cell.adjusted && <span className="w-1.5 h-1.5 rounded-full bg-[#171717] ring-1 ring-white/80" title="HR đã điều chỉnh" />}
+          {hasPending && <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-amber-500 shrink-0" title="Có đơn chờ duyệt" />}
+          {cell.adjusted && <span className="w-1.5 h-1.5 rounded-full bg-[#171717] ring-1 ring-white/80 shrink-0" title="HR đã điều chỉnh" />}
         </div>
         {cell.isHolidayWork ? (
-          <span className="w-4 h-4 shrink-0 rounded bg-teal-500 text-white ring-2 ring-yellow-400 text-[9px] font-black inline-flex items-center justify-center">
+          <span className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 rounded bg-teal-500 text-white ring-2 ring-yellow-400 text-[8px] sm:text-[9px] font-black inline-flex items-center justify-center">
             ★
           </span>
         ) : st.badge ? (
           <span
-            className={`w-4 h-4 shrink-0 rounded text-[9px] font-black inline-flex items-center justify-center ${st.badgeCls}`}
+            className={`w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 rounded text-[8px] sm:text-[9px] font-black inline-flex items-center justify-center ${st.badgeCls}`}
           >
             {st.badge}
           </span>
         ) : null}
       </div>
 
-      <div className="mt-auto space-y-0.5 min-w-0">
+      <div className="mt-auto space-y-0.5 min-w-0 w-full">
         {statusText && (
-          <div className={`text-[10px] sm:text-[11px] font-extrabold truncate ${st.dayNum}`}>{statusText}</div>
+          <div className={`text-[9px] sm:text-[11px] font-extrabold truncate ${st.dayNum}`}>{statusText}</div>
         )}
         {cell.checkIn && (
           <div className="hidden sm:block text-[10px] font-mono text-slate-600 truncate">
@@ -151,17 +151,18 @@ export function DayCell({
         )}
         <div className="flex flex-wrap gap-0.5">
           {!!cell.overtimeMinutes && (
-            <span className="px-1 rounded bg-[#4F46E5] text-white text-[9px] font-black">
+            <span className="px-1 rounded bg-[#4F46E5] text-white text-[8px] sm:text-[9px] font-black whitespace-nowrap">
               TC {fmtMinutes(cell.overtimeMinutes)}
             </span>
           )}
           {!cell.overtimeMinutes && cell.overtimeStatus === "PENDING" && !!cell.lateCheckoutMinutes && (
-            <span className="px-1 rounded bg-[#FCE7F3] text-[#BE185D] text-[9px] font-bold">
-              ⏳ Chờ duyệt TC ({fmtMinutes(cell.lateCheckoutMinutes)})
+            <span className="px-1 rounded bg-[#FCE7F3] text-[#BE185D] text-[8px] sm:text-[9px] font-bold whitespace-nowrap">
+              <span className="sm:hidden">⏳TC</span>
+              <span className="hidden sm:inline">⏳ Chờ duyệt TC ({fmtMinutes(cell.lateCheckoutMinutes)})</span>
             </span>
           )}
           {cell.isPaidHoliday && cell.code === "HOLIDAY" && (
-            <span className="px-1 rounded bg-rose-100 text-rose-700 text-[9px] font-bold">+1 công</span>
+            <span className="px-1 rounded bg-rose-100 text-rose-700 text-[8px] sm:text-[9px] font-bold whitespace-nowrap">+1 công</span>
           )}
         </div>
       </div>

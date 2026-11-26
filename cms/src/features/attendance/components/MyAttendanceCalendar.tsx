@@ -399,12 +399,12 @@ export default function MyAttendanceCalendar({
                 {grid.map((day, idx) => {
                   if (!day) {
                     return (
-                      <div key={`blank-${idx}`} className="rounded-xl bg-slate-50/40 min-h-[78px] sm:min-h-[104px]" />
+                      <div key={`blank-${idx}`} className="rounded-xl bg-slate-50/40 min-h-[72px] sm:min-h-[104px]" />
                     );
                   }
                   const cell = data?.row?.cells[day.date];
                   if (!cell) {
-                    return <div key={day.date} className="rounded-xl border border-slate-200 min-h-[78px]" />;
+                    return <div key={day.date} className="rounded-xl border border-slate-200 min-h-[72px] sm:min-h-[104px]" />;
                   }
                   return (
                     <DayCell

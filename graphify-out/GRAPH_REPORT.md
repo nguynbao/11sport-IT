@@ -1,7 +1,7 @@
 # Graph Report - 11sport-IT  (2026-11-26)
 
 ## Corpus Check
-- 750 files · ~532,926 words
+- 750 files · ~532,955 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 9 file(s) not represented in the graph (top: (none) 3, .example 3, .css 2)
 
@@ -11,7 +11,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `806e7036`
+- Built from commit: `b64d321a`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -677,7 +677,7 @@ Nodes (5): applyTableLabels(), buildColumnLabels(), cellText(), extractFullCellT
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `A. Chấm công (`/attendance`)` connect `handover.service.ts` to `ShiftHandoverModal.tsx`, `cms/src/shared/types/hrm.ts`, `ProductCatalogModule.tsx`, `ShiftAssignment`?**
-  _High betweenness centrality (0.087) - this node is a cross-community bridge._
+  _High betweenness centrality (0.086) - this node is a cross-community bridge._
 - **What connects `PATH`, `RFC-4180` to the rest of the system?**
   _2 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `cms/src/app/page.tsx` be split into smaller, more focused modules?**
@@ -687,6 +687,6 @@ _Questions this graph is uniquely positioned to answer:_
 - **Should `Product` be split into smaller, more focused modules?**
   _Cohesion score 0.12857142857142856 - nodes in this community are weakly interconnected._
 - **Why does `StockMovement` connect `StockMovement` to `inventory/exports.ts`, `Tài liệu Kịch bản Kiểm thử & Kết quả Nghiệm thu - 11Sport (v1.0)`, `ShiftAssignment`, `Đặc tả yêu cầu: Hệ thống Chấm công & Quản trị Nhân sự (HRM & Shift Handover)`, `ref_react`, `resolveVariantColorHexes`, `ProductCatalogModule.tsx`?**
-  _High betweenness centrality (0.061) - this node is a cross-community bridge._
+  _High betweenness centrality (0.060) - this node is a cross-community bridge._
 - **Should `ok` be split into smaller, more focused modules?**
   _Cohesion score 0.07105538140020899 - nodes in this community are weakly interconnected._
