@@ -378,8 +378,8 @@ export default function MyAttendanceCalendar({
           )}
 
           {/* Lịch tháng */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-4 shadow-sm space-y-2">
-            <div className="grid grid-cols-7 gap-1.5 sm:gap-2 text-center">
+          <div className="bg-white rounded-2xl border border-slate-200 p-2.5 sm:p-4 shadow-sm space-y-2">
+            <div className="grid grid-cols-7 gap-1 sm:gap-2 text-center">
               {WEEK_HEADERS.map((h, i) => (
                 <div
                   key={h}
@@ -395,7 +395,7 @@ export default function MyAttendanceCalendar({
             {loading && !data ? (
               <div className="py-20 text-center text-slate-400 text-sm">Đang tải lịch công...</div>
             ) : (
-              <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
+              <div className="grid grid-cols-7 gap-1 sm:gap-2">
                 {grid.map((day, idx) => {
                   if (!day) {
                     return (
@@ -429,7 +429,7 @@ export default function MyAttendanceCalendar({
               Chú thích:
             </div>
 
-            <div className="flex flex-col gap-1.5 text-[11px] text-slate-700">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:flex lg:flex-col gap-1.5 text-[11px] text-slate-700">
               <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-slate-200/80">
                 <span className="w-4 h-4 shrink-0 rounded bg-transparent text-[#10B981] text-[11px] font-black inline-flex items-center justify-center">
                   ✓

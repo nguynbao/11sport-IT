@@ -1,7 +1,7 @@
 # Graph Report - 11sport-IT  (2026-11-26)
 
 ## Corpus Check
-- 748 files · ~532,362 words
+- 748 files · ~532,431 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 9 file(s) not represented in the graph (top: (none) 3, .example 3, .css 2)
 
@@ -11,7 +11,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `8f62738b`
+- Built from commit: `3d13dba5`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -699,16 +699,16 @@ Nodes (5): applyTableLabels(), buildColumnLabels(), cellText(), extractFullCellT
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `A. Chấm công (`/attendance`)` connect `handover.service.ts` to `ShiftHandoverModal.tsx`, `CreateLeaveModal.tsx`, `ProductCatalogModule.tsx`, `ShiftAssignment`?**
-  _High betweenness centrality (0.076) - this node is a cross-community bridge._
+  _High betweenness centrality (0.078) - this node is a cross-community bridge._
 - **What connects `PATH`, `RFC-4180` to the rest of the system?**
   _2 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `cms/src/app/page.tsx` be split into smaller, more focused modules?**
   _Cohesion score 0.07539450613676213 - nodes in this community are weakly interconnected._
 - **Why does `ApiError` connect `routes/index.ts` to `ok`, `imports.controller.ts`, `middleware/auth.ts`, `order.service.ts`, `shared/productCode.ts`, `serviceOrder.service.ts`, `product.service.ts`, `handover.service.ts`, `promotion.service.ts`, `shifts.ts`, `handover.service.ts`, `Order.ts`, `updateBrand`, `timesheet.queries.ts`, `ocr.ts`, `services/leave/index.ts`, `importScan.service.ts`, `holidays.controller.ts`, `ApiError`, `importFileParse.service.ts`?**
-  _High betweenness centrality (0.069) - this node is a cross-community bridge._
+  _High betweenness centrality (0.070) - this node is a cross-community bridge._
 - **Should `Product` be split into smaller, more focused modules?**
   _Cohesion score 0.1292207792207792 - nodes in this community are weakly interconnected._
 - **Why does `StockMovement` connect `StockMovement` to `useStaffModule.ts`, `inventory/exports.ts`, `useInventoryModule.tsx`, `Đặc tả yêu cầu: Hệ thống Chấm công & Quản trị Nhân sự (HRM & Shift Handover)`, `ref_react`, `ProductCatalogModule.tsx`?**
-  _High betweenness centrality (0.059) - this node is a cross-community bridge._
+  _High betweenness centrality (0.058) - this node is a cross-community bridge._
 - **Should `ok` be split into smaller, more focused modules?**
   _Cohesion score 0.09623015873015874 - nodes in this community are weakly interconnected._
