@@ -1938,9 +1938,9 @@
     "semantic_hash": ""
   },
   "cms/src/features/catalog/components/BrandModule.tsx": {
-    "mtime": 1795659679.9287157,
-    "seen": 1795659744.785998,
-    "ast_hash": "1384d58ba9013679dd7b295f8fa0bdd2",
+    "mtime": 1795660017.1450753,
+    "seen": 1795660070.962969,
+    "ast_hash": "c91dc2d5fb8f0aef75c0d4376f5d2845",
     "semantic_hash": ""
   },
   "cms/src/features/catalog/components/CategoryBrandModule.tsx": {
@@ -1950,9 +1950,9 @@
     "semantic_hash": ""
   },
   "cms/src/features/catalog/components/CategoryModule.tsx": {
-    "mtime": 1795659679.9325607,
-    "seen": 1795659744.786009,
-    "ast_hash": "371f7311deb5534362ee38d85b48a735",
+    "mtime": 1795660025.3733945,
+    "seen": 1795660070.9629738,
+    "ast_hash": "f55ac5bb377c5f20c65a5e7efe23cdd3",
     "semantic_hash": ""
   },
   "cms/src/features/catalog/components/ProductCatalogModule.tsx": {
@@ -1974,9 +1974,9 @@
     "semantic_hash": ""
   },
   "cms/src/features/inventory/components/InventoryModule.tsx": {
-    "mtime": 1795636320.4567523,
-    "seen": 1795659744.7860742,
-    "ast_hash": "934505098b6a0a6ddc1a5579dd530033",
+    "mtime": 1795660013.8661065,
+    "seen": 1795660070.963012,
+    "ast_hash": "d22e600c67e4caabbf11b2b707273c51",
     "semantic_hash": ""
   },
   "cms/src/features/inventory/exports.ts": {
@@ -2052,9 +2052,9 @@
     "semantic_hash": ""
   },
   "cms/src/features/reports/components/StaffActivityModule.tsx": {
-    "mtime": 1795659679.977872,
-    "seen": 1795659744.786252,
-    "ast_hash": "1ae629ffc58f434f2113aa07a82a77a6",
+    "mtime": 1795660066.0004363,
+    "seen": 1795660070.963132,
+    "ast_hash": "667f34e94b748c4497798e325b0fd8c1",
     "semantic_hash": ""
   },
   "cms/src/features/reports/exports.ts": {
@@ -2136,9 +2136,9 @@
     "semantic_hash": ""
   },
   "cms/src/shared/ui/BarcodeLabelModal.tsx": {
-    "mtime": 1795636320.4939742,
-    "seen": 1795659744.786473,
-    "ast_hash": "a2439efc4be59aa33489d6ee6d1efa04",
+    "mtime": 1795660032.7436023,
+    "seen": 1795660070.9632902,
+    "ast_hash": "2215e370300c08a5e8774da320578e68",
     "semantic_hash": ""
   },
   "cms/src/shared/ui/ColorSwatchPicker.tsx": {
@@ -2304,9 +2304,9 @@
     "semantic_hash": ""
   },
   "cms/src/features/staff/components/StaffListTable.tsx": {
-    "mtime": 1795659679.9539082,
-    "seen": 1795659744.786349,
-    "ast_hash": "7ff37e4d0118986f348653b0fabc351d",
+    "mtime": 1795660062.5946004,
+    "seen": 1795660070.963205,
+    "ast_hash": "a4995cd1cf0a6aabaa31d090b83f94ba",
     "semantic_hash": ""
   },
   "cms/src/features/staff/components/StaffPasswordModal.tsx": {

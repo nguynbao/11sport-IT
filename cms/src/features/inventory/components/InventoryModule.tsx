@@ -152,7 +152,7 @@ export default function InventoryModule() {
         <div
           role="tablist"
           aria-label="Phân hệ Quản lý kho"
-          className="flex flex-wrap items-center gap-1.5"
+          className="flex overflow-x-auto no-scrollbar sm:flex-wrap items-center gap-1.5 [&>button]:shrink-0 [&>button]:whitespace-nowrap"
         >
           <button
             type="button"

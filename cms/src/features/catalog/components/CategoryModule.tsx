@@ -172,7 +172,7 @@ export default function CategoryModule() {
               className="w-44 px-3 py-2 rounded-lg border border-slate-300 bg-white font-mono text-xs font-bold"
             />
           </div>
-          <div className="flex-1 min-w-[220px]">
+          <div className="w-full sm:flex-1 sm:min-w-[220px]">
             <label className="block text-xs font-bold uppercase text-slate-600 mb-1">
               Tên Category *
             </label>
