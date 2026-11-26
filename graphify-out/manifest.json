@@ -3918,9 +3918,9 @@
     "semantic_hash": ""
   },
   "web/src/features/pos/components/shiftHandover/ProductFilterSection.tsx": {
-    "mtime": 1795665348.3301487,
-    "seen": 1795665878.807907,
-    "ast_hash": "e415ddb156cb38836b6aa994188a753d",
+    "mtime": 1795673640.0597172,
+    "seen": 1795673679.099854,
+    "ast_hash": "617fb10739a41a1fe3a46ccd96d60a7e",
     "semantic_hash": ""
   },
   "web/src/features/pos/components/shiftHandover/ShiftHandoverFooter.tsx": {
