@@ -89,7 +89,7 @@ export function StaffListTable({ vm }: { vm: StaffViewModel }) {
 
         {/* Thanh Bộ lọc (Filter) & Sắp xếp (Sort) */}
         <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/90 flex flex-wrap items-center gap-2 text-xs">
-          <div className="relative flex-1 min-w-[200px]">
+          <div className="relative w-full sm:flex-1 sm:min-w-[200px]">
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
