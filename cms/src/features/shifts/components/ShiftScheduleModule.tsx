@@ -316,24 +316,78 @@ export default function ShiftScheduleModule({ onScheduleUpdated }: { onScheduleU
                   const staffInCell = staffList.filter((s) =>
                     isStaffInRow(effectiveCode(s._id, d.date), row.code)
                   );
+                  const unassigned = staffList.filter(
+                    (s) => !isStaffInRow(effectiveCode(s._id, d.date), row.code)
+                  );
                   return (
-                    <div key={`${row.code}|${d.date}`} className="px-3 py-2 flex items-start justify-between gap-2 text-xs">
-                      <div className="shrink-0">
-                        <div className="font-bold text-slate-700">{row.title}</div>
-                        <div className="text-[10px] font-mono text-slate-400">{row.time}</div>
+                    <div key={`${row.code}|${d.date}`} className="px-3 py-2.5 space-y-2 text-xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <span className="font-bold text-slate-800">{row.title}</span>
+                          <span className="ml-1.5 text-[10px] font-mono text-slate-400">{row.time}</span>
+                        </div>
+                        {editMode && unassigned.length > 0 && (
+                          <select
+                            aria-label={`Thêm nhân viên vào ${row.title} ngày ${d.display}`}
+                            value=""
+                            onChange={(e) => {
+                              const sid = e.target.value;
+                              if (!sid) return;
+                              const cur = effectiveCode(sid, d.date);
+                              const canWorkBoth =
+                                (row.code === "SHIFT_1" && cur === "SHIFT_2") ||
+                                (row.code === "SHIFT_2" && cur === "SHIFT_1");
+                              setCode(sid, d.date, canWorkBoth ? "BOTH" : row.code);
+                            }}
+                            className="px-2 py-1 rounded-lg border border-dashed border-teal-400 bg-teal-50/60 text-[11px] font-bold text-brand-ink max-w-[155px] cursor-pointer"
+                          >
+                            <option value="">+ Thêm NV...</option>
+                            {unassigned.map((u) => (
+                              <option key={u._id} value={u._id}>
+                                {u.fullName}
+                              </option>
+                            ))}
+                          </select>
+                        )}
                       </div>
-                      <div className="flex flex-wrap justify-end gap-1">
+                      <div className="flex flex-wrap gap-1.5">
                         {staffInCell.length === 0 ? (
                           <span className="text-[11px] text-slate-400 italic">Trống</span>
                         ) : (
-                          staffInCell.map((s) => (
-                            <span
-                              key={s._id}
-                              className={`px-2 py-0.5 rounded-md border text-[11px] font-semibold ${row.chip}`}
-                            >
-                              {s.fullName}
-                            </span>
-                          ))
+                          staffInCell.map((s) => {
+                            const curCode = effectiveCode(s._id, d.date);
+                            const changed = isChanged(s._id, d.date);
+                            return (
+                              <span
+                                key={s._id}
+                                className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-[11px] font-semibold ${row.chip} ${
+                                  changed ? "ring-2 ring-teal-500" : ""
+                                }`}
+                              >
+                                <span>{s.fullName}</span>
+                                {editMode && (
+                                  <button
+                                    type="button"
+                                    aria-label={`Bỏ ${s.fullName} khỏi ${row.title}`}
+                                    onClick={() => {
+                                      if (curCode === "BOTH") {
+                                        setCode(
+                                          s._id,
+                                          d.date,
+                                          row.code === "SHIFT_1" ? "SHIFT_2" : "SHIFT_1"
+                                        );
+                                      } else {
+                                        setCode(s._id, d.date, null);
+                                      }
+                                    }}
+                                    className="p-0.5 rounded text-slate-500 hover:text-rose-600 cursor-pointer"
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </span>
+                            );
+                          })
                         )}
                       </div>
                     </div>
