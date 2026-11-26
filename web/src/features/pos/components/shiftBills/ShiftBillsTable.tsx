@@ -29,9 +29,136 @@ export default function ShiftBillsTable({
   onOpenInvoice,
 }: Props) {
   return (
-          <div className="border border-slate-200 rounded-xl overflow-hidden">
-            <div className="overflow-x-auto">
-              <table data-cards className="w-full min-w-[920px] text-xs sm:text-sm text-left">
+          <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
+            {/* Mobile: danh sách thẻ gọn, nút Chi tiết & In Bill ở đáy, không có nút Xem đầy đủ */}
+            <div className="md:hidden divide-y divide-slate-200">
+              {pagedOrders.map((ord) => {
+                const code = ord.orderCode || ord.code || "";
+                const totalUnits = (ord.items || []).reduce(
+                  (s, it) => s + (Number(it.quantity) || 0),
+                  0
+                );
+                const debtAmt = Math.max(0, Number(ord.debtAmount) || 0);
+                const statusBadge =
+                  ord.status === "DRAFT"
+                    ? { cls: "bg-amber-100 text-amber-800 border border-amber-300", label: "Bản nháp" }
+                    : ord.status === "PAID"
+                      ? { cls: "bg-blue-100 text-brand-ink", label: "Đã TT" }
+                      : ord.status === "PARTIALLY_RETURNED"
+                        ? { cls: "bg-orange-100 text-orange-800", label: "Trả 1 phần" }
+                        : { cls: "bg-red-100 text-red-700", label: "Đã trả hết" };
+
+                return (
+                  <div key={ord._id} className="p-3 space-y-2.5">
+                    <div className="flex items-start justify-between gap-2 pb-2 border-b border-slate-100">
+                      <div className="min-w-0">
+                        <div className="font-mono font-black text-slate-900 text-sm">{code}</div>
+                        <div className="text-[11px] text-slate-500">
+                          NV: {ord.confirmedByName || ord.createdByName || "Sales"}
+                        </div>
+                      </div>
+                      <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full shrink-0 ${statusBadge.cls}`}>
+                        {statusBadge.label}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="rounded-lg bg-slate-50 p-2">
+                        <div className="text-[10px] font-bold uppercase text-slate-400">Giờ tạo / Ca</div>
+                        <div className="font-mono text-[11px] font-semibold text-slate-800 mt-0.5">
+                          {formatDateTime(ord.confirmedAt || ord.createdAt)}
+                        </div>
+                        <span className="inline-block mt-1 text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-blue-50 text-brand-ink border border-blue-200">
+                          {formatShiftBadge(ord.shiftCode)}
+                        </span>
+                      </div>
+                      <div className="rounded-lg bg-slate-50 p-2">
+                        <div className="text-[10px] font-bold uppercase text-slate-400">Khách hàng</div>
+                        <div className="font-bold text-slate-900 truncate mt-0.5">
+                          {ord.customerName || "Khách lẻ"}
+                        </div>
+                        {ord.customerPhone && (
+                          <div className="font-mono text-[11px] text-slate-500">
+                            {formatPhone(ord.customerPhone)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg bg-slate-50/70 border border-slate-100 p-2 space-y-0.5">
+                      <div className="text-[10px] font-bold uppercase text-slate-400 mb-1">
+                        Sản phẩm trong bill
+                      </div>
+                      {(ord.items || []).slice(0, 3).map((it, idx) => (
+                        <div key={idx} className="text-xs text-slate-800 truncate">
+                          • {it.productName} <strong className="font-mono">×{it.quantity}</strong>
+                          {(it.isGift || it.discountType === "GIFT") && (
+                            <span className="ml-1 text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800">
+                              🎁 Tặng
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                      {(ord.items || []).length > 3 && (
+                        <div className="text-[11px] font-semibold text-brand-ink">
+                          +{(ord.items || []).length - 3} dòng khác (Tổng {totalUnits} SP)
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <div>
+                        <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-800">
+                          {ord.paymentMethod === "CASH" && <Banknote className="w-3.5 h-3.5 text-brand-ink" />}
+                          {ord.paymentMethod === "BANKING" && <Landmark className="w-3.5 h-3.5 text-brand-ink" />}
+                          {ord.paymentMethod === "CARD" && <CreditCard className="w-3.5 h-3.5 text-amber-600" />}
+                          {ord.paymentMethod === "OTHER" && <Layers className="w-3.5 h-3.5 text-brand-ink" />}
+                          {formatPaymentMethodLabel(ord)}
+                        </span>
+                        {debtAmt > 0 && (
+                          <div className="text-[10px] font-mono font-bold text-red-600">
+                            Nợ: {formatVND(debtAmt)}
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <div className="font-mono font-black text-brand-ink text-sm">
+                          {formatVND(ord.totalAmount)}
+                        </div>
+                        {((ord.itemDiscountTotal || 0) > 0 || (ord.billDiscountAmount || 0) > 0) && (
+                          <div className="text-[10px] font-mono text-rose-600">
+                            Giảm: −{formatVND((Number(ord.itemDiscountTotal) || 0) + (Number(ord.billDiscountAmount) || 0))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => setDetailOrder(ord)}
+                        className="py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Chi tiết</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onOpenInvoice(ord)}
+                        className="py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-slate-900 text-xs font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        <span>In Bill</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Desktop: bảng đầy đủ */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full min-w-[920px] text-xs sm:text-sm text-left">
               <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 text-[11px] uppercase">
                 <tr>
                   <th className="py-3 px-3.5">Mã Bill</th>

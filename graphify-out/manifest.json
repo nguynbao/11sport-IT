@@ -3894,9 +3894,9 @@
     "semantic_hash": ""
   },
   "web/src/features/pos/components/shiftBills/ShiftBillsTable.tsx": {
-    "mtime": 1795674457.0316067,
-    "seen": 1795674775.1022332,
-    "ast_hash": "cb976b00bcf16beae1c713c9642b5a6e",
+    "mtime": 1795678554.7460175,
+    "seen": 1795678589.478859,
+    "ast_hash": "7c2198c149a99e167efa953842aec786",
     "semantic_hash": ""
   },
   "web/src/features/pos/components/shiftHandover/CashNoteSections.tsx": {
