@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React from "react";
 import ThemeToggle from "./ThemeToggle";
 import type { StaffUser, UserRole } from "@/shared/types";
 import {
@@ -16,23 +16,10 @@ import {
   Lock,
 } from "lucide-react";
 
-export type TabType =
-  | "POS"
-  | "SERVICES"
-  | "INVENTORY"
-  | "CUSTOMER"
-  | "RETURN"
-  | "INVOICE_HISTORY"
-  | "PUSH_PRODUCTS";
-export type DrawerPageType = "NONE" | "PROFILE" | "ATTENDANCE";
+import type { TabType, DrawerPageType, TabConfig } from "./drawerMenuTypes";
+import { useDrawerEscapeLock } from "./useDrawerEscapeLock";
+export type { TabType, DrawerPageType, TabConfig } from "./drawerMenuTypes";
 
-export interface TabConfig {
-  id: TabType;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  allowedRoles: UserRole[];
-  roleHint: string;
-}
 
 interface DrawerMenuProps {
   isOpen: boolean;
@@ -72,22 +59,7 @@ export default function DrawerMenu({
   hasAttendanceNoti = false,
 }: DrawerMenuProps) {
   // Đóng drawer khi nhấn phím Escape & khóa cuộn trang nền khi mở
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.body.style.overflow = originalOverflow;
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isOpen, onClose]);
+  useDrawerEscapeLock(isOpen, onClose);
 
   if (!isOpen) return null;
 
