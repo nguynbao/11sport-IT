@@ -9,6 +9,7 @@ import { MarketingPushProductsModule, RevenueDashboardModule, StaffActivityModul
 import { ServiceManagementModule } from "@/features/services";
 import { ShiftHandoverModule } from "@/features/shifts";
 import { AccountProfileModule, StaffModule } from "@/features/staff";
+import { useMobileTableLabels } from "@/shared/hooks/useMobileTableLabels";
 import InvoicePdfModal from "@/shared/ui/InvoicePdfModal";
 import React from "react";
 import { CmsAuthGate } from "./_components/CmsAuthGate";
@@ -59,6 +60,7 @@ export default function CmsDashboardPage() {
     currentMenu,
     CurrentIcon,
   } = useCmsShell();
+  useMobileTableLabels();
 
   if (checkingAuth || !adminUser) {
     return (

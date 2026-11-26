@@ -170,7 +170,7 @@ export default function HrmAttendanceModule(props: { currentUser: StaffUser | nu
             <div className="py-12 text-center text-slate-400">Không có đơn nào phù hợp bộ lọc.</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm text-slate-600">
+              <table data-cards className="w-full text-left text-sm text-slate-600">
                 <thead className="bg-slate-50 text-slate-700 uppercase font-semibold text-xs border-b border-slate-200">
                   <tr>
                     <th className="py-3 px-4">Ngày xin</th>

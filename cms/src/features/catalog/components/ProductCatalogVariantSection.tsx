@@ -65,7 +65,7 @@ export function ProductCatalogVariantSection({
                             </div>
 
                             <div className="overflow-x-auto border border-slate-200 rounded-lg">
-                              <table className="w-full text-xs text-left">
+                              <table data-cards className="w-full text-xs text-left">
                                 <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 uppercase text-[10px]">
                                   <tr>
                                     <th className="py-2 px-3 w-10 text-center">#</th>

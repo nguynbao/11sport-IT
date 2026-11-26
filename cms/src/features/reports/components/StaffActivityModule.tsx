@@ -179,7 +179,7 @@ export default function StaffActivityModule() {
           )}
         </div>
         <div className="overflow-x-auto border border-slate-200 rounded-xl">
-          <table className="w-full min-w-[980px] text-xs text-left">
+          <table data-cards className="w-full min-w-[980px] text-xs text-left">
             <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 uppercase">
               <tr>
                 <th className="py-3 px-3" rowSpan={2}>Nhân viên</th>
@@ -282,7 +282,7 @@ export default function StaffActivityModule() {
 
         <div className="overflow-x-auto border border-slate-200 rounded-xl">
           {view === "SALES" ? (
-            <table className="w-full min-w-[820px] text-xs text-left">
+            <table data-cards className="w-full min-w-[820px] text-xs text-left">
               <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 uppercase">
                 <tr>
                   <th className="py-3 px-3">Thời gian</th>
@@ -324,7 +324,7 @@ export default function StaffActivityModule() {
               </tbody>
             </table>
           ) : (
-            <table className="w-full min-w-[820px] text-xs text-left">
+            <table data-cards className="w-full min-w-[820px] text-xs text-left">
               <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 uppercase">
                 <tr>
                   <th className="py-3 px-3">Thời gian</th>

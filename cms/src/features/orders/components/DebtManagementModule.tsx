@@ -230,7 +230,7 @@ export default function DebtManagementModule(props: DebtManagementModuleProps) {
 
         {debtTab === "ORDERS" ? (
           <div className="overflow-x-auto border border-slate-200 rounded-xl">
-            <table className="w-full text-xs">
+            <table data-cards className="w-full text-xs">
               <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 font-bold uppercase text-[11px]">
                 <tr>
                   <th className="text-left px-3 py-3">Mã đơn / Ngày mua</th>
@@ -407,7 +407,7 @@ export default function DebtManagementModule(props: DebtManagementModuleProps) {
         ) : (
           /* TAB 2: GOM NHÓM THEO KHÁCH HÀNG (SĐT) */
           <div className="overflow-x-auto border border-slate-200 rounded-xl">
-            <table className="w-full text-xs">
+            <table data-cards className="w-full text-xs">
               <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 font-bold uppercase text-[11px]">
                 <tr>
                   <th className="text-left px-3 py-3">Khách hàng / SĐT</th>

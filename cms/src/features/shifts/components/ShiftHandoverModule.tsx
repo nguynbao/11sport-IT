@@ -355,7 +355,7 @@ export default function ShiftHandoverModule({ currentUser }: { currentUser: Staf
       {/* Bảng danh sách phiếu bàn giao ca */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
+          <table data-cards className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-extrabold uppercase text-[11px]">
                 <th className="py-3.5 px-4">Ngày / Ca</th>

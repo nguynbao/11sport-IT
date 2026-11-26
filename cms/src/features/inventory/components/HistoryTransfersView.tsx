@@ -50,7 +50,7 @@ export function HistoryTransfersView({ vm }: { vm: InventoryViewModel }) {
                 </button>
               </div>
               <div className="overflow-x-auto border border-slate-200 rounded-xl">
-                <table className="w-full text-xs text-left">
+                <table data-cards className="w-full text-xs text-left">
                   <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 uppercase">
                     <tr>
                       <th className="py-3 px-3">Mã Phiếu Xuất</th>
@@ -161,7 +161,7 @@ export function HistoryTransfersView({ vm }: { vm: InventoryViewModel }) {
                                         {formatDateTime(first.createdAt)}
                                       </span>
                                     </div>
-                                    <table className="w-full text-[11px] text-left">
+                                    <table data-cards className="w-full text-[11px] text-left">
                                       <thead className="bg-slate-100 text-slate-800 uppercase border-b border-slate-200">
                                         <tr>
                                           <th className="py-2 px-3 text-center w-12">STT</th>

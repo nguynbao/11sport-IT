@@ -185,7 +185,7 @@ export function ImportReceiptDetailModal({ vm }: { vm: InventoryViewModel }) {
 
               {/* Bảng chi tiết mặt hàng */}
               <div className="border border-slate-200 rounded-xl overflow-x-auto">
-                <table className="w-full text-xs text-left">
+                <table data-cards className="w-full text-xs text-left">
                   <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 uppercase text-[11px]">
                     <tr>
                       <th className="py-2.5 px-3 text-center w-12">STT</th>

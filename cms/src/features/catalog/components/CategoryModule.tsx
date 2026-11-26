@@ -257,7 +257,7 @@ export default function CategoryModule() {
         </div>
 
         <div className="overflow-x-auto border border-slate-200 rounded-xl">
-          <table className="w-full text-xs text-left">
+          <table data-cards className="w-full text-xs text-left">
             <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 uppercase">
               <tr>
                 <th className="py-3 px-4 w-12 text-center">#</th>

@@ -271,3 +271,88 @@ html.dark img[src="/logo-11sport.svg"]:not([data-keep-logo]),
 @media print {
   html.dark img[src="/logo-11sport.svg"] { content: url("/logo-11sport.svg"); }
 }
+
+/* =====================================================================
+   RESPONSIVE MOBILE: bảng (<table data-cards>) tự chuyển thành dạng card dọc
+   thay vì cuộn ngang; nhãn cột lấy từ data-label (gắn bởi useMobileTableLabels).
+   ===================================================================== */
+@media (max-width: 767px) {
+  table[data-cards] {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    border-collapse: separate;
+  }
+  table[data-cards] > thead { display: none !important; }
+  table[data-cards] > tbody,
+  table[data-cards] > tfoot { display: block !important; }
+
+  table[data-cards] > tbody > tr,
+  table[data-cards] > tfoot > tr {
+    display: block !important;
+    margin: 8px;
+    padding: 4px 12px;
+    border: 1px solid rgba(148, 163, 184, 0.45) !important;
+    border-radius: 12px;
+  }
+
+  table[data-cards] > tbody > tr > td,
+  table[data-cards] > tfoot > tr > td {
+    display: flex !important;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    padding: 7px 0 !important;
+    text-align: right !important;
+    border: 0 !important;
+    border-bottom: 1px dashed rgba(148, 163, 184, 0.3) !important;
+    word-break: break-word;
+    white-space: normal !important;
+  }
+  table[data-cards] > tbody > tr > td:last-child,
+  table[data-cards] > tfoot > tr > td:last-child { border-bottom: 0 !important; }
+
+  table[data-cards] > tbody > tr > td[data-label]::before,
+  table[data-cards] > tfoot > tr > td[data-label]::before {
+    content: attr(data-label);
+    flex: 0 0 38%;
+    max-width: 38%;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: #6b6b6b;
+  }
+  html.dark table[data-cards] > tbody > tr > td[data-label]::before,
+  html.dark table[data-cards] > tfoot > tr > td[data-label]::before { color: #9a9a9b; }
+
+  /* Ô có nút/nhóm thao tác: cho phép xuống dòng, canh phải */
+  table[data-cards] > tbody > tr > td > div.flex,
+  table[data-cards] > tbody > tr > td > .flex { flex-wrap: wrap; justify-content: flex-end; }
+
+  /* Dòng chi tiết (colSpan) & dòng trống: hiển thị dạng khối, bỏ khung card lồng thừa */
+  table[data-cards] > tbody > tr > td[colspan],
+  table[data-cards] > tfoot > tr > td[colspan] {
+    display: block !important;
+    text-align: left !important;
+    padding: 8px 0 !important;
+  }
+  table[data-cards] > tbody > tr > td:empty,
+  table[data-cards] > tfoot > tr > td:empty { display: none !important; }
+
+  /* Cuộn ngang còn lại (bảng không chuyển card) có thanh cuộn mảnh & vuốt mượt */
+  .overflow-x-auto { -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
+}
+
+/* Modal/chi tiết: sát mép màn hình nhỏ, cao tối đa theo dvh để nút Lưu/Đóng luôn thấy được */
+@media (max-width: 639px) {
+  .fixed.inset-0.z-50.items-center { padding: 8px !important; }
+  .fixed.inset-0.z-50.items-center > div {
+    max-width: 100% !important;
+    max-height: calc(100dvh - 16px) !important;
+  }
+}

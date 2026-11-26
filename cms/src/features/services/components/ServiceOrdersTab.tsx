@@ -261,7 +261,7 @@ export function ServiceOrdersTab({ vm }: { vm: ServiceManagementViewModel }) {
 
             {/* BẢNG DANH SÁCH */}
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
+              <table data-cards className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-slate-50 border-y border-slate-200 text-slate-600 uppercase font-extrabold">
                     <th className="py-3 px-3">Mã đơn</th>
