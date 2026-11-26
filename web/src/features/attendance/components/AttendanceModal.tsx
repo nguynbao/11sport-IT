@@ -1,0 +1,302 @@
+"use client";
+
+import React from "react";
+import type { StaffUser } from "@/shared/types";
+import { Clock, Wifi, Home, CheckCircle2, AlertTriangle, X, LogOut, LogIn } from "lucide-react";
+import { ShiftHandoverModal } from "@/features/pos";
+import FridayShiftRegistrationModal from "./FridayShiftRegistrationModal";
+import { useAttendanceModal } from "../hooks/useAttendanceModal";
+
+interface Props {
+  currentUser: StaffUser | null;
+  onClose: () => void;
+}
+
+export default function AttendanceModal({ currentUser, onClose }: Props) {
+  const {
+    attendance, isWfhToday, actionLoading, statusMsg, currentTime,
+    selectedShift, setSelectedShift,
+    showHandoverModal, setShowHandoverModal, showFridayModal, setShowFridayModal,
+    pendingHandoverToConfirm, incomingCheckProducts, incomingCheckCategories,
+    showIncomingInspectionModal, officeName, detectedClientIp, requireIp, isCurrentIpAllowed,
+    handleCheckIn, handleCheckOut, handleConfirmIncomingHandover,
+  } = useAttendanceModal(currentUser);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+      <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-fade-in">
+        {/* Header */}
+        <div className="bg-blue-600 text-white px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <Clock className="w-5 h-5 text-blue-400" />
+            <div>
+              <h3 className="font-extrabold text-base">Chấm Công & Ca Làm Việc</h3>
+              <p className="text-xs text-slate-400">{officeName}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-xl text-slate-400 hover:text-white transition">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Nội dung chính */}
+        <div className="p-6 space-y-5 text-xs">
+          {statusMsg && (
+            <div
+              className={`p-3.5 rounded-2xl border font-semibold flex items-center gap-2 ${
+                statusMsg.type === "success"
+                  ? "bg-blue-50 border-blue-200 text-brand-ink"
+                  : "bg-rose-50 border-rose-200 text-rose-800"
+              }`}
+            >
+              {statusMsg.type === "success" ? (
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-brand-ink" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+              )}
+              <span>{statusMsg.text}</span>
+            </div>
+          )}
+
+          {/* Banner thông báo Ca trước bàn giao đang chờ duyệt */}
+          {pendingHandoverToConfirm && (
+            <div className="p-4 bg-amber-50 border border-amber-300 rounded-2xl space-y-2.5">
+              <div className="font-bold text-amber-900 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600" />
+                Ca trước ({pendingHandoverToConfirm.fromStaffName}) đã gửi bàn giao Kho Tầng 1!
+              </div>
+              <p className="text-slate-600">
+                Tiền mặt: <strong>{pendingHandoverToConfirm.cashBalance?.toLocaleString("vi-VN")} ₫</strong> • Nhóm
+                kiểm: <strong>{(incomingCheckCategories.length ? incomingCheckCategories : ["Vợt"]).join(" + ")}</strong>{" "}
+                ({incomingCheckProducts.length} mã).
+              </p>
+
+              {(showIncomingInspectionModal || incomingCheckProducts.length > 0) && (
+                <div className="border border-amber-200 rounded-xl bg-white max-h-44 overflow-y-auto divide-y divide-slate-100">
+                  {incomingCheckProducts.map((p) => (
+                    <div key={p._id} className="p-2 flex items-center justify-between text-[11px]">
+                      <div>
+                        <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-bold mr-1.5">
+                          {p.categoryName}
+                        </span>
+                        <span className="font-bold text-slate-900">{p.name}</span>{" "}
+                        <span className="font-mono text-slate-500">({p.code})</span>
+                      </div>
+                      <div className="font-mono font-bold text-brand-ink shrink-0">
+                        Tồn T1: {p.stockQtyFloor1} {p.unit || "cây"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={() => handleConfirmIncomingHandover(true)}
+                  className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-xs transition cursor-pointer"
+                >
+                  ✓ Đã kiểm hàng & Đồng ý nhận ca
+                </button>
+                <button
+                  onClick={() => handleConfirmIncomingHandover(false)}
+                  className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold shadow-xs transition cursor-pointer"
+                >
+                  ✕ Báo lệch / Từ chối
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Banner WFH nếu có */}
+          {isWfhToday && (
+            <div className="p-3.5 bg-purple-50 border border-purple-200 text-purple-900 rounded-2xl flex items-center gap-2.5 font-bold">
+              <Home className="w-5 h-5 text-purple-600 shrink-0" />
+              <span>Hôm nay bạn có lịch Làm việc từ xa (WFH) đã duyệt bởi HR. Bạn có thể chấm công tự do!</span>
+            </div>
+          )}
+
+          {/* Đồng hồ lớn */}
+          <div className="text-center py-4 bg-slate-50 rounded-2xl border border-slate-200">
+            <div className="text-3xl font-black font-mono tracking-tight text-slate-900">{currentTime}</div>
+            <div className="text-slate-400 font-semibold mt-1">
+              {new Date().toLocaleDateString("vi-VN", {
+                weekday: "long",
+                day: "2-digit",
+                month: "2-digit",
+                year: "numeric",
+              })}
+            </div>
+          </div>
+
+          {/* Thông tin mạng Wi-Fi chấm công */}
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center gap-2.5">
+            <Wifi
+              className={`w-4 h-4 shrink-0 ${
+                isWfhToday || isCurrentIpAllowed ? "text-brand-ink" : "text-rose-500"
+              }`}
+            />
+            <div>
+              <div className="font-bold text-slate-800">
+                Mạng Wi-Fi chấm công {requireIp ? "(Kiểm tra IP mạng)" : ""}
+              </div>
+              <div className="text-[11px] text-slate-500 font-mono">
+                {isWfhToday ? "Internet tự do (WFH)" : `IP: ${detectedClientIp}`}
+              </div>
+            </div>
+          </div>
+
+          {/* Chọn Ca làm việc (Nếu chưa check-in) */}
+          {!attendance && (
+            <div className="space-y-2">
+              <label className="block font-bold text-slate-700">Chọn Ca làm việc hôm nay:</label>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedShift("SHIFT_1")}
+                  className={`p-3 rounded-2xl border font-bold text-left transition ${
+                    selectedShift === "SHIFT_1"
+                      ? "bg-blue-50 border-blue-600 text-blue-950 shadow-xs"
+                      : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  <div>Ca 1 (Hành chính / Sáng)</div>
+                  <div className="text-[11px] font-mono text-slate-400 mt-0.5">08:30 - 17:30</div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedShift("SHIFT_2")}
+                  className={`p-3 rounded-2xl border font-bold text-left transition ${
+                    selectedShift === "SHIFT_2"
+                      ? "bg-blue-50 border-blue-600 text-blue-950 shadow-xs"
+                      : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  <div>Ca 2 (Chiều - Tối)</div>
+                  <div className="text-[11px] font-mono text-slate-400 mt-0.5">12:00 - 21:00</div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedShift("BOTH")}
+                  className={`p-3 rounded-2xl border font-bold text-left transition ${
+                    selectedShift === "BOTH"
+                      ? "bg-blue-50 border-blue-600 text-blue-950 shadow-xs"
+                      : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  <div>Ca 1 + Ca 2 (2 ca)</div>
+                  <div className="text-[11px] font-mono text-slate-400 mt-0.5">08:30 - 21:00</div>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Trạng thái đã Check-in */}
+          {attendance && (
+            <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-2xl space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-blue-900 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-brand-ink" />
+                  Đã Check-in vào ca
+                </span>
+                <span className="font-mono font-bold text-brand-ink">
+                  {new Date(attendance.checkInTime).toLocaleTimeString("vi-VN", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </span>
+              </div>
+              <div className="text-slate-600 space-y-1">
+                <div>
+                  Ca làm việc:{" "}
+                  <strong>
+                    {attendance.shiftCode === "BOTH"
+                      ? "Ca 1 + Ca 2 (08:30 - 21:00)"
+                      : attendance.shiftCode === "SHIFT_2"
+                      ? "Ca 2 (12:00 - 21:00)"
+                      : "Ca 1 (08:30 - 17:30)"}
+                  </strong>
+                </div>
+                <div>
+                  Mốc tính công chuẩn:{" "}
+                  <strong>
+                    {new Date(attendance.workStartTime).toLocaleTimeString("vi-VN", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </strong>{" "}
+                  (Đã làm tròn nếu check-in sớm)
+                </div>
+                {attendance.checkOutTime && (
+                  <div>
+                    Đã Check-out lúc:{" "}
+                    <strong>
+                      {new Date(attendance.checkOutTime).toLocaleTimeString("vi-VN", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </strong>{" "}
+                    • Tổng: <strong>{attendance.totalWorkHours}h công</strong>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Nút bấm Hành động */}
+          <div className="pt-2">
+            {!attendance ? (
+              <button
+                type="button"
+                onClick={handleCheckIn}
+                disabled={actionLoading}
+                className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-2xl font-bold text-sm shadow-xl transition flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <LogIn className="w-5 h-5" />
+                {actionLoading ? "Đang xác thực mạng Wi-Fi..." : "BẤM CHECK-IN VÀO CA"}
+              </button>
+            ) : !attendance.checkOutTime ? (
+              <button
+                type="button"
+                onClick={() => handleCheckOut()}
+                disabled={actionLoading}
+                className="w-full py-4 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white rounded-2xl font-bold text-sm shadow-xl transition flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <LogOut className="w-5 h-5" />
+                {actionLoading ? "Đang xử lý..." : "KẾT CA & BẤM CHECK-OUT"}
+              </button>
+            ) : (
+              <div className="text-center py-3 bg-slate-100 rounded-2xl font-bold text-slate-500">
+                ✓ Bạn đã hoàn thành trọn vẹn ca làm việc hôm nay
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Modal Bàn Giao Kho Tầng 1 */}
+      {showHandoverModal && (
+        <ShiftHandoverModal
+          currentUser={currentUser}
+          onClose={() => setShowHandoverModal(false)}
+          onSuccess={() => {
+            setShowHandoverModal(false);
+            alert("Biên bản bàn giao Kho Tầng 1 đã gửi! Khi ca sau xác nhận, bạn sẽ được phép Check-out.");
+          }}
+        />
+      )}
+
+      {/* Modal Đăng Ký Ca Thứ 6 */}
+      {showFridayModal && (
+        <FridayShiftRegistrationModal
+          onClose={() => setShowFridayModal(false)}
+          onSuccess={() => {
+            setShowFridayModal(false);
+            alert("Đã gửi đăng ký ca làm việc tuần tới thành công cho HR!");
+          }}
+        />
+      )}
+    </div>
+  );
+}
