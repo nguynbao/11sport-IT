@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app';
-import { connectDatabase, clearDatabase, staffRepo, shiftAssignmentRepo, attendanceRepo, leaveRequestRepo } from '../src/config/db';
+import { connectDatabase, clearDatabase, staffRepo, shiftAssignmentRepo, shiftHandoverRepo, attendanceRepo, leaveRequestRepo } from '../src/config/db';
 import { seedDatabaseIfNeeded } from '../src/config/seed';
+import { toLocalDateStr } from '../src/shared/date';
 
 describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
   const app = createApp();
@@ -93,10 +94,10 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
   });
 
   it('3. Đơn WFH: cả Khối Bán hàng (Sales) và Khối Văn phòng (Office) đều nộp được và khi được HR duyệt thì chấm công mọi nơi', async () => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = toLocalDateStr();
 
     // Sales nộp WFH cho ngày mai -> Thành công (PENDING)
-    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    const tomorrow = toLocalDateStr(new Date(Date.now() + 86400000));
     const salesWfh = await request(app)
       .post('/api/v1/leave-requests')
       .set('Authorization', `Bearer ${salesToken}`)
@@ -145,7 +146,7 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
   });
 
   it('4. Khối Sales: Bàn giao Kho Tầng 1 giữa Ca 1 và Ca 2 (random danh mục Vợt + ..., bắt buộc Ca 2 xác nhận trước khi kết ca)', async () => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = toLocalDateStr();
 
     // Kiểm tra API lấy danh mục kiểm hàng ngẫu nhiên theo ngày (luôn có Vợt + 1 nhóm khác)
     const dailyCheckRes = await request(app)
@@ -175,7 +176,7 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
     const sales2Token = sales2Login.body.data.token;
 
     // Tạo phiếu PENDING tồn đọng từ 3 ngày trước -> Phải tự động hết hạn (STORE_CLOSED) và KHÔNG chặn checkout
-    const threeDaysAgo = new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10);
+    const threeDaysAgo = toLocalDateStr(new Date(Date.now() - 3 * 86400000));
     const staleHandover = await request(app)
       .post('/api/v1/shifts/handover')
       .set('Authorization', `Bearer ${sales2Token}`)
@@ -196,7 +197,7 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
     expect(checkStaleOnly.body.meta.pendingIncomingHandover).toBeNull();
 
     // Giả lập tối hôm qua Ca 2 (sales2) đã lập phiếu bàn giao kết ca tối để giao cho Ca 1 sáng nay
-    const yesterdayDate = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const yesterdayDate = toLocalDateStr(new Date(Date.now() - 86400000));
     const prevNightHandover = await request(app)
       .post('/api/v1/shifts/handover')
       .set('Authorization', `Bearer ${sales2Token}`)
@@ -308,7 +309,11 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
     const checkoutSuccess = await request(app)
       .post('/api/v1/attendance/check-out')
       .set('Authorization', `Bearer ${salesToken}`)
-      .send({ forceEarly: true, earlyReason: 'Đã lập phiếu bàn giao xong cho ca 2' });
+      .send({
+        forceEarly: true,
+        earlyReason: 'Đã lập phiếu bàn giao xong cho ca 2',
+        lateCheckoutReason: 'Đã lập phiếu bàn giao xong cho ca 2',
+      });
     expect(checkoutSuccess.status).toBe(200);
     expect(checkoutSuccess.body.data.attendance.checkOutTime).toBeDefined();
 
@@ -354,7 +359,11 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
     const sales2CheckoutAfterConfirm = await request(app)
       .post('/api/v1/attendance/check-out')
       .set('Authorization', `Bearer ${sales2Token}`)
-      .send({ forceEarly: true, earlyReason: 'Đã xác nhận bàn giao Ca 1 và lập phiếu kết ca tối' });
+      .send({
+        forceEarly: true,
+        earlyReason: 'Đã xác nhận bàn giao Ca 1 và lập phiếu kết ca tối',
+        lateCheckoutReason: 'Đã xác nhận bàn giao Ca 1 và lập phiếu kết ca tối',
+      });
     expect(sales2CheckoutAfterConfirm.status).toBe(200);
     expect(sales2CheckoutAfterConfirm.body.data.attendance.checkOutTime).toBeDefined();
 
@@ -699,7 +708,7 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
   });
 
   it('10. Đối chiếu lịch phân ca khi check-in: chặn ngày OFF, chặn sai ca, và tự động lấy đúng ca HR đã xếp', async () => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = toLocalDateStr();
 
     // Tạo nhân viên Sales mới để kiểm tra đối chiếu lịch phân ca
     const salesCreate = await request(app)
@@ -1376,7 +1385,7 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
     expect(accPutScheduleRes.status).toBe(403);
 
     // 2. Lấy daily-check phải trả về categorySummaries tổng số lượng tồn Tầng 1 theo từng danh mục
-    const today = new Date().toISOString().slice(0, 10);
+    const today = toLocalDateStr();
     const dailyCheck = await request(app)
       .get(`/api/v1/shifts/handover/daily-check?date=${today}`)
       .set('Authorization', `Bearer ${salesToken}`);
@@ -1489,7 +1498,9 @@ describe('HRM, Attendance, WFH & Shift Handover API Tests (v4.0)', () => {
     await attendanceRepo.updateById(String((s1AttBefore as any)._id), {
       workStartTime: new Date(y, m - 1, d, 8, 30, 0, 0),
       pendingCheckOutTime: exact1730,
+      lateCheckoutMinutes: 0,
     });
+    await shiftHandoverRepo.updateById(handoverId, { lateCheckoutMinutes: 0 });
 
     // Khi Ca 2 chưa xác nhận và Web gọi check-out với requireConfirmation: true -> Ca 1 ở trạng thái chờ xác nhận, chưa ghi checkOutTime nhưng đã khóa pendingCheckOutTime = 17:30
     const waitConfirmRes = await request(app)

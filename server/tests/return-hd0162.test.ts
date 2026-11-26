@@ -175,9 +175,9 @@ describe('Regression Test: Hoàn trả đơn HD-0162 (nhiều biến thể cùng
       .set('x-user-id', 'sales1')
       .send({
         orderId: hd0162OrderId,
-        type: 'RETURN',
+        type: 'EXCHANGE',
         refundMethod: 'CASH',
-        note: 'Khách trả 1 cây Selkirk Volt',
+        note: 'Khách đổi 1 cây Selkirk Volt',
         returnItems: [
           {
             lineIndex: 2,
@@ -188,6 +188,7 @@ describe('Regression Test: Hoàn trả đơn HD-0162 (nhiều biến thể cùng
             condition: 'GOOD',
           },
         ],
+        exchangeItems: [{ productId: giftEdgeProdId, quantity: 1 }],
       });
 
     // BR-01: Phân bổ giảm giá bill 320.000 trên tổng 17.720.000 cho dòng Selkirk 3.000.000
@@ -198,7 +199,7 @@ describe('Regression Test: Hoàn trả đơn HD-0162 (nhiều biến thể cùng
     expect(res.body.data.returnExchange.returnSubtotal).toBe(expectedFirstSubtotal);
     expect(res.body.data.returnExchange.refundedCardFee).toBe(expectedFirstFeeRefund);
     expect(res.body.data.returnExchange.returnTotal).toBe(expectedFirstSubtotal + expectedFirstFeeRefund);
-    expect(res.body.data.returnExchange.refundAmount).toBe(expectedFirstSubtotal + expectedFirstFeeRefund);
+    expect(res.body.data.returnExchange.refundAmount).toBe(expectedFirstSubtotal + expectedFirstFeeRefund - 25000);
     expect(res.body.data.order.status).toBe('PARTIALLY_RETURNED');
     // Dòng 1 (Dauntless) vẫn chưa trả, dòng 2 (Era Power) đã trả 1
     expect(res.body.data.order.items[1].returnedQuantity).toBe(0);
@@ -221,9 +222,9 @@ describe('Regression Test: Hoàn trả đơn HD-0162 (nhiều biến thể cùng
       .set('x-user-id', 'sales1')
       .send({
         orderCode: 'HD-0162',
-        type: 'RETURN',
+        type: 'EXCHANGE',
         refundMethod: 'BANKING',
-        note: 'Hoàn trả toàn bộ phần còn lại của đơn HD-0162',
+        note: 'Đổi toàn bộ phần còn lại của đơn HD-0162',
         returnItems: [
           { productId: kamitoProdId, quantity: 1, condition: 'GOOD' },
           { productId: selkirkProdId, quantity: 1, condition: 'GOOD' }, // Tự động khớp dòng Dauntless còn lại!
@@ -233,6 +234,7 @@ describe('Regression Test: Hoàn trả đơn HD-0162 (nhiều biến thể cùng
           { productId: giftEdgeProdId, quantity: 5, condition: 'GOOD' },
           { productId: giftCoverProdId, quantity: 5, condition: 'GOOD' },
         ],
+        exchangeItems: [{ productId: giftEdgeProdId, quantity: 1 }],
       });
 
     const selkirkBillShare = Math.round((3000000 / 17720000) * 320000); // 54.176 VND
@@ -247,7 +249,7 @@ describe('Regression Test: Hoàn trả đơn HD-0162 (nhiều biến thể cùng
     expect(res.body.data.returnExchange.returnSubtotal).toBe(remainingItemsSubtotal);
     expect(res.body.data.returnExchange.refundedCardFee).toBe(expectedRemainingFeeRefund);
     expect(res.body.data.returnExchange.refundAmount).toBe(
-      remainingItemsSubtotal + expectedRemainingFeeRefund
+      remainingItemsSubtotal + expectedRemainingFeeRefund - 25000
     );
 
     const prodsRes = await request(app).get('/api/v1/products').set('x-user-id', 'admin');
@@ -290,7 +292,7 @@ describe('Regression Test: Hoàn trả đơn HD-0162 (nhiều biến thể cùng
       .set('x-user-id', 'sales1')
       .send({
         orderId: ordRes.body.data._id,
-        type: 'RETURN',
+        type: 'EXCHANGE',
         refundMethod: 'CASH',
         returnItems: [
           {
@@ -300,10 +302,11 @@ describe('Regression Test: Hoàn trả đơn HD-0162 (nhiều biến thể cùng
             condition: 'GOOD',
           },
         ],
+        exchangeItems: [{ productId: giftEdgeProdId, quantity: 1 }],
       });
 
     expect(retRes.status).toBe(201);
-    expect(retRes.body.data.returnExchange.refundAmount).toBe(140000);
+    expect(retRes.body.data.returnExchange.refundAmount).toBe(140000 - 25000);
     expect(retRes.body.data.order.items[0].returnedQuantity).toBe(1);
     expect(retRes.body.data.order.items[1].returnedQuantity).toBe(0);
     expect(retRes.body.data.order.status).toBe('PARTIALLY_RETURNED');
@@ -330,7 +333,7 @@ describe('Regression Test: Hoàn trả đơn HD-0162 (nhiều biến thể cùng
       .set('x-user-id', 'sales1')
       .send({
         orderId: ordRes.body.data._id,
-        type: 'RETURN',
+        type: 'EXCHANGE',
         refundMethod: 'CASH',
         returnItems: [
           {
@@ -341,6 +344,7 @@ describe('Regression Test: Hoàn trả đơn HD-0162 (nhiều biến thể cùng
             condition: 'GOOD',
           },
         ],
+        exchangeItems: [{ productId: giftEdgeProdId, quantity: 1 }],
       });
     expect(exceedVariantRes.status).toBe(400);
     expect(exceedVariantRes.body.code).toBe('EXCEED_RETURNABLE_QUANTITY');
@@ -409,21 +413,22 @@ describe('Regression Test: Hoàn trả đơn HD-0162 (nhiều biến thể cùng
     expect(calcRes.body.data.returnTotal).toBe(4680000);
     expect(calcRes.body.data.refundAmount).toBe(4680000);
 
-    // Thực hiện hoàn trả -> khách nhận lại trọn vẹn 4.680.000 (gồm 180.000 phí thẻ)
+    // Thực hiện đổi sang món phụ kiện 25.000đ -> khách nhận lại 4.680.000 - 25.000 (gồm đủ 180.000 phí thẻ)
     const retCardRes = await request(app)
       .post('/api/v1/returns')
       .set('x-user-id', 'sales1')
       .send({
         orderId: cardOrderRes.body.data._id,
-        type: 'RETURN',
+        type: 'EXCHANGE',
         refundMethod: 'BANKING',
         returnItems: [
           { lineIndex: 0, productId: sypikProdId, color: 'Hồng', quantity: 1, condition: 'GOOD' },
         ],
+        exchangeItems: [{ productId: giftEdgeProdId, quantity: 1 }],
       });
     expect(retCardRes.status).toBe(201);
     expect(retCardRes.body.data.returnExchange.refundedCardFee).toBe(180000);
-    expect(retCardRes.body.data.returnExchange.refundAmount).toBe(4680000);
+    expect(retCardRes.body.data.returnExchange.refundAmount).toBe(4680000 - 25000);
     expect(retCardRes.body.data.order.status).toBe('FULLY_RETURNED');
   });
 
@@ -491,7 +496,7 @@ describe('Regression Test: Hoàn trả đơn HD-0162 (nhiều biến thể cùng
         exchangeItems: [],
       });
     expect(emptyExRes.status).toBe(400);
-    expect(emptyExRes.body.code).toBe('EMPTY_EXCHANGE_ITEMS');
+    expect(emptyExRes.body.code).toBe('RETURN_DISABLED');
 
     // Chặn sản phẩm đổi có nhiều biến thể đang còn hàng nhưng không truyền color/size
     const missingVarRes = await request(app)

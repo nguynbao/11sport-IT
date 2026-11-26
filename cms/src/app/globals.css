@@ -271,3 +271,161 @@ html.dark img[src="/logo-11sport.svg"]:not([data-keep-logo]),
 @media print {
   html.dark img[src="/logo-11sport.svg"] { content: url("/logo-11sport.svg"); }
 }
+
+/* =====================================================================
+   RESPONSIVE MOBILE: bảng (<table data-cards>) tự chuyển thành dạng card dọc
+   thay vì cuộn ngang; nhãn cột lấy từ data-label (gắn bởi useMobileTableLabels).
+   ===================================================================== */
+@media (max-width: 767px) {
+  table[data-cards] {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    border-collapse: separate;
+  }
+  table[data-cards] > thead { display: none !important; }
+  table[data-cards] > tbody,
+  table[data-cards] > tfoot { display: block !important; }
+
+  table[data-cards] > tbody > tr,
+  table[data-cards] > tfoot > tr {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin: 10px 4px;
+    padding: 12px;
+    border: 1px solid rgba(203, 213, 225, 0.75) !important;
+    border-radius: 16px;
+    background-color: #ffffff;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.05);
+  }
+  html.dark table[data-cards] > tbody > tr,
+  html.dark table[data-cards] > tfoot > tr {
+    background-color: #212121;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+  }
+
+  table[data-cards] > tbody > tr > td,
+  table[data-cards] > tfoot > tr > td {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    padding: 8px 10px !important;
+    text-align: left !important;
+    border: 0 !important;
+    border-radius: 10px;
+    background-color: #f8fafc;
+    overflow-wrap: break-word;
+    word-break: normal !important;
+    white-space: normal !important;
+  }
+  html.dark table[data-cards] > tbody > tr > td,
+  html.dark table[data-cards] > tfoot > tr > td {
+    background-color: rgba(255, 255, 255, 0.04);
+  }
+
+  /* Ô đầu tiên làm phần header của thẻ, chiếm trọn chiều ngang */
+  table[data-cards] > tbody > tr > td:first-child,
+  table[data-cards] > tfoot > tr > td:first-child {
+    grid-column: 1 / -1;
+    padding: 2px 2px 10px !important;
+    border-radius: 0;
+    background-color: transparent !important;
+    border-bottom: 1px dashed rgba(148, 163, 184, 0.35) !important;
+  }
+
+  /* Cột thao tác / hành động chiếm trọn chiều ngang */
+  table[data-cards] > tbody > tr > td[data-label*="Thao tác" i],
+  table[data-cards] > tbody > tr > td[data-label*="Hành động" i],
+  table[data-cards] > tbody > tr > td[data-label*="Xử lý" i] {
+    grid-column: 1 / -1;
+    background-color: transparent !important;
+    padding: 4px 0 0 !important;
+  }
+
+  table[data-cards] > tbody > tr > td[data-label]::before,
+  table[data-cards] > tfoot > tr > td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 3px;
+    text-align: left;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: #64748b;
+  }
+  html.dark table[data-cards] > tbody > tr > td[data-label]::before,
+  html.dark table[data-cards] > tfoot > tr > td[data-label]::before { color: #9a9a9b; }
+
+  /* Đảm bảo select / input / flex bên trong ô không tràn mép card */
+  table[data-cards] td select,
+  table[data-cards] td input {
+    max-width: 100% !important;
+    box-sizing: border-box;
+  }
+  table[data-cards] > tbody > tr > td > div.flex,
+  table[data-cards] > tbody > tr > td > .flex {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+
+  /* Nút mở popup xem đầy đủ nội dung trên mobile */
+  .cms-mobile-detail-cell {
+    grid-column: 1 / -1;
+    padding: 4px 0 0 !important;
+    background-color: transparent !important;
+    border-bottom: 0 !important;
+  }
+  .cms-mobile-detail-btn {
+    width: 100%;
+    padding: 9px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(203, 213, 225, 0.85);
+    background-color: #f1f5f9;
+    color: #1e293b;
+    font-size: 12px;
+    font-weight: 700;
+    text-align: center;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+  }
+  .cms-mobile-detail-btn:active {
+    background-color: #e2e8f0;
+  }
+  html.dark .cms-mobile-detail-btn {
+    background-color: #2d2d2d;
+    color: #e8b020;
+    border-color: #3a3a3a;
+  }
+
+  /* Dòng chi tiết (colSpan) & dòng trống: hiển thị dạng khối, bỏ khung card lồng thừa */
+  table[data-cards] > tbody > tr > td[colspan],
+  table[data-cards] > tfoot > tr > td[colspan] {
+    grid-column: 1 / -1;
+    display: block !important;
+    text-align: left !important;
+    padding: 8px 0 !important;
+    background-color: transparent !important;
+  }
+  table[data-cards] > tbody > tr > td:empty,
+  table[data-cards] > tfoot > tr > td:empty { display: none !important; }
+
+  /* Cuộn ngang còn lại (bảng không chuyển card) có thanh cuộn mảnh & vuốt mượt */
+  .overflow-x-auto { -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
+}
+
+/* Modal/chi tiết: sát mép màn hình nhỏ, cao tối đa theo dvh để nút Lưu/Đóng luôn thấy được */
+@media (max-width: 639px) {
+  .fixed.inset-0.z-50.items-center { padding: 8px !important; }
+  .fixed.inset-0.z-50.items-center > div {
+    max-width: 100% !important;
+    max-height: calc(100dvh - 16px) !important;
+  }
+}
+
+/* Utility ẩn thanh cuộn cho tab ngang trên mobile */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

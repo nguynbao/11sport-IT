@@ -9,9 +9,9 @@ import {
   generateVariantProductCode,
   isCompactBarcodeMatchVariant,
   toCompactBarcode128,
-} from '../src/utils/productCode';
-import { encodeCode128BPattern, encodeCode128RawPattern } from '../src/utils/windowsPrinter';
-import { isScannedCodeMatchServer, matchTagToItems } from '../src/utils/tagMatch';
+} from '../src/shared/productCode';
+import { encodeCode128BPattern, encodeCode128RawPattern } from '../src/infra/windowsPrinter';
+import { isScannedCodeMatchServer, matchTagToItems } from '../src/shared/tagMatch';
 
 const app = createApp();
 

@@ -24,6 +24,36 @@
     "fields": {}
   }
   ```
+- **Quy ước phân trang & sắp xếp opt-in (`v5.1`)**:
+  - Phân trang chỉ kích hoạt khi query có `page` hoặc `pageSize` (để tương thích ngược với `web/` và các luồng export lấy toàn bộ). Nếu **không truyền** `page` và `pageSize`, server trả về toàn bộ danh sách như cũ.
+  - **Query params**:
+    - `page` (integer ≥ 1, mặc định `1`): số trang hiện tại. Nếu vượt quá `totalPages`, server tự kẹp về trang cuối (`totalPages`) thay vì báo lỗi.
+    - `pageSize` (integer `1..200`, mặc định `20`): số phần tử mỗi trang (tự kẹp vào `[1, 200]`).
+    - `sortBy` (string, tùy chọn) & `sortOrder` (`asc` | `desc`, tùy chọn): sắp xếp phía server (luôn có tie-breaker theo `_id` / `createdAt` để trang ổn định).
+  - **Response `meta.pagination` & `meta.summary`**:
+    ```json
+    {
+      "data": [],
+      "meta": {
+        "pagination": {
+          "page": 1,
+          "pageSize": 20,
+          "total": 134,
+          "totalPages": 7,
+          "hasNext": true,
+          "hasPrev": false
+        },
+        "summary": {}
+      }
+    }
+    ```
+  - **Các endpoint danh sách hỗ trợ phân trang opt-in**:
+    - Nhân sự & Ca: `GET /staff`, `GET /leave-requests`, `GET /attendance/history`, `GET /attendance/timesheet` (phân trang trên `data.rows`), `GET /shifts/handover`
+    - Danh mục & Hàng hóa: `GET /categories`, `GET /brands`, `GET /products` (`meta.summary.totalProducts`)
+    - Kho: `GET /inventory/report` (`meta.summary`: `totalFloor1Qty`, `totalFloor2Qty`, `totalStockQty`, `totalCostInventoryValue`, `totalSellInventoryValue`, `totalExpectedMargin`), `GET /inventory/movements`, `GET /inventory/transfers`, `GET /imports`
+    - Bán hàng & Công nợ: `GET /orders` (`meta.summary`: `totalOrders`, `totalRevenue`, `totalDebtRemaining`), `GET /returns`, `GET /customers`
+    - Khuyến mãi & Dịch vụ: `GET /promotions`, `GET /service-types`, `GET /service-orders` (`meta.summary`: `totalRevenue`, `totalRemaining`)
+    - Báo cáo: `GET /reports/push-products`, `GET /reports/revenue-dashboard` (`topPage`/`topPageSize`, `dailyPage`/`dailyPageSize` cho 2 bảng, KPI/biểu đồ giữ nguyên toàn kỳ), `GET /reports/staff-activity` (`staffPage`/`staffPageSize` hoặc `page`/`pageSize` cho bảng nhân viên)
 
 ---
 
@@ -377,7 +407,11 @@
       ]
     }
     ```
-  - Nghiệp vụ:
+  - Nghiệp vụ & Phân quyền:
+    - **Phân quyền Trả hàng hoàn tiền (`type === "RETURN"`) vs Đổi hàng (`type === "EXCHANGE"`)**:
+      - `RETURN` (trả hàng hoàn tiền theo đúng số tiền bán thực tế, không có `exchangeItems`): **chỉ role `CEO`, `ADMIN`, `ACCOUNTANT`** được phép thực hiện (trên CMS). Role khác (như `SALES`) gọi sẽ bị chặn `403 RETURN_ROLE_FORBIDDEN`.
+      - `RETURN` bắt buộc truyền `note` (lý do trả hàng khác rỗng) → thiếu trả `400 RETURN_NOTE_REQUIRED`.
+      - `EXCHANGE`: `CEO`, `ADMIN`, `ACCOUNTANT`, `SALES` đều thực hiện được; bắt buộc có `exchangeItems` (`400 EXCHANGE_ITEMS_REQUIRED` nếu thiếu).
     - Khớp chính xác từng dòng hàng trong `order.items` theo `lineIndex` (ưu tiên nếu truyền và khớp `productId`), hoặc theo `productId + (color, size)` còn hạn mức trả; nếu client không truyền `color`/`size`/`lineIndex` khi đơn có nhiều biến thể cùng `productId`, hệ thống tự động phân bổ vào các dòng cùng `productId` còn hạn mức trả thay vì cộng dồn vào dòng đầu tiên.
     - Kiểm tra số lượng trả của từng dòng không vượt quá `purchasedQty - alreadyReturnedQty`.
     - Hàng trả có `condition === "GOOD"` được cộng lại vào tồn Kho Tầng 1 đúng biến thể `(color, size)` (`+quantity`), ghi `StockMovement` loại `RETURN` / `EXCHANGE_IN`. Hàng `DAMAGED` không cộng tồn kho bán.
@@ -399,6 +433,13 @@
       - `refundedCardFee`: nếu đơn gốc thanh toán bằng thẻ có thu phí (`order.cardFee > 0`), hoàn lại phí thẻ cho khách theo tỷ lệ giá trị hàng trả trên `afterBillDiscount` (`S - B`, tương đương tỷ lệ trên `subtotal`), hoặc hoàn trọn vẹn toàn bộ phần phí thẻ còn lại của đơn khi tất cả các dòng hàng có giá trị trong đơn đã được trả hết, đảm bảo tổng phí thẻ hoàn qua các lần không vượt quá `order.cardFee`. Nếu đơn gốc không thu phí thẻ thì `refundedCardFee = 0`.
       - `returnTotal = returnSubtotal + refundedCardFee`.
       - `netDifference = exchangeTotal - returnTotal` (dương: khách trả thêm `additionalCharge` thu ngay tại quầy không cộng vào nợ; âm: tổng nghĩa vụ hoàn cho khách `refundAmount = |netDifference|`).
+      - **Quy tắc đổi lên giá trị theo giá niêm yết (`EXCHANGE_DOWNGRADE_NOT_ALLOWED`)**:
+        - So sánh tổng giá trị niêm yết của hàng đổi mới (`exchangeListedTotal = Σ originalUnitPrice_exchange * qty`) với tổng giá trị niêm yết của hàng trả lại (`returnListedTotal = Σ (isGift ? 0 : originalUnitPrice_return) * qty`).
+        - Cho phép đổi ngang giá hoặc đổi lên (`exchangeListedTotal >= returnListedTotal`).
+        - Nếu `exchangeListedTotal < returnListedTotal` (`isDowngrade = true`, `listedShortfall = returnListedTotal - exchangeListedTotal`):
+          - Chỉ role `CEO` hoặc `ADMIN` được phép ngoại lệ (`canOverrideDowngrade = true`).
+          - Mọi role khác khi gọi `POST /api/v1/returns` sẽ bị từ chối với `400 EXCHANGE_DOWNGRADE_NOT_ALLOWED`.
+          - `POST /api/v1/returns/calculate` trả kèm `returnListedTotal`, `exchangeListedTotal`, `listedShortfall`, `isDowngrade`, `canOverrideDowngrade`.
     - **Xử lý trả/đổi hàng trên đơn có Công nợ (`order.debtAmount > 0`) *(v4.1 — BR-03..BR-13)***:
       - Khi `netDifference < 0` (`refundAmount > 0`) và đơn gốc đang còn nợ (`debtAmount > 0`): hệ thống **tự động cấn trừ vào dư nợ trước**, chỉ hoàn tiền mặt/chuyển khoản phần vượt quá dư nợ:
         - `debtBefore = order.debtAmount`
