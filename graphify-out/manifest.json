@@ -2706,9 +2706,9 @@
     "semantic_hash": ""
   },
   "cms/src/features/catalog/components/ProductCatalogTable.tsx": {
-    "mtime": 1795662836.59596,
-    "seen": 1795663309.32807,
-    "ast_hash": "0834a1f7a04df24da2d2d5bc08a0ec59",
+    "mtime": 1795679063.5798993,
+    "seen": 1795679106.5740092,
+    "ast_hash": "a925eeedbb741936081517b384f2e1f2",
     "semantic_hash": ""
   },
   "cms/src/features/catalog/components/ProductCatalogVariantSection.tsx": {
@@ -4617,6 +4617,12 @@
     "mtime": 1795678135.5143268,
     "seen": 1795678487.097604,
     "ast_hash": "e141a20ffe613bdcc5556ea0344d44c3",
+    "semantic_hash": ""
+  },
+  "cms/src/features/catalog/components/ProductCatalogMobileCards.tsx": {
+    "mtime": 1795679060.3832743,
+    "seen": 1795679106.574005,
+    "ast_hash": "8c8d7057ed1e3e5921bb2df9cf4dff2d",
     "semantic_hash": ""
   },
   "cms/package-lock.json": {

@@ -18,6 +18,7 @@ import React from "react";
 import { ProductCatalogViewModel } from "../hooks/useProductCatalog";
 import { PaginationBar } from "@/shared/ui/PaginationBar";
 import { ProductCatalogVariantSection } from "./ProductCatalogVariantSection";
+import { ProductCatalogMobileCards } from "./ProductCatalogMobileCards";
 
 export function ProductCatalogTable({ vm }: { vm: ProductCatalogViewModel }) {
   const {
@@ -44,8 +45,9 @@ export function ProductCatalogTable({ vm }: { vm: ProductCatalogViewModel }) {
 
   return (
     <>
-        <div className="overflow-x-auto border border-slate-200 rounded-xl">
-          <table data-cards className="w-full text-xs text-left">
+        <ProductCatalogMobileCards vm={vm} />
+        <div className="hidden md:block overflow-x-auto border border-slate-200 rounded-xl">
+          <table className="w-full text-xs text-left">
             <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 uppercase">
               <tr>
                 <th className="py-3 px-3 w-12 text-center">STT</th>
