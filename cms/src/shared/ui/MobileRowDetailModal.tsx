@@ -48,11 +48,11 @@ export function MobileRowDetailModal() {
     >
       <div className="divide-y divide-slate-100">
         {(detail?.fields || []).map((f, i) => (
-          <div key={`${f.label}-${i}`} className="py-2.5 first:pt-0 last:pb-0 space-y-1">
+          <div key={`${f.label}-${i}`} className="py-3 first:pt-0 last:pb-0 space-y-1.5">
             <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
               {f.label}
             </div>
-            <div className="text-sm font-medium text-slate-900 whitespace-pre-wrap break-words leading-relaxed">
+            <div className="text-[13px] font-semibold text-slate-900 whitespace-pre-line break-words leading-relaxed">
               {f.text || "—"}
             </div>
           </div>

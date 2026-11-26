@@ -234,11 +234,12 @@ export function RevenueOverviewTab({ vm }: { vm: RevenueDashboardViewModel }) {
                                   {/* Nhãn giá trị nằm ngay trên đỉnh cột có doanh thu */}
                                   {hasRev && (
                                     <span
-                                      className="
+                                      className={`
+                                      ${chartSeries.length > 8 ? "hidden sm:inline" : "inline"}
                                       absolute left-1/2 -translate-x-1/2 mb-1
                                       text-[9px] sm:text-[10px] font-mono font-extrabold text-brand-ink
                                       whitespace-nowrap pointer-events-none transition-transform duration-200 group-hover:-translate-y-0.5
-                                    "
+                                    `}
                                       style={{ bottom: `${Math.max(revH, profH)}%` }}
                                     >
                                       {formatShortVND(d.netRevenue)}

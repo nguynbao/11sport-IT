@@ -9,34 +9,75 @@ function cellText(cell: HTMLTableCellElement): string {
 }
 
 function extractFullCellText(cell: HTMLTableCellElement): string {
-  const parts: string[] = [];
-  const walk = (el: Element) => {
-    const title = el.getAttribute("title");
-    if (title && title.trim() && !title.includes("Bấm") && !title.includes("Sửa") && !title.includes("Xóa")) {
-      parts.push(title.trim());
+  const lines: string[] = [];
+
+  const pushLine = (txt: string) => {
+    const clean = txt.replace(/\s+/g, " ").trim();
+    if (!clean) return;
+    if (lines[lines.length - 1] !== clean) {
+      lines.push(clean);
     }
+  };
+
+  const walk = (el: Element) => {
+    if (el.tagName === "BUTTON") return;
     if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
-      if (el.value) parts.push(el.value);
+      if (el.value) pushLine(el.value);
       return;
     }
     if (el instanceof HTMLSelectElement) {
       const opt = el.options[el.selectedIndex];
-      if (opt?.text) parts.push(opt.text);
+      if (opt?.text) pushLine(opt.text);
       return;
     }
-    if (el.children.length === 0) {
-      const txt = (el.textContent || "").replace(/\s+/g, " ").trim();
-      if (txt) parts.push(txt);
+    // Giữ title ngắn (vd: địa chỉ đầy đủ bị truncate), bỏ qua tooltip hướng dẫn
+    const title = el.getAttribute("title");
+    if (
+      title &&
+      title.trim() &&
+      title.length <= 120 &&
+      !/(bấm|nhấn|chọn|sửa|xóa|in tem|cấu hình)/i.test(title) &&
+      el.classList.contains("truncate")
+    ) {
+      pushLine(title);
       return;
     }
-    Array.from(el.children).forEach(walk);
+
+    const childEls = Array.from(el.children).filter((c) => c.tagName !== "BUTTON");
+    if (childEls.length === 0) {
+      pushLine(el.textContent || "");
+      return;
+    }
+
+    // Nếu là div/p block con trực tiếp, thu thập từng dòng riêng cho thoáng
+    const hasBlockChildren = childEls.some((c) =>
+      ["DIV", "P", "LI", "TR"].includes(c.tagName)
+    );
+    if (hasBlockChildren) {
+      childEls.forEach(walk);
+    } else {
+      const inlineParts: string[] = [];
+      childEls.forEach((c) => {
+        if (c instanceof HTMLInputElement && c.value) inlineParts.push(c.value);
+        else if (c instanceof HTMLSelectElement) {
+          const opt = c.options[c.selectedIndex];
+          if (opt?.text) inlineParts.push(opt.text);
+        } else {
+          const t = (c.textContent || "").replace(/\s+/g, " ").trim();
+          if (t) inlineParts.push(t);
+        }
+      });
+      if (inlineParts.length > 0) {
+        pushLine(inlineParts.join(" · "));
+      }
+    }
   };
+
   if (cell.children.length === 0) {
     return cellText(cell);
   }
   Array.from(cell.children).forEach(walk);
-  const joined = parts.join(" · ").replace(/\s+/g, " ").trim();
-  return joined || cellText(cell);
+  return lines.join("\n").trim() || cellText(cell);
 }
 
 /**
@@ -124,9 +165,13 @@ export function applyTableLabels(table: HTMLTableElement): void {
             if (c.classList.contains("cms-mobile-detail-cell")) return;
             const label = c.getAttribute("data-label") || "";
             if (!label || /thao tác/i.test(label)) return;
-            fields.push({ label, text: extractFullCellText(c) });
+            const text = extractFullCellText(c);
+            if (text) fields.push({ label, text });
           });
-          const title = fields[0]?.text ? `${fields[0].label}: ${fields[0].text}` : "Chi tiết";
+          const firstLine = (fields[0]?.text || "").split("\n")[0]?.trim();
+          const title = firstLine
+            ? `${fields[0].label}: ${firstLine.slice(0, 48)}`
+            : "Chi tiết";
           window.dispatchEvent(
             new CustomEvent(OPEN_ROW_DETAIL_EVENT, { detail: { title, fields } })
           );

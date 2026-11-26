@@ -53,19 +53,19 @@ export function PromotionFormModal({ vm }: { vm: PromotionModuleViewModel }) {
     <>
       {/* MODAL TẠO / SỬA CHƯƠNG TRÌNH KHUYẾN MÃI */}
       {showModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/65 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden">
+        <div className="fixed inset-0 z-50 bg-slate-900/65 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92dvh] sm:max-h-[92vh] flex flex-col overflow-hidden">
             {/* Header Modal */}
-            <div className="px-5 py-4 bg-teal-600 text-white flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <Gift className="w-5 h-5 text-amber-400" />
-                <div>
-                  <h3 className="font-extrabold text-sm sm:text-base">
+            <div className="px-4 sm:px-5 py-3.5 sm:py-4 bg-teal-600 text-slate-900 flex items-center justify-between gap-3 shrink-0">
+              <div className="flex items-start sm:items-center gap-2.5 min-w-0">
+                <Gift className="w-5 h-5 text-slate-900 shrink-0 mt-0.5 sm:mt-0" />
+                <div className="min-w-0">
+                  <h3 className="font-extrabold text-sm sm:text-base text-slate-900 leading-snug">
                     {editingPromo
                       ? `Chỉnh sửa Chương trình Khuyến mãi (${editingPromo.code})`
                       : "Tạo Chương trình Khuyến mãi mới"}
                   </h3>
-                  <p className="text-[11px] text-slate-300">
+                  <p className="text-[11px] sm:text-xs font-medium text-slate-900/80 leading-snug mt-0.5">
                     Khi Sales bấm thêm sản phẩm vào giỏ hàng POS, hệ thống sẽ tự động kiểm tra và thêm phụ kiện tặng kèm / giảm giá theo cấu hình dưới đây
                   </p>
                 </div>
@@ -73,9 +73,10 @@ export function PromotionFormModal({ vm }: { vm: PromotionModuleViewModel }) {
               <button
                 type="button"
                 onClick={() => setShowModal(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-teal-700"
+                aria-label="Đóng"
+                className="p-2 rounded-xl text-slate-900 hover:bg-black/10 shrink-0 cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
