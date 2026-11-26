@@ -6,6 +6,7 @@ import { ResponsiveModal } from "./ResponsiveModal";
 export interface RowDetailField {
   label: string;
   text: string;
+  fullWidth?: boolean;
 }
 
 export interface RowDetailPayload {
@@ -34,7 +35,7 @@ export function MobileRowDetailModal() {
       open={Boolean(detail)}
       onClose={() => setDetail(null)}
       title={detail?.title || "Chi tiết dòng"}
-      subtitle="Xem đầy đủ nội dung"
+      subtitle="Thông tin chi tiết"
       maxWidthClass="max-w-lg"
       footer={
         <button
@@ -46,18 +47,42 @@ export function MobileRowDetailModal() {
         </button>
       }
     >
-      <div className="divide-y divide-slate-100">
-        {(detail?.fields || []).map((f, i) => (
-          <div key={`${f.label}-${i}`} className="py-3 first:pt-0 last:pb-0 space-y-1.5">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              {f.label}
+      <dl className="divide-y divide-slate-100">
+        {(detail?.fields || []).map((f, i) => {
+          const isBlock =
+            f.fullWidth || f.text.includes("\n") || f.text.length > 30;
+
+          if (isBlock) {
+            return (
+              <div
+                key={`${f.label}-${i}`}
+                className="py-3 first:pt-0 last:pb-0 space-y-1.5"
+              >
+                <dt className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  {f.label}
+                </dt>
+                <dd className="text-[13px] font-semibold text-slate-900 whitespace-pre-line break-words leading-relaxed">
+                  {f.text || "—"}
+                </dd>
+              </div>
+            );
+          }
+
+          return (
+            <div
+              key={`${f.label}-${i}`}
+              className="py-2.5 first:pt-0 last:pb-0 flex items-baseline justify-between gap-4"
+            >
+              <dt className="text-xs font-medium text-slate-500 shrink-0">
+                {f.label}
+              </dt>
+              <dd className="text-[13px] font-bold text-slate-900 text-right break-words">
+                {f.text || "—"}
+              </dd>
             </div>
-            <div className="text-[13px] font-semibold text-slate-900 whitespace-pre-line break-words leading-relaxed">
-              {f.text || "—"}
-            </div>
-          </div>
-        ))}
-      </div>
+          );
+        })}
+      </dl>
     </ResponsiveModal>
   );
 }

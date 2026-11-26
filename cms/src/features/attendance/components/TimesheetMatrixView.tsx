@@ -24,7 +24,7 @@ export function MatrixView({
       <table className="w-full border-separate border-spacing-0 text-xs">
         <thead>
           <tr>
-            <th className="sticky top-0 left-0 z-30 bg-slate-100 border-b border-r border-slate-200 px-2.5 sm:px-3 py-2 text-left font-bold text-slate-700 min-w-[130px] sm:min-w-[190px]">
+            <th className="sticky top-0 left-0 z-30 bg-slate-100 border-b border-r border-slate-200 px-2 sm:px-3 py-2 text-left font-bold text-slate-700 min-w-[112px] sm:min-w-[190px]">
               Nhân viên
             </th>
             {data.days.map((d) => {
@@ -48,13 +48,13 @@ export function MatrixView({
                 </th>
               );
             })}
-            <th className="sticky top-0 right-[60px] z-30 bg-teal-50 border-b border-l border-slate-200 px-2 py-1.5 text-center font-bold text-brand-ink min-w-[70px]">
+            <th className="sticky top-0 md:right-[60px] z-20 md:z-30 bg-teal-50 border-b border-l border-slate-200 px-2 py-1.5 text-center font-bold text-brand-ink min-w-[70px]">
               <div>Công</div>
               <div className="text-[9px] font-semibold text-brand-ink leading-none mt-0.5">
                 /{rows[0]?.summary.standardDays ?? (data.monthMeta?.standardDays || 26)} chuẩn
               </div>
             </th>
-            <th className="sticky top-0 right-0 z-30 bg-teal-50 border-b border-slate-200 px-2 py-1.5 text-center font-bold text-brand-ink min-w-[60px]">
+            <th className="sticky top-0 md:right-0 z-20 md:z-30 bg-teal-50 border-b border-slate-200 px-2 py-1.5 text-center font-bold text-brand-ink min-w-[60px]">
               <div>Giờ</div>
               <div className="text-[9px] font-semibold text-brand-ink leading-none mt-0.5">&amp; TC</div>
             </th>
@@ -65,8 +65,8 @@ export function MatrixView({
             const pct = row.summary.standardDays > 0 ? row.summary.paidUnits / row.summary.standardDays : 0;
             return (
               <tr key={row.staffId} className="group">
-                <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 border-b border-r border-slate-200 px-3 py-1.5">
-                  <div className="font-bold text-slate-900 truncate max-w-[170px]">{row.staffName}</div>
+                <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 border-b border-r border-slate-200 px-2 sm:px-3 py-1.5">
+                  <div className="font-bold text-slate-900 truncate max-w-[96px] sm:max-w-[170px]">{row.staffName}</div>
                   <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
                     <span className="font-mono">{row.staffCode}</span>
                     <span
@@ -150,7 +150,7 @@ export function MatrixView({
                     </td>
                   );
                 })}
-                <td className="sticky right-[60px] z-10 bg-white group-hover:bg-slate-50 border-b border-l border-slate-200 px-2 py-1.5 text-center min-w-[70px]">
+                <td className="md:sticky md:right-[60px] md:z-10 bg-white group-hover:bg-slate-50 border-b border-l border-slate-200 px-2 py-1.5 text-center min-w-[70px]">
                   <div
                     className="font-extrabold text-slate-900 leading-tight"
                     title={`Đi làm: ${row.summary.workUnits} công | Nghỉ lễ hưởng lương: ${row.summary.holidayPaidDays} công | Phép có lương: ${row.summary.paidLeaveUsed || 0} công | Công chuẩn tháng: ${row.summary.standardDays} công`}
@@ -179,7 +179,7 @@ export function MatrixView({
                     />
                   </div>
                 </td>
-                <td className="sticky right-0 z-10 bg-white group-hover:bg-slate-50 border-b border-slate-200 px-2 py-1.5 text-center min-w-[60px]">
+                <td className="md:sticky md:right-0 md:z-10 bg-white group-hover:bg-slate-50 border-b border-slate-200 px-2 py-1.5 text-center min-w-[60px]">
                   <div className="font-bold text-brand-ink leading-tight">{row.summary.totalHours.toFixed(1)}</div>
                   {(row.summary.overtimeMinutes || 0) > 0 && (
                     <div

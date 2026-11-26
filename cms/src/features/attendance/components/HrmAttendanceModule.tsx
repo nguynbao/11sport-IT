@@ -48,26 +48,26 @@ export default function HrmAttendanceModule(props: { currentUser: StaffUser | nu
       )}
 
       {/* Sub Tabs Navigation */}
-      <div className="bg-white p-1.5 sm:p-2 rounded-2xl shadow-sm border border-slate-200 flex overflow-x-auto no-scrollbar sm:flex-wrap gap-1.5 sm:gap-2 [&>button]:shrink-0 [&>button]:whitespace-nowrap">
+      <div className="bg-white p-1.5 sm:p-2 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap gap-1.5 sm:gap-2 [&>button]:whitespace-nowrap">
         <button
           onClick={() => setActiveTab("CALENDAR")}
-          className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition flex items-center gap-2 ${activeTab === "CALENDAR"
+          className={`px-2.5 sm:px-4 py-2 sm:py-2.5 rounded-xl font-semibold text-xs sm:text-sm transition flex items-center gap-1.5 sm:gap-2 ${activeTab === "CALENDAR"
             ? "bg-teal-600 text-white shadow-md"
             : "text-slate-600 hover:bg-slate-100"
             }`}
         >
-          <CalendarIcon className="w-4 h-4" />
+          <CalendarIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
           Lịch Công ty & Ngày Lễ
         </button>
 
         <button
           onClick={() => setActiveTab("LEAVE_REQUESTS")}
-          className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition flex items-center gap-2 ${activeTab === "LEAVE_REQUESTS"
+          className={`px-2.5 sm:px-4 py-2 sm:py-2.5 rounded-xl font-semibold text-xs sm:text-sm transition flex items-center gap-1.5 sm:gap-2 ${activeTab === "LEAVE_REQUESTS"
             ? "bg-teal-600 text-white shadow-md"
             : "text-slate-600 hover:bg-slate-100"
             }`}
         >
-          <FileText className="w-4 h-4" />
+          <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
           Duyệt Đơn Từ & WFH
           {pendingCount > 0 && (
             <span
@@ -82,12 +82,12 @@ export default function HrmAttendanceModule(props: { currentUser: StaffUser | nu
 
         <button
           onClick={() => setActiveTab("SHIFTS")}
-          className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition flex items-center gap-2 ${activeTab === "SHIFTS"
+          className={`px-2.5 sm:px-4 py-2 sm:py-2.5 rounded-xl font-semibold text-xs sm:text-sm transition flex items-center gap-1.5 sm:gap-2 ${activeTab === "SHIFTS"
             ? "bg-teal-600 text-white shadow-md"
             : "text-slate-600 hover:bg-slate-100"
             }`}
         >
-          <Users className="w-4 h-4" />
+          <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
           Xếp Ca Tuần
           {pendingShiftStaffCount > 0 && (
             <span
@@ -102,23 +102,23 @@ export default function HrmAttendanceModule(props: { currentUser: StaffUser | nu
 
         <button
           onClick={() => setActiveTab("ATTENDANCE_LOG")}
-          className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition flex items-center gap-2 ${activeTab === "ATTENDANCE_LOG"
+          className={`px-2.5 sm:px-4 py-2 sm:py-2.5 rounded-xl font-semibold text-xs sm:text-sm transition flex items-center gap-1.5 sm:gap-2 ${activeTab === "ATTENDANCE_LOG"
             ? "bg-teal-600 text-white shadow-md"
             : "text-slate-600 hover:bg-slate-100"
             }`}
         >
-          <Clock className="w-4 h-4" />
+          <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
           Bảng Chấm Công Toàn Cty
         </button>
 
         <button
           onClick={() => setActiveTab("STAFF_ACCOUNTS")}
-          className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition flex items-center gap-2 ${activeTab === "STAFF_ACCOUNTS"
+          className={`px-2.5 sm:px-4 py-2 sm:py-2.5 rounded-xl font-semibold text-xs sm:text-sm transition flex items-center gap-1.5 sm:gap-2 ${activeTab === "STAFF_ACCOUNTS"
             ? "bg-teal-600 text-white shadow-md"
             : "text-slate-600 hover:bg-slate-100"
             }`}
         >
-          <UserPlus className="w-4 h-4" />
+          <UserPlus className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
           Tạo Tài Khoản & Hồ Sơ NV
         </button>
       </div>
@@ -126,17 +126,17 @@ export default function HrmAttendanceModule(props: { currentUser: StaffUser | nu
       <HrmHolidaysTab vm={vm} />
       {/* ================= TAB 2: LEAVE REQUESTS ================= */}
       {activeTab === "LEAVE_REQUESTS" && (
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 space-y-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+        <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-slate-200 space-y-4 sm:space-y-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 pb-3.5 sm:pb-4 border-b border-slate-100">
             <div>
-              <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                <FileText className="w-6 h-6 text-brand-ink" />
+              <h2 className="text-base sm:text-xl font-bold text-slate-900 flex items-center gap-2">
+                <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-brand-ink shrink-0" />
                 Phê Duyệt Đơn Từ (WFH, Nghỉ phép, Đổi ngày off, Đi trễ/Về sớm)
               </h2>
             </div>
 
             {/* Filters */}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
               <select
                 value={reqFilterType}
                 onChange={(e) => setReqFilterType(e.target.value)}

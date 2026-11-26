@@ -111,8 +111,15 @@ export function ManualAttendanceModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl p-5 space-y-3.5">
+    <div
+      className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-t-2xl sm:rounded-3xl max-w-lg w-full shadow-2xl p-4 sm:p-5 space-y-3.5 max-h-[92dvh] overflow-y-auto pb-[max(1rem,env(safe-area-inset-bottom))]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sm:hidden w-10 h-1 rounded-full bg-slate-300 mx-auto" />
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-base font-bold text-slate-900">Chấm công bù / Chấm OFF</h3>

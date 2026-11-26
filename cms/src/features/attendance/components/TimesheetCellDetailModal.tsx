@@ -142,9 +142,16 @@ export function CellDetailModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-100 flex items-start justify-between">
+    <div
+      className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-t-2xl sm:rounded-3xl max-w-lg w-full shadow-2xl overflow-y-auto max-h-[92dvh] pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sm:hidden w-10 h-1 rounded-full bg-slate-300 mx-auto mt-2.5" />
+        <div className="px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-100 flex items-start justify-between">
           <div>
             <div className="text-xs text-slate-500 font-semibold">
               {WEEKDAY_SHORT[day.weekday]}, {dd}/{mm}/{yy}

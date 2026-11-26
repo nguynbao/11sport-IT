@@ -7,8 +7,8 @@ ChevronLeft,
 ChevronRight,
 Plus,
 Trash2,
-X
 } from "lucide-react";
+import { ResponsiveModal } from "@/shared/ui/ResponsiveModal";
 import { HrmAttendanceViewModel } from "../hooks/useHrmAttendance";
 
 export function HrmHolidaysTab({ vm }: { vm: HrmAttendanceViewModel }) {
@@ -92,23 +92,23 @@ export function HrmHolidaysTab({ vm }: { vm: HrmAttendanceViewModel }) {
             {/* CỘT TRÁI (7/12): CUỐN LỊCH THEO THÁNG NHỎ GỌN */}
             <div className="lg:col-span-7 xl:col-span-8 bg-slate-50/50 border border-slate-200/80 rounded-2xl p-3.5 sm:p-4 space-y-3">
               {/* Thanh điều hướng Tháng / Năm */}
-              <div className="flex items-center justify-between px-1">
-                <div className="flex items-center gap-2.5">
-                  <h3 className="text-lg sm:text-xl font-extrabold text-slate-900">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+                <div className="flex items-center gap-2 min-w-0">
+                  <h3 className="text-base sm:text-xl font-extrabold text-slate-900 whitespace-nowrap">
                     Tháng {calendarMonth + 1}, {calendarYear}
                   </h3>
                   {currentMonthHolidays.length > 0 && (
-                    <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 text-[11px] font-bold">
+                    <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 text-[11px] font-bold whitespace-nowrap shrink-0">
                       {currentMonthHolidays.length} lễ
                     </span>
                   )}
                 </div>
 
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 shrink-0">
                   <button
                     type="button"
                     onClick={handleGoToday}
-                    className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs transition cursor-pointer"
+                    className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs whitespace-nowrap transition cursor-pointer"
                   >
                     Hôm nay
                   </button>
@@ -188,14 +188,20 @@ export function HrmHolidaysTab({ vm }: { vm: HrmAttendanceViewModel }) {
                             : "bg-white border-2 border-slate-300 hover:border-teal-500 shadow-2xs cursor-pointer"
                         }`}
                     >
-                      {/* Label chéo góc trên phải rõ nét: phân biệt LỄ vs SỰ KIỆN */}
+                      {/* Label chéo góc trên phải trên desktop; trên mobile dùng chấm màu gọn để không đè số ngày */}
                       {hasHoliday && (
-                        <div
-                          className={`pointer-events-none absolute top-[7px] -right-[22px] w-[76px] text-center py-[1.5px] text-[7px] leading-tight font-black uppercase tracking-tight text-white rotate-45 shadow-2xs ${isOfficial ? "bg-rose-600 dark:!bg-[#F0ABFC] dark:!text-[#4A044E]" : "bg-[#0891B2] dark:!bg-[#22D3EE] dark:!text-[#083344]"
-                            }`}
-                        >
-                          {isOfficial ? "Lễ" : "Sự kiện"}
-                        </div>
+                        <>
+                          <div
+                            className={`hidden sm:block pointer-events-none absolute top-[7px] -right-[22px] w-[76px] text-center py-[1.5px] text-[7px] leading-tight font-black uppercase tracking-tight text-white rotate-45 shadow-2xs ${isOfficial ? "bg-rose-600 dark:!bg-[#F0ABFC] dark:!text-[#4A044E]" : "bg-[#0891B2] dark:!bg-[#22D3EE] dark:!text-[#083344]"
+                              }`}
+                          >
+                            {isOfficial ? "Lễ" : "Sự kiện"}
+                          </div>
+                          <span
+                            className={`sm:hidden pointer-events-none absolute top-1.5 right-1.5 w-2 h-2 rounded-full ${isOfficial ? "bg-rose-600 dark:bg-[#F0ABFC]" : "bg-[#0891B2] dark:bg-[#22D3EE]"
+                              }`}
+                          />
+                        </>
                       )}
 
                       {/* Số ngày Dương lịch */}
@@ -355,7 +361,7 @@ export function HrmHolidaysTab({ vm }: { vm: HrmAttendanceViewModel }) {
                             handleDeleteHoliday(h._id);
                           }}
                           title="Xóa ngày lễ"
-                          className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition shrink-0 cursor-pointer"
+                          className="sm:opacity-0 sm:group-hover:opacity-100 p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition shrink-0 cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -367,21 +373,15 @@ export function HrmHolidaysTab({ vm }: { vm: HrmAttendanceViewModel }) {
             </div>
           </div>
 
-          {/* Modal Thêm ngày lễ */}
-          {showAddHolidayModal && (
-            <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-              <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-bold text-slate-900">Thêm Ngày Lễ Mới</h3>
-                  <button
-                    onClick={() => setShowAddHolidayModal(false)}
-                    className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                <form onSubmit={handleCreateHoliday} className="space-y-4">
+          {/* Modal Thêm ngày lễ (Bottom sheet trên mobile) */}
+          <ResponsiveModal
+            open={showAddHolidayModal}
+            onClose={() => setShowAddHolidayModal(false)}
+            title="Thêm Ngày Lễ Mới"
+            subtitle="Lịch Công Ty & Ngày Lễ"
+            maxWidthClass="max-w-md"
+          >
+            <form onSubmit={handleCreateHoliday} className="space-y-4">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">
                       Ngày áp dụng (YYYY-MM-DD) *
@@ -475,9 +475,7 @@ export function HrmHolidaysTab({ vm }: { vm: HrmAttendanceViewModel }) {
                     </button>
                   </div>
                 </form>
-              </div>
-            </div>
-          )}
+          </ResponsiveModal>
         </div>
       )}
 

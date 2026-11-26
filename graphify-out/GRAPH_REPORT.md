@@ -1,17 +1,17 @@
 # Graph Report - 11sport-IT  (2026-11-26)
 
 ## Corpus Check
-- 748 files · ~532,148 words
+- 748 files · ~532,362 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 9 file(s) not represented in the graph (top: (none) 3, .example 3, .css 2)
 
 ## Summary
-- 3566 nodes · 12203 edges · 152 communities (127 shown, 25 thin omitted)
+- 3566 nodes · 12207 edges · 150 communities (125 shown, 25 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 139 edges (avg confidence: 0.93)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `5901d6e4`
+- Built from commit: `8f62738b`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -38,7 +38,7 @@
 - imports.ts
 - Feature Danh mục & Sản phẩm (`catalog/`)
 - PosTab.tsx
-- formatVND
+- ExportExcelButton
 - product.service.ts
 - printerPrintLabels.ts
 - Repository
@@ -69,13 +69,12 @@
 - Đặc tả Yêu cầu Nghiệp vụ: Website Bán hàng 11 Sport (`shop/`) & CMS Quản lý Website (`cms/`)
 - StockMovement
 - Hướng dẫn Hạ tầng & Triển khai Storefront (`shop/`) - 11 Sport
-- cms/src/shared/utils/format.ts
+- PromotionRewardFields.tsx
 - web/src/features/attendance/components/MyAttendanceCalendar.tsx
 - useLeaveRequests.ts
 - staffImportParser.ts
 - updateBrand
 - compilerOptions
-- useShiftHandover.ts
 - Repository
 - compilerOptions
 - web/src/components/BarcodeLabelModal.tsx
@@ -106,7 +105,7 @@
 - scripts
 - 2. Danh sách Test Case chi tiết (`AC-01` .. `AC-08`)
 - healthcheck
-- useServiceManagement.ts
+- formatVND
 - server/scripts/check-architecture.mjs
 - PosTab.tsx
 - services/leave/index.ts
@@ -129,7 +128,6 @@
 - Nghiệp vụ Sản phẩm (`products/`)
 - Nghiệp vụ Đổi / Trả hàng (`returns/`)
 - Nghiệp vụ Nhân sự (`staff/`)
-- cms/src/shared/lib/barcodeScanner.ts
 - routes/index.ts
 - marketing/hooks/useMarketingPushProducts.ts
 - cms/src/shared/ui/VersionChecker.tsx
@@ -190,11 +188,11 @@
 ## Import Cycles
 - None detected.
 
-## Communities (152 total, 25 thin omitted)
+## Communities (150 total, 25 thin omitted)
 
 ### Community 0 - "cms/src/app/page.tsx"
-Cohesion: 0.06
-Nodes (45): CmsAuthGate(), CmsAuthGateProps, CmsChangePasswordModal(), CmsChangePasswordModalProps, CmsDrawers(), CmsDrawersProps, CmsHeader(), CmsHeaderProps (+37 more)
+Cohesion: 0.08
+Nodes (42): CmsAuthGate(), CmsAuthGateProps, CmsChangePasswordModal(), CmsChangePasswordModalProps, CmsDrawers(), CmsDrawersProps, CmsHeader(), CmsHeaderProps (+34 more)
 
 ### Community 1 - "Product"
 Cohesion: 0.13
@@ -213,8 +211,8 @@ Cohesion: 0.13
 Nodes (24): attachUserContext(), errorHandler(), Express, Request, resolveActiveStaffCached(), staffCache, ContractType, IStaff (+16 more)
 
 ### Community 5 - "web/src/features/attendance/hooks/useHeaderAttendanceBar.ts"
-Cohesion: 0.22
-Nodes (17): checkInApi(), checkOutApi(), getTodayAttendanceApi(), HeaderAttendanceBar(), Props, IncomingHandoverPopup(), LateCheckoutModal(), Props (+9 more)
+Cohesion: 0.20
+Nodes (18): checkInApi(), checkOutApi(), getTodayAttendanceApi(), HeaderAttendanceBar(), Props, IncomingHandoverPopup(), LateCheckoutModal(), Props (+10 more)
 
 ### Community 6 - "seed.ts"
 Cohesion: 0.18
@@ -250,7 +248,7 @@ Nodes (8): 1. Quy ước chung, Hợp đồng API (API Contract) - 11 Sport (v5.
 
 ### Community 14 - "ref_react"
 Cohesion: 0.07
-Nodes (74): DEBOUNCE_MS, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, PAGE_SIZE_OPTIONS, SubTab, BrandForm, BrandModuleViewModel, CODE_RE (+66 more)
+Nodes (85): DEBOUNCE_MS, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, PAGE_SIZE_OPTIONS, BrandForm, BrandModuleViewModel, CODE_RE, EMPTY_FORM (+77 more)
 
 ### Community 15 - "shared/productCode.ts"
 Cohesion: 0.06
@@ -276,9 +274,9 @@ Nodes (40): dependencies, docx-preview@^0.4.1, lucide-react@^0.460.0, mammoth@^1
 Cohesion: 0.06
 Nodes (41): dependencies, docx-preview@^0.4.1, lucide-react@^0.460.0, mammoth@^1.13.0, next@^14.2.15, react@^18.3.1, react-dom@^18.3.1, devDependencies (+33 more)
 
-### Community 22 - "formatVND"
-Cohesion: 0.16
-Nodes (25): DebtManagementModule(), DebtPaymentModal(), DebtManagementModuleProps, DebtManagementViewModel, useDebtManagement(), RevenueBreakdownCard(), AnimatedNumber(), CHART_COLORS (+17 more)
+### Community 22 - "ExportExcelButton"
+Cohesion: 0.19
+Nodes (14): BrandModule(), CategoryBrandModule(), SubTab, CategoryModule(), ProductCatalogModule(), COMMON_COLORS, COMMON_SIZES, StockStatusFilter (+6 more)
 
 ### Community 23 - "product.service.ts"
 Cohesion: 0.12
@@ -341,8 +339,8 @@ Cohesion: 0.14
 Nodes (19): fetchRecentCustomersApi(), lookupCustomerByPhoneApi(), useCustomerTab(), CheckoutCustomerSection(), CheckoutCustomerSectionProps, useClientPagination(), boundedEditDistanceLeq1(), buildAcronym() (+11 more)
 
 ### Community 38 - "ShiftHandoverModal.tsx"
-Cohesion: 0.17
-Nodes (15): CashSection(), NoteSection(), CategoryTotalsSection(), CheckoutTimeNotice(), LateReasonSection(), ProductFilterSection(), Props, ShiftHandoverFooter() (+7 more)
+Cohesion: 0.11
+Nodes (30): Props, createHandoverApi(), CashSection(), NoteSection(), CategoryTotalsSection(), Props, CheckoutTimeNotice(), LateReasonSection() (+22 more)
 
 ### Community 40 - "handover.service.ts"
 Cohesion: 0.19
@@ -384,9 +382,9 @@ Nodes (23): StockMovement, 2.3 Kho hàng, Sản phẩm & Sổ kho (`/products`, 
 Cohesion: 0.13
 Nodes (14): generateValue, key, sync, value, services, buildCommand, envVars, healthCheckPath (+6 more)
 
-### Community 53 - "cms/src/shared/utils/format.ts"
-Cohesion: 0.13
-Nodes (32): ProductCatalogTable(), ProductCatalogVariantSection(), ProductCatalogViewModel, AdminBatchImportTable(), HistoryTransfersView(), InventoryProductsTable(), InventoryTableFooter(), InventoryTransferTab() (+24 more)
+### Community 53 - "PromotionRewardFields.tsx"
+Cohesion: 0.15
+Nodes (11): PromotionConditionFields(), PromotionFormModal(), PromotionRewardFields(), PromotionModuleViewModel, EffectivePromotionStatus, Promotion, PromotionConditionCategory, PromotionConditionProduct (+3 more)
 
 ### Community 54 - "web/src/features/attendance/components/MyAttendanceCalendar.tsx"
 Cohesion: 0.11
@@ -407,10 +405,6 @@ Nodes (16): deleteBrands_ByIdHandler, getBrandsHandler, patchBrands_ByIdHandler,
 ### Community 58 - "compilerOptions"
 Cohesion: 0.15
 Nodes (13): depends_on, server, condition, web, command, container_name, depends_on, image (+5 more)
-
-### Community 59 - "useShiftHandover.ts"
-Cohesion: 0.18
-Nodes (17): Props, createHandoverApi(), Props, Props, useShiftHandover(), buildFallbackSummaries(), CheckProduct, computeShiftTiming() (+9 more)
 
 ### Community 60 - "Repository"
 Cohesion: 0.17
@@ -441,12 +435,12 @@ Cohesion: 0.12
 Nodes (39): useAttendanceTimesheet(), exportBrands(), exportCategories(), categoryNameOf(), checkersOf(), exportImports(), exportInventoryReport(), exportMovements() (+31 more)
 
 ### Community 67 - "useInventoryModule.tsx"
-Cohesion: 0.06
-Nodes (48): BrandModule(), CategoryModule(), ProductCatalogModule(), COMMON_COLORS, COMMON_SIZES, StockStatusFilter, CmsRoleBadge(), HistoryImportsView() (+40 more)
+Cohesion: 0.07
+Nodes (61): ProductCatalogTable(), ProductCatalogVariantSection(), ProductCatalogViewModel, AdminBatchImportModal(), AdminBatchImportTable(), CmsRoleBadge(), HistoryImportsView(), HistoryMovementsView() (+53 more)
 
 ### Community 68 - "utils/productCode.ts"
-Cohesion: 0.09
-Nodes (48): AdminBatchImportModal(), parseAndApplyAdminImportFile(), downloadAdminSampleCsv(), submitAdminBatchImport(), useInventoryAdminImport(), BarcodeLabelModalProps, CODE128_PATTERNS, encodeCode128Bars() (+40 more)
+Cohesion: 0.08
+Nodes (60): useInventoryScanner(), buildTelexCandidatesFromNormalized(), cleanBarcodeCode(), collapseUnikeyBackspaceStutter(), getBarcodeCandidates(), isOrderedSubsequence(), isScannedCodeMatch(), NFD_TO_TELEX_KEY (+52 more)
 
 ### Community 69 - "cms/src/app/api/printers/route.ts"
 Cohesion: 0.22
@@ -489,8 +483,8 @@ Cohesion: 0.29
 Nodes (6): 1. Thanh điều hướng & Chuyển vai trò nhanh, 2. Chi tiết luồng màn hình Nhập kho (`web/`), Các Module chính, Phần A: Giao diện `web/` (POS Bán hàng & Kho vận - Port `3000`), Phần B: Giao diện `cms/` (Quản trị - Port `3001`), Đặc tả Giao diện & Luồng màn hình - 11Sport (v1.0)
 
 ### Community 81 - "fallbackDashboard.ts"
-Cohesion: 0.31
-Nodes (11): buildClientFallbackDashboard(), computeFallbackDebtStats(), aggregateOrdersAndReturns(), computeFallbackProductAndCategoryStats(), computeFallbackServiceStats(), extractClientOrderDebtMeta(), parseLocalDateBound(), Order (+3 more)
+Cohesion: 0.23
+Nodes (14): OrdersReturnsModuleProps, DebtManagementModuleProps, buildClientFallbackDashboard(), computeFallbackDebtStats(), aggregateOrdersAndReturns(), computeFallbackProductAndCategoryStats(), computeFallbackServiceStats(), extractClientOrderDebtMeta() (+6 more)
 
 ### Community 82 - "2.19 Chuẩn hoá Mã Sản Phẩm `CATE + BRAND + VERSION + MÀU + SIZE`, Thương hiệu (`/brands`) & Giá theo biến thể *(v5.0)*"
 Cohesion: 0.33
@@ -512,9 +506,9 @@ Nodes (16): WebAuthGate(), WebAuthGateProps, WebBottomNavbar(), WebChangePasswor
 Cohesion: 0.50
 Nodes (3): Cài đặt (Claude Code), Cách dùng, Skill GitHub gợi ý cho từng phòng ban
 
-### Community 96 - "useServiceManagement.ts"
+### Community 96 - "formatVND"
 Cohesion: 0.06
-Nodes (37): useCmsShell(), STATUS_INFO, STATUS_INFO, formatDateDisplay(), ServiceOrdersTab(), STATUS_INFO, STATUS_INFO, STATUS_INFO (+29 more)
+Nodes (50): DebtManagementModule(), DebtPaymentModal(), OrdersReturnsModule(), DebtManagementViewModel, useOrdersReturns(), PromotionModule(), RevenueBreakdownCard(), AnimatedNumber() (+42 more)
 
 ### Community 97 - "server/scripts/check-architecture.mjs"
 Cohesion: 0.13
@@ -541,16 +535,16 @@ Cohesion: 0.23
 Nodes (28): ensureStandardProductCodesMigrated(), IImportReceiptItem, findCodeConflictsInList(), findExistingProductForImport(), loadImportSchemeContext(), resolveExplicitImportSchemeItem(), resolveImportColorCode(), enrichReceiptRoles() (+20 more)
 
 ### Community 103 - "useShiftHandover.tsx"
-Cohesion: 0.15
-Nodes (23): confirmShiftHandoverApi(), deleteShiftHandoverApi(), fetchDailyHandoverCheckApi(), fetchHandoverScheduleConfigApi(), fetchShiftHandoversApi(), updateHandoverScheduleConfigApi(), ShiftHandoverDetailModal(), ShiftHandoverModule() (+15 more)
+Cohesion: 0.20
+Nodes (18): confirmShiftHandoverApi(), deleteShiftHandoverApi(), fetchDailyHandoverCheckApi(), fetchHandoverScheduleConfigApi(), fetchShiftHandoversApi(), updateHandoverScheduleConfigApi(), ShiftHandoverDetailModal(), ShiftHandoverModule() (+10 more)
 
 ### Community 104 - "staffImport.parser.ts"
 Cohesion: 0.24
 Nodes (16): ColumnKey, inferContractType(), inferRoleAndDepartment(), matchSubHeaderKey(), matchTopHeaderKey(), normalizeCitizenIdCell(), normalizeGenderCell(), normalizePhoneCell() (+8 more)
 
 ### Community 105 - "web/src/shared/types/hrm.ts"
-Cohesion: 0.20
-Nodes (10): DailyHandoverCategoryInfo, DailyHandoverProductItem, LeaveRequestStatus, MyCalendarCellCode, MyCalendarLeave, MyCalendarSummary, MyShiftAssignmentItem, ShiftHandoverDiscrepancy (+2 more)
+Cohesion: 0.18
+Nodes (11): DailyHandoverCategoryInfo, DailyHandoverProductItem, LeaveRequestStatus, MyCalendarCellCode, MyCalendarLeave, MyCalendarSummary, MyShiftAssignmentItem, ShiftHandoverCategoryCount (+3 more)
 
 ### Community 106 - "holidays.controller.ts"
 Cohesion: 0.19
@@ -575,10 +569,6 @@ Nodes (18): fetchMyCalendarApi(), MyAttendanceCalendar(), DayCell(), DayDetailMo
 ### Community 112 - "Nghiệp vụ Ngày lễ (`holidays/`)"
 Cohesion: 0.50
 Nodes (3): Cấu trúc, Nghiệp vụ Ngày lễ (`holidays/`), Quy tắc chính
-
-### Community 119 - "cms/src/shared/lib/barcodeScanner.ts"
-Cohesion: 0.23
-Nodes (17): useInventoryScanner(), buildTelexCandidatesFromNormalized(), cleanBarcodeCode(), collapseUnikeyBackspaceStutter(), getBarcodeCandidates(), isOrderedSubsequence(), isScannedCodeMatch(), NFD_TO_TELEX_KEY (+9 more)
 
 ### Community 120 - "routes/index.ts"
 Cohesion: 0.07
@@ -613,8 +603,8 @@ Cohesion: 0.30
 Nodes (16): rowsToImportItems(), parseImportFile(), colLettersToIndex(), convertMatrixToImportRows(), decodeXmlEntities(), extractTextFromPdfBuffer(), extractZipEntries(), parseCleanInt() (+8 more)
 
 ### Community 128 - "useStaffModule.ts"
-Cohesion: 0.17
-Nodes (21): StaffCreateForm(), StaffCreateHrFields(), StaffEditProfileModal(), StaffEditSalarySection(), StaffListTable(), StaffModule(), StaffPasswordModal(), downloadStaffImportTemplate() (+13 more)
+Cohesion: 0.11
+Nodes (26): HrmAttendanceModule(), HrmHolidaysTab(), HrmAttendanceViewModel, StaffCreateForm(), StaffCreateHrFields(), StaffEditProfileModal(), StaffEditSalarySection(), StaffImportPreviewModal() (+18 more)
 
 ### Community 129 - "web/src/config/listing.ts"
 Cohesion: 0.40
@@ -702,7 +692,7 @@ Nodes (5): applyTableLabels(), buildColumnLabels(), cellText(), extractFullCellT
 
 ## Knowledge Gaps
 - **2 isolated node(s):** `PATH`, `RFC-4180`
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 803 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 802 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
 - **25 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
@@ -713,12 +703,12 @@ _Questions this graph is uniquely positioned to answer:_
 - **What connects `PATH`, `RFC-4180` to the rest of the system?**
   _2 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `cms/src/app/page.tsx` be split into smaller, more focused modules?**
-  _Cohesion score 0.06490384615384616 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.07539450613676213 - nodes in this community are weakly interconnected._
 - **Why does `ApiError` connect `routes/index.ts` to `ok`, `imports.controller.ts`, `middleware/auth.ts`, `order.service.ts`, `shared/productCode.ts`, `serviceOrder.service.ts`, `product.service.ts`, `handover.service.ts`, `promotion.service.ts`, `shifts.ts`, `handover.service.ts`, `Order.ts`, `updateBrand`, `timesheet.queries.ts`, `ocr.ts`, `services/leave/index.ts`, `importScan.service.ts`, `holidays.controller.ts`, `ApiError`, `importFileParse.service.ts`?**
   _High betweenness centrality (0.069) - this node is a cross-community bridge._
 - **Should `Product` be split into smaller, more focused modules?**
   _Cohesion score 0.1292207792207792 - nodes in this community are weakly interconnected._
-- **Why does `StockMovement` connect `StockMovement` to `useStaffModule.ts`, `inventory/exports.ts`, `Đặc tả yêu cầu: Hệ thống Chấm công & Quản trị Nhân sự (HRM & Shift Handover)`, `ref_react`, `cms/src/shared/utils/format.ts`, `ProductCatalogModule.tsx`?**
-  _High betweenness centrality (0.060) - this node is a cross-community bridge._
+- **Why does `StockMovement` connect `StockMovement` to `useStaffModule.ts`, `inventory/exports.ts`, `useInventoryModule.tsx`, `Đặc tả yêu cầu: Hệ thống Chấm công & Quản trị Nhân sự (HRM & Shift Handover)`, `ref_react`, `ProductCatalogModule.tsx`?**
+  _High betweenness centrality (0.059) - this node is a cross-community bridge._
 - **Should `ok` be split into smaller, more focused modules?**
   _Cohesion score 0.09623015873015874 - nodes in this community are weakly interconnected._

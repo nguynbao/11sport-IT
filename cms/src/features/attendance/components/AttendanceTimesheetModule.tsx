@@ -81,21 +81,21 @@ export default function AttendanceTimesheetModule() {
           <Clock className="w-5 h-5 text-brand-ink" />
           <h2 className="text-base sm:text-lg font-bold text-slate-900">Bảng Chấm Công Toàn Công Ty</h2>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <button
             type="button"
             onClick={() => setShowManual(true)}
-            className="px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-semibold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+            className="px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-semibold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer shrink-0"
           >
             <Plus className="w-3.5 h-3.5" />
             Chấm công bù
           </button>
-          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl p-1">
-            <div className="relative">
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl p-1 min-w-0 flex-1 sm:flex-initial">
+            <div className="relative min-w-0 flex-1 sm:flex-initial">
               <select
                 value={exportScope}
                 onChange={(e) => setExportScope(e.target.value)}
-                className="appearance-none pl-3 pr-8 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-500 cursor-pointer"
+                className="w-full sm:w-auto appearance-none pl-3 pr-8 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-500 cursor-pointer truncate"
                 title="Chọn chế độ xuất Excel Bảng chấm công"
               >
                 <option value="ALL">Xuất Tổng + Từng người (Đầy đủ)</option>
