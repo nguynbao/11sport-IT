@@ -14,6 +14,23 @@ export function useHeaderAttendanceBar(currentUser: StaffUser | null) {
   const [actionLoading, setActionLoading] = useState(false);
 
   const [feedback, setFeedback] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearFeedback = useCallback(() => {
+    if (feedbackTimerRef.current) {
+      clearTimeout(feedbackTimerRef.current);
+      feedbackTimerRef.current = null;
+    }
+    setFeedback(null);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (feedbackTimerRef.current) {
+        clearTimeout(feedbackTimerRef.current);
+      }
+    };
+  }, []);
 
   // Bàn giao ca & Nút Kiểm hàng luôn hiển thị cạnh đồng hồ cho Sales
   const [dailyCheckInfo, setDailyCheckInfo] = useState<DailyHandoverCheckData | null>(null);
@@ -29,10 +46,16 @@ export function useHeaderAttendanceBar(currentUser: StaffUser | null) {
   const [lateCheckoutModal, setLateCheckoutModal] = useState<{ lateMinutes: number } | null>(null);
   const [lateCheckoutReasonInput, setLateCheckoutReasonInput] = useState("");
 
-  const showNotice = (type: "ok" | "err", text: string) => {
+  const showNotice = useCallback((type: "ok" | "err", text: string) => {
+    if (feedbackTimerRef.current) {
+      clearTimeout(feedbackTimerRef.current);
+    }
     setFeedback({ type, text });
-    setTimeout(() => setFeedback(null), 4000);
-  };
+    feedbackTimerRef.current = setTimeout(() => {
+      setFeedback(null);
+      feedbackTimerRef.current = null;
+    }, type === "err" ? 5500 : 4000);
+  }, []);
 
   const applyPendingIncomingHandover = useCallback(
     (incoming: ShiftHandoverRecord | null | undefined, forceOpenPopup = false) => {
@@ -261,8 +284,8 @@ export function useHeaderAttendanceBar(currentUser: StaffUser | null) {
     const refTime = attendance?.pendingCheckOutTime
       ? new Date(attendance.pendingCheckOutTime)
       : effectiveHandover?.submittedAt
-      ? new Date(effectiveHandover.submittedAt)
-      : now;
+        ? new Date(effectiveHandover.submittedAt)
+        : now;
     const refMinutes = refTime.getHours() * 60 + refTime.getMinutes();
     const diffLateOut = refMinutes - shiftEndMinutes;
     const finalLateReason =
@@ -292,16 +315,16 @@ export function useHeaderAttendanceBar(currentUser: StaffUser | null) {
       if (res.awaitingHandoverConfirm) {
         const lockedTimeStr = res.attendance.pendingCheckOutTime
           ? new Date(res.attendance.pendingCheckOutTime).toLocaleTimeString("vi-VN", {
-              hour: "2-digit",
-              minute: "2-digit",
-            })
+            hour: "2-digit",
+            minute: "2-digit",
+          })
           : shiftEndLabel;
         showNotice(
           "ok",
           `Đã chốt giờ ra ca (${lockedTimeStr}) & gửi bàn giao! Khi Ca 2 xác nhận bạn sẽ hoàn tất Check-out.`
         );
       } else {
-        showNotice("ok", `Đã kết thúc ca (${res.attendance.totalWorkHours}h)!`);
+        showNotice("ok", `Đã kết thúc ca (${res.attendance.totalWorkHours}h)!, Cảm ơn bạn vì một ngày cống hiến`);
       }
 
       const today = new Date();
@@ -389,7 +412,7 @@ export function useHeaderAttendanceBar(currentUser: StaffUser | null) {
 
   return {
     attendance, isWfhToday, isEarlyApprovedToday, loading, actionLoading,
-    elapsedText, isLunchPaused, feedback, showNotice,
+    elapsedText, isLunchPaused, feedback, showNotice, clearFeedback,
     dailyCheckInfo, currentShiftHandover, setCurrentShiftHandover,
     showHandoverModal, setShowHandoverModal, showFridayModal, setShowFridayModal,
     pendingHandoverToConfirm, showIncomingHandoverPopup, setShowIncomingHandoverPopup,

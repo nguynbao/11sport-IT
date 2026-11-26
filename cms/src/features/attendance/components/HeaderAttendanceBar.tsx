@@ -2,7 +2,7 @@
 
 import React from "react";
 import { StaffUser } from "@/shared/types";
-import { Play, Pause, CheckCircle2, AlertTriangle, Home, Clock, CalendarDays } from "lucide-react";
+import { Play, Pause, CheckCircle2, AlertTriangle, Home, Clock, CalendarDays, X } from "lucide-react";
 import { useHeaderAttendanceBar } from "../hooks/useHeaderAttendanceBar";
 
 interface Props {
@@ -19,6 +19,7 @@ export default function HeaderAttendanceBar({ currentUser, onOpenMyAttendance }:
     elapsedText,
     isLunchPaused,
     feedback,
+    clearFeedback,
     isWorking,
     isCompleted,
     handlePlayCheckIn,
@@ -112,18 +113,28 @@ export default function HeaderAttendanceBar({ currentUser, onOpenMyAttendance }:
 
       {feedback && (
         <div
-          className={`absolute top-full mt-1.5 z-50 whitespace-nowrap px-3 py-1.5 rounded-xl text-xs font-bold shadow-lg flex items-center gap-1.5 border ${
+          role="status"
+          aria-live="polite"
+          className={`absolute top-full inset-x-0 md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:w-max md:max-w-[32rem] mt-1.5 z-50 px-3 py-2 rounded-xl text-xs font-bold shadow-lg flex items-start gap-2 border whitespace-normal break-words text-left leading-snug ${
             feedback.type === "ok"
-              ? "bg-teal-950/95 text-teal-300 border-teal-700"
-              : "bg-rose-950/95 text-rose-300 border-rose-700"
+              ? "bg-teal-950/95 text-teal-200 border-teal-700"
+              : "bg-rose-950/95 text-rose-200 border-rose-700"
           }`}
         >
           {feedback.type === "ok" ? (
-            <CheckCircle2 className="w-3.5 h-3.5 text-teal-400 shrink-0" />
+            <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 text-teal-400 shrink-0" />
           ) : (
-            <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+            <AlertTriangle className="w-3.5 h-3.5 mt-0.5 text-rose-400 shrink-0" />
           )}
-          <span>{feedback.text}</span>
+          <span className="flex-1 min-w-0">{feedback.text}</span>
+          <button
+            type="button"
+            onClick={clearFeedback}
+            aria-label="Đóng thông báo"
+            className="p-0.5 -mr-1 rounded-md opacity-70 hover:opacity-100 transition shrink-0 cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
     </div>
