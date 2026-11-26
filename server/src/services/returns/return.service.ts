@@ -57,15 +57,37 @@ export async function listReturns(query: any): Promise<ServiceResult> {
 }
 
 
+const RETURN_ALLOWED_ROLES = new Set(['CEO', 'ADMIN', 'ACCOUNTANT']);
+
 export async function createReturnExchange(ctx: ServiceContext, body: any): Promise<ServiceResult> {
-  const { orderId, orderCode, type, exchangeItems } = body || {};
-    if (String(type || '').toUpperCase() === 'RETURN' || !Array.isArray(exchangeItems) || exchangeItems.length === 0) {
+  const { orderId, orderCode, type, exchangeItems, note } = body || {};
+  const hasExchangeItems = Array.isArray(exchangeItems) && exchangeItems.length > 0;
+  const reqType = String(type || '').toUpperCase();
+  const isReturnOnly = reqType === 'RETURN' || (!hasExchangeItems && reqType !== 'EXCHANGE');
+  const userRole = String(ctx?.user?.role || '').toUpperCase();
+
+  if (isReturnOnly) {
+    if (!RETURN_ALLOWED_ROLES.has(userRole)) {
       throw new ApiError(
-        400,
-        'RETURN_DISABLED',
-        'Tính năng trả hàng hoàn tiền đã ngừng hỗ trợ. Vui lòng chọn Đổi sang sản phẩm mới.'
+        403,
+        'RETURN_ROLE_FORBIDDEN',
+        'Chỉ CEO, Admin hoặc Kế toán mới có quyền thực hiện trả hàng hoàn tiền.'
       );
     }
+    if (!String(note || '').trim()) {
+      throw new ApiError(
+        400,
+        'RETURN_NOTE_REQUIRED',
+        'Vui lòng nhập lý do trả hàng.'
+      );
+    }
+  } else if (!hasExchangeItems) {
+    throw new ApiError(
+      400,
+      'EXCHANGE_ITEMS_REQUIRED',
+      'Vui lòng chọn ít nhất 1 sản phẩm mới để đổi.'
+    );
+  }
     const lookupKey = String(orderId || orderCode || '').trim();
     if (!lookupKey) {
       throw new ApiError(

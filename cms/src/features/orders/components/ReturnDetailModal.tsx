@@ -1,5 +1,6 @@
 "use client";
 
+import { Printer } from "lucide-react";
 import type { ReturnReceipt } from "@/shared/types";
 import { ResponsiveModal } from "@/shared/ui/ResponsiveModal";
 import { formatDateTime, formatVND } from "@/shared/utils/format";
@@ -7,9 +8,10 @@ import { formatDateTime, formatVND } from "@/shared/utils/format";
 interface Props {
   returnReceipt: ReturnReceipt | null;
   onClose: () => void;
+  onPrint?: (r: ReturnReceipt) => void;
 }
 
-export default function ReturnDetailModal({ returnReceipt, onClose }: Props) {
+export default function ReturnDetailModal({ returnReceipt, onClose, onPrint }: Props) {
   if (!returnReceipt) return null;
 
   const r = returnReceipt;
@@ -23,13 +25,28 @@ export default function ReturnDetailModal({ returnReceipt, onClose }: Props) {
       subtitle={`Đơn gốc ${r.orderCode} • ${formatDateTime(r.createdAt)}`}
       maxWidthClass="max-w-2xl"
       footer={
-        <button
-          type="button"
-          onClick={onClose}
-          className="w-full py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-sm cursor-pointer"
-        >
-          Đóng
-        </button>
+        <div className="flex items-center gap-2">
+          {onPrint && (
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onPrint(r);
+              }}
+              className="flex-1 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-sm inline-flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <Printer className="w-4 h-4" />
+              In Bill (K80)
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            className={`${onPrint ? "px-5 bg-slate-200 hover:bg-slate-300 text-slate-800" : "w-full bg-teal-600 hover:bg-teal-700 text-white"} py-2.5 rounded-xl font-bold text-sm cursor-pointer`}
+          >
+            Đóng
+          </button>
+        </div>
       }
     >
       <div className="space-y-4">

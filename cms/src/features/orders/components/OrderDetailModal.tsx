@@ -1,6 +1,6 @@
 "use client";
 
-import { Printer } from "lucide-react";
+import { Printer, RotateCcw } from "lucide-react";
 import type { Order, ReturnReceipt } from "@/shared/types";
 import { ResponsiveModal } from "@/shared/ui/ResponsiveModal";
 import { formatDateTime, formatPhone, formatVND } from "@/shared/utils/format";
@@ -8,16 +8,20 @@ import { formatDateTime, formatPhone, formatVND } from "@/shared/utils/format";
 interface Props {
   order: Order | null;
   relatedReturns: ReturnReceipt[];
+  canReturn?: boolean;
   onClose: () => void;
   onOpenInvoice: (order: Order) => void;
+  onOpenReturn?: (order: Order) => void;
   onSelectReturn: (r: ReturnReceipt) => void;
 }
 
 export default function OrderDetailModal({
   order,
   relatedReturns,
+  canReturn,
   onClose,
   onOpenInvoice,
+  onOpenReturn,
   onSelectReturn,
 }: Props) {
   if (!order) return null;
@@ -25,6 +29,8 @@ export default function OrderDetailModal({
   const ord = order;
   const totalDisc =
     (Number(ord.itemDiscountTotal) || 0) + (Number(ord.billDiscountAmount) || 0);
+  const isReturnableStatus =
+    ord.status === "PAID" || ord.status === "PARTIALLY_RETURNED";
 
   return (
     <ResponsiveModal
@@ -35,6 +41,19 @@ export default function OrderDetailModal({
       maxWidthClass="max-w-2xl"
       footer={
         <div className="flex items-center gap-2">
+          {canReturn && isReturnableStatus && onOpenReturn && (
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onOpenReturn(ord);
+              }}
+              className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-sm inline-flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <RotateCcw className="w-4 h-4" />
+              Trả hàng
+            </button>
+          )}
           <button
             type="button"
             onClick={() => onOpenInvoice(ord)}

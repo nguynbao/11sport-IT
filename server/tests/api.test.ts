@@ -430,8 +430,8 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
       sellableProd.sellingPrice + Math.round(sellableProd.sellingPrice * 0.04)
     );
 
-    // 4. Tính năng RETURN thuần đã ngừng hỗ trợ (RETURN_DISABLED); đổi hàng (EXCHANGE) vẫn kiểm tra BR-14 chặn vượt số lượng
-    const disabledReturnRes = await request(app)
+    // 4. Trả hàng thuần (RETURN) bắt buộc nhập lý do (RETURN_NOTE_REQUIRED); đổi hàng (EXCHANGE) vẫn kiểm tra BR-14 chặn vượt số lượng
+    const missingNoteReturnRes = await request(app)
       .post('/api/v1/returns')
       .send({
         orderId: noFeeOrderRes.body.data._id,
@@ -441,8 +441,8 @@ describe('11Sport POS & Inventory API Integration Tests (AC-01 to AC-07)', () =>
           { productId: sellableProd._id, quantity: 1, condition: 'GOOD' },
         ],
       });
-    expect(disabledReturnRes.status).toBe(400);
-    expect(disabledReturnRes.body.code).toBe('RETURN_DISABLED');
+    expect(missingNoteReturnRes.status).toBe(400);
+    expect(missingNoteReturnRes.body.code).toBe('RETURN_NOTE_REQUIRED');
 
     const exceedReturnRes = await request(app)
       .post('/api/v1/returns')

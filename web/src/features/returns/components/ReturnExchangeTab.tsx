@@ -26,6 +26,10 @@ export default function ReturnExchangeTab() {
 
   return (
     <div className="space-y-4 md:space-y-6">
+      <div className="px-3.5 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-semibold">
+        Lưu ý: Trên Web POS chỉ hỗ trợ <strong>Đổi hàng</strong>. Trường hợp <strong>Trả hàng hoàn tiền</strong> vui lòng liên hệ Kế toán hoặc Quản lý (thực hiện trên CMS).
+      </div>
+
       {/* Khung tìm đơn hàng gốc */}
       <OrderSearchBox {...ctx} />
 

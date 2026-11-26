@@ -407,7 +407,11 @@
       ]
     }
     ```
-  - Nghiệp vụ:
+  - Nghiệp vụ & Phân quyền:
+    - **Phân quyền Trả hàng hoàn tiền (`type === "RETURN"`) vs Đổi hàng (`type === "EXCHANGE"`)**:
+      - `RETURN` (trả hàng hoàn tiền theo đúng số tiền bán thực tế, không có `exchangeItems`): **chỉ role `CEO`, `ADMIN`, `ACCOUNTANT`** được phép thực hiện (trên CMS). Role khác (như `SALES`) gọi sẽ bị chặn `403 RETURN_ROLE_FORBIDDEN`.
+      - `RETURN` bắt buộc truyền `note` (lý do trả hàng khác rỗng) → thiếu trả `400 RETURN_NOTE_REQUIRED`.
+      - `EXCHANGE`: `CEO`, `ADMIN`, `ACCOUNTANT`, `SALES` đều thực hiện được; bắt buộc có `exchangeItems` (`400 EXCHANGE_ITEMS_REQUIRED` nếu thiếu).
     - Khớp chính xác từng dòng hàng trong `order.items` theo `lineIndex` (ưu tiên nếu truyền và khớp `productId`), hoặc theo `productId + (color, size)` còn hạn mức trả; nếu client không truyền `color`/`size`/`lineIndex` khi đơn có nhiều biến thể cùng `productId`, hệ thống tự động phân bổ vào các dòng cùng `productId` còn hạn mức trả thay vì cộng dồn vào dòng đầu tiên.
     - Kiểm tra số lượng trả của từng dòng không vượt quá `purchasedQty - alreadyReturnedQty`.
     - Hàng trả có `condition === "GOOD"` được cộng lại vào tồn Kho Tầng 1 đúng biến thể `(color, size)` (`+quantity`), ghi `StockMovement` loại `RETURN` / `EXCHANGE_IN`. Hàng `DAMAGED` không cộng tồn kho bán.

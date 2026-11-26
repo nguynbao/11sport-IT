@@ -781,8 +781,20 @@ export async function calculateReturnExchange(
   body: any,
   ctx?: { user?: { role?: string } }
 ): Promise<ServiceResult> {
-  const calc = await prepareReturnExchangeCalculation(body);
+  const hasExchangeItems =
+    Array.isArray(body?.exchangeItems) && body.exchangeItems.length > 0;
+  const reqType = String(body?.type || '').toUpperCase();
+  const isReturnOnly = reqType === 'RETURN' || (!hasExchangeItems && reqType !== 'EXCHANGE');
   const userRole = String(ctx?.user?.role || '').toUpperCase();
+  if (isReturnOnly && !['CEO', 'ADMIN', 'ACCOUNTANT'].includes(userRole)) {
+    throw new ApiError(
+      403,
+      'RETURN_ROLE_FORBIDDEN',
+      'Chỉ CEO, Admin hoặc Kế toán mới có quyền thực hiện trả hàng hoàn tiền.'
+    );
+  }
+
+  const calc = await prepareReturnExchangeCalculation(body);
   const canOverrideDowngrade = userRole === 'CEO' || userRole === 'ADMIN';
   return ok(
     {

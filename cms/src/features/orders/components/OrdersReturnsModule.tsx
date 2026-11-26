@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { Order, ReturnReceipt } from "@/shared/types";
+import { getStoredUser } from "@/shared/api/client";
 import { formatVND, formatDateTime, formatPhone } from "@/shared/utils/format";
 import { Search, Printer, ShoppingBag, RotateCcw, CheckCircle2, Trash2, Eye } from "lucide-react";
 import ExportExcelButton from "@/shared/ui/ExportExcelButton";
@@ -10,6 +11,8 @@ import { exportOrders, exportReturns } from "../exports";
 import { useOrdersReturns } from "../hooks/useOrdersReturns";
 import OrderDetailModal from "./OrderDetailModal";
 import ReturnDetailModal from "./ReturnDetailModal";
+import ReturnRefundModal from "./ReturnRefundModal";
+import ReturnReceiptPrintModal from "./ReturnReceiptPrintModal";
 
 interface OrdersReturnsModuleProps {
   onOpenInvoice: (order: Order) => void;
@@ -20,6 +23,10 @@ export default function OrdersReturnsModule({
 }: OrdersReturnsModuleProps) {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [selectedReturn, setSelectedReturn] = useState<ReturnReceipt | null>(null);
+  const [returnOrder, setReturnOrder] = useState<Order | null>(null);
+  const [printableReturn, setPrintableReturn] = useState<ReturnReceipt | null>(null);
+  const currentUserRole = String(getStoredUser()?.role || "").toUpperCase();
+  const canReturn = ["CEO", "ADMIN", "ACCOUNTANT"].includes(currentUserRole);
   const {
     search,
     setSearch,
@@ -29,7 +36,10 @@ export default function OrdersReturnsModule({
     setPaymentFilter,
     debtFilter,
     setDebtFilter,
+    returnTypeFilter,
+    setReturnTypeFilter,
     actionMsg,
+    loadData,
     displayedOrders,
     displayedReturns,
     ordPage,
@@ -268,6 +278,17 @@ export default function OrdersReturnsModule({
                         >
                           <Eye className="w-3.5 h-3.5" /> Chi tiết
                         </button>
+                        {canReturn &&
+                          (ord.status === "PAID" || ord.status === "PARTIALLY_RETURNED") && (
+                            <button
+                              type="button"
+                              onClick={() => setReturnOrder(ord)}
+                              className="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold inline-flex items-center gap-1 cursor-pointer"
+                              title="Trả hàng hoàn tiền"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" /> Trả hàng
+                            </button>
+                          )}
                         {ord.status === "DRAFT" && (
                           <>
                             <button
@@ -321,7 +342,18 @@ export default function OrdersReturnsModule({
             <RotateCcw className="w-5 h-5 text-amber-600" />
             Danh sách Phiếu Trả / Đổi Hàng ({displayedReturns.length})
           </h3>
-          <ExportExcelButton onExport={() => exportReturns(displayedReturns)} disabled={displayedReturns.length === 0} />
+          <div className="flex items-center gap-2">
+            <select
+              value={returnTypeFilter}
+              onChange={(e) => setReturnTypeFilter(e.target.value)}
+              className="px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white font-semibold"
+            >
+              <option value="">Tất cả loại phiếu</option>
+              <option value="RETURN">Trả hàng hoàn tiền</option>
+              <option value="EXCHANGE">Đổi hàng</option>
+            </select>
+            <ExportExcelButton onExport={() => exportReturns(displayedReturns)} disabled={displayedReturns.length === 0} />
+          </div>
         </div>
         <div className="overflow-x-auto border border-slate-200 rounded-xl">
           <table data-cards className="w-full text-xs text-left">
@@ -352,7 +384,17 @@ export default function OrdersReturnsModule({
                   <td className="py-3 px-3 font-mono font-semibold text-brand-ink">
                     {r.orderCode}
                   </td>
-                  <td className="py-3 px-3 font-bold">{r.type}</td>
+                  <td className="py-3 px-3 font-bold">
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap ${
+                        r.type === "RETURN"
+                          ? "bg-amber-100 text-amber-900"
+                          : "bg-teal-100 text-brand-ink"
+                      }`}
+                    >
+                      {r.type === "RETURN" ? "Trả hàng" : "Đổi hàng"}
+                    </span>
+                  </td>
                   <td className="py-3 px-3 text-right font-mono">
                     <div>{formatVND(r.returnTotal)}</div>
                     {Number(r.refundedCardFee) > 0 && (
@@ -427,8 +469,10 @@ export default function OrdersReturnsModule({
               )
             : []
         }
+        canReturn={canReturn}
         onClose={() => setSelectedOrder(null)}
         onOpenInvoice={onOpenInvoice}
+        onOpenReturn={(ord) => setReturnOrder(ord)}
         onSelectReturn={(r) => {
           setSelectedOrder(null);
           setSelectedReturn(r);
@@ -438,6 +482,22 @@ export default function OrdersReturnsModule({
       <ReturnDetailModal
         returnReceipt={selectedReturn}
         onClose={() => setSelectedReturn(null)}
+        onPrint={(r) => setPrintableReturn(r)}
+      />
+
+      <ReturnRefundModal
+        order={returnOrder}
+        onClose={() => setReturnOrder(null)}
+        onSuccess={async (created) => {
+          setReturnOrder(null);
+          await loadData();
+          if (created) setPrintableReturn(created);
+        }}
+      />
+
+      <ReturnReceiptPrintModal
+        returnReceipt={printableReturn}
+        onClose={() => setPrintableReturn(null)}
       />
     </div>
   );
