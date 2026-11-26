@@ -3216,9 +3216,9 @@
     "semantic_hash": ""
   },
   "web/src/features/inventory/components/InventoryTab.tsx": {
-    "mtime": 1795663307.0720348,
-    "seen": 1795663454.712147,
-    "ast_hash": "f54b880916a5f9a6448f6a4557456ecd",
+    "mtime": 1795663560.4224446,
+    "seen": 1795663669.1487072,
+    "ast_hash": "7f644161c70b89163b2532b922a05b0f",
     "semantic_hash": ""
   },
   "web/src/features/inventory/index.ts": {
@@ -3258,9 +3258,9 @@
     "semantic_hash": ""
   },
   "web/src/features/pos/components/PosTab.tsx": {
-    "mtime": 1795663404.7566006,
-    "seen": 1795663454.7121642,
-    "ast_hash": "d4ee081521abe2d72de26a65555ceff2",
+    "mtime": 1795663633.5500424,
+    "seen": 1795663669.148726,
+    "ast_hash": "d2316af8ea853e13aaa9c58eb1d0d935",
     "semantic_hash": ""
   },
   "web/src/features/pos/components/ShiftHandoverModal.tsx": {
@@ -3288,9 +3288,9 @@
     "semantic_hash": ""
   },
   "web/src/features/returns/components/ReturnExchangeTab.tsx": {
-    "mtime": 1795618152.7921808,
-    "seen": 1795663454.712172,
-    "ast_hash": "ba34e15a07d4d710687b90cd89d606c0",
+    "mtime": 1795663507.6417222,
+    "seen": 1795663669.1487381,
+    "ast_hash": "012f5cbd92fd0ad3e41c2a8acb7d9f84",
     "semantic_hash": ""
   },
   "web/src/features/returns/index.ts": {
@@ -3300,15 +3300,57 @@
     "semantic_hash": ""
   },
   "web/src/features/services/components/PosServiceSection.tsx": {
-    "mtime": 1795618152.7893484,
-    "seen": 1795663454.712176,
-    "ast_hash": "82fa47db519a464abfe99bc5fb4bebb6",
+    "mtime": 1795663594.2961414,
+    "seen": 1795663669.148745,
+    "ast_hash": "c2e9d8d46bd84e79a05a7301cbe48aed",
     "semantic_hash": ""
   },
   "web/src/features/services/index.ts": {
     "mtime": 1795663394.3323843,
     "seen": 1795663454.712178,
     "ast_hash": "436bbe7f95b1964d27739d1df29ae04d",
+    "semantic_hash": ""
+  },
+  "web/src/features/inventory/hooks/useInventoryTab.ts": {
+    "mtime": 1795663558.8432176,
+    "seen": 1795663669.1487098,
+    "ast_hash": "13ec371a138bb97c7cf7299e6a6077d3",
+    "semantic_hash": ""
+  },
+  "web/src/features/pos/hooks/usePosTab.ts": {
+    "mtime": 1795663631.8520815,
+    "seen": 1795663669.148732,
+    "ast_hash": "9ffbe6c8ccb66e06f4e163ce73a6f1b5",
+    "semantic_hash": ""
+  },
+  "web/src/features/pos/types.ts": {
+    "mtime": 1795663630.2180834,
+    "seen": 1795663669.148736,
+    "ast_hash": "f80fdccfd9d51bc6de5cc1b2765f7139",
+    "semantic_hash": ""
+  },
+  "web/src/features/returns/hooks/useReturnExchange.ts": {
+    "mtime": 1795663506.8476348,
+    "seen": 1795663669.14874,
+    "ast_hash": "225acc6e379b1c6f0033ed21308c6dbe",
+    "semantic_hash": ""
+  },
+  "web/src/features/returns/types.ts": {
+    "mtime": 1795663490.098183,
+    "seen": 1795663669.148743,
+    "ast_hash": "ff0755df940c8a06a3ca4b1d527f84b7",
+    "semantic_hash": ""
+  },
+  "web/src/features/services/hooks/usePosService.ts": {
+    "mtime": 1795663595.1422746,
+    "seen": 1795663669.148746,
+    "ast_hash": "16a42fc89949529843f0cc1cd103bbe1",
+    "semantic_hash": ""
+  },
+  "web/src/features/services/types.ts": {
+    "mtime": 1795663584.7695866,
+    "seen": 1795663669.148749,
+    "ast_hash": "c6a3701cb9e617065de50f0f9d8078ef",
     "semantic_hash": ""
   },
   "cms/package-lock.json": {
