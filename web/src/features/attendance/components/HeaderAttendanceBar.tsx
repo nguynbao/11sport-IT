@@ -72,7 +72,7 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
 
   return (
     <div className="relative w-full md:w-auto max-w-full flex items-center justify-center">
-      <div className="w-full md:w-auto max-w-full flex flex-wrap sm:flex-nowrap items-center justify-between md:justify-center gap-1.5 sm:gap-2 bg-slate-100 border border-slate-200 px-2.5 sm:px-3 py-1.5 rounded-2xl shadow-2xs text-slate-800">
+      <div className="w-full md:w-auto max-w-full grid grid-cols-[auto_1fr_auto] sm:flex sm:flex-nowrap items-center justify-between md:justify-center gap-1.5 sm:gap-2 bg-slate-100 border border-slate-200 px-2.5 sm:px-3 py-1.5 rounded-2xl shadow-2xs text-slate-800">
         {/* Badge WFH nếu có */}
         {isWfhToday && (
           <span
@@ -91,14 +91,14 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
             onClick={handlePlayCheckIn}
             disabled={actionLoading}
             title="Bấm Play để bắt đầu tính giờ chấm công & kiểm tra nhận ca"
-            className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-extrabold text-xs flex items-center gap-2 shadow-xs transition cursor-pointer"
+            className="col-span-3 sm:col-span-1 justify-self-center px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-extrabold text-xs flex items-center gap-2 shadow-xs transition cursor-pointer"
           >
             <Play className="w-3.5 h-3.5 fill-current" />
             <span className="font-mono text-sm tracking-wider">00:00:00</span>
           </button>
         )}
 
-        {/* Đang trong ca: Nút PAUSE + Đồng hồ đếm giờ HH:MM:SS + Nút KIỂM HÀNG luôn ở cạnh đồng hồ */}
+        {/* Đang trong ca: Nút PAUSE + Đồng hồ đếm giờ HH:MM:SS + Nút KIỂM HÀNG */}
         {isWorking && (
           <>
             <button
@@ -119,9 +119,9 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
               <Pause className="w-3.5 h-3.5 fill-current" />
             </button>
 
-            <div className="flex items-center gap-2 px-1.5 py-0.5">
+            <div className="flex items-center justify-center gap-1.5 px-1.5 py-0.5">
               <span
-                className={`w-2 h-2 rounded-full ${
+                className={`w-2 h-2 rounded-full shrink-0 ${
                   isAwaitingNextShiftConfirm
                     ? "bg-blue-600"
                     : isLunchPaused
@@ -134,14 +134,14 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
               </span>
             </div>
 
-            {/* Nút Kiểm hàng luôn hiển thị cạnh đồng hồ đếm giờ cho nhân viên Sales */}
-            {isSalesStaff && !isWfhToday && (
-              <div className="flex items-center pl-2 border-l border-slate-300 min-w-0">
+            {/* Nút Kiểm hàng: thu gọn trên mobile, đầy đủ trên sm+ */}
+            {isSalesStaff && !isWfhToday ? (
+              <div className="flex items-center pl-1.5 sm:pl-2 border-l border-slate-300 min-w-0 justify-self-end">
                 <button
                   type="button"
                   onClick={() => setShowHandoverModal(true)}
-                  title="Mở bảng Kiểm hàng (Tổng số lượng mặt hàng kiểm trong ngày, Tiền mặt trong quầy & Lý do)"
-                  className={`px-2 sm:px-2.5 py-1 rounded-xl text-[11px] font-extrabold flex items-center gap-1.5 shadow-2xs transition cursor-pointer min-w-0 ${
+                  title={`Kiểm hàng: ${checkButtonSummaryText}`}
+                  className={`px-2 sm:px-2.5 py-1 rounded-xl text-[11px] font-extrabold flex items-center gap-1 shadow-2xs transition cursor-pointer min-w-0 ${
                     isAwaitingNextShiftConfirm
                       ? "bg-blue-50 border border-blue-300 text-brand-ink hover:bg-blue-100"
                       : currentShiftHandover?.status === "DRAFT"
@@ -150,27 +150,33 @@ export default function HeaderAttendanceBar({ currentUser }: Props) {
                   }`}
                 >
                   <Boxes className="w-3.5 h-3.5 text-brand-ink shrink-0" />
-                  <span className="truncate max-w-[140px] sm:max-w-[200px]">
+                  <span className="sm:hidden whitespace-nowrap">Kiểm hàng</span>
+                  <span className="hidden sm:inline truncate max-w-[200px]">
                     Kiểm hàng: {checkButtonSummaryText}
                   </span>
                   {isAwaitingNextShiftConfirm ? (
-                    <span className="px-1.5 py-0.5 rounded bg-blue-600 text-white text-[10px] font-black">
-                      Chờ Ca 2 (
-                      {attendance?.pendingCheckOutTime
-                        ? new Date(attendance.pendingCheckOutTime).toLocaleTimeString("vi-VN", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })
-                        : shiftEndLabel}
-                      )
+                    <span className="px-1.5 py-0.5 rounded bg-blue-600 text-white text-[10px] font-black shrink-0">
+                      <span className="sm:hidden">Chờ</span>
+                      <span className="hidden sm:inline">
+                        Chờ Ca 2 (
+                        {attendance?.pendingCheckOutTime
+                          ? new Date(attendance.pendingCheckOutTime).toLocaleTimeString("vi-VN", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })
+                          : shiftEndLabel}
+                        )
+                      </span>
                     </span>
                   ) : currentShiftHandover?.status === "DRAFT" ? (
-                    <span className="px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 text-[10px] font-black">
+                    <span className="hidden sm:inline px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 text-[10px] font-black shrink-0">
                       Nháp
                     </span>
                   ) : null}
                 </button>
               </div>
+            ) : (
+              <span className="w-7 sm:hidden" />
             )}
           </>
         )}

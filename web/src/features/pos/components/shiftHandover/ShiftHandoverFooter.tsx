@@ -9,6 +9,7 @@ interface Props {
   effectiveEndLabel: string;
   onClose: () => void;
   handleSaveDraft: () => void;
+  formId?: string;
 }
 
 export default function ShiftHandoverFooter({
@@ -20,9 +21,10 @@ export default function ShiftHandoverFooter({
   effectiveEndLabel,
   onClose,
   handleSaveDraft,
+  formId,
 }: Props) {
   return (
-          <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100">
+    <div className="flex flex-wrap items-center justify-between gap-2">
             <button
               type="button"
               onClick={onClose}
@@ -47,6 +49,7 @@ export default function ShiftHandoverFooter({
               {isReachedCheckoutTime ? (
                 <button
                   type="submit"
+                  form={formId}
                   disabled={submitting || loading}
                   className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold rounded-xl shadow-lg transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
                 >

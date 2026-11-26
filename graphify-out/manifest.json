@@ -3168,9 +3168,9 @@
     "semantic_hash": ""
   },
   "web/src/features/attendance/components/HeaderAttendanceBar.tsx": {
-    "mtime": 1795665445.1864254,
-    "seen": 1795665878.807733,
-    "ast_hash": "b3234a05334abc691ee915f9ea3dc684",
+    "mtime": 1795673302.0769985,
+    "seen": 1795673361.097203,
+    "ast_hash": "31ccb2c8d1a9fe2d45a495a08e6eedbb",
     "semantic_hash": ""
   },
   "web/src/features/attendance/components/MyAttendanceCalendar.tsx": {
@@ -3246,9 +3246,9 @@
     "semantic_hash": ""
   },
   "web/src/features/pos/components/ShiftHandoverModal.tsx": {
-    "mtime": 1795665370.0725186,
-    "seen": 1795665878.807883,
-    "ast_hash": "514ff7dbb93caf84af6c7fa3d8392b33",
+    "mtime": 1795673303.502937,
+    "seen": 1795673361.0973492,
+    "ast_hash": "945fc3c4c009caf79866b83e8991f86a",
     "semantic_hash": ""
   },
   "web/src/features/pos/components/TagCheckScannerModal.tsx": {
@@ -3924,15 +3924,15 @@
     "semantic_hash": ""
   },
   "web/src/features/pos/components/shiftHandover/ShiftHandoverFooter.tsx": {
-    "mtime": 1795665364.2269015,
-    "seen": 1795665878.807909,
-    "ast_hash": "8d10767152236dfe25510d4126450b8c",
+    "mtime": 1795673307.90536,
+    "seen": 1795673361.097374,
+    "ast_hash": "df9865914c682ee2100634e0982b94df",
     "semantic_hash": ""
   },
   "web/src/features/pos/components/shiftHandover/ShiftHandoverHeader.tsx": {
-    "mtime": 1795665348.1752837,
-    "seen": 1795665878.807911,
-    "ast_hash": "e490a0ae22b2c1d11de845c70d631054",
+    "mtime": 1795673304.7471435,
+    "seen": 1795673361.097375,
+    "ast_hash": "e79e18a43e66f4dfbe44a6a56d8f27d8",
     "semantic_hash": ""
   },
   "web/src/features/pos/components/shiftHandover/ShiftHandoverMessages.tsx": {
@@ -4116,9 +4116,9 @@
     "semantic_hash": ""
   },
   "web/src/features/returns/components/ReturnItemsTable.tsx": {
-    "mtime": 1795665561.3663616,
-    "seen": 1795665878.807987,
-    "ast_hash": "757e6ee114825ed8547c745bfdbe19f2",
+    "mtime": 1795673300.441955,
+    "seen": 1795673361.097433,
+    "ast_hash": "cd2eccc2bffb616a7b828bc6cd15b562",
     "semantic_hash": ""
   },
   "web/src/features/returns/components/ReturnSummary.tsx": {
