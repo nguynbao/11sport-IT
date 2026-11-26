@@ -582,9 +582,9 @@
     "semantic_hash": ""
   },
   "web/src/app/page.tsx": {
-    "mtime": 1795664218.1322439,
-    "seen": 1795664289.198987,
-    "ast_hash": "5db3220b93906156b88aa4ec683443bc",
+    "mtime": 1795664588.400505,
+    "seen": 1795664635.195411,
+    "ast_hash": "23f745303a538137f65e130e44bf1b38",
     "semantic_hash": ""
   },
   "web/tailwind.config.js": {
@@ -3168,9 +3168,9 @@
     "semantic_hash": ""
   },
   "web/src/features/attendance/components/HeaderAttendanceBar.tsx": {
-    "mtime": 1795663685.0167072,
-    "seen": 1795663789.159341,
-    "ast_hash": "2269f3debaed0a0ceb6b5d239946fec8",
+    "mtime": 1795664586.096323,
+    "seen": 1795664635.195425,
+    "ast_hash": "d3f0cbb7fc50237ed6bc7885695dac3a",
     "semantic_hash": ""
   },
   "web/src/features/attendance/components/MyAttendanceCalendar.tsx": {
@@ -3354,9 +3354,9 @@
     "semantic_hash": ""
   },
   "web/src/app/_components/WebHeader.tsx": {
-    "mtime": 1795663732.5878515,
-    "seen": 1795663789.1593091,
-    "ast_hash": "709b0c914e549d5187b1e1d6b006a837",
+    "mtime": 1795664584.15656,
+    "seen": 1795664635.195401,
+    "ast_hash": "a3ff0b13743c73d102ae04c8a7bc35e7",
     "semantic_hash": ""
   },
   "web/src/app/_hooks/useWebShell.ts": {

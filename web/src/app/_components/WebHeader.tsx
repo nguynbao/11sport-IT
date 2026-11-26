@@ -26,8 +26,8 @@ export default function WebHeader({
 }: WebHeaderProps) {
   return (
     <header className="sticky top-0 z-30 bg-white text-slate-900 border-b border-slate-200 shadow-2xs print:hidden">
-      <div className="w-full mx-auto px-2 sm:px-3 lg:px-4 py-2 md:py-2.5 flex items-center justify-between gap-2 md:gap-3">
-        <div className="flex items-center gap-2 md:gap-3 min-w-0">
+      <div className="w-full mx-auto px-2.5 sm:px-3 lg:px-4 py-2 md:py-2.5 flex flex-wrap items-center justify-between gap-2 md:gap-3">
+        <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1 md:flex-initial">
           <button
             type="button"
             onClick={onOpenLeftDrawer}
@@ -60,7 +60,7 @@ export default function WebHeader({
           </div>
         </div>
 
-        <div className="flex-1 flex items-center justify-center px-1">
+        <div className="order-3 w-full md:order-none md:w-auto md:flex-1 flex items-center justify-center md:px-2 min-w-0">
           <HeaderAttendanceBar currentUser={currentUser} />
         </div>
 

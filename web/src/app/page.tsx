@@ -40,7 +40,7 @@ export default function WebPosHomePage() {
   const { currentUser } = shell;
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-100">
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden flex flex-col bg-slate-100">
       <WebHeader
         currentUser={currentUser}
         activeDrawerPage={shell.activeDrawerPage}
