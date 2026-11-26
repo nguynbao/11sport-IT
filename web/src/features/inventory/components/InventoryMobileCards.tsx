@@ -6,7 +6,7 @@ import { formatNumberDots, formatVND, parseNumberDots } from "@/shared/utils/for
 import { OPEN_ROW_DETAIL_EVENT } from "@/shared/ui/MobileRowDetailModal";
 import { getFloor1Stock } from "../utils/stock";
 import InventoryVariantsCell from "./InventoryVariantsCell";
-import VariantExpandPanel from "./VariantExpandPanel";
+import InventoryMobileVariantsExpand from "./InventoryMobileVariantsExpand";
 import type { InventoryRowShared } from "./InventoryRow";
 
 type Props = InventoryRowShared & {
@@ -129,7 +129,7 @@ export default function InventoryMobileCards({
               <div className="font-bold text-slate-900 text-sm leading-snug">{p.name}</div>
               {p.note && <div className="text-[11px] text-slate-500">{p.note}</div>}
               <div className="overflow-x-auto">
-                <table className="w-full">
+                <table className="w-full [&_td]:!p-0">
                   <tbody>
                     <tr>
                       <InventoryVariantsCell
@@ -147,30 +147,23 @@ export default function InventoryMobileCards({
                 </table>
               </div>
               {isExpanded && (
-                <div className="pt-2 overflow-x-auto">
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-1">
-                    <table className="w-full">
-                      <tbody>
-                        <VariantExpandPanel
-                          p={p}
-                          variants={variants}
-                          colCount={1}
-                          isSales={isSales}
-                          isAdmin={isAdmin}
-                          priceEdits={priceEdits}
-                          lastScannedVariantCode={lastScannedVariantCode}
-                          scannedVariantCounts={scannedVariantCounts}
-                          newVariantDrafts={newVariantDrafts}
-                          setNewVariantDrafts={setNewVariantDrafts}
-                          addingVariantProdId={addingVariantProdId}
-                          variantCodeFor={variantCodeFor}
-                          handleAddVariantToProduct={handleAddVariantToProduct}
-                          expandProductToPrintLabelItems={expandProductToPrintLabelItems}
-                          setLabelModalItems={setLabelModalItems}
-                        />
-                      </tbody>
-                    </table>
-                  </div>
+                <div className="pt-1">
+                  <InventoryMobileVariantsExpand
+                    p={p}
+                    variants={variants}
+                    isSales={isSales}
+                    isAdmin={isAdmin}
+                    priceEdits={priceEdits}
+                    lastScannedVariantCode={lastScannedVariantCode}
+                    scannedVariantCounts={scannedVariantCounts}
+                    newVariantDrafts={newVariantDrafts}
+                    setNewVariantDrafts={setNewVariantDrafts}
+                    addingVariantProdId={addingVariantProdId}
+                    variantCodeFor={variantCodeFor}
+                    handleAddVariantToProduct={handleAddVariantToProduct}
+                    expandProductToPrintLabelItems={expandProductToPrintLabelItems}
+                    setLabelModalItems={setLabelModalItems}
+                  />
                 </div>
               )}
             </div>
