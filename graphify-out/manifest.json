@@ -2910,9 +2910,9 @@
     "semantic_hash": ""
   },
   "cms/src/shared/hooks/useMobileTableLabels.ts": {
-    "mtime": 1795662836.6256375,
-    "seen": 1795663309.328359,
-    "ast_hash": "fd48adb2540bd8666e4f517759425977",
+    "mtime": 1795675659.6468585,
+    "seen": 1795675700.3977711,
+    "ast_hash": "45da969ae608f6144e8ec3c969758637",
     "semantic_hash": ""
   },
   "cms/src/shared/hooks/useViewport.ts": {
@@ -2928,9 +2928,9 @@
     "semantic_hash": ""
   },
   "cms/src/shared/ui/MobileRowDetailModal.tsx": {
-    "mtime": 1795674664.773437,
-    "seen": 1795674775.101676,
-    "ast_hash": "a73ffe2d46802f1f4a22d0e4bd19096c",
+    "mtime": 1795675660.644961,
+    "seen": 1795675700.397845,
+    "ast_hash": "31738a82011e9e45853b177af05cf43c",
     "semantic_hash": ""
   },
   "web/scripts/check-architecture.mjs": {

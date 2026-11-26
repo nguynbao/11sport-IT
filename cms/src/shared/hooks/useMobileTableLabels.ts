@@ -8,6 +8,12 @@ function cellText(cell: HTMLTableCellElement): string {
   return (cell.textContent || "").replace(/\s+/g, " ").trim();
 }
 
+function textWithoutButtons(el: Element): string {
+  const clone = el.cloneNode(true) as Element;
+  clone.querySelectorAll("button").forEach((b) => b.remove());
+  return (clone.textContent || "").replace(/\s+/g, " ").trim();
+}
+
 function extractFullCellText(cell: HTMLTableCellElement): string {
   const lines: string[] = [];
 
@@ -45,7 +51,7 @@ function extractFullCellText(cell: HTMLTableCellElement): string {
 
     const childEls = Array.from(el.children).filter((c) => c.tagName !== "BUTTON");
     if (childEls.length === 0) {
-      pushLine(el.textContent || "");
+      pushLine(textWithoutButtons(el));
       return;
     }
 
@@ -63,7 +69,7 @@ function extractFullCellText(cell: HTMLTableCellElement): string {
           const opt = c.options[c.selectedIndex];
           if (opt?.text) inlineParts.push(opt.text);
         } else {
-          const t = (c.textContent || "").replace(/\s+/g, " ").trim();
+          const t = textWithoutButtons(c);
           if (t) inlineParts.push(t);
         }
       });
@@ -74,10 +80,10 @@ function extractFullCellText(cell: HTMLTableCellElement): string {
   };
 
   if (cell.children.length === 0) {
-    return cellText(cell);
+    return textWithoutButtons(cell);
   }
   Array.from(cell.children).forEach(walk);
-  return lines.join("\n").trim() || cellText(cell);
+  return lines.join("\n").trim() || textWithoutButtons(cell);
 }
 
 /**
