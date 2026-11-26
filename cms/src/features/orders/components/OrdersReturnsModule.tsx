@@ -144,7 +144,7 @@ export default function OrdersReturnsModule({
 
         {/* Bảng Đơn hàng */}
         <div className="overflow-x-auto border border-slate-200 rounded-xl">
-          <table data-cards className="w-full text-xs text-left">
+          <table data-cards data-no-detail className="w-full text-xs text-left">
             <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 uppercase">
               <tr>
                 <th className="py-3 px-3">Mã Đơn</th>
@@ -356,7 +356,7 @@ export default function OrdersReturnsModule({
           </div>
         </div>
         <div className="overflow-x-auto border border-slate-200 rounded-xl">
-          <table data-cards className="w-full text-xs text-left">
+          <table data-cards data-no-detail className="w-full text-xs text-left">
             <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 uppercase">
               <tr>
                 <th className="py-3 px-3">Mã Phiếu</th>
