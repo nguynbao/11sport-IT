@@ -10,8 +10,10 @@ import { ServiceManagementModule } from "@/features/services";
 import { ShiftHandoverModule } from "@/features/shifts";
 import { AccountProfileModule, StaffModule } from "@/features/staff";
 import { useMobileTableLabels } from "@/shared/hooks/useMobileTableLabels";
+import { usePullToRefresh } from "@/shared/hooks/usePullToRefresh";
 import InvoicePdfModal from "@/shared/ui/InvoicePdfModal";
 import { MobileRowDetailModal } from "@/shared/ui/MobileRowDetailModal";
+import { PullToRefreshIndicator } from "@/shared/ui/PullToRefreshIndicator";
 import React from "react";
 import { CmsAuthGate } from "./_components/CmsAuthGate";
 import { CmsChangePasswordModal } from "./_components/CmsChangePasswordModal";
@@ -62,6 +64,7 @@ export default function CmsDashboardPage() {
     CurrentIcon,
   } = useCmsShell();
   useMobileTableLabels();
+  const pullToRefresh = usePullToRefresh();
 
   if (checkingAuth || !adminUser) {
     return (
@@ -81,6 +84,11 @@ export default function CmsDashboardPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-100">
+      <PullToRefreshIndicator
+        pullDistance={pullToRefresh.pullDistance}
+        isRefreshing={pullToRefresh.isRefreshing}
+        isReadyToRefresh={pullToRefresh.isReadyToRefresh}
+      />
       <CmsHeader
         adminUser={adminUser}
         effectiveModule={effectiveModule}
