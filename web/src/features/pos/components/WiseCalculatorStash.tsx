@@ -206,7 +206,7 @@ export default function WiseCalculatorStash() {
   };
 
   return (
-    <div className="fixed bottom-5 left-0 z-50 flex flex-col items-start print:hidden select-none">
+    <div className="fixed bottom-20 md:bottom-5 left-0 z-50 flex flex-col items-start print:hidden select-none">
       {/* Cửa sổ nhỏ Máy tính Đổi tiền đơn giản */}
       {isOpen && (
         <div className="mb-2.5 ml-2 sm:ml-4 w-[320px] sm:w-[340px] max-w-[calc(100vw-16px)] bg-white text-slate-900 rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">

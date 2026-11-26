@@ -582,9 +582,9 @@
     "semantic_hash": ""
   },
   "web/src/app/page.tsx": {
-    "mtime": 1795663735.138066,
-    "seen": 1795663789.159323,
-    "ast_hash": "7353a089bf192d2a30759f583bb9067e",
+    "mtime": 1795664218.1322439,
+    "seen": 1795664289.198987,
+    "ast_hash": "5db3220b93906156b88aa4ec683443bc",
     "semantic_hash": ""
   },
   "web/tailwind.config.js": {
@@ -3258,9 +3258,9 @@
     "semantic_hash": ""
   },
   "web/src/features/pos/components/WiseCalculatorStash.tsx": {
-    "mtime": 1795404410.2860484,
-    "seen": 1795663454.712169,
-    "ast_hash": "87c99c32eef5faf2b02e2acbfc035ed2",
+    "mtime": 1795664219.217184,
+    "seen": 1795664289.199123,
+    "ast_hash": "a16c17d37666405569ee0c4b447e0eee",
     "semantic_hash": ""
   },
   "web/src/features/pos/index.ts": {
@@ -3375,6 +3375,12 @@
     "mtime": 1795663730.0303125,
     "seen": 1795663789.159327,
     "ast_hash": "5d67b8cf4df19b1d6e734abace6cca12",
+    "semantic_hash": ""
+  },
+  "web/src/app/_components/WebBottomNavbar.tsx": {
+    "mtime": 1795664214.8466368,
+    "seen": 1795664289.1989639,
+    "ast_hash": "69ef42d291778c82f7ac0874ffbd9142",
     "semantic_hash": ""
   },
   "cms/package-lock.json": {

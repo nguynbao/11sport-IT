@@ -15,6 +15,7 @@ import { getRoleDisplayName, isAttendanceOnlyRole } from "@/config/roles";
 import { useWebShell } from "./_hooks/useWebShell";
 import WebAuthGate from "./_components/WebAuthGate";
 import WebHeader from "./_components/WebHeader";
+import WebBottomNavbar from "./_components/WebBottomNavbar";
 import WebDrawers from "./_components/WebDrawers";
 import WebChangePasswordModal from "./_components/WebChangePasswordModal";
 
@@ -49,7 +50,7 @@ export default function WebPosHomePage() {
         onOpenRightDrawer={() => shell.setRightDrawerOpen(true)}
       />
 
-      <main className="flex-1 w-full min-w-0 mx-auto px-2 py-2.5 sm:px-3 lg:px-4 md:py-4 print:p-0">
+      <main className="flex-1 w-full min-w-0 mx-auto px-2 py-2.5 pb-20 sm:px-3 lg:px-4 md:py-4 md:pb-4 print:p-0">
         {shell.activeDrawerPage === "PROFILE" ? (
           <AccountProfileTab
             currentUser={currentUser}
@@ -151,6 +152,24 @@ export default function WebPosHomePage() {
       />
 
       <WiseCalculatorStash />
+
+      <WebBottomNavbar
+        currentUser={currentUser}
+        activeTab={shell.activeTab}
+        activeDrawerPage={shell.activeDrawerPage}
+        hasUnseenShiftSchedule={shell.hasUnseenShiftSchedule}
+        onSelectTab={(tabId) => {
+          shell.setActiveDrawerPage("NONE");
+          shell.setActiveTab(tabId);
+        }}
+        onOpenAttendance={() => {
+          shell.setLeftDrawerOpen(false);
+          shell.setRightDrawerOpen(false);
+          shell.setActiveDrawerPage("ATTENDANCE");
+        }}
+        onOpenLeftDrawer={() => shell.setLeftDrawerOpen(true)}
+        onOpenRightDrawer={() => shell.setRightDrawerOpen(true)}
+      />
     </div>
   );
 }
