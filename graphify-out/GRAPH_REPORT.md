@@ -1,7 +1,7 @@
 # Graph Report - 11sport-IT  (2026-11-26)
 
 ## Corpus Check
-- 504 files · ~509,344 words
+- 504 files · ~509,507 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 9 file(s) not represented in the graph (top: (none) 3, .example 3, .css 2)
 
@@ -11,7 +11,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `5e988339`
+- Built from commit: `336ddfb4`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -648,16 +648,16 @@ Nodes (5): 1. Tổng quan Phạm vi & Môi trường Kiểm thử, 2. Bảng Ma 
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `A. Chấm công (`/attendance`)` connect `attendance.service.ts` to `hrm.ts`, `ProductCatalogModule.tsx`, `web/src/components/HeaderAttendanceBar.tsx`?**
-  _High betweenness centrality (0.100) - this node is a cross-community bridge._
+  _High betweenness centrality (0.099) - this node is a cross-community bridge._
 - **What connects `PATH`, `RFC-4180` to the rest of the system?**
   _2 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `web/src/components/MyAttendanceCalendar.tsx` be split into smaller, more focused modules?**
   _Cohesion score 0.07591836734693877 - nodes in this community are weakly interconnected._
 - **Why does `ApiError` connect `ApiError` to `timesheet.queries.ts`, `ok`, `order.service.ts`, `serviceOrder.service.ts`, `return.service.ts`, `windowsPrinter.ts`, `product.service.ts`, `attendance.service.ts`, `promotion.service.ts`, `ocr.ts`, `recode.service.ts`, `handover.service.ts`, `routes/index.ts`, `weeklyPreference.service.ts`, `holidays.controller.ts`, `http.ts`, `staff.service.ts`, `schedule.service.ts`, `importScan.service.ts`, `leaveRequests.controller.ts`, `ordersCustomers.controller.ts`, `middleware/auth.ts`, `shared/search.ts`?**
-  _High betweenness centrality (0.094) - this node is a cross-community bridge._
+  _High betweenness centrality (0.093) - this node is a cross-community bridge._
 - **Should `seed.ts` be split into smaller, more focused modules?**
   _Cohesion score 0.05388471177944862 - nodes in this community are weakly interconnected._
 - **Why does `StockMovement` connect `3. Quy tắc Nghiệp vụ đã chốt (Business Rules)` to `inventory/exports.ts`, `TagCheckScannerModal.tsx`, `Đặc tả yêu cầu: Hệ thống Chấm công & Quản trị Nhân sự (HRM & Shift Handover)`, `Tài liệu Kịch bản Kiểm thử & Kết quả Nghiệm thu - 11Sport (v1.0)`, `useProductCatalog.ts`, `ref_lucide_react`, `ref_react`?**
-  _High betweenness centrality (0.088) - this node is a cross-community bridge._
+  _High betweenness centrality (0.087) - this node is a cross-community bridge._
 - **Should `db.ts` be split into smaller, more focused modules?**
   _Cohesion score 0.08583959899749373 - nodes in this community are weakly interconnected._

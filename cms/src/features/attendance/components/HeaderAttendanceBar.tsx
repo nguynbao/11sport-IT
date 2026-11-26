@@ -28,8 +28,8 @@ export default function HeaderAttendanceBar({ currentUser, onOpenMyAttendance }:
   if (!currentUser || currentUser.role === "ADMIN" || currentUser.role === "CEO") return null;
 
   return (
-    <div className="relative flex items-center justify-center">
-      <div className="flex items-center gap-2 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-2xl shadow-2xs text-slate-800">
+    <div className="relative w-full md:w-auto flex items-center justify-center">
+      <div className="w-full md:w-auto flex items-center justify-between md:justify-center gap-2 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-2xl shadow-2xs text-slate-800">
         {isWfhToday && (
           <span
             title="Hôm nay được duyệt làm việc từ xa (WFH)"
