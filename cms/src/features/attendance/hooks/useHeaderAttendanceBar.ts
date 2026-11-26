@@ -18,11 +18,34 @@ export function useHeaderAttendanceBar(currentUser: StaffUser | null) {
   const [elapsedText, setElapsedText] = useState<string>("00:00:00");
   const [isLunchPaused, setIsLunchPaused] = useState<boolean>(false);
   const [feedback, setFeedback] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const showNotice = (type: "ok" | "err", text: string) => {
+  const clearFeedback = useCallback(() => {
+    if (feedbackTimerRef.current) {
+      clearTimeout(feedbackTimerRef.current);
+      feedbackTimerRef.current = null;
+    }
+    setFeedback(null);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (feedbackTimerRef.current) {
+        clearTimeout(feedbackTimerRef.current);
+      }
+    };
+  }, []);
+
+  const showNotice = useCallback((type: "ok" | "err", text: string) => {
+    if (feedbackTimerRef.current) {
+      clearTimeout(feedbackTimerRef.current);
+    }
     setFeedback({ type, text });
-    setTimeout(() => setFeedback(null), 4000);
-  };
+    feedbackTimerRef.current = setTimeout(() => {
+      setFeedback(null);
+      feedbackTimerRef.current = null;
+    }, type === "err" ? 5500 : 4000);
+  }, []);
 
   const loadData = useCallback(async () => {
     if (!currentUser || currentUser.role === "ADMIN" || currentUser.role === "CEO") return;
@@ -199,7 +222,7 @@ export function useHeaderAttendanceBar(currentUser: StaffUser | null) {
         }
       );
       setAttendance(res.data.attendance);
-      showNotice("ok", `Đã kết thúc ca (${res.data.attendance.totalWorkHours}h)!`);
+      showNotice("ok", `Đã kết thúc ca (${res.data.attendance.totalWorkHours}h)! Cảm ơn bạn vì một ngày làm cống hiến`);
       window.dispatchEvent(new Event("attendance-changed"));
     } catch (err: any) {
       showNotice("err", err?.message || "Không thể kết ca");
@@ -220,6 +243,7 @@ export function useHeaderAttendanceBar(currentUser: StaffUser | null) {
     elapsedText,
     isLunchPaused,
     feedback,
+    clearFeedback,
     isWorking,
     isCompleted,
     handlePlayCheckIn,

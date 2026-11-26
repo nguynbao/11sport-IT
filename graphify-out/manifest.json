@@ -1746,9 +1746,9 @@
     "semantic_hash": ""
   },
   "cms/src/features/attendance/components/HeaderAttendanceBar.tsx": {
-    "mtime": 1795674902.0731275,
-    "seen": 1795674956.7171211,
-    "ast_hash": "5925faa3dead91ffd6b261cd0512d24c",
+    "mtime": 1795687165.7580504,
+    "seen": 1795687234.993048,
+    "ast_hash": "6165c9894e2bdcd2b0b6c549e2bf1f09",
     "semantic_hash": ""
   },
   "cms/src/features/attendance/components/HrmAttendanceModule.tsx": {
@@ -2820,9 +2820,9 @@
     "semantic_hash": ""
   },
   "cms/src/features/attendance/hooks/useHeaderAttendanceBar.ts": {
-    "mtime": 1795636320.4492278,
-    "seen": 1795659744.7859688,
-    "ast_hash": "e0e1e7c9d2881a3c28b5c9810db2642a",
+    "mtime": 1795686418.6232178,
+    "seen": 1795687234.993073,
+    "ast_hash": "cb1b86283273e95bebecd284543318b4",
     "semantic_hash": ""
   },
   "cms/src/features/orders/hooks/useOrdersReturns.ts": {
@@ -3168,9 +3168,9 @@
     "semantic_hash": ""
   },
   "web/src/features/attendance/components/HeaderAttendanceBar.tsx": {
-    "mtime": 1795674456.9771805,
-    "seen": 1795674775.10208,
-    "ast_hash": "31ccb2c8d1a9fe2d45a495a08e6eedbb",
+    "mtime": 1795687164.7622545,
+    "seen": 1795687234.9938061,
+    "ast_hash": "67b3117d8cad26bedb6c0d00689f8f7d",
     "semantic_hash": ""
   },
   "web/src/features/attendance/components/MyAttendanceCalendar.tsx": {
@@ -3540,9 +3540,9 @@
     "semantic_hash": ""
   },
   "web/src/features/attendance/hooks/useHeaderAttendanceBar.ts": {
-    "mtime": 1795674456.9848983,
-    "seen": 1795674775.102101,
-    "ast_hash": "cd67aa6a3f8d432bcb3b3393d5dc8545",
+    "mtime": 1795686418.6702871,
+    "seen": 1795687234.993829,
+    "ast_hash": "ea25aeecff0dd1cfa5a97a0aed78c145",
     "semantic_hash": ""
   },
   "web/src/features/attendance/hooks/useIncomingHandoverSummary.ts": {
