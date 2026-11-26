@@ -162,8 +162,198 @@ export function InventoryVariantsPanel({
                                   );
                                 })()}
 
-                                <div className="overflow-x-auto max-h-80 overflow-y-auto border border-slate-200 rounded-lg">
-                                  <table data-cards className="w-full text-xs text-left">
+                                <div className="md:hidden space-y-2.5">
+                                  {prodVariants.length === 0 ? (
+                                    <div className="py-4 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl">
+                                      Chưa có phân loại Size/Màu. Hãy thêm ở dòng bên dưới.
+                                    </div>
+                                  ) : (
+                                    prodVariants
+                                      .map((v, vIdx) => ({ v, vIdx }))
+                                      .filter(({ v }) => {
+                                        const c = (v.color || "").trim() || "Mặc định";
+                                        if (cmsVarColorFilter !== "ALL" && c !== cmsVarColorFilter) return false;
+                                        const q = cmsVarSearch.trim().toLowerCase();
+                                        if (!q) return true;
+                                        const childCode = variantCodeFor(p.code, v.color, v.size);
+                                        return `${c} ${v.size || ""} ${childCode}`.toLowerCase().includes(q);
+                                      })
+                                      .map(({ v, vIdx }) => {
+                                        const childCode = variantCodeFor(p.code, v.color, v.size);
+                                        const vScanned = scannedVariantCounts[p._id]?.[childCode] || 0;
+                                        const totalV = (Number(v.stockFloor1) || 0) + (Number(v.stockFloor2) || 0);
+                                        return (
+                                          <div
+                                            key={vIdx}
+                                            className={`rounded-xl border p-3 space-y-2.5 ${
+                                              lastScannedVariantCode === childCode
+                                                ? "bg-teal-50/70 border-teal-300"
+                                                : "bg-slate-50/60 border-slate-200"
+                                            }`}
+                                          >
+                                            <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-200/70">
+                                              <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                                                <span className="text-[11px] font-mono font-bold text-slate-400">#{vIdx + 1}</span>
+                                                <span className="font-mono text-xs font-extrabold text-brand-ink bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">
+                                                  {childCode}
+                                                </span>
+                                                {vScanned > 0 && (
+                                                  <span className="px-1.5 py-0.5 rounded bg-teal-600 text-white font-mono text-[10px] font-bold">
+                                                    Quét: {vScanned}
+                                                  </span>
+                                                )}
+                                              </div>
+                                              <div className="flex items-center gap-1.5 shrink-0">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleOpenPrintLabelForProduct(p, v)}
+                                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-brand-ink border border-indigo-200 text-[11px] font-bold"
+                                                >
+                                                  <Printer className="w-3 h-3" /> In tem
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    const next = prodVariants.filter((_, i) => i !== vIdx);
+                                                    setEditingVariants((prev) => ({ ...prev, [p._id]: next }));
+                                                  }}
+                                                  className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"
+                                                  title="Xóa phân loại này"
+                                                >
+                                                  <Trash2 className="w-3.5 h-3.5" />
+                                                </button>
+                                              </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-12 gap-2">
+                                              <div className="col-span-8 min-w-0">
+                                                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                                                  Màu sắc
+                                                </label>
+                                                <ColorInputWithPicker
+                                                  compact
+                                                  listId="cms-color-suggestions"
+                                                  value={v.color}
+                                                  colorHexes={v.colorHexes}
+                                                  onChange={(nextColor, nextHexes) => {
+                                                    const next = prodVariants.map((item, idx) => {
+                                                      if (idx === vIdx) {
+                                                        return { ...item, color: nextColor, colorHexes: nextHexes };
+                                                      }
+                                                      const cleanC = String(nextColor || "").trim().toLowerCase();
+                                                      if (cleanC && nextHexes.length > 0 && String(item.color || "").trim().toLowerCase() === cleanC) {
+                                                        return { ...item, colorHexes: nextHexes };
+                                                      }
+                                                      return item;
+                                                    });
+                                                    setEditingVariants((prev) => ({ ...prev, [p._id]: next }));
+                                                  }}
+                                                  placeholder="VD: Đỏ, Trắng..."
+                                                  className="w-full"
+                                                />
+                                              </div>
+                                              <div className="col-span-4 min-w-0">
+                                                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                                                  Size
+                                                </label>
+                                                <input
+                                                  type="text"
+                                                  list="cms-size-suggestions"
+                                                  value={v.size}
+                                                  onChange={(e) => {
+                                                    const next = [...prodVariants];
+                                                    next[vIdx] = { ...next[vIdx], size: e.target.value.toUpperCase() };
+                                                    setEditingVariants((prev) => ({ ...prev, [p._id]: next }));
+                                                  }}
+                                                  placeholder="M, L..."
+                                                  className="w-full px-2 py-1.5 rounded border border-slate-300 font-mono text-xs font-bold uppercase text-center bg-white"
+                                                />
+                                              </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-3 gap-2">
+                                              <div>
+                                                <label className="block text-[10px] font-bold text-slate-500 mb-1">Tồn T1</label>
+                                                <input
+                                                  type="number"
+                                                  min={0}
+                                                  value={v.stockFloor1}
+                                                  onChange={(e) => {
+                                                    const nextF1 = Math.max(0, Math.round(Number(e.target.value) || 0));
+                                                    const next = [...prodVariants];
+                                                    next[vIdx] = { ...next[vIdx], stockFloor1: nextF1, stock: nextF1 + (Number(next[vIdx].stockFloor2) || 0) };
+                                                    setEditingVariants((prev) => ({ ...prev, [p._id]: next }));
+                                                  }}
+                                                  className="w-full px-2 py-1.5 rounded border border-teal-300 font-mono text-xs font-bold text-right text-brand-ink bg-white"
+                                                />
+                                              </div>
+                                              <div>
+                                                <label className="block text-[10px] font-bold text-slate-500 mb-1">Tồn T2</label>
+                                                <input
+                                                  type="number"
+                                                  min={0}
+                                                  value={v.stockFloor2}
+                                                  onChange={(e) => {
+                                                    const nextF2 = Math.max(0, Math.round(Number(e.target.value) || 0));
+                                                    const next = [...prodVariants];
+                                                    next[vIdx] = { ...next[vIdx], stockFloor2: nextF2, stock: (Number(next[vIdx].stockFloor1) || 0) + nextF2 };
+                                                    setEditingVariants((prev) => ({ ...prev, [p._id]: next }));
+                                                  }}
+                                                  className="w-full px-2 py-1.5 rounded border border-purple-300 font-mono text-xs font-bold text-right text-purple-800 bg-white"
+                                                />
+                                              </div>
+                                              <div className="flex flex-col justify-between bg-white rounded border border-slate-200 px-2 py-1">
+                                                <span className="text-[10px] font-bold text-slate-500">Tổng SL</span>
+                                                <span className="font-mono text-sm font-extrabold text-slate-900 text-right">{totalV}</span>
+                                              </div>
+                                            </div>
+
+                                            <div className={`grid gap-2 ${canSeeCost ? "grid-cols-2" : "grid-cols-1"}`}>
+                                              <div>
+                                                <label className="block text-[10px] font-bold text-slate-500 mb-1">Giá niêm yết</label>
+                                                <input
+                                                  type="text"
+                                                  inputMode="numeric"
+                                                  disabled={!v.variantKey && !v.variantCode}
+                                                  defaultValue={Number(v.sellingPrice || 0) > 0 ? formatNumberDots(Number(v.sellingPrice)) : ""}
+                                                  key={`m_sp_${p._id}_${vIdx}_${v.sellingPrice || 0}`}
+                                                  placeholder={formatNumberDots(sellVal)}
+                                                  onChange={(e) => {
+                                                    const digits = e.target.value.replace(/\D/g, "");
+                                                    e.target.value = digits ? formatNumberDots(Number(digits)) : "";
+                                                  }}
+                                                  onBlur={(e) => handleSaveVariantPrice(p, v, "sellingPrice", parseNumberDots(e.target.value))}
+                                                  className="w-full px-2 py-1.5 rounded border border-slate-300 font-mono text-xs text-right bg-white disabled:bg-slate-100"
+                                                />
+                                              </div>
+                                              {canSeeCost && (
+                                                <div>
+                                                  <label className="block text-[10px] font-bold text-slate-500 mb-1">Giá vốn</label>
+                                                  <input
+                                                    type="text"
+                                                    inputMode="numeric"
+                                                    disabled={!v.variantKey && !v.variantCode}
+                                                    defaultValue={Number(v.costPrice || 0) > 0 ? formatNumberDots(Number(v.costPrice)) : ""}
+                                                    key={`m_cp_${p._id}_${vIdx}_${v.costPrice || 0}`}
+                                                    placeholder={formatNumberDots(costVal)}
+                                                    onChange={(e) => {
+                                                      const digits = e.target.value.replace(/\D/g, "");
+                                                      e.target.value = digits ? formatNumberDots(Number(digits)) : "";
+                                                    }}
+                                                    onBlur={(e) => handleSaveVariantPrice(p, v, "costPrice", parseNumberDots(e.target.value))}
+                                                    className="w-full px-2 py-1.5 rounded border border-slate-300 font-mono text-xs text-right bg-white disabled:bg-slate-100"
+                                                  />
+                                                </div>
+                                              )}
+                                            </div>
+                                          </div>
+                                        );
+                                      })
+                                  )}
+                                </div>
+
+                                <div className="hidden md:block overflow-x-auto max-h-80 overflow-y-auto border border-slate-200 rounded-lg">
+                                  <table className="w-full text-xs text-left">
                                     <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 uppercase text-[10px] sticky top-0 z-10">
                                       <tr>
                                         <th className="py-2 px-2.5 w-10 text-center">#</th>
@@ -418,9 +608,9 @@ export function InventoryVariantsPanel({
                                 </div>
 
                                 {/* Dòng thêm nhanh Size / Màu mới */}
-                                <div className="flex flex-wrap items-end gap-2 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
-                                  <div>
-                                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                                <div className="grid grid-cols-2 sm:flex sm:flex-wrap sm:items-end gap-2.5 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                                  <div className="col-span-2 sm:w-48">
+                                    <label className="block text-[10px] font-bold text-slate-600 mb-1">
                                       + Màu sắc mới (Chọn 1 hoặc nhiều màu)
                                     </label>
                                     <ColorInputWithPicker
@@ -438,11 +628,11 @@ export function InventoryVariantsPanel({
                                         }))
                                       }
                                       placeholder="VD: Xanh, Đen..."
-                                      className="w-48"
+                                      className="w-full"
                                     />
                                   </div>
-                                  <div>
-                                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                                  <div className="col-span-2 sm:w-24">
+                                    <label className="block text-[10px] font-bold text-slate-600 mb-1">
                                       Size mới
                                     </label>
                                     <input
@@ -459,11 +649,11 @@ export function InventoryVariantsPanel({
                                         }))
                                       }
                                       placeholder="M, L, XL, 42..."
-                                      className="w-24 px-2.5 py-1.5 rounded border border-slate-300 text-xs font-mono font-bold uppercase text-center bg-white"
+                                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-mono font-bold uppercase text-center bg-white"
                                     />
                                   </div>
-                                  <div>
-                                    <label className="block text-[10px] font-bold text-brand-ink mb-0.5">
+                                  <div className="col-span-1 sm:w-24">
+                                    <label className="block text-[10px] font-bold text-brand-ink mb-1">
                                       SL Kho Tầng 1
                                     </label>
                                     <input
@@ -479,11 +669,11 @@ export function InventoryVariantsPanel({
                                           },
                                         }))
                                       }
-                                      className="w-24 px-2.5 py-1.5 rounded border border-teal-300 text-xs font-mono font-bold text-right bg-white"
+                                      className="w-full px-2.5 py-1.5 rounded-lg border border-teal-300 text-xs font-mono font-bold text-right bg-white"
                                     />
                                   </div>
-                                  <div>
-                                    <label className="block text-[10px] font-bold text-purple-700 mb-0.5">
+                                  <div className="col-span-1 sm:w-24">
+                                    <label className="block text-[10px] font-bold text-purple-700 mb-1">
                                       SL Kho Tầng 2
                                     </label>
                                     <input
@@ -499,14 +689,14 @@ export function InventoryVariantsPanel({
                                           },
                                         }))
                                       }
-                                      className="w-24 px-2.5 py-1.5 rounded border border-purple-300 text-xs font-mono font-bold text-right bg-white"
+                                      className="w-full px-2.5 py-1.5 rounded-lg border border-purple-300 text-xs font-mono font-bold text-right bg-white"
                                     />
                                   </div>
                                   <button
                                     type="button"
                                     disabled={savingVariantsProdId === p._id}
                                     onClick={() => handleAddVariantToProduct(p)}
-                                    className="px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-extrabold inline-flex items-center gap-1"
+                                    className="col-span-2 sm:w-auto px-3 py-2 sm:py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-extrabold inline-flex items-center justify-center gap-1 cursor-pointer"
                                   >
                                     <Plus className="w-3.5 h-3.5" /> Thêm Size/Màu &amp; Lưu
                                   </button>

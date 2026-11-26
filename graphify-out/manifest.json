@@ -2496,9 +2496,9 @@
     "semantic_hash": ""
   },
   "cms/src/features/inventory/components/InventoryVariantsPanel.tsx": {
-    "mtime": 1795662836.6095798,
-    "seen": 1795663309.3281229,
-    "ast_hash": "b1c2c761d13e97676276f90b731383ae",
+    "mtime": 1795675856.0486476,
+    "seen": 1795675914.754896,
+    "ast_hash": "2db8c85b732d9cad3551b563f8797e93",
     "semantic_hash": ""
   },
   "cms/src/features/inventory/components/TransferProductPicker.tsx": {
@@ -2910,9 +2910,9 @@
     "semantic_hash": ""
   },
   "cms/src/shared/hooks/useMobileTableLabels.ts": {
-    "mtime": 1795675659.6468585,
-    "seen": 1795675700.3977711,
-    "ast_hash": "45da969ae608f6144e8ec3c969758637",
+    "mtime": 1795675862.6126819,
+    "seen": 1795675914.7550678,
+    "ast_hash": "022db5b6276b6d65dff455e8d5f68ca8",
     "semantic_hash": ""
   },
   "cms/src/shared/hooks/useViewport.ts": {

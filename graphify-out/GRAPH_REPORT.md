@@ -1,7 +1,7 @@
 # Graph Report - 11sport-IT  (2026-11-26)
 
 ## Corpus Check
-- 750 files · ~533,075 words
+- 750 files · ~533,813 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 9 file(s) not represented in the graph (top: (none) 3, .example 3, .css 2)
 
@@ -11,7 +11,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `e0bcdc40`
+- Built from commit: `2b165c59`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -682,6 +682,6 @@ _Questions this graph is uniquely positioned to answer:_
 - **Should `Product` be split into smaller, more focused modules?**
   _Cohesion score 0.13095238095238096 - nodes in this community are weakly interconnected._
 - **Why does `StockMovement` connect `publicStorefront.ts` to `useStaffModule.ts`, `inventory/exports.ts`, `Tài liệu Kịch bản Kiểm thử & Kết quả Nghiệm thu - 11Sport (v1.0)`, `useProductCatalog.ts`, `Đặc tả yêu cầu: Hệ thống Chấm công & Quản trị Nhân sự (HRM & Shift Handover)`, `StockMovement`, `ref_react`, `cms/src/shared/utils/format.ts`?**
-  _High betweenness centrality (0.059) - this node is a cross-community bridge._
+  _High betweenness centrality (0.058) - this node is a cross-community bridge._
 - **Should `ok` be split into smaller, more focused modules?**
   _Cohesion score 0.08552388004442799 - nodes in this community are weakly interconnected._

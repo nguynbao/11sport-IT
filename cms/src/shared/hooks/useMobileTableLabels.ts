@@ -10,7 +10,10 @@ function cellText(cell: HTMLTableCellElement): string {
 
 function textWithoutButtons(el: Element): string {
   const clone = el.cloneNode(true) as Element;
-  clone.querySelectorAll("button").forEach((b) => b.remove());
+  clone.querySelectorAll("button").forEach((b) => {
+    const title = b.getAttribute("title") || "";
+    if (!title.startsWith("Mã con:")) b.remove();
+  });
   return (clone.textContent || "").replace(/\s+/g, " ").trim();
 }
 
@@ -49,7 +52,12 @@ function extractFullCellText(cell: HTMLTableCellElement): string {
       return;
     }
 
-    const childEls = Array.from(el.children).filter((c) => c.tagName !== "BUTTON");
+    const isKeepButton = (el: Element) =>
+      el.tagName === "BUTTON" && (el.getAttribute("title") || "").startsWith("Mã con:");
+
+    const childEls = Array.from(el.children).filter(
+      (c) => c.tagName !== "BUTTON" || isKeepButton(c)
+    );
     if (childEls.length === 0) {
       pushLine(textWithoutButtons(el));
       return;
